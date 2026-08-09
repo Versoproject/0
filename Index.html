@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Verso Entry</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; background:#fafaf8; color:#1f1e1b; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
+  .wrap { max-width:720px; margin:0 auto; padding:16px; }
+  h1 { font-size:22px; margin:4px 0 2px; }
+  .sub { color:#9a9a92; font-size:12.5px; margin-bottom:16px; }
+  .card { background:#fff; border:1px solid #e4e2dc; border-radius:12px; padding:14px; margin-bottom:12px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+  .field { flex:1; min-width:140px; }
+  label { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#6b6a62; font-weight:700; margin-bottom:3px; }
+  input, select, textarea { width:100%; padding:8px 10px; border:1px solid #e4e2dc; border-radius:8px; font-size:14px; background:#fafaf8; }
+  textarea { resize:vertical; min-height:50px; }
+  .btn { background:#1f1e1b; color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:14px; font-weight:600; cursor:pointer; }
+  .btn.secondary { background:#fff; color:#1f1e1b; border:1px solid #e4e2dc; }
+  .entry { background:#fff; border:1px solid #e4e2dc; border-radius:12px; padding:12px 14px; margin-bottom:10px; }
+  .entry-head { display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
+  .entry-title { font-weight:700; font-size:14.5px; }
+  .entry-meta { font-size:11.5px; color:#9a9a92; margin-top:2px; }
+  .badge { font-size:11px; font-weight:700; padding:3px 8px; border-radius:6px; }
+  .badge.private { color:#8B5A5A; background:#FBEFEF; }
+  .badge.project { color:#5A6B8B; background:#EEF1FB; }
+  .badge.public { color:#4F7A5A; background:#EEF7EF; }
+  .details { margin-top:10px; padding-top:10px; border-top:1px solid #efeee9; font-size:13px; display:none; }
+  .details.open { display:block; }
+  .details div { margin-bottom:4px; }
+  .details b { color:#6b6a62; font-weight:600; }
+  .toolbar { display:flex; gap:8px; margin-bottom:14px; }
+  .toolbar input { flex:1; }
+  .empty { color:#9a9a92; font-size:13px; text-align:center; padding:20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+    <div>
+      <h1>Verso Entry</h1>
+      <div class="sub">Zaznamenávanie a organizácia dát</div>
+    </div>
+    <button class="btn secondary" onclick="toggleForm()">+ Nový záznam</button>
+  </div>
+
+  <div class="card" id="formCard" style="display:none;">
+    <div class="row">
+      <div class="field"><label>Project number</label><input id="f_project_number" /></div>
+      <div class="field"><label>Project name</label><input id="f_project_name" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Project owner</label><input id="f_project_owner" /></div>
+      <div class="field"><label>Project category</label><input id="f_project_category" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Theme</label><input id="f_theme" /></div>
+      <div class="field"><label>Privacy</label>
+        <select id="f_privacy">
+          <option value="private">Private</option>
+          <option value="project">Project</option>
+          <option value="public">Public</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Sub</label><input id="f_sub" /></div>
+      <div class="field"><label>Size</label><input id="f_size" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Description</label><textarea id="f_description"></textarea></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Content</label><textarea id="f_content"></textarea></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Schedule</label><input id="f_schedule" /></div>
+      <div class="field"><label>Localisation</label><input id="f_localisation" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>User</label><input id="f_user_name" /></div>
+      <div class="field"><label>Info</label><input id="f_info" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Currency</label><input id="f_currency" /></div>
+      <div class="field"><label>Tags</label><input id="f_tags" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>File</label><input id="f_file" /></div>
+      <div class="field" style="display:flex; align-items:center; gap:6px; margin-top:18px;">
+        <input type="checkbox" id="f_priority" style="width:auto;" />
+        <label style="margin:0;">Priority</label>
+      </div>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <button class="btn" onclick="saveEntry()">Uložiť záznam</button>
+      <button class="btn secondary" onclick="toggleForm()">Zrušiť</button>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <input id="searchBox" placeholder="Hľadať v záznamoch…" oninput="render()" />
+  </div>
+
+  <div id="list"></div>
+</div>
+
+<script>
+  // --- Vlož sem svoje Supabase údaje (Project Settings -> API) ---
+  const SUPABASE_URL = "https://TVOJ-PROJEKT.supabase.co";
+  const SUPABASE_ANON_KEY = "TVOJ-ANON-KEY";
+  // -----------------------------------------------------------------
+
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  let entries = [];
+
+  function toggleForm() {
+    const el = document.getElementById('formCard');
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  }
+
+  async function loadEntries() {
+    const { data, error } = await sb.from('entries').select('*').order('created_at', { ascending: false });
+    if (error) { alert('Chyba pri načítaní: ' + error.message); return; }
+    entries = data || [];
+    render();
+  }
+
+  async function saveEntry() {
+    const payload = {
+      entry_number: entries.length + 1,
+      project_number: val('f_project_number'),
+      project_name: val('f_project_name'),
+      project_owner: val('f_project_owner'),
+      project_category: val('f_project_category'),
+      theme: val('f_theme'),
+      privacy: val('f_privacy'),
+      sub: val('f_sub'),
+      description: val('f_description'),
+      content: val('f_content'),
+      size: val('f_size'),
+      priority: document.getElementById('f_priority').checked,
+      schedule: val('f_schedule'),
+      localisation: val('f_localisation'),
+      user_name: val('f_user_name'),
+      info: val('f_info'),
+      currency: val('f_currency'),
+      tags: val('f_tags'),
+      file: val('f_file'),
+    };
+    const { error } = await sb.from('entries').insert(payload);
+    if (error) { alert('Chyba pri ukladaní: ' + error.message); return; }
+    document.querySelectorAll('#formCard input, #formCard textarea').forEach(el => el.value = '');
+    document.getElementById('f_priority').checked = false;
+    toggleForm();
+    loadEntries();
+  }
+
+  function val(id) { return document.getElementById(id).value.trim(); }
+
+  async function deleteEntry(id, ev) {
+    ev.stopPropagation();
+    if (!confirm('Zmazať tento záznam?')) return;
+    const { error } = await sb.from('entries').delete().eq('id', id);
+    if (error) { alert('Chyba: ' + error.message); return; }
+    loadEntries();
+  }
+
+  function toggleDetails(id) {
+    const el = document.getElementById('det-' + id);
+    el.classList.toggle('open');
+  }
+
+  function render() {
+    const q = document.getElementById('searchBox').value.toLowerCase();
+    const list = document.getElementById('list');
+    const filtered = entries.filter(e =>
+      !q || JSON.stringify(e).toLowerCase().includes(q)
+    );
+    if (filtered.length === 0) {
+      list.innerHTML = '<div class="empty">Zatiaľ žiadne záznamy.</div>';
+      return;
+    }
+    list.innerHTML = filtered.map(e => `
+      <div class="entry">
+        <div class="entry-head" onclick="toggleDetails('${e.id}')">
+          <div>
+            <div class="entry-title">${e.project_name || '(bez názvu)'} ${e.priority ? '⭐' : ''}</div>
+            <div class="entry-meta">#${e.entry_number || '-'} · ${e.project_owner || ''}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="badge ${e.privacy}">${e.privacy}</span>
+            <button class="btn secondary" style="padding:4px 8px; font-size:12px;" onclick="deleteEntry('${e.id}', event)">✕</button>
+          </div>
+        </div>
+        <div class="details" id="det-${e.id}">
+          <div><b>Project number:</b> ${e.project_number || '-'}</div>
+          <div><b>Category:</b> ${e.project_category || '-'}</div>
+          <div><b>Theme:</b> ${e.theme || '-'}</div>
+          <div><b>Sub:</b> ${e.sub || '-'}</div>
+          <div><b>Description:</b> ${e.description || '-'}</div>
+          <div><b>Content:</b> ${e.content || '-'}</div>
+          <div><b>Size:</b> ${e.size || '-'}</div>
+          <div><b>Schedule:</b> ${e.schedule || '-'}</div>
+          <div><b>Localisation:</b> ${e.localisation || '-'}</div>
+          <div><b>User:</b> ${e.user_name || '-'}</div>
+          <div><b>Info:</b> ${e.info || '-'}</div>
+          <div><b>Currency:</b> ${e.currency || '-'}</div>
+          <div><b>Tags:</b> ${e.tags || '-'}</div>
+          <div><b>File:</b> ${e.file || '-'}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  loadEntries();
+</script>
+</body>
+</html>
