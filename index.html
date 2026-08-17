@@ -1024,6 +1024,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">R28</span>
   <span class="module-tag">R29</span>
   <span class="module-tag">zzz6-F4</span>
+  <span class="module-tag">Zzz6-F2</span>
 </div>
 <!-- zzz2-M1 layout modul END -->
 
@@ -1180,10 +1181,96 @@ document.querySelectorAll('.entry-cell').forEach(cell => {
 // AKTIVOVANY realny zapis do Supabase (predtym bol len console.log placeholder, preto sa zaznamy predtym
 // nikam neukladali). Schema tabulky 'verso_entries' zatial pocita len so stlpcom pre R1 (entry_id + r1);
 // dalsie command line bunky (R2, R3...) sa doplnia rovnakym sposobom, az pribudnu.
+// === [Zzz6-F2:AUTO-NUMBER] automaticke cislovanie entry_id + duplicate check | Vrso -> Claude AI | 2026-08-17 ===
+// Ked sa CL prida do databazy, entry_id uz nie je pevne "1", ale sa dopocita ako
+// (najvyssie doteraz priradene cislo entry_id v databaze) + 1.
+// Ak je CL (po orezani whitespace) zhodne s uz existujucim zaznamom, novy zaznam sa NEPRIDA
+// a zobrazi sa kratke kontextove upozornenie (~1 sekunda).
+
+// kratke kontextove okno/toast, zmizne samo po ~1 sekunde
+function zzz6f2_show_toast(message) {
+  const toast = document.createElement('div');
+  toast.textContent = message;
+  toast.style.position = 'fixed';
+  toast.style.top = '16px';
+  toast.style.left = '50%';
+  toast.style.transform = 'translateX(-50%)';
+  toast.style.backgroundColor = '#171717';
+  toast.style.color = '#fff';
+  toast.style.padding = '8px 14px';
+  toast.style.borderRadius = '8px';
+  toast.style.fontSize = '11px';
+  toast.style.fontWeight = '700';
+  toast.style.zIndex = '2000';
+  toast.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+  toast.style.maxWidth = '80%';
+  toast.style.textAlign = 'center';
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    if (toast.parentNode) toast.parentNode.removeChild(toast);
+  }, 1000);
+}
+
+// vsetky zname zaznamy [{entry_id, text}] - skusi Supabase (s timeoutom 4s), fallback lokalna cache
+async function zzz6f2_get_known_entries() {
+  try {
+    const fetchPromise = sb.from('verso_entries').select('entry_id, r1');
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('zzz6-F2 Supabase fetch timeout (4s)')), 4000)
+    );
+    const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+    if (error) throw error;
+    return (data || []).map(row => ({ entry_id: row.entry_id, text: row.r1 || '' }));
+  } catch (err) {
+    console.warn('zzz6-F2 Supabase fetch zlyhal/timeout, pouzivam lokalnu cache pre cislovanie/duplicity:', err);
+    return Object.entries(submittedEntriesCache).map(([entry_id, text]) => ({ entry_id, text: text || '' }));
+  }
+}
+
+// posledne priradene cislo entry_id v databaze + 1
+function zzz6f2_compute_next_entry_id(knownEntries) {
+  let maxId = 0;
+  knownEntries.forEach(({ entry_id }) => {
+    const n = parseInt(entry_id, 10);
+    if (!isNaN(n) && n > maxId) maxId = n;
+  });
+  return String(maxId + 1);
+}
+
+// vrati existujuci zaznam, ak je CL text zhodny (po orezani whitespace) s uz ulozenym zaznamom
+function zzz6f2_find_duplicate(knownEntries, text) {
+  const normalized = (text || '').trim();
+  if (!normalized) return null;
+  return knownEntries.find(e => (e.text || '').trim() === normalized) || null;
+}
+
+// zobrazi priradene entry number na R1a buttone
+function zzz6f2_update_entry_number_button(entryId) {
+  const btn = document.getElementById('versoEntryNumberButton');
+  if (!btn) return;
+  btn.textContent = `ENTRY NUMBER #${entryId}`;
+}
+// === [/Zzz6-F2:AUTO-NUMBER] ===
+
 async function submit_entries_to_db() {
+  const clText = entryData["1"] || "";
+
+  // Zzz6-F2: najprv zisti zname zaznamy (potrebne pre cislovanie aj kontrolu duplicity)
+  const knownEntries = await zzz6f2_get_known_entries();
+
+  // Zzz6-F2: ak je CL zhodne s uz existujucim zaznamom, neprida sa znova - iba kratke upozornenie
+  const duplicate = zzz6f2_find_duplicate(knownEntries, clText);
+  if (duplicate) {
+    zzz6f2_show_toast(`Zaznam uz existuje (#${duplicate.entry_id})`);
+    return;
+  }
+
+  // Zzz6-F2: entry_id = posledne priradene cislo v databaze + 1 (uz nie pevne "1")
+  const nextEntryId = zzz6f2_compute_next_entry_id(knownEntries);
+
   const payload = {
-    entry_id: "1",              // pevne, zodpoveda R1/R1a (Entry Number 1)
-    r1: entryData["1"] || "",   // obsah R1 command line bunky
+    entry_id: nextEntryId,      // Zzz6-F2: automaticky priradene cislo (max existujuceho +1)
+    r1: clText,                 // obsah R1 command line bunky
     updated_at: new Date().toISOString()
   };
   console.log('Zzz1-D1 submit_entries_to_db - payload pripraveny na zapis:', payload);
@@ -1191,6 +1278,7 @@ async function submit_entries_to_db() {
   // Lokalna cache sa aktualizuje HNED (nezavisle od Supabase) - vdaka tomu je zaznam vidiet
   // v Database workspace okamzite, aj ked sietovy zapis zlyhava/beri dlhsie (napr. chybajuca RLS politika).
   submittedEntriesCache[payload.entry_id] = payload.r1;
+  zzz6f2_update_entry_number_button(payload.entry_id); // Zzz6-F2: vyznacenie priradeneho cisla na R1a
   refresh_database_workspace_if_open();
 
   try {
@@ -1220,11 +1308,12 @@ document.addEventListener('keydown', (e) => {
 });
 
 // Trigger 2: podrzanie loga (K1 - verso-chain logo button, id="versoEntryButton")
+// Zzz6-F2: podrzanie 3 sekundy (predtym 600ms) - podla poziadavky "podrzanim 3 sekund home button"
 (function bindLongPressD1() {
   const logoBtn = document.getElementById('versoEntryButton');
   if (!logoBtn) return;
   let pressTimer = null;
-  const LONG_PRESS_MS = 600;
+  const LONG_PRESS_MS = 3000; // Zzz6-F2: 3 sekundy
 
   const startPress = () => {
     pressTimer = setTimeout(() => {
