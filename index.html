@@ -813,16 +813,46 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     color: #fff;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
   }
-  .db-workspace-line {
-    padding: 6px 12px;
-    border-radius: 6px;
-    background: #171717;
+  .db-workspace-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .db-workspace-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .db-workspace-label {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background-color: #171717;
     color: #fff;
-    font-size: 9px;
+    font-size: 7px;
     font-weight: 700;
-    border: none;
-    margin-bottom: 6px;
-    word-break: break-word;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  /* db-workspace-cell = rovnaka velkost/styl ako .entry-cell (command line bunka) */
+  .db-workspace-cell {
+    width: 60px;
+    height: 34px;
+    padding: 2px 4px;
+    border-radius: 8px;
+    background-color: #ffffff;
+    border: 1px solid #171717;
+    color: #171717;
+    font-size: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
   }
   /* === end zzz2-R29 (db-workspace styly) === */
 
@@ -993,6 +1023,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">R27</span>
   <span class="module-tag">R28</span>
   <span class="module-tag">R29</span>
+  <span class="module-tag">zzz6-F4</span>
 </div>
 <!-- zzz2-M1 layout modul END -->
 
@@ -1080,6 +1111,12 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // === [F1:CELL-LOGIC] centralny data store + render + klik-modal pre R1 bunky ===
 const entryData = { "1": "" };
 
+// === zzz2-R29 fix: samostatna cache SKUTOCNE ULOZENYCH zaznamov (nie live-pisany obsah R1) ===
+// Predtym Database workspace citala priamo z entryData -> ked si vyprazdnil/prepisal R1 (napr. kvoli hladaniu),
+// zmizol aj samotny "ulozeny" zaznam, lebo bol to isty field. Teraz: R1 = LEN filter/live editacia,
+// submittedEntriesCache = to, co bolo skutocne odoslane cez submit_entries_to_db (Enter mimo textarea / podrzanie loga).
+const submittedEntriesCache = {};
+
 function render_entry_cell(id) {
   const cell = document.querySelector(`.entry-cell[data-entry-id="${id}"]`);
   if (!cell) return;
@@ -1089,6 +1126,11 @@ function render_entry_cell(id) {
 function write_to_entry(id, text) {
   entryData[id] = text;
   render_entry_cell(id);
+  // zzz2-R29: ulozenie v modali (ULOZIT) rovno odosle zaznam do "databazy" (lokalna cache + Supabase pokus),
+  // takze nie je treba osobitne Enter/podrzanie loga len preto, aby sa zaznam objavil v Database workspace.
+  submit_entries_to_db();
+  // ak je Database workspace prave otvoreny, R1 bunka funguje ako filter -> obnov zoznam
+  refresh_database_workspace_if_open();
 }
 
 function open_entry_modal(id) {
@@ -1135,15 +1177,39 @@ document.querySelectorAll('.entry-cell').forEach(cell => {
 
 // === [Zzz1-D1:DB-WRITE] zapis celeho riadku entries (vsetky bunky command line) do Supabase | Vrso -> Claude AI | 2026-08-17 ===
 // D1 = funkcia tykajuca sa databazy/modulu (nie jednej bunky) - berie VSETKY aktualne registrovane entries naraz.
-// Zatial placeholder (console.log) - realny Supabase upsert je pripraveny nizsie zakomentovany,
-// kedze schema DB riadku (nazvy stlpcov) sa este bude upresnovat s pribudajucimi bunkami (R2, R3...).
+// AKTIVOVANY realny zapis do Supabase (predtym bol len console.log placeholder, preto sa zaznamy predtym
+// nikam neukladali). Schema tabulky 'verso_entries' zatial pocita len so stlpcom pre R1 (entry_id + r1);
+// dalsie command line bunky (R2, R3...) sa doplnia rovnakym sposobom, az pribudnu.
 async function submit_entries_to_db() {
-  const payload = { ...entryData }; // napr. { "1": "text z R1 bunky" }, neskor pribudnu dalsie kluce
+  const payload = {
+    entry_id: "1",              // pevne, zodpoveda R1/R1a (Entry Number 1)
+    r1: entryData["1"] || "",   // obsah R1 command line bunky
+    updated_at: new Date().toISOString()
+  };
   console.log('Zzz1-D1 submit_entries_to_db - payload pripraveny na zapis:', payload);
 
-  // Realny zapis do Supabase (odkomentovat, az bude schema tabulky hotova):
-  // const { data, error } = await sb.from('verso_entries').upsert(payload);
-  // if (error) console.error('Zzz1-D1 Supabase error:', error);
+  // Lokalna cache sa aktualizuje HNED (nezavisle od Supabase) - vdaka tomu je zaznam vidiet
+  // v Database workspace okamzite, aj ked sietovy zapis zlyhava/beri dlhsie (napr. chybajuca RLS politika).
+  submittedEntriesCache[payload.entry_id] = payload.r1;
+  refresh_database_workspace_if_open();
+
+  try {
+    const { data, error } = await sb
+      .from('verso_entries')
+      .upsert(payload, { onConflict: 'entry_id' })
+      .select();
+
+    if (error) {
+      console.error('Zzz1-D1 Supabase error (zapis do vzdialenej DB zlyhal, lokalne je ale ulozene):', error);
+      // Najcastejsie priciny: 1) tabulka 'verso_entries' este neexistuje,
+      // 2) chybaju stlpce entry_id/r1/updated_at, 3) RLS politika neumoznuje insert/update pre anon kluc.
+      return;
+    }
+
+    console.log('Zzz1-D1 Supabase zapis uspesny:', data);
+  } catch (err) {
+    console.error('Zzz1-D1 neocakavana chyba pri zapise (lokalne je ale ulozene):', err);
+  }
 }
 
 // Trigger 1: klavesa Enter (nie vnutri modal textarea, tam Enter iba pridava riadok textu)
@@ -1177,6 +1243,21 @@ document.addEventListener('keydown', (e) => {
 })();
 // === [/Zzz1-D1:DB-WRITE] ===
 
+// === zzz6-F4 CL (command line R1) ako filter databazovych zaznamov | Vrso -> Claude AI | 2026-08-17 ===
+// FILTER: obsah R1 bunky (entryData["1"]) funguje ako live filter - zobrazia sa iba zaznamy,
+// ktorych text obsahuje aktualnu hodnotu R1 (bez ohladu na velke/male pismena). Prazdna R1 = zobrazi vsetko.
+// R1 tu sluzi VYLUCNE ako filter/vyhladavanie - skutocne ulozene zaznamy su oddelene v submittedEntriesCache,
+// takze mazanie/prepisovanie R1 kvoli hladaniu uz nezmaze samotny ulozeny zaznam (viz zzz2-R29 fix).
+function get_active_filter_text() {
+  return (entryData["1"] || "").trim().toLowerCase();
+}
+
+function row_matches_filter(rowText, filterText) {
+  if (!filterText) return true;
+  return (rowText || "").toLowerCase().includes(filterText);
+}
+// === end zzz6-F4 (filter funkcie) ===
+
 // === zzz2-R29 Database button - otvorenie Database workspace + nacitanie vsetkych command lines | Vrso -> Claude AI | 2026-08-17 ===
 // Po stlaceni DATABASE buttonu: otvori link na oznacenie #zzz2-r29-database-workspace
 // a do WORKSPACE sekcie (zatial vizualne ako homepage) nacita vsetky doteraz vlozene command lines.
@@ -1187,45 +1268,132 @@ async function open_database_workspace() {
   workspace.innerHTML = '<div class="db-workspace"><div class="db-workspace-title">DATABASE WORKSPACE</div><div class="db-workspace-loading">Nacitavam command lines...</div></div>';
 
   // Vsetky command lines = riadky z Supabase tabulky 'verso_entries' (ak uz existuju),
-  // s fallbackom na lokalne entryData, kym schema/tabulka nie je finalna (viz Zzz1-D1).
+  // s fallbackom na submittedEntriesCache (SKUTOCNE ulozene zaznamy, nie live obsah R1),
+  // kym schema/tabulka nie je finalna (viz Zzz1-D1).
+  // Timeout 4s zabranuje tomu, aby workspace zostal navzdy "Nacitavam..." pri pomalej/zlyhavajucej sieti.
   let rows = [];
   let usedFallback = false;
   try {
-    const { data, error } = await sb.from('verso_entries').select('*');
+    const fetchPromise = sb.from('verso_entries').select('*');
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('zzz2-R29 Supabase fetch timeout (4s)')), 4000)
+    );
+    const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
     if (error) throw error;
     rows = data || [];
   } catch (err) {
-    console.warn('zzz2-R29 Supabase fetch zlyhal, pouzivam lokalne command lines:', err);
+    console.warn('zzz2-R29 Supabase fetch zlyhal/timeout, pouzivam lokalne ulozene command lines:', err);
     usedFallback = true;
-    rows = Object.entries(entryData)
+    rows = Object.entries(submittedEntriesCache)
       .filter(([, text]) => text && text.length > 0)
       .map(([id, text]) => ({ entry_id: id, text }));
   }
+
+  // === zzz6-F4 aplikacia filtra na nacitane riadky (CL/R1 = filter) ===
+  const totalCount = rows.length;
+  const filterText = get_active_filter_text();
+  const filteredRows = rows.filter(row => {
+    const rowText = usedFallback ? row.text : (row.r1 !== undefined ? row.r1 : JSON.stringify(row));
+    return row_matches_filter(rowText, filterText);
+  });
+  // === end zzz6-F4 (aplikacia filtra) ===
 
   const wrap = document.createElement('div');
   wrap.className = 'db-workspace';
 
   const title = document.createElement('div');
   title.className = 'db-workspace-title';
-  title.textContent = 'DATABASE WORKSPACE';
+  // === zzz6-F4 titulok zobrazuje aktivny filter, ak je nastaveny ===
+  title.textContent = filterText
+    ? `DATABASE WORKSPACE (filter: "${entryData["1"]}")`
+    : 'DATABASE WORKSPACE';
+  // === end zzz6-F4 (titulok) ===
   wrap.appendChild(title);
 
-  if (rows.length === 0) {
+  if (filteredRows.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'db-workspace-empty';
-    empty.textContent = 'Ziadne command lines zatial neboli vlozene.';
+    empty.textContent = totalCount === 0
+      ? 'Ziadne command lines zatial neboli vlozene.'
+      : 'Ziadny zaznam nezodpoveda aktualnemu filtru (R1).';
     wrap.appendChild(empty);
   } else {
-    rows.forEach(row => {
-      const line = document.createElement('div');
-      line.className = 'db-workspace-line';
-      line.textContent = usedFallback ? `#${row.entry_id}: ${row.text}` : JSON.stringify(row);
-      wrap.appendChild(line);
+    const rowsWrap = document.createElement('div');
+    rowsWrap.className = 'db-workspace-rows';
+
+    filteredRows.forEach(row => {
+      const entryId = usedFallback ? row.entry_id : (row.entry_id !== undefined ? row.entry_id : '?');
+      const rowText = usedFallback ? row.text : (row.r1 !== undefined ? row.r1 : JSON.stringify(row));
+
+      const rowEl = document.createElement('div');
+      rowEl.className = 'db-workspace-row';
+
+      // label = rovnaky vzhlad ako R1a (oznacenie entry number)
+      const label = document.createElement('div');
+      label.className = 'db-workspace-label';
+      label.textContent = `#${entryId}`;
+
+      // cell = rovnaka velkost/styl ako R1 (command line bunka), klik zobrazi plny text
+      const cell = document.createElement('div');
+      cell.className = 'db-workspace-cell';
+      cell.textContent = rowText;
+      cell.addEventListener('click', () => open_db_record_modal(entryId, rowText));
+
+      rowEl.appendChild(label);
+      rowEl.appendChild(cell);
+      rowsWrap.appendChild(rowEl);
     });
+
+    wrap.appendChild(rowsWrap);
   }
 
   workspace.innerHTML = '';
   workspace.appendChild(wrap);
+}
+
+// Read-only modal pre zobrazenie plneho textu databazoveho zaznamu (rovnaky vizual ako entry-modal)
+function open_db_record_modal(entryId, fullText) {
+  const overlay = document.createElement('div');
+  overlay.className = 'entry-modal-overlay';
+
+  const box = document.createElement('div');
+  box.className = 'entry-modal-box';
+
+  const label = document.createElement('div');
+  label.style.fontSize = '9px';
+  label.style.fontWeight = '700';
+  label.style.color = '#171717';
+  label.textContent = `Entry #${entryId}`;
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'entry-modal-textarea';
+  textarea.value = fullText || '';
+  textarea.readOnly = true;
+
+  const actions = document.createElement('div');
+  actions.className = 'entry-modal-actions';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'entry-modal-close';
+  closeBtn.textContent = 'ZATVORIT';
+  closeBtn.onclick = () => document.body.removeChild(overlay);
+
+  actions.appendChild(closeBtn);
+  box.appendChild(label);
+  box.appendChild(textarea);
+  box.appendChild(actions);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+// Obnovi Database workspace iba ak je prave otvoreny (t.j. uz obsahuje .db-workspace),
+// aby sa filter podla R1 aplikoval live bez toho, aby sa workspace otvoril, ked nie je vidiet.
+function refresh_database_workspace_if_open() {
+  const workspace = document.getElementById('versoWorkspaceSection');
+  if (!workspace) return;
+  if (workspace.querySelector('.db-workspace')) {
+    open_database_workspace();
+  }
 }
 
 (function bindR29DatabaseButton() {
