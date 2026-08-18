@@ -1045,6 +1045,31 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     border-color: #e11d1d;
   }
   /* === [/Zzz1-R12a:BUTTON] === */
+
+  /* === [Zzz1-F16:SCHEDULE-DATE] R16 Schedule date filling - styly pre kontextove okno vyberu datumu (DEN/MESIAC select + ROK cislo, predvyplnene/prepisatelne) | Vrso -> Claude AI | 2026-08-18 === */
+  .zzz1-f16-date-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .zzz1-f16-select,
+  .zzz1-f16-year-input {
+    height: 30px;
+    padding: 2px 4px;
+    border-radius: 6px;
+    border: 1px solid #171717;
+    color: #171717;
+    font-size: 11px;
+    font-family: sans-serif;
+    box-sizing: border-box;
+  }
+  .zzz1-f16-select {
+    width: 60px;
+  }
+  .zzz1-f16-year-input {
+    width: 70px;
+  }
+  /* === [/Zzz1-F16:SCHEDULE-DATE] === */
 </style>
 <!-- === [/M1:MODULE] (styles) === -->
 
@@ -1115,6 +1140,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-F14</span>
   <span class="module-tag">Zzz1-R16</span>
   <span class="module-tag">Zzz1-R16a</span>
+  <span class="module-tag">Zzz1-F16</span>
+  <span class="module-tag">Zzz1-F16a</span>
 </div>
 <!-- zzz2-M1 layout modul END -->
 
@@ -1336,8 +1363,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
         <button class="entry-number-button" id="versoScheduleButton" data-entry-id="16" aria-label="Schedule">SCHEDULE</button>
         <!-- === [/Zzz1-R16a:BUTTON] === -->
 
-        <!-- === [Zzz1-R16:CELL] data bunka, zatial prazdna, textovo doplnitelna (adresa alebo map link) === -->
-        <div class="entry-cell" id="versoEntryCell16" data-entry-id="16"></div>
+        <!-- === [Zzz1-R16:CELL] data bunka, zatial prazdna; data-date-picker="true" vylucuje z generickeho textoveho click-to-modal bindingu (F1:CELL-LOGIC) - Zzz1-F16 pouziva vlastny date-picker modal namiesto neho === -->
+        <div class="entry-cell" id="versoEntryCell16" data-entry-id="16" data-date-picker="true"></div>
         <!-- === [/Zzz1-R16:CELL] === -->
     </div>
     <!-- === [/Zzz1-R16 + Zzz1-R16a] === -->
@@ -1428,6 +1455,8 @@ function open_entry_modal(id) {
 document.querySelectorAll('.entry-cell').forEach(cell => {
   // Zzz1-R14: needitovatelna bunka (data-readonly) - hodnotu priradi len Zzz6-F14, nie klik/modal
   if (cell.hasAttribute('data-readonly')) return;
+  // Zzz1-R16: data-date-picker="true" - ma vlastny date-picker modal (Zzz1-F16), nie generic text modal
+  if (cell.hasAttribute('data-date-picker')) return;
   const id = cell.getAttribute('data-entry-id');
   cell.addEventListener('click', () => open_entry_modal(id));
 });
@@ -1459,6 +1488,116 @@ function zzz1_r12f1a_sync_priority_button() {
   btn.addEventListener('click', zzz1_r12f1a_toggle_priority);
 })();
 // === [/Zzz1-R12:CELL] + [/Zzz1-R12a:BUTTON] + [/F1a:BUTTON-CELL-BIND] ===
+
+// === [Zzz1-F16:SCHEDULE-DATE] R16 Schedule date filling - kontextove okno na vyber datumu (DEN + MESIAC select, ROK cislo predvyplnene aktualnym rokom ale rucne prepisatelne) | Vrso -> Claude AI | 2026-08-18 ===
+// Namiesto generickeho textoveho modalu (open_entry_modal, F1:CELL-LOGIC) ma Zzz1-R16 (Schedule) vlastne
+// kontextove okno na vyber datumu. DEN a MESIAC su vyberove polia (select), ROK je cislo predvyplnene
+// aktualnym rokom, ale plne prepisatelne rucne (napr. planovanie do buducna/minulosti).
+// Vysledny datum vo formate YYYY-MM-DD (rovnaky format ako Zzz6-F14 Entry Date) sa zapisuje do R16
+// cez existujuci generic write_to_entry (DRY, ziadna nova write/zapis logika, len ine UI na vstup).
+
+const ZZZ1_F16_MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+
+// rozparsuje existujucu hodnotu R16 (ocakavany format YYYY-MM-DD), inak null
+function zzz1_f16_parse_existing_date(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec((value || '').trim());
+  if (!match) return null;
+  return { year: match[1], month: match[2], day: match[3] };
+}
+
+// otvori kontextove okno na vyber DEN/MESIAC (select) + ROK (cislo, predvyplnene aktualnym rokom, prepisatelne)
+function zzz1_f16_open_schedule_date_modal() {
+  const today = new Date();
+  const existing = zzz1_f16_parse_existing_date(entryData["16"]);
+  const defaultYear = existing ? existing.year : String(today.getFullYear());
+  const defaultMonth = existing ? existing.month : String(today.getMonth() + 1).padStart(2, '0');
+  const defaultDay = existing ? existing.day : String(today.getDate()).padStart(2, '0');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'entry-modal-overlay';
+
+  const box = document.createElement('div');
+  box.className = 'entry-modal-box';
+
+  const label = document.createElement('div');
+  label.style.fontSize = '9px';
+  label.style.fontWeight = '700';
+  label.style.color = '#171717';
+  label.textContent = 'SCHEDULE - VYBER DATUM';
+  box.appendChild(label);
+
+  const row = document.createElement('div');
+  row.className = 'zzz1-f16-date-row';
+
+  // DEN select (01-31)
+  const daySelect = document.createElement('select');
+  daySelect.className = 'zzz1-f16-select';
+  for (let d = 1; d <= 31; d++) {
+    const dd = String(d).padStart(2, '0');
+    const opt = document.createElement('option');
+    opt.value = dd;
+    opt.textContent = dd;
+    if (dd === defaultDay) opt.selected = true;
+    daySelect.appendChild(opt);
+  }
+
+  // MESIAC select (01-12)
+  const monthSelect = document.createElement('select');
+  monthSelect.className = 'zzz1-f16-select';
+  ZZZ1_F16_MONTHS.forEach(mm => {
+    const opt = document.createElement('option');
+    opt.value = mm;
+    opt.textContent = mm;
+    if (mm === defaultMonth) opt.selected = true;
+    monthSelect.appendChild(opt);
+  });
+
+  // ROK - cislo, predvyplnene aktualnym rokom (alebo uz ulozenou hodnotou), rucne prepisatelne
+  const yearInput = document.createElement('input');
+  yearInput.type = 'number';
+  yearInput.className = 'zzz1-f16-year-input';
+  yearInput.value = defaultYear;
+  yearInput.min = '1900';
+  yearInput.max = '2999';
+
+  row.appendChild(daySelect);
+  row.appendChild(monthSelect);
+  row.appendChild(yearInput);
+  box.appendChild(row);
+
+  const actions = document.createElement('div');
+  actions.className = 'entry-modal-actions';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'entry-modal-close';
+  closeBtn.textContent = 'ZATVORIT';
+  closeBtn.onclick = () => document.body.removeChild(overlay);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'entry-modal-save';
+  saveBtn.textContent = 'ULOZIT';
+  saveBtn.onclick = () => {
+    const yearVal = String(parseInt(yearInput.value, 10) || today.getFullYear()).padStart(4, '0');
+    const dateStr = `${yearVal}-${monthSelect.value}-${daySelect.value}`;
+    write_to_entry("16", dateStr); // DRY: reuse generic write_to_entry (zapise + render + submit_entries_to_db + refresh)
+    document.body.removeChild(overlay);
+  };
+
+  actions.appendChild(closeBtn);
+  actions.appendChild(saveBtn);
+  box.appendChild(actions);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+// === [Zzz1-F16a:BUTTON-CELL-BIND] klik na R16a (SCHEDULE button) aj na R16 (cell) otvara date-picker modal namiesto generickeho textoveho modalu ===
+(function bindZzz1F16aScheduleDatePicker() {
+  const btn = document.getElementById('versoScheduleButton');
+  const cell = document.getElementById('versoEntryCell16');
+  if (btn) btn.addEventListener('click', zzz1_f16_open_schedule_date_modal);
+  if (cell) cell.addEventListener('click', zzz1_f16_open_schedule_date_modal);
+})();
+// === [/Zzz1-F16:SCHEDULE-DATE] + [/Zzz1-F16a:BUTTON-CELL-BIND] ===
 
 // === [Zzz1-D1:DB-WRITE] zapis celeho riadku entries (vsetky bunky command line) do Supabase | Vrso -> Claude AI | 2026-08-17 ===
 // D1 = funkcia tykajuca sa databazy/modulu (nie jednej bunky) - berie VSETKY aktualne registrovane entries naraz.
