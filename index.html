@@ -1175,6 +1175,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">K1-LOGO</span>
   <span class="module-tag">Zzz0-R1</span>
   <span class="module-tag">Zzz6-F7</span>
+  <span class="module-tag">Zzz0-R1:OWNERSHIP</span>
   <span class="module-tag">R2</span>
   <span class="module-tag">R3</span>
   <span class="module-tag">R4</span>
@@ -1228,7 +1229,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz1-R13</span>
   <span class="module-tag">Zzz1-R13a</span>
   <span class="module-tag">zzz6-F4</span>
-  <span class="module-tag">Zzz6-F2</span>
+  <span class="module-tag">Zzz6-F2 (SYSTEM)</span>
   <span class="module-tag">Zzz1-R14</span>
   <span class="module-tag">Zzz1-R14a</span>
   <span class="module-tag">Zzz6-F14</span>
@@ -2001,7 +2002,14 @@ function zzz6f21_open_tags_context_modal(id) {
 // AKTIVOVANY realny zapis do Supabase (predtym bol len console.log placeholder, preto sa zaznamy predtym
 // nikam neukladali). Schema tabulky 'verso_entries' zatial pocita len so stlpcom pre R1 (entry_id + r1);
 // dalsie command line bunky (R2, R3...) sa doplnia rovnakym sposobom, az pribudnu.
-// === [Zzz6-F2:AUTO-NUMBER] automaticke cislovanie entry_id + duplicate check | Vrso -> Claude AI | 2026-08-17 ===
+// === [Zzz6-F2:AUTO-NUMBER] (SYSTEM) automaticke cislovanie entry_id + duplicate check | Vrso -> Claude AI | 2026-08-17 / oznacene ako SYSTEM function 2026-08-18 ===
+// SYSTEM FUNCTION: rovnako ako Zzz0-R1/Zzz6-F7 - toto je systemova funkcia jadra databazy (cislovanie
+// zaznamov), nesmie sa nahodne menit/prepisovat. Akakolvek zmena logiky cislovania musi byt vyslovne
+// schvalena project ownerom (Vrso).
+// PORADIE (predpripravene/potvrdene): info o poslednom priradenom cisle sa VZDY najprv ZOBERIE
+// (nacita) z databazy/lokalnej cache (zzz6f2_get_known_entries) a AZ POTOM sa novy zaznam
+// so spocitanym entry_id vlozi (submit_entries_to_db nizsie caka na "await zzz6f2_get_known_entries()"
+// skor, nez zostavi payload a odosle insert/upsert) - nikdy naopak.
 // Ked sa CL prida do databazy, entry_id uz nie je pevne "1", ale sa dopocita ako
 // (najvyssie doteraz priradene cislo entry_id v databaze) + 1.
 // Ak je CL (po orezani whitespace) zhodne s uz existujucim zaznamom, novy zaznam sa NEPRIDA
@@ -2149,6 +2157,27 @@ function zzz6f7_toggle_login_highlight() {
 // === [/Zzz6-F7:LOGIN-TOGGLE] ===
 // <<< Zzz0-R1 END
 
+// === [Zzz0-R1:OWNERSHIP] kazdy zaznam je viazany na username z Zzz0-R1 bunky (zzz6f7UsernameLabel) | Vrso -> Claude AI | 2026-08-18 ===
+// Zatial ZIADNA realna identifikacia/prihlasenie (podla requestu) - "username" je proste aktualny text
+// v Zzz0-R1 bunke (logo). Kazdy novy zaznam sa pri zapise oznaci timto textom ako vlastnik (owner).
+// Cudzi zaznam (iny username) sa da iba KOPIROVAT (COPY v read-only modali), nikdy prepisat/upravit -
+// generic klik-editacia (F1:CELL-LOGIC) sa vzdy tyka LEN aktualne rozpisaneho vlastneho zaznamu (entryData),
+// nikdy priamo existujuceho cudzieho riadku z databazy, takze uz teraz nehrozi prepis cudzieho zaznamu.
+function zzz0r1_get_current_username() {
+  const label = document.getElementById('zzz6f7UsernameLabel');
+  return label ? label.textContent.trim() : '';
+}
+
+// pomocna funkcia pre buduce edit-funkcie (napr. Zzz1-EDIT na existujucom zazname): povoli edit LEN vlastnikovi
+function zzz0r1_can_edit(entryUsername) {
+  return (entryUsername || '') === zzz0r1_get_current_username();
+}
+
+// paralelna cache vlastnika (entry_id -> username) - rovnaky princip ako submittedEntriesCache (entry_id -> r1 text),
+// oddelene aby sa nemenil existujuci tvar submittedEntriesCache (nizsie riziko rozbitia existujuceho kodu)
+const submittedEntriesOwnerCache = {};
+// === [/Zzz0-R1:OWNERSHIP] (helpers) ===
+
 async function submit_entries_to_db() {
   const clText = entryData["1"] || "";
 
@@ -2166,12 +2195,14 @@ async function submit_entries_to_db() {
   const nextEntryId = zzz6f2_compute_next_entry_id(knownEntries);
 
   const entryDateStr = zzz6f14_format_today(); // Zzz6-F14: aktualny datum priradeny k tomuto zaznamu
+  const currentUsername = zzz0r1_get_current_username(); // Zzz0-R1: vlastnik zaznamu = text v Zzz0-R1 bunke
 
   const payload = {
     entry_id: nextEntryId,      // Zzz6-F2: automaticky priradene cislo (max existujuceho +1)
     r1: clText,                 // obsah R1 command line bunky
     entry_date: entryDateStr,   // Zzz6-F14: aktualny datum priradeny pri zapise (Zzz1-R14/R14a)
-    tags: entryData["21"] || "", // Zzz6-F21-context (SPECIAL): tagy z R21 (Tag), text oddeleny ciarkou; owner/username sa dopln po dokonceni Zzz0-R1 login systemu
+    tags: entryData["21"] || "", // Zzz6-F21-context (SPECIAL): tagy z R21 (Tag), text oddeleny ciarkou
+    username: currentUsername,  // Zzz0-R1: vlastnik zaznamu (porovnava sa s textom v Zzz0-R1 bunke)
     updated_at: new Date().toISOString()
   };
   console.log('Zzz1-D1 submit_entries_to_db - payload pripraveny na zapis:', payload);
@@ -2179,6 +2210,7 @@ async function submit_entries_to_db() {
   // Lokalna cache sa aktualizuje HNED (nezavisle od Supabase) - vdaka tomu je zaznam vidiet
   // v Database workspace okamzite, aj ked sietovy zapis zlyhava/beri dlhsie (napr. chybajuca RLS politika).
   submittedEntriesCache[payload.entry_id] = payload.r1;
+  submittedEntriesOwnerCache[payload.entry_id] = payload.username; // Zzz0-R1: vlastnik pre lokalny fallback
   zzz6f2_update_entry_number_button(payload.entry_id);  // Zzz6-F2: vyznacenie priradeneho cisla na R1a
   zzz6f14_update_entry_date_button(payload.entry_date); // Zzz6-F14: vyznacenie priradeneho datumu na R14/R14a
   refresh_database_workspace_if_open();
@@ -2264,8 +2296,10 @@ async function open_database_workspace() {
     usedFallback = true;
     rows = Object.entries(submittedEntriesCache)
       .filter(([, text]) => text && text.length > 0)
-      .map(([id, text]) => ({ entry_id: id, text }));
+      .map(([id, text]) => ({ entry_id: id, text, username: submittedEntriesOwnerCache[id] || '' })); // Zzz0-R1: vlastnik z fallback cache
   }
+
+  const currentUsername = zzz0r1_get_current_username(); // Zzz0-R1: pre porovnanie MOJE/cudzie
 
   const totalCount = rows.length;
   const filterText = get_active_filter_text();
@@ -2298,18 +2332,23 @@ async function open_database_workspace() {
     filteredRows.forEach(row => {
       const entryId = usedFallback ? row.entry_id : (row.entry_id !== undefined ? row.entry_id : '?');
       const rowText = usedFallback ? row.text : (row.r1 !== undefined ? row.r1 : JSON.stringify(row));
+      const rowUsername = row.username || ''; // Zzz0-R1: vlastnik zaznamu
+      const isOwn = rowUsername === currentUsername; // Zzz0-R1: MOJE vs cudzie
 
       const rowEl = document.createElement('div');
       rowEl.className = 'db-workspace-row';
 
       const label = document.createElement('div');
       label.className = 'db-workspace-label';
-      label.textContent = `#${entryId}`;
+      // Zzz0-R1: pod cislom zaznamu zobrazi aj vlastnika (username), aby bolo hned vidno MOJE/cudzie
+      label.textContent = rowUsername ? `#${entryId} (${rowUsername})` : `#${entryId}`;
+      label.title = isOwn ? 'MOJ zaznam' : 'Cudzi zaznam - iba na citanie/kopirovanie';
 
       const cell = document.createElement('div');
       cell.className = 'db-workspace-cell';
       cell.textContent = rowText;
-      cell.addEventListener('click', () => open_db_record_modal(entryId, rowText));
+      // Zzz0-R1: modal je vzdy read-only (uz teraz), pridane len info o vlastnikovi + COPY tlacidlo
+      cell.addEventListener('click', () => open_db_record_modal(entryId, rowText, rowUsername));
 
       rowEl.appendChild(label);
       rowEl.appendChild(cell);
@@ -2324,7 +2363,14 @@ async function open_database_workspace() {
 }
 
 // Read-only modal pre zobrazenie plneho textu databazoveho zaznamu
-function open_db_record_modal(entryId, fullText) {
+// === [Zzz0-R1:COPY-ONLY] modal je VZDY read-only (bez ohladu na vlastnika) - editacia existujuceho
+// zaznamu tu neexistuje vobec. Pridane: zobrazenie vlastnika (username) + funkcne COPY tlacidlo, ktore
+// skopiruje text zaznamu do schranky - takze cudzi zaznam sa da REALNE len kopirovat, nikdy upravit.
+// Vlastny zaznam (isOwn) sa da tiez skopirovat rovnakym tlacidlom (kopirovanie nie je obmedzene). | Vrso -> Claude AI | 2026-08-18
+function open_db_record_modal(entryId, fullText, entryUsername) {
+  const currentUsername = zzz0r1_get_current_username();
+  const isOwn = zzz0r1_can_edit(entryUsername);
+
   const overlay = document.createElement('div');
   overlay.className = 'entry-modal-overlay';
 
@@ -2335,7 +2381,9 @@ function open_db_record_modal(entryId, fullText) {
   label.style.fontSize = '9px';
   label.style.fontWeight = '700';
   label.style.color = '#171717';
-  label.textContent = `Entry #${entryId}`;
+  label.textContent = entryUsername
+    ? `Entry #${entryId} - ${entryUsername}${isOwn ? ' (moje)' : ''}`
+    : `Entry #${entryId}`;
 
   const textarea = document.createElement('textarea');
   textarea.className = 'entry-modal-textarea';
@@ -2350,7 +2398,22 @@ function open_db_record_modal(entryId, fullText) {
   closeBtn.textContent = 'ZATVORIT';
   closeBtn.onclick = () => document.body.removeChild(overlay);
 
+  // Zzz0-R1: COPY - jedina dostupna akcia na cudzom (aj vlastnom) zazname okrem citania
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'entry-modal-save';
+  copyBtn.textContent = 'COPY';
+  copyBtn.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(fullText || '');
+      zzz6f2_show_toast('Skopirovane do schranky');
+    } catch (err) {
+      console.error('Zzz0-R1 COPY zlyhalo (clipboard nedostupny):', err);
+      zzz6f2_show_toast('Kopirovanie zlyhalo');
+    }
+  };
+
   actions.appendChild(closeBtn);
+  actions.appendChild(copyBtn);
   box.appendChild(label);
   box.appendChild(textarea);
   box.appendChild(actions);
