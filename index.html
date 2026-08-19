@@ -509,6 +509,37 @@ body{margin:0;color:#fff;font-family:sans-serif;}
 </style>
 <!-- end zzz2-R17 -->
 
+<!-- === [Zzz8-F1:SEARCH-TOGGLE] SEARCH tlacidlo (zzz2-R17) ako toggle rezimu CL: FILTER (search) vs ENTRY (zapis), CSS cast | Vrso -> Claude AI | 2026-08-20 === -->
+<style>
+  /* SEARCH tlacidlo ma VZDY oranzovy okraj (aj ked je search mod VYPNUTY) - user tak hned na prvy
+     pohlad rozozna, ze toto tlacidlo je specialny toggle (nie obycajne akcne tlacidlo ako STATUS/SMART/...).
+     Pri VYPNUTOM mode: tmave pozadie (rovnake ako ostatne .circle-layout button) + oranzovy okraj.
+     Pri ZAPNUTOM mode (.zzz8f1-search-active nizsie): cele pozadie sa prefarbi na oranzovo. */
+  #versoSearchButton {
+    border: 1.5px solid #ff8c00 !important;
+    box-sizing: border-box;
+  }
+  /* SEARCH tlacidlo aktivne (search mod ZAP) - oranzove zvyraznenie.
+     POZOR: samotny #versoSearchButton ma v HTML len class="pos-right" (styluje sa cez generic
+     .circle-layout button, #171717 tmave pozadie) - trieda .search-button (zzz2-R17 vyssie) sa
+     realne na ziadny element neaplikuje. Preto sa tu ciely priamo na ID, aby specificita spolahlivo
+     prebila .circle-layout button aj .circle-layout button, .data-row button (obe nizsie v subore). */
+  #versoSearchButton.zzz8f1-search-active {
+    background-color: #ff8c00 !important;
+    border-color: #ff8c00 !important;
+    color: #0a0a0a !important;
+  }
+  /* numbers-row v search rezime - VSETKY bunky (vratane needitovatelnych/readonly ako R1, R14, R22)
+     dostanu oranzovy okraj ako vizualny signal, ze CL je prave v search/filter rezime; readonly bunky
+     samotne sa neotvaraju na filter input (Zzz8-F1 filtruje len cez ZZZ8F1_FILTERABLE_IDS), oranzovy
+     okraj je tu cisto informativny - cely riadok jasne vidno, ze je "v inom mode" */
+  .numbers-row.zzz8f1-search-mode .entry-cell,
+  .numbers-row.zzz8f1-search-mode .priority-dot-button {
+    border-color: #ff8c00;
+  }
+</style>
+<!-- === [/Zzz8-F1:SEARCH-TOGGLE] (CSS cast) === -->
+
 <!-- zzz2-R18 record button | Vrso -> Claude AI | 2026-08-13 -->
 <style>
   .record-button {
@@ -2069,7 +2100,15 @@ document.querySelectorAll('.entry-cell').forEach(cell => {
   // Zzz6-F21-context (SPECIAL): data-tags-context="true" - ma vlastny context-tags modal (chip zoznam tagov), nie generic text modal
   if (cell.hasAttribute('data-tags-context')) return;
   const id = cell.getAttribute('data-entry-id');
-  cell.addEventListener('click', () => open_entry_modal(id));
+  cell.addEventListener('click', () => {
+    // Zzz8-F1: ak je aktivny search mod a tato bunka je filtrovatelna, otvor FILTER modal (filterData),
+    // nie klasicky entry modal (entryData) - zabrani prepisaniu rozpisaneho zaznamu filter textom
+    if (zzz8f1SearchMode && zzz8f1_is_filterable_id(id)) {
+      zzz8f1_open_filter_modal(id);
+      return;
+    }
+    open_entry_modal(id);
+  });
 });
 // === [/F1:CELL-LOGIC] ===
 
@@ -3092,6 +3131,7 @@ async function submit_entries_to_db() {
 // Trigger 1: klavesa Enter (nie vnutri modal textarea, tam Enter iba pridava riadok textu)
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+    if (zzz8f1SearchMode) return; // Zzz8-F1: v search mode ENTER nezapisuje novy zaznam
     submit_entries_to_db();
   }
 });
@@ -3105,6 +3145,7 @@ document.addEventListener('keydown', (e) => {
 
   const startPress = () => {
     pressTimer = setTimeout(() => {
+      if (zzz8f1SearchMode) return; // Zzz8-F1: v search mode podrzanie loga nezapisuje
       submit_entries_to_db();
     }, LONG_PRESS_MS);
   };
@@ -3121,14 +3162,122 @@ document.addEventListener('keydown', (e) => {
 // === [/Zzz1-D1:DB-WRITE] ===
 // === [/Zzz1-M1:COMMAND-LINE] (JS cast) ===
 
-// === zzz6-F4 CL (command line R1) ako filter databazovych zaznamov ===
-function get_active_filter_text() {
-  return (entryData["1"] || "").trim().toLowerCase();
+// === === [Zzz8-F1:SEARCH-TOGGLE] SEARCH tlacidlo (zzz2-R17) ako toggle rezimu CL: FILTER (search) vs ENTRY
+// (zapis), JS cast | Vrso -> Claude AI | 2026-08-20 ===
+// Princip: R1 zostava nedotknute (needitovatelne, Zzz6-F2 auto-cislo). Ked je SEARCH mod AKTIVNY, generic
+// textove bunky numbers-row (rovnaka mnozina, co uz existujuci F1:CELL-LOGIC forEach vyssie zapaja klikom -
+// t.j. R2,R3,R4,Zzz1-R5,Zzz1-R6,Zzz1-R7,Zzz1-R9,Zzz1-R10,Zzz1-R11,Zzz1-R13,Zzz1-R18,Zzz1-R19,Zzz1-R20)
+// nezapisuju do entryData/neposielaju submit_entries_to_db, ale zapisuju do samostatneho filterData objektu -
+// tym padom rozpisany, este neodoslany zaznam (entryData) sa NEPREPISE filter textom. Filter sa aplikuje
+// v Database workspace (zzz2-R29) substring-matchom (AND medzi vsetkymi vyplnenymi bunkami) voci JSON
+// serializacii celeho riadku - funguje uz teraz aj ked su r2-r22 stlpce v Supabase zatial nenapojene
+// (viz komentar pri Zzz1-D1/submit_entries_to_db), lebo hlada v r1/tags/username/entry_date/entry_id.
+// Ked je SEARCH mod VYPNUTY, CL sa spravat presne ako predtym (klasicka entry data line, ziadna zmena
+// povodnej F1:CELL-LOGIC/Zzz1-D1 logiky) - filterData sa pri vypnuti vycisti.
+let zzz8f1SearchMode = false;
+const filterData = {};
+
+const ZZZ8F1_FILTERABLE_IDS = ["2", "3", "4", "5", "6", "7", "9", "10", "11", "13", "18", "19", "20"];
+
+function zzz8f1_is_filterable_id(id) {
+  return ZZZ8F1_FILTERABLE_IDS.includes(id);
 }
 
-function row_matches_filter(rowText, filterText) {
-  if (!filterText) return true;
-  return (rowText || "").toLowerCase().includes(filterText);
+// prepne SEARCH mod ZAP/VYP, oranzovo zvyrazni SEARCH tlacidlo + numbers-row (CSS cast Zzz8-F1),
+// pri vypnuti vycisti filterData a bunky vrati na zobrazenie skutocneho entryData (rozpisany zaznam)
+function zzz8f1_toggle_search_mode() {
+  zzz8f1SearchMode = !zzz8f1SearchMode;
+
+  const btn = document.getElementById('versoSearchButton');
+  if (btn) btn.classList.toggle('zzz8f1-search-active', zzz8f1SearchMode);
+
+  const row = document.querySelector('.numbers-row');
+  if (row) row.classList.toggle('zzz8f1-search-mode', zzz8f1SearchMode);
+
+  if (!zzz8f1SearchMode) {
+    ZZZ8F1_FILTERABLE_IDS.forEach(id => { delete filterData[id]; });
+  }
+
+  zzz8f1_render_filterable_cells();
+  refresh_database_workspace_if_open();
+}
+
+// filtrovatelne bunky zobrazuju filterData (search mod ZAP) alebo entryData (search mod VYP, klasicky rezim)
+function zzz8f1_render_filterable_cells() {
+  ZZZ8F1_FILTERABLE_IDS.forEach(id => {
+    const cell = document.querySelector(`.entry-cell[data-entry-id="${id}"]`);
+    if (!cell) return;
+    cell.textContent = zzz8f1SearchMode ? (filterData[id] || "") : (entryData[id] || "");
+  });
+}
+
+// FILTER modal (analogicky k open_entry_modal, ale zapisuje do filterData a NIKDY nevola submit_entries_to_db)
+function zzz8f1_open_filter_modal(id) {
+  const overlay = document.createElement('div');
+  overlay.className = 'entry-modal-overlay';
+
+  const box = document.createElement('div');
+  box.className = 'entry-modal-box';
+
+  const label = document.createElement('div');
+  label.style.fontSize = '9px';
+  label.style.fontWeight = '700';
+  label.style.color = '#171717';
+  label.textContent = 'FILTER';
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'entry-modal-textarea';
+  textarea.value = filterData[id] || '';
+
+  const actions = document.createElement('div');
+  actions.className = 'entry-modal-actions';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'entry-modal-close';
+  closeBtn.textContent = 'ZATVORIT';
+  closeBtn.onclick = () => { stopAutosize(); document.body.removeChild(overlay); };
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'entry-modal-save';
+  saveBtn.textContent = 'FILTROVAT';
+  saveBtn.onclick = () => {
+    filterData[id] = textarea.value;
+    zzz8f1_render_filterable_cells();
+    refresh_database_workspace_if_open();
+    stopAutosize();
+    document.body.removeChild(overlay);
+  };
+
+  actions.appendChild(closeBtn);
+  actions.appendChild(saveBtn);
+  box.appendChild(label);
+  box.appendChild(textarea);
+  box.appendChild(actions);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  textarea.focus();
+  const stopAutosize = verso_autosize_modal_textarea(textarea); // [Zzz6-F17:CONTEXT-WINDOW-ADAPTIVE-SIZE]
+}
+
+(function bindZzz8F1SearchButton() {
+  const btn = document.getElementById('versoSearchButton');
+  if (!btn) return;
+  btn.addEventListener('click', zzz8f1_toggle_search_mode);
+})();
+// === [/Zzz8-F1:SEARCH-TOGGLE] (JS cast) ===
+
+// === zzz6-F4 CL ako filter databazovych zaznamov (napojene na Zzz8-F1 search mode + filterData) ===
+function zzz6f4_get_active_filter_terms() {
+  if (!zzz8f1SearchMode) return [];
+  return Object.values(filterData)
+    .map(v => (v || '').trim().toLowerCase())
+    .filter(v => v.length > 0);
+}
+
+function zzz6f4_row_matches_filters(row, terms) {
+  if (terms.length === 0) return true;
+  const haystack = JSON.stringify(row).toLowerCase();
+  return terms.every(term => haystack.includes(term));
 }
 // === end zzz6-F4 (filter funkcie) ===
 
@@ -3160,19 +3309,16 @@ async function open_database_workspace() {
   const currentUsername = zzz0r1_get_current_username(); // Zzz0-R1: pre porovnanie MOJE/cudzie
 
   const totalCount = rows.length;
-  const filterText = get_active_filter_text();
-  const filteredRows = rows.filter(row => {
-    const rowText = usedFallback ? row.text : (row.r1 !== undefined ? row.r1 : JSON.stringify(row));
-    return row_matches_filter(rowText, filterText);
-  });
+  const filterTerms = zzz6f4_get_active_filter_terms();
+  const filteredRows = rows.filter(row => zzz6f4_row_matches_filters(row, filterTerms));
 
   const wrap = document.createElement('div');
   wrap.className = 'db-workspace';
 
   const title = document.createElement('div');
   title.className = 'db-workspace-title';
-  title.textContent = filterText
-    ? `DATABASE WORKSPACE (filter: "${entryData["1"]}")`
+  title.textContent = filterTerms.length > 0
+    ? `DATABASE WORKSPACE (filter: ${filterTerms.length} kriterii)`
     : 'DATABASE WORKSPACE';
   wrap.appendChild(title);
 
@@ -3181,7 +3327,7 @@ async function open_database_workspace() {
     empty.className = 'db-workspace-empty';
     empty.textContent = totalCount === 0
       ? 'Ziadne command lines zatial neboli vlozene.'
-      : 'Ziadny zaznam nezodpoveda aktualnemu filtru (R1).';
+      : 'Ziadny zaznam nezodpoveda aktualnemu filtru.';
     wrap.appendChild(empty);
   } else {
     const rowsWrap = document.createElement('div');
