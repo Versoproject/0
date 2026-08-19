@@ -1039,19 +1039,31 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     justify-content: center;
     z-index: 1000;
   }
+  /* === [Zzz6-F17:CONTEXT-WINDOW-ADAPTIVE-SIZE] rozsirene z povodneho R17-dedicated riesenia na CELY generic modal
+     systemus (.entry-modal-box / .entry-modal-textarea) -> plati teraz pre VSETKY 1-R* command line bunky/buttony
+     ktore modal pouzivaju (content, acknowledgment, F16 date, F17 user, F21 tagy, F22, DB record view atd.),
+     nie len pre dedicated R17 pripad. Zaklad vacsi ako povodny (najma mobil), max-height/max-width viazane na
+     viewport ("70%-priestoru"), textarea rastie adaptivne s obsahom (JS verso_autosize_modal_textarea) az po strop,
+     potom interny scroll namiesto dalsieho rastu - box teda nikdy nezasahuje mimo bezpecnu zonu stranky.
+     Kazde otvorenie modalu = novy DOM element -> velkost sa vzdy znovu obnovi na zaklad pred adaptaciou.
+     | Vrso -> Claude AI | 2026-08-20 === */
   .entry-modal-box {
-    width: 260px;
-    max-width: 90%;
+    width: 480px;
+    max-width: 92vw;
+    max-height: 70vh;
     background-color: #fff;
     border-radius: 8px;
     padding: 12px;
     display: flex;
     flex-direction: column;
     gap: 8px;
+    overflow-y: auto;
+    box-sizing: border-box;
   }
   .entry-modal-textarea {
     width: 100%;
-    min-height: 100px;
+    min-height: 160px;
+    max-height: 52vh;
     box-sizing: border-box;
     padding: 6px;
     border-radius: 6px;
@@ -1060,7 +1072,21 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     font-size: 11px;
     font-family: sans-serif;
     resize: vertical;
+    overflow-y: auto;
+    transition: height 0.12s ease;
   }
+  @media (max-width: 640px) {
+    .entry-modal-box {
+      width: 94vw;
+      max-width: 94vw;
+      max-height: 82vh;
+    }
+    .entry-modal-textarea {
+      min-height: 200px;
+      max-height: 64vh;
+    }
+  }
+  /* === [/Zzz6-F17:CONTEXT-WINDOW-ADAPTIVE-SIZE] === */
   .entry-modal-actions {
     display: flex;
     justify-content: flex-end;
@@ -1957,6 +1983,26 @@ function write_to_entry(id, text) {
   refresh_database_workspace_if_open();
 }
 
+// === [Zzz6-F17:CONTEXT-WINDOW-ADAPTIVE-SIZE] zdielana funkcia - adaptivny rast textarea podla obsahu (pocet
+// riadkov/vyska textu), spolocna pre VSETKY 1-R* command line modaly (generic content, F17 user, DB record view atd.).
+// Kym obsah nepresiahne max (CSS max-height cez viewport, "70%-priestoru"), textarea rastie s textom.
+// Po dosiahnuti max-height sa dalsi rast zastavi a prepne sa na interny scroll (nezasahuje mimo bezpecnu zonu stranky).
+// Kazde otvorenie modalu = novy DOM element -> velkost sa vzdy znovu obnovi na zaklad pred adaptaciou.
+// Vracia cleanup funkciu (odpojenie resize listenera) - zavolat pri zatvarani modalu. | Vrso -> Claude AI | 2026-08-20 ===
+function verso_autosize_modal_textarea(textarea) {
+  function resize() {
+    textarea.style.height = 'auto';
+    const maxPx = window.innerHeight * (window.innerWidth <= 640 ? 0.64 : 0.52);
+    const nextHeight = Math.min(textarea.scrollHeight, maxPx);
+    textarea.style.height = nextHeight + 'px';
+  }
+  textarea.addEventListener('input', resize);
+  window.addEventListener('resize', resize);
+  resize();
+  return () => window.removeEventListener('resize', resize);
+}
+// === [/Zzz6-F17:CONTEXT-WINDOW-ADAPTIVE-SIZE] ===
+
 function open_entry_modal(id) {
   const overlay = document.createElement('div');
   overlay.className = 'entry-modal-overlay';
@@ -1974,13 +2020,17 @@ function open_entry_modal(id) {
   const closeBtn = document.createElement('button');
   closeBtn.className = 'entry-modal-close';
   closeBtn.textContent = 'ZATVORIT';
-  closeBtn.onclick = () => document.body.removeChild(overlay);
+  closeBtn.onclick = () => {
+    stopAutosize();
+    document.body.removeChild(overlay);
+  };
 
   const saveBtn = document.createElement('button');
   saveBtn.className = 'entry-modal-save';
   saveBtn.textContent = 'ULOZIT';
   saveBtn.onclick = () => {
     write_to_entry(id, textarea.value);
+    stopAutosize();
     document.body.removeChild(overlay);
   };
 
@@ -1991,6 +2041,7 @@ function open_entry_modal(id) {
   overlay.appendChild(box);
   document.body.appendChild(overlay);
   textarea.focus();
+  const stopAutosize = verso_autosize_modal_textarea(textarea); // [Zzz6-F17:CONTEXT-WINDOW-ADAPTIVE-SIZE]
 }
 
 document.querySelectorAll('.entry-cell').forEach(cell => {
@@ -2226,7 +2277,7 @@ function zzz6f17_open_context_select_modal() {
   overlay.className = 'entry-modal-overlay';
 
   const box = document.createElement('div');
-  box.className = 'entry-modal-box';
+  box.className = 'entry-modal-box'; // adaptivna velkost teraz riesena v base triede, viz [Zzz6-F17:CONTEXT-WINDOW-ADAPTIVE-SIZE]
 
   const label = document.createElement('div');
   label.style.fontSize = '9px';
@@ -2263,7 +2314,10 @@ function zzz6f17_open_context_select_modal() {
   const closeBtn = document.createElement('button');
   closeBtn.className = 'entry-modal-close';
   closeBtn.textContent = 'ZATVORIT';
-  closeBtn.onclick = () => document.body.removeChild(overlay);
+  closeBtn.onclick = () => {
+    stopAutosize();
+    document.body.removeChild(overlay);
+  };
 
   const saveBtn = document.createElement('button');
   saveBtn.className = 'entry-modal-save';
@@ -2271,6 +2325,7 @@ function zzz6f17_open_context_select_modal() {
   saveBtn.onclick = () => {
     write_to_entry(ZZZ6_F17_ENTRY_ID, textarea.value); // DRY: reuse generic write_to_entry (zapise + render + submit_entries_to_db + refresh)
     zzz6f17_remember_suggestion(textarea.value);
+    stopAutosize();
     document.body.removeChild(overlay);
   };
 
@@ -2280,6 +2335,7 @@ function zzz6f17_open_context_select_modal() {
   overlay.appendChild(box);
   document.body.appendChild(overlay);
   textarea.focus();
+  const stopAutosize = verso_autosize_modal_textarea(textarea); // [Zzz6-F17:CONTEXT-WINDOW-ADAPTIVE-SIZE]
 }
 
 // === [Zzz6-F17-context-a:BUTTON-CELL-BIND] dedicated binding - klik na Zzz1-R17a (USER button) aj na Zzz1-R17 (cell)
@@ -3163,6 +3219,7 @@ function open_db_record_modal(entryId, fullText, entryUsername) {
   box.appendChild(actions);
   overlay.appendChild(box);
   document.body.appendChild(overlay);
+  verso_autosize_modal_textarea(textarea); // [Zzz6-F17:CONTEXT-WINDOW-ADAPTIVE-SIZE] - readonly zaznam bez dalsej interakcie, cleanup nie je kriticky (overlay sa cele odstrani pri ZATVORIT)
 }
 
 function refresh_database_workspace_if_open() {
