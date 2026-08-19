@@ -1162,6 +1162,20 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   }
   /* === [/Zzz1-F16-date:SCHEDULE-DATE] === */
 
+  /* === [Zzz1-F16-time:SCHEDULE-TIME] R16 Schedule time filling - styly pre kontextove okno vyberu casu (HODINA/MINUTA select, predvyplnene aktualnym casom/existujucou hodnotou, rovnaky vzor ako Zzz1-F16-date) | Vrso -> Claude AI | 2026-08-20 === */
+  .zzz1-f16-time-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-top: 6px;
+  }
+  .zzz1-f16-time-sep {
+    font-size: 12px;
+    font-weight: 700;
+    color: #171717;
+  }
+  /* === [/Zzz1-F16-time:SCHEDULE-TIME] === */
+
   /* === [Zzz6-F17-context:CONTEXT-SELECT] R17 (User) - kontextove okno: manualny text + klikatelne "naposledy pouzite" navrhy (chips), dedicated len pre Zzz1-R17 | Vrso -> Claude AI | 2026-08-18 === */
   .zzz6-f17-suggest-row {
     display: flex;
@@ -1552,6 +1566,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz1-R16a</span>
   <span class="module-tag">Zzz1-F16-date</span>
   <span class="module-tag">Zzz1-F16-date-a</span>
+  <span class="module-tag">Zzz1-F16-time</span>
   <span class="module-tag">Zzz1-R17</span>
   <span class="module-tag">Zzz1-R17a</span>
   <span class="module-tag">Zzz6-F17-context</span>
@@ -2145,23 +2160,31 @@ function zzz1_r12f1_sync_priority_dot() {
 // aktualnym rokom, ale plne prepisatelne rucne (napr. planovanie do buducna/minulosti).
 // Vysledny datum vo formate YYYY-MM-DD (rovnaky format ako Zzz6-F14 Entry Date) sa zapisuje do R16
 // cez existujuci generic write_to_entry (DRY, ziadna nova write/zapis logika, len ine UI na vstup).
+//
+// === [Zzz1-F16-time:SCHEDULE-TIME] rozsirenie o CAS (HODINA + MINUTA select), rovnaky princip ako datum -
+// predvyplnene aktualnym casom (alebo uz ulozenou hodnotou), rucne prepisatelne. Vysledny format je
+// "YYYY-MM-DD HH:MM". Spatna kompatibilita: ak existujuca hodnota R16 obsahuje len datum (bez casu),
+// cas sa predvyplni aktualnym casom; ulozenie potom uz vzdy zapise aj cas. | Vrso -> Claude AI | 2026-08-20 ===
 
 const ZZZ1_F16_MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12'];
 
-// rozparsuje existujucu hodnotu R16 (ocakavany format YYYY-MM-DD), inak null
+// rozparsuje existujucu hodnotu R16 (ocakavany format "YYYY-MM-DD" alebo "YYYY-MM-DD HH:MM"), inak null
 function zzz1_f16_parse_existing_date(value) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec((value || '').trim());
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?$/.exec((value || '').trim());
   if (!match) return null;
-  return { year: match[1], month: match[2], day: match[3] };
+  return { year: match[1], month: match[2], day: match[3], hour: match[4] || null, minute: match[5] || null };
 }
 
 // otvori kontextove okno na vyber DEN/MESIAC (select) + ROK (cislo, predvyplnene aktualnym rokom, prepisatelne)
+// + HODINA/MINUTA (select, predvyplnene aktualnym casom alebo uz ulozenou hodnotou, prepisatelne)
 function zzz1_f16_open_schedule_date_modal() {
   const today = new Date();
   const existing = zzz1_f16_parse_existing_date(entryData["16"]);
   const defaultYear = existing ? existing.year : String(today.getFullYear());
   const defaultMonth = existing ? existing.month : String(today.getMonth() + 1).padStart(2, '0');
   const defaultDay = existing ? existing.day : String(today.getDate()).padStart(2, '0');
+  const defaultHour = (existing && existing.hour) ? existing.hour : String(today.getHours()).padStart(2, '0');
+  const defaultMinute = (existing && existing.minute) ? existing.minute : String(today.getMinutes()).padStart(2, '0');
 
   const overlay = document.createElement('div');
   overlay.className = 'entry-modal-overlay';
@@ -2173,7 +2196,7 @@ function zzz1_f16_open_schedule_date_modal() {
   label.style.fontSize = '9px';
   label.style.fontWeight = '700';
   label.style.color = '#171717';
-  label.textContent = 'SCHEDULE - VYBER DATUM';
+  label.textContent = 'SCHEDULE - VYBER DATUM A CAS';
   box.appendChild(label);
 
   const row = document.createElement('div');
@@ -2215,6 +2238,42 @@ function zzz1_f16_open_schedule_date_modal() {
   row.appendChild(yearInput);
   box.appendChild(row);
 
+  // === [Zzz1-F16-time:SCHEDULE-TIME] HODINA (00-23) + MINUTA (00-59) select, rovnaky vzor ako DEN/MESIAC ===
+  const timeRow = document.createElement('div');
+  timeRow.className = 'zzz1-f16-time-row';
+
+  const hourSelect = document.createElement('select');
+  hourSelect.className = 'zzz1-f16-select';
+  for (let h = 0; h <= 23; h++) {
+    const hh = String(h).padStart(2, '0');
+    const opt = document.createElement('option');
+    opt.value = hh;
+    opt.textContent = hh;
+    if (hh === defaultHour) opt.selected = true;
+    hourSelect.appendChild(opt);
+  }
+
+  const timeSep = document.createElement('span');
+  timeSep.className = 'zzz1-f16-time-sep';
+  timeSep.textContent = ':';
+
+  const minuteSelect = document.createElement('select');
+  minuteSelect.className = 'zzz1-f16-select';
+  for (let m = 0; m <= 59; m++) {
+    const mm = String(m).padStart(2, '0');
+    const opt = document.createElement('option');
+    opt.value = mm;
+    opt.textContent = mm;
+    if (mm === defaultMinute) opt.selected = true;
+    minuteSelect.appendChild(opt);
+  }
+
+  timeRow.appendChild(hourSelect);
+  timeRow.appendChild(timeSep);
+  timeRow.appendChild(minuteSelect);
+  box.appendChild(timeRow);
+  // === [/Zzz1-F16-time:SCHEDULE-TIME] ===
+
   const actions = document.createElement('div');
   actions.className = 'entry-modal-actions';
 
@@ -2228,7 +2287,7 @@ function zzz1_f16_open_schedule_date_modal() {
   saveBtn.textContent = 'ULOZIT';
   saveBtn.onclick = () => {
     const yearVal = String(parseInt(yearInput.value, 10) || today.getFullYear()).padStart(4, '0');
-    const dateStr = `${yearVal}-${monthSelect.value}-${daySelect.value}`;
+    const dateStr = `${yearVal}-${monthSelect.value}-${daySelect.value} ${hourSelect.value}:${minuteSelect.value}`;
     write_to_entry("16", dateStr); // DRY: reuse generic write_to_entry (zapise + render + submit_entries_to_db + refresh)
     document.body.removeChild(overlay);
   };
