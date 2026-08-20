@@ -1627,6 +1627,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz1-R14</span>
   <span class="module-tag">Zzz1-R14a</span>
   <span class="module-tag">Zzz6-F14</span>
+  <span class="module-tag">Zzz6-F6 copy function (zzz1-R6)</span>
   <span class="module-tag">Zzz1-R16</span>
   <span class="module-tag">Zzz1-R16a</span>
   <span class="module-tag">Zzz1-F16-date</span>
@@ -2083,6 +2084,14 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // zaznam (vsetky R2-R22+tags cez jeden stlpec fields_json, viz [Zzz4-0:FLEX-SCHEMA] pri submit_entries_to_db
 // nizsie) - ziadne "dalsie napojenie" uz netreba, plati pre vsetky aktualne aj buduce R* bunky rovnako.
 const entryData = { "1": "", "2": "", "3": "", "4": "", "5": "", "6": "", "7": "", "9": "", "10": "", "11": "", "12": "", "13": "", "14": "", "16": "", "17": "", "18": "", "19": "", "20": "", "21": "", "22": "" };
+
+// === [Zzz6-F6:COPY-SOURCE] posledna otvorena/oznacena Zzz1-M2 Entry Line (surovy Supabase/fallback row) -
+// zdroj pre Zzz6-F6 copy funkciu (zzz1-R6 / versoCopyButton). Nastavuje sa pri kazdom kliku na riadok
+// v Database Workspace (Zzz1-M2 Entry Line, aj ked sa hned potom otvori read-only kontextove okno cez
+// open_db_record_modal) - teda "byt v bunke M2 Entry Line" AJ "posledna bunka v ktorej som otvoril
+// kontextove okno" su v praxi ta ista udalost (klik na riadok VZDY otvara kontextove okno). | Vrso -> Claude AI | 2026-08-20
+let zzz6f6_lastEntryLineRow = null;
+// === [/Zzz6-F6:COPY-SOURCE] ===
 
 // === zzz2-R29 fix: samostatna cache SKUTOCNE ULOZENYCH zaznamov (nie live-pisany obsah R1) ===
 // Predtym Database workspace citala priamo z entryData -> ked si vyprazdnil/prepisal R1 (napr. kvoli hladaniu),
@@ -3711,7 +3720,11 @@ async function open_database_workspace() {
       // Zarovnanie so stlpcami CL hore je zabezpecene rovnakymi CSS triedami/poradim polí (ZZZ_FULL_DISPLAY_FIELDS).
       const gridRow = zzz4_0_build_entry_row(row);
       gridRow.style.cursor = 'pointer';
-      gridRow.addEventListener('click', () => open_db_record_modal(entryId, rowText, rowUsername));
+      gridRow.addEventListener('click', () => {
+        // Zzz6-F6: klik na Entry Line = zaroven jej oznacenie ako zdroj pre COPY do CL (zzz1-R6)
+        zzz6f6_lastEntryLineRow = row;
+        open_db_record_modal(entryId, rowText, rowUsername);
+      });
 
       rowsWrap.appendChild(gridRow);
     });
@@ -3783,6 +3796,38 @@ function open_db_record_modal(entryId, fullText, entryUsername) {
   document.body.appendChild(overlay);
   verso_autosize_modal_textarea(textarea); // [Zzz6-F17:CONTEXT-WINDOW-ADAPTIVE-SIZE] - readonly zaznam bez dalsej interakcie, cleanup nie je kriticky (overlay sa cele odstrani pri ZATVORIT)
 }
+
+// === [Zzz6-F6:COPY-FUNCTION] zzz1-R6 copy button (CORE circle, id="versoCopyButton") - skopiruje CELU
+// oznacenu Zzz1-M2 Entry Line (posledny otvoreny/oznaceny riadok z Database Workspace, viz Zzz6-F6:COPY-SOURCE
+// vyssie) do Zzz1-M1 CL modulu (entryData), teda do live rozpisovanej Command Line, presne pole po poli
+// (rovnaka mapa entryKey<->rowKey ako ZZZ_CL_FIELDS/zzz_extract_cl_values_from_row - DRY, ziadna nova mapa).
+// R1 (Entry Number, auto/Zzz6-F2), R14 (Entry Date, auto) a R22 (Acknowledgement, SPECIAL/Zzz6-F22) sa
+// NEKOPIRUJU - su to automaticke/needitovatelne polia mimo ZZZ_CL_FIELDS, presne ako pri beznom zapise.
+// Zapis kazdeho pola ide cez existujuci generic write_to_entry (DRY, ziadna nova write logika) - teda sa
+// zaroven aj prekresli CL a prehodnoti Zzz6-F4 live filter, presne ako pri manualnej editacii. | Vrso -> Claude AI | 2026-08-20
+function zzz6f6_copy_entry_line_to_cl() {
+  if (!zzz6f6_lastEntryLineRow) {
+    zzz6f2_show_toast('Najprv otvor Entry Line zaznam v Database Workspace');
+    return;
+  }
+  const sourceId = zzz6f6_lastEntryLineRow.entry_id !== undefined ? zzz6f6_lastEntryLineRow.entry_id : '?';
+  const values = zzz_extract_cl_values_from_row(zzz6f6_lastEntryLineRow); // pole zarovnane 1:1 s ZZZ_CL_FIELDS
+  ZZZ_CL_FIELDS.forEach(([entryKey], i) => {
+    write_to_entry(entryKey, values[i] ? values[i].val : '');
+  });
+  // Zzz6-F6: zvyraznenie CELEHO CL riadku (DRY - znovupouzite zzz1r_flash_all_cells_success z Zzz2-R14:
+  // SUCCESS-FLASH-CL), aby bolo vidiet, ze sa prepis realne stal AJ ked skopirovany zaznam ma vela prazdnych
+  // poli (vizualne by sa inak nedalo odlisit od "nic sa nestalo") | Vrso -> Claude AI | 2026-08-20
+  zzz1r_flash_all_cells_success();
+  zzz6f2_show_toast(`Entry Line #${sourceId} skopirovana do CL (Zzz6-F6)`);
+}
+
+(function bindZzz6F6CopyButton() {
+  const btn = document.getElementById('versoCopyButton'); // zzz1-R6
+  if (!btn) return;
+  btn.addEventListener('click', zzz6f6_copy_entry_line_to_cl);
+})();
+// === [/Zzz6-F6:COPY-FUNCTION] ===
 
 function refresh_database_workspace_if_open() {
   const workspace = document.getElementById('versoWorkspaceSection');
