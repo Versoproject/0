@@ -80,11 +80,15 @@ body{margin:0;color:#fff;font-family:sans-serif;}
 <!-- end Zzz2-K1- logo button okruhly a s grafickym logom -->
 
 <!-- >>> Zzz0-R1 START -->
-<!-- Zzz0-R1 Username toggle button (SYSTEM FUNCTION) | Vrso -> Claude AI | 2026-08-18 -->
+<!-- Zzz0-R1 Username toggle button (SYSTEM FUNCTION) - home - module database entry | Vrso -> Claude AI | 2026-08-18 (rozsirene 2026-08-20) -->
 <!-- SYSTEM FUNCTION: obsahuje Zzz6-F7 LOGIN-TOGGLE. POZOR - systemova funkcia, nesmie sa pouzivat volne.
      Aktivaciu/pouzitie musi vyslovne schvalit project owner (Vrso). V buducnosti mozno viazane
      na prihlasenie viacerych project owners. Toto je zatial iba MEMO / priprava, nie aktivny prepinac
-     dostupny komukolvek. -->
+     dostupny komukolvek.
+     "- home": logo/circle (versoEntryButton) v SEKCIA 1-CORE je domovsky/hlavny ovladaci prvok (home).
+     "- module database entry": 3s podrzanie tohto loga (Trigger 2, Zzz1-D1) je sposob, akym sa CELA
+     Command Line (vsetky bunky modulu Zzz1-M1/CL, R1-R22) zapisuje ako jeden zaznam do modulu D-4
+     (Databaza) - viz rozsireny payload v submit_entries_to_db nizsie. -->
 <style>
 .zzz6-f7-username {
   position: absolute;
@@ -2893,8 +2897,12 @@ function zzz6f22_mark_consent_verified(targetOwner, targetCL) {
 // === [Zzz1-D1:DB-WRITE] zapis celeho riadku entries (vsetky bunky command line) do Supabase | Vrso -> Claude AI | 2026-08-17 ===
 // D1 = funkcia tykajuca sa databazy/modulu (nie jednej bunky) - berie VSETKY aktualne registrovane entries naraz.
 // AKTIVOVANY realny zapis do Supabase (predtym bol len console.log placeholder, preto sa zaznamy predtym
-// nikam neukladali). Schema tabulky 'verso_entries' zatial pocita len so stlpcom pre R1 (entry_id + r1);
-// dalsie command line bunky (R2, R3...) sa doplnia rovnakym sposobom, az pribudnu.
+// nikam neukladali). ROZSIRENE (2026-08-20, Zzz0-R1 request): payload teraz posiela CELU Command Line
+// (vsetky R1-R22 bunky modulu Zzz1-M1/CL, ako zakladne bunky ktore spolu tvoria jednu informaciu/zaznam,
+// lahko filtrovatelnu podla ktorejkolvek bunky). Tabulka 'verso_entries' v Supabase MUSI mat zodpovedajuce
+// stlpce (r2, r3, r4, r5, r6, r7, r9, r10, r11, r12, r13, r16, r17, r18, r19, r20, r22 - typ text/varchar,
+// nullable) - ak chybaju, pridaj ich v Supabase Table Editor rovnakym sposobom ako uz existujuce r1/entry_date/tags/username.
+// dalsie command line bunky pribudajuce v buducnosti do numbers-row sa sem doplnia rovnakym sposobom (DRY).
 // === [Zzz6-F2:AUTO-NUMBER] (SYSTEM) automaticke cislovanie entry_id + duplicate check | Vrso -> Claude AI | 2026-08-17 / oznacene ako SYSTEM function 2026-08-18 ===
 // SYSTEM FUNCTION: rovnako ako Zzz0-R1/Zzz6-F7 - toto je systemova funkcia jadra databazy (cislovanie
 // zaznamov), nesmie sa nahodne menit/prepisovat. Akakolvek zmena logiky cislovania musi byt vyslovne
@@ -3093,14 +3101,35 @@ async function submit_entries_to_db() {
   const entryDateStr = zzz6f14_format_today(); // Zzz6-F14: aktualny datum priradeny k tomuto zaznamu
   const currentUsername = zzz0r1_get_current_username(); // Zzz0-R1: vlastnik zaznamu = text v Zzz0-R1 bunke
 
+  // === [Zzz0-R1:home-module-database-entry] 3s podrzanie loga = zapis CELEJ Command Line (vsetky bunky
+  // modulu Zzz1-M1/CL, nie len R1) ako jeden zaznam do D-4 (Databaza). Kazde dalsie R* pribudajuce do
+  // numbers-row sa sem len doplni (rovnaky stlpec nazov "r" + cislo, DRY, ziadna nova logika) | Vrso -> Claude AI | 2026-08-20 ===
   const payload = {
     entry_id: nextEntryId,      // Zzz6-F2: automaticky priradene cislo (max existujuceho +1)
-    r1: clText,                 // obsah R1 command line bunky
+    r1: clText,                 // Entry Number nesie plny CL text (referencny stlpec pre duplicity/filter)
+    r2: entryData["2"] || "",   // Project Number
+    r3: entryData["3"] || "",   // Project Name
+    r4: entryData["4"] || "",   // Project Owner
+    r5: entryData["5"] || "",   // Project Category
+    r6: entryData["6"] || "",   // Theme
+    r7: entryData["7"] || "",   // Privacy
+    r9: entryData["9"] || "",   // Description
+    r10: entryData["10"] || "", // Content
+    r11: entryData["11"] || "", // Size
+    r12: entryData["12"] || "", // Priority
+    r13: entryData["13"] || "", // Link
     entry_date: entryDateStr,   // Zzz6-F14: aktualny datum priradeny pri zapise (Zzz1-R14/R14a)
+    r16: entryData["16"] || "", // Schedule
+    r17: entryData["17"] || "", // User
+    r18: entryData["18"] || "", // Info
+    r19: entryData["19"] || "", // File
+    r20: entryData["20"] || "", // Currency
     tags: entryData["21"] || "", // Zzz6-F21-context (SPECIAL): tagy z R21 (Tag), text oddeleny ciarkou
+    r22: entryData["22"] || "", // Zzz6-F22 (SPECIAL): Acknowledgement, JSON retazec kreditov
     username: currentUsername,  // Zzz0-R1: vlastnik zaznamu (porovnava sa s textom v Zzz0-R1 bunke)
     updated_at: new Date().toISOString()
   };
+  // === [/Zzz0-R1:home-module-database-entry] ===
   console.log('Zzz1-D1 submit_entries_to_db - payload pripraveny na zapis:', payload);
 
   // Lokalna cache sa aktualizuje HNED (nezavisle od Supabase) - vdaka tomu je zaznam vidiet
