@@ -1623,7 +1623,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz1-R13</span>
   <span class="module-tag">Zzz1-R13a</span>
   <span class="module-tag">zzz6-F4</span>
-  <span class="module-tag">Zzz6-F2 (SYSTEM)</span>
+  <span class="module-tag">Zzz6-F2 entry - no double entries (SYSTEM FUNCTION)</span>
   <span class="module-tag">Zzz1-R14</span>
   <span class="module-tag">Zzz1-R14a</span>
   <span class="module-tag">Zzz6-F14</span>
@@ -1652,6 +1652,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-F22-copy (SPECIAL, PLACEHOLDER)</span>
   <span class="module-tag">Zzz6-F22-add (SPECIAL, ADD-ONLY)</span>
   <span class="module-tag">Zzz6-F22-consent (SPECIAL, PLACEHOLDER)</span>
+  <span class="module-tag">Zzz6-F22:NO-DOUBLE-ENTRIES (SYSTEM FUNCTION)</span>
   <span class="module-tag">Zzz1-M1-cls Modul Command Line (CL) list (SPECIAL, PLACEHOLDER)</span>
   <span class="module-tag">Zzz7-R Content Space (Umiestnenie)</span>
   <span class="module-tag">Zzz6-F10 Content</span>
@@ -1968,6 +1969,12 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
     needitovatelna/siva (entry-cell-readonly + data-readonly="true", ako Zzz1-R14) VOCI generickemu F1:CELL-LOGIC modalu
     (data-readonly ju z neho vylucuje), ALE ma DEDICATED klik-handler Zzz6-F22-add (SPECIAL, ADD-ONLY), ktory otvara
     pridavaci modal na manualne DOPLNENIE zdroja/acknowledgementu (napr. pre stare/legacy data, AI/nastroj/spolupracovnik).
+
+    ZASADNA POZNAMKA (Vrso 2026-08-20): Zzz1-R22 Acknowledgement - "no double entries" - SYSTEM FUNCTION.
+    Databaza (Zzz4-0) NIKDY nepripusti dva rovnake Zzz1-M2 Entry Line zaznamy naraz - kontrola prebieha pred
+    kazdym zapisom (viz [Zzz6-F22:NO-DOUBLE-ENTRIES] pri zzz6f2_find_duplicate, JS cast nizsie). Toto je
+    SYSTEM FUNCTION (zmena vyzaduje vyslovne schvalenie Vrso, rovnaky princip ako Zzz0-R1/Zzz6-F7/Zzz6-F2).
+
     Existujuce zaznamy (vlastna CL cez Zzz6-F22 + zdedeny copy-chain cez Zzz6-F22-copy + manualne doplnene cez Zzz6-F22-add)
     su VZDY TRVALE needitovatelne (ziadne "x" na odstranenie, na rozdiel od Zzz6-F21-context tagov) - klik na bunku
     umoznuje VYLUCNE PRIDANIE noveho zaznamu, nikdy upravu/odstranenie existujuceho.
@@ -2982,7 +2989,11 @@ function zzz6f22_mark_consent_verified(targetOwner, targetCL) {
 // takze v Supabase Table Editor musia existovat uz LEN tieto zakladne stlpce: entry_id, r1, fields_json,
 // entry_date, username, updated_at (vsetky okrem entry_id ako text/jsonb, nullable) - ZIADNE dalsie stlpce
 // netreba pridavat ani pri buducich R23, R24... (tie sa len doplnia do FIELDS_JSON_KEYS v JS, nie do Supabase).
-// === [Zzz6-F2:AUTO-NUMBER] (SYSTEM) automaticke cislovanie entry_id + duplicate check | Vrso -> Claude AI | 2026-08-17 / oznacene ako SYSTEM function 2026-08-18 ===
+// === [Zzz6-F2:AUTO-NUMBER] (SYSTEM) automaticke cislovanie entry_id + duplicate check ("no double entries")
+// | Vrso -> Claude AI | 2026-08-17 / oznacene ako SYSTEM function 2026-08-18 / doplnene oznacenie "no double
+// entries" 2026-08-20 === Oficialny nazov tejto casti Zzz6-F2: "Zzz6-F2 entry - no double entries (SYSTEM
+// FUNCTION)" - zabranuje vlozeniu DVOCH ROVNAKYCH Zzz1-M2 Entry Line (celej CL) do databazy naraz. Krizovy
+// odkaz na rovnaku funkciu: [Zzz6-F22:NO-DOUBLE-ENTRIES] pri zzz6f2_find_duplicate nizsie.
 // SYSTEM FUNCTION: rovnako ako Zzz0-R1/Zzz6-F7 - toto je systemova funkcia jadra databazy (cislovanie
 // zaznamov), nesmie sa nahodne menit/prepisovat. Akakolvek zmena logiky cislovania musi byt vyslovne
 // schvalena project ownerom (Vrso).
@@ -3141,12 +3152,22 @@ function zzz6f2_compute_next_entry_id(knownEntries) {
   return String(maxId + 1);
 }
 
+// === [Zzz6-F22:NO-DOUBLE-ENTRIES] (SYSTEM FUNCTION) - Vrso 2026-08-20 request ===
+// POZOR: toto je oznacene ako SYSTEM FUNCTION (rovnaky princip ako Zzz0-R1/Zzz6-F7/Zzz6-F2) - zmenu tejto
+// logiky musi vyslovne schvalit project owner (Vrso). Zabranuje vlozeniu DVOCH ROVNAKYCH Zzz1-M2 Entry Line
+// (CELY obsah CL - vsetky vyplnene R* bunky, nie len R1) do databazy naraz.
+// KRIZOVY ODKAZ: technicka implementacia zostava pod Zzz6-F2 (AUTO-NUMBER blok vyssie, nemeni sa aby sa nic
+// nerozbilo) - tento tag len oficialne oznacuje/dokumentuje TU ISTU funkciu aj pod Zzz6-F22, kedze sa tyka
+// R22/entry-submission integrity. Zzz6-F22 tak teraz pokriva DVE prepojene, ale odlisne veci: (a) povodne
+// Zzz6-F22:ACKNOWLEDGEMENT (credits/autorstvo, viz [Zzz6-F22:ACKNOWLEDGEMENT] nizsie), (b) toto
+// Zzz6-F22:NO-DOUBLE-ENTRIES (SYSTEM FUNCTION, duplicate-check pri kazdom zapise). Skutocna funkcia:
 // vrati existujuci zaznam, ak je CELY CL summary (nie len r1) zhodny s uz ulozenym zaznamom
 function zzz6f2_find_duplicate(knownEntries, summary) {
   const normalized = (summary || '').trim();
   if (!normalized) return null;
   return knownEntries.find(e => (e.summary || '').trim() === normalized) || null;
 }
+// === [/Zzz6-F22:NO-DOUBLE-ENTRIES] ===
 
 // zobrazi priradene entry number na R1a buttone
 function zzz6f2_update_entry_number_button(entryId) {
