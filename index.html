@@ -1649,10 +1649,10 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
     </div>
     <!-- === [/Zzz1-R17 + Zzz1-R17a] === -->
 
-    <!-- === [Zzz1-R18:CELL] + [Zzz1-R18a:BUTTON] Info - zapracovane rovnako ako Zzz1-R13/Zzz1-R13a (textovy button + entry-cell, generic write_to_entry/render_entry_cell/open_entry_modal, DRY, ziadna nova logika), data-entry-id="18", umiestnene vpravo od Zzz1-R17/Zzz1-R17a | Vrso -> Claude AI | 2026-08-18 === -->
+    <!-- === [Zzz1-R18:CELL] + [Zzz1-R18a:BUTTON] Communication (predtym "Info", premenovane 2026-08-22, data-entry-id ostava "18") - Kontextove okno (Zzz6-F6:COPY-EL-CELL) tejto bunky ma navyse fixny "Notes" navrh-chip (Zzz6-F26-fixed) | Vrso -> Claude AI | 2026-08-18 (premenovane + fixny chip 2026-08-22) === -->
     <div class="info-wrap">
         <!-- === [Zzz1-R18a:BUTTON] oznacenie, priradene k Zzz1-R18 cez data-entry-id (pevne, nemenne) === -->
-        <button class="entry-number-button" id="versoInfoButton" data-entry-id="18" aria-label="Info" disabled>INFO</button>
+        <button class="entry-number-button" id="versoInfoButton" data-entry-id="18" aria-label="Communication" disabled>COMMUNICATION</button>
         <!-- === [/Zzz1-R18a:BUTTON] === -->
 
         <!-- === [Zzz1-R18:CELL] data bunka, zatial prazdna, textovo doplnitelna === -->
@@ -2061,6 +2061,14 @@ function zzz6f6_copy_cell_to_cl(id, text) {
 let zzzFieldSuggestions = {}; // { [entryId]: string[] }
 const ZZZ_SUGGEST_MAX = 8;
 
+// === [Zzz6-F26-fixed:FIXED-SUGGEST-CHIPS] (Zzz1-R18/COMMUNICATION, Vrso -> Claude AI | 2026-08-22) - niektore
+// polia maju NAVYSE fixny/trvaly navrh-chip, ktory sa zobrazi VZDY ako prvy (pred rucne/naposledy pouzitymi
+// chipmi z zzzFieldSuggestions) a nie je sucastou ZZZ_SUGGEST_MAX rotacie (t.j. nikdy sa "nevytlaci" pridavanim
+// dalsich chipov). Zatial len R18 (COMMUNICATION) -> "Notes". Dalsie R* mozu pribudnut rovnakym sposobom
+// (id -> zoznam fixnych labelov) bez akejkolvek novej logiky (DRY, viz zzz_build_suggest_row nizsie). ===
+const ZZZ_FIXED_SUGGESTIONS = { '18': ['Notes'] };
+// === [/Zzz6-F26-fixed:FIXED-SUGGEST-CHIPS] ===
+
 function zzz_get_suggestions(id) {
   return zzzFieldSuggestions[id] || [];
 }
@@ -2073,7 +2081,9 @@ function zzz_remember_suggestion(id, value) {
   zzzFieldSuggestions[id] = withoutDuplicate.slice(0, ZZZ_SUGGEST_MAX);
 }
 // vrati hotovy <div> riadok s chipmi + "+chip" tlacidlom, pripraveny na box.appendChild()
-function zzz_build_suggest_row(id, textarea) {
+// liveSaveId (volitelny, 2026-08-22) - ak zadany, klik na chip AJ rovno write_to_entry (pouzite z generic
+// open_entry_modal, kde je nutne aby vyber chipu neostal len v textarea, viz [F1:CELL-LOGIC-LIVE-SAVE] nizsie)
+function zzz_build_suggest_row(id, textarea, liveSaveId = null) {
   const suggestRow = document.createElement('div');
   suggestRow.className = 'zzz6-f17-suggest-row';
 
@@ -2082,11 +2092,21 @@ function zzz_build_suggest_row(id, textarea) {
     chip.type = 'button';
     chip.className = 'zzz6-f17-suggest-chip';
     chip.textContent = value;
-    chip.onclick = () => { textarea.value = value; textarea.focus(); };
+    chip.onclick = () => {
+      textarea.value = value;
+      textarea.focus();
+      if (liveSaveId !== null) write_to_entry(liveSaveId, value);
+    };
     return chip;
   }
 
-  zzz_get_suggestions(id).forEach(value => suggestRow.appendChild(createChip(value)));
+  // [Zzz6-F26-fixed] fixne chipy (ak pre toto id existuju) VZDY prve, potom rucne/naposledy pouzite -
+  // dedup: ak by rovnaka hodnota bola aj medzi dynamickymi navrhmi, dynamicka kopia sa preskoci (ziadny duplicitny chip)
+  const fixedValues = ZZZ_FIXED_SUGGESTIONS[id] || [];
+  fixedValues.forEach(value => suggestRow.appendChild(createChip(value)));
+  zzz_get_suggestions(id)
+    .filter(value => !fixedValues.includes(value))
+    .forEach(value => suggestRow.appendChild(createChip(value)));
 
   const addChipBtn = document.createElement('button');
   addChipBtn.type = 'button';
@@ -2248,7 +2268,20 @@ function open_entry_modal(id) {
   textarea.className = 'entry-modal-textarea';
   textarea.value = entryData[id] || '';
 
-  box.appendChild(zzz_build_suggest_row(id, textarea)); // [Zzz6-F26:SUGGEST-CHIPS] chipy "v kazdom kontextovom okne"
+  // === [F1:CELL-LOGIC-LIVE-SAVE] OPRAVA (Vrso hlasenie 2026-08-21: "ked vlozim text do CL ako description
+  // kontext okna... ked vidim z okna uz tam nie je text, cize nemozem dat entry do CL"): predtym sa text z
+  // textarea zapisal do entryData VYLUCNE pri zatvoreni cez klik MIMO okna (closeModal) - ak sa okno zatvorilo
+  // inak (napr. systemovy/hardverovy BACK gesture na mobile, prepnutie appky a pod.), zapis sa VOBEC nespustil
+  // a rozpisany text sa TICHO stratil (cell ostala prazdna, ENTRY button potom odoslal CL bez tohto pola).
+  // TERAZ: kazdy jednotlivy stlacenie klavesy (input event) OKAMZITE zapisuje do entryData cez write_to_entry
+  // (DRY, rovnaky mechanizmus) - text je tak VZDY ulozeny v zive, bez ohladu na to, akym sposobom sa okno
+  // nakoniec zatvori. Plati pre VSETKY bunky Entry Line, ktore pouzivaju tento generic modal (R2, R3, R4,
+  // R5, R6, R7, R9/Description, R10, R11, R13, R18, R19, R20 - viz zoznam v komentari [F1:CELL-LOGIC] vyssie),
+  // kedze vsetky zdielaju TENTO JEDEN open_entry_modal (DRY na urovni celeho modulu) | Vrso -> Claude AI | 2026-08-21 === //
+  textarea.addEventListener('input', () => write_to_entry(id, textarea.value));
+  // === [/F1:CELL-LOGIC-LIVE-SAVE] ===
+
+  box.appendChild(zzz_build_suggest_row(id, textarea, id)); // [Zzz6-F26:SUGGEST-CHIPS] chipy "v kazdom kontextovom okne" + [F1:CELL-LOGIC-LIVE-SAVE] liveSaveId=id
 
   const actions = document.createElement('div');
   actions.className = 'entry-modal-actions';
@@ -3201,7 +3234,7 @@ const ZZZ_CL_FIELDS = [
   ['13', 'r13', 'LINK'],
   ['16', 'r16', 'SCHEDULE'],
   ['17', 'r17', 'USER'],
-  ['18', 'r18', 'INFO'],
+  ['18', 'r18', 'COMMUNICATION'],
   ['19', 'r19', 'FILE'],
   ['20', 'r20', 'CURRENCY'],
   ['21', 'tags', 'TAG'],
@@ -3744,7 +3777,7 @@ const ZZZ_FULL_DISPLAY_FIELDS = [
   { wrap: 'date-wrap', label: 'ENTRY DATE', kind: 'text', get: row => (row && row.entry_date) || '' },
   { wrap: 'schedule-wrap', label: 'SCHEDULE', kind: 'text', key: 'r16' },
   { wrap: 'user-wrap', label: 'USER', kind: 'text', key: 'r17' },
-  { wrap: 'info-wrap', label: 'INFO', kind: 'text', key: 'r18' },
+  { wrap: 'info-wrap', label: 'COMMUNICATION', kind: 'text', key: 'r18' },
   { wrap: 'file-wrap', label: 'FILE', kind: 'text', key: 'r19' },
   { wrap: 'currency-wrap', label: 'CURRENCY', kind: 'text', key: 'r20' },
   { wrap: 'tag-wrap', label: 'TAG', kind: 'text', key: 'tags' },
@@ -4255,3 +4288,4 @@ function refresh_database_workspace_if_open() {
 </script>
 </body>
 </html>
+
