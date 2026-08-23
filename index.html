@@ -1089,6 +1089,71 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     left: 23px;
     background-color: #22c55e;
   }
+  /* === [Zzz6-F2:AUTHOR-MANAGEMENT] (SYSTEM FUNCTION) per-user consent toggle - Vrso 2026-08-24 request.
+     ODLISENE od R31 (Communication Consent Toggle, jeden spolocny flag) - toto je SAMOSTATNY mechanizmus:
+     jeden toggle PRE KAZDEHO tagovaneho usera v Zzz1-R17 (okrem project ownera). Rovnaky vizualny/interakcny
+     vzor ako .zzz1r31-consent-toggle (pill switch, klik ALEBO 3s podrzanie = prepnutie), len mensi (kompaktny
+     riadok na usera). | Vrso -> Claude AI | 2026-08-24 */
+  .zzz6f2-author-consent-wrap {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 8px;
+    margin-top: 4px;
+    border: 1px dashed #171717;
+    border-radius: 12px;
+    background-color: #fff;
+  }
+  .zzz6f2-author-consent-title {
+    font-size: 9px;
+    font-weight: 700;
+    color: #171717;
+    letter-spacing: 0.02em;
+    margin-bottom: 6px;
+  }
+  .zzz6f2-author-consent-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 0;
+  }
+  .zzz6f2-author-consent-label {
+    font-size: 9px;
+    color: #171717;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .zzz6f2-author-consent-toggle {
+    width: 36px;
+    height: 18px;
+    border-radius: 9px;
+    border: 1px solid #171717;
+    background-color: #fff;
+    position: relative;
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+  }
+  .zzz6f2-author-consent-toggle::after {
+    content: '';
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background-color: #171717;
+    transition: left 0.15s ease, background-color 0.15s ease;
+  }
+  .zzz6f2-author-consent-toggle.is-on {
+    background-color: #171717;
+  }
+  .zzz6f2-author-consent-toggle.is-on::after {
+    left: 19px;
+    background-color: #22c55e;
+  }
+  /* === [/Zzz6-F2:AUTHOR-MANAGEMENT] (CSS cast) === */
   /* R32 Credits button-cell - otvara existujuci Zzz6-F22 credit-chip prehlad (zzz6f22_open_view_modal), DRY */
   .zzz1r32-credits-button {
     height: 22px;
@@ -1578,7 +1643,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz1-M1-cls Modul Command Line (CL) list (REMOVED 2026-08-21)</span>
   <span class="module-tag">Zzz1-M3 Read Line (RL) module</span>
   <span class="module-tag">Zzz1-M3:READONLY Read Line + Read Only buttony (povodne Zzz6-F5, preznacene 2026-08-23)</span>
-  <span class="module-tag">Zzz6-F2:AUTHOR-MANAGEMENT (MEMO, NEIMPLEMENTOVANE) - project owner confirm + R2/R3/popis/price-share</span>
+  <span class="module-tag">Zzz6-F2:AUTHOR-MANAGEMENT (SYSTEM FUNCTION, ciastocne implementovane 2026-08-24) - project owner per-user consent (R17) hotove, R2/R3/popis/price-share viazanost MEMO</span>
   <span class="module-tag">Zzz7-R Content Space (Umiestnenie)</span>
   <span class="module-tag">Zzz6-F10 Content</span>
   <span class="module-tag">Zzz6-F10 Content Space (close window)</span>
@@ -3235,6 +3300,123 @@ function zzz1m22_build_credits_module_bar(includeCreditsButton) {
 }
 // === [/Zzz1-M22:CREDITS-MODULE] (SPECIAL) ===
 
+// === [Zzz6-F2:AUTHOR-MANAGEMENT] (SYSTEM FUNCTION) - Vrso 2026-08-24 implementacia hlavnej podmienky z
+// predtym zapisaneho MEMO (viz [Zzz6-F2:AUTHOR-MANAGEMENT] (MEMO) nizsie v subore, bod 1/CONFIRM):
+// "entries kde je viac users, moze potvrdit iba project owner - project owner potrebuje zapnuty toggle
+// consent v 1-R* (Zzz1-R17 User) bunke VSETKYCH userov, ktorych vyznacil".
+// ODLISENE/NEZAVISLE od R31 (Zzz1-M22 Communication Consent Toggle, jeden spolocny flag pre celu entry) -
+// Vrso vyslovne 2026-08-24: "nebude sa tato podmienka vztahovat na communication toggle consent, pretoze
+// ten len garantuje/odsuhlasi ze user ma pristup ku komunikacii v databaze". Toto je teda DRUHY, SAMOSTATNY
+// consent mechanizmus - per-user (nie jeden spolocny flag), viazany na R17 zoznam tagovanych userov.
+// ULOZENIE: nove interne pole entryData["33"] (Zzz1-R33, ZIADNA vlastna vizualna CL bunka v numbers-row -
+// rovnaky princip ako R31/R32, ktore tiez existuju LEN v ramci R17/R18 kontextovych okien) - JSON objekt
+// {username: true/false}, per-user consent, ktory PRIRADUJE VYLUCNE project owner (entryData["4"]).
+const ZZZ6F2_AUTHOR_CONSENT_ID = "33"; // pevne viazane na interne pole Zzz1-R33 (Author Consent, JSON per-user)
+
+function zzz6f2_get_author_consent_map() {
+  try {
+    const parsed = JSON.parse(entryData[ZZZ6F2_AUTHOR_CONSENT_ID] || '{}');
+    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function zzz6f2_set_author_consent(username, value) {
+  const map = zzz6f2_get_author_consent_map();
+  map[username] = !!value;
+  write_to_entry(ZZZ6F2_AUTHOR_CONSENT_ID, JSON.stringify(map));
+}
+
+// zoznam tagovanych userov v Zzz1-R17 OKREM project ownera (rovnaky parser ako R21/tagy - zzz6f21_parse_tags, DRY)
+function zzz6f2_get_tagged_non_owner_users() {
+  const owner = (entryData["4"] || '').trim();
+  return zzz6f21_parse_tags(entryData["17"]).filter(u => u !== owner);
+}
+
+// SYSTEM FUNCTION: true ak NIE su pripojeni dalsi useri (len samotny owner - podmienka sa netyka) ALEBO
+// su VSETCI odsuhlaseni (consent === true pre kazdeho). Pouzite ako Zzz1-D1 brana nizsie (submit_entries_to_db).
+function zzz6f2_authors_consent_satisfied() {
+  const others = zzz6f2_get_tagged_non_owner_users();
+  if (others.length === 0) return true;
+  const map = zzz6f2_get_author_consent_map();
+  return others.every(u => map[u] === true);
+}
+
+// vykresli sekciu s per-user togglami - LEN ak su vobec tagovani dalsi useri (inak null, nic sa nezobrazi).
+// Toggle je INTERAKTIVNY iba pre project ownera (entryData["4"] === aktualny Zzz0-R1 username, rovnaky
+// zzz0r1_can_edit vzor ako pri R32 CREDITS buttone vyssie) - pre kohokolvek ineho je disabled/stlmeny.
+function zzz6f2_build_author_consent_section() {
+  const others = zzz6f2_get_tagged_non_owner_users();
+  if (others.length === 0) return null;
+
+  const isOwner = zzz0r1_can_edit(entryData["4"] || '');
+
+  const wrap = document.createElement('div');
+  wrap.className = 'zzz6f2-author-consent-wrap';
+
+  const title = document.createElement('div');
+  title.className = 'zzz6f2-author-consent-title';
+  title.textContent = 'AUTHOR MANAGEMENT - project owner consent';
+  wrap.appendChild(title);
+
+  const map = zzz6f2_get_author_consent_map();
+
+  others.forEach(username => {
+    const row = document.createElement('div');
+    row.className = 'zzz6f2-author-consent-row';
+
+    const label = document.createElement('span');
+    label.className = 'zzz6f2-author-consent-label';
+    label.textContent = username;
+    row.appendChild(label);
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'zzz6f2-author-consent-toggle';
+    const isOn = map[username] === true;
+    toggle.classList.toggle('is-on', isOn);
+    toggle.setAttribute('aria-pressed', String(isOn));
+    toggle.setAttribute('aria-label', `Consent: ${username}`);
+
+    if (!isOwner) {
+      toggle.disabled = true;
+      toggle.style.opacity = '0.35';
+      toggle.style.cursor = 'not-allowed';
+      toggle.setAttribute('aria-disabled', 'true');
+      toggle.title = 'Consent moze zapnut iba project owner (Zzz1-R4)';
+    } else {
+      // klik ALEBO 3s podrzanie = prepnutie (rovnaky princip ako zzz1r31_toggle_consent)
+      let holdTimer = null;
+      let wasHold = false;
+      const doToggle = () => {
+        const next = !(zzz6f2_get_author_consent_map()[username] === true);
+        zzz6f2_set_author_consent(username, next);
+        toggle.classList.toggle('is-on', next);
+        toggle.setAttribute('aria-pressed', String(next));
+      };
+      toggle.addEventListener('pointerdown', () => {
+        wasHold = false;
+        holdTimer = setTimeout(() => { wasHold = true; doToggle(); }, 3000);
+      });
+      const cancelHold = () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } };
+      toggle.addEventListener('pointerup', cancelHold);
+      toggle.addEventListener('pointerleave', cancelHold);
+      toggle.addEventListener('pointercancel', cancelHold);
+      toggle.addEventListener('click', () => {
+        if (wasHold) { wasHold = false; return; }
+        doToggle();
+      });
+    }
+
+    row.appendChild(toggle);
+    wrap.appendChild(row);
+  });
+
+  return wrap;
+}
+// === [/Zzz6-F2:AUTHOR-MANAGEMENT] (per-user consent section) ===
+
 const ZZZ6_F17_ENTRY_ID = "17"; // pevne viazane na Zzz1-R17 (User) - dedicated, nie vseobecne pre viac buttonov
 
 // otvori Zzz6-F17-context kontextove okno (manualny text + Zzz6-F26 navrhy) pre Zzz1-R17 (User)
@@ -3260,6 +3442,10 @@ function zzz6f17_open_context_select_modal() {
   // Zzz1-M22 Credits Module (SPECIAL) - R31 Consent Toggle + R32 Credits button-cell, vlastna context lista,
   // NAD suggest chipmi (OPRAVA Vrso 2026-08-23). V Zzz1-R17 (User) okne AJ s R32 (Zzz6-F30-credits) | Vrso -> Claude AI | 2026-08-23
   box.appendChild(zzz1m22_build_credits_module_bar(true));
+
+  // === [Zzz6-F2:AUTHOR-MANAGEMENT] per-user consent - zobrazi sa LEN ak su tagovani dalsi useri okrem ownera
+  const authorConsentSection = zzz6f2_build_author_consent_section();
+  if (authorConsentSection) box.appendChild(authorConsentSection);
 
   box.appendChild(zzz_build_suggest_row(ZZZ6_F17_ENTRY_ID, textarea)); // [Zzz6-F26:SUGGEST-CHIPS]
 
@@ -3793,25 +3979,36 @@ function zzz6f22_open_entry_in_database(entryId) {
 }
 // === [/Zzz6-F22-link:ENTRY-LINK] ===
 
-// === [Zzz6-F2:AUTHOR-MANAGEMENT] (MEMO, zatial NEIMPLEMENTOVANE - Vrso 2026-08-21) ===
-// Toto je zatial IBA MEMO / priprava - NIC z tohto nizsie este nie je aktivne/funkcne, len zaznamenane pre
-// buduce spracovanie.
+// === [Zzz6-F2:AUTHOR-MANAGEMENT] (MEMO, CIASTOCNE IMPLEMENTOVANE - Vrso 2026-08-21, doplnene 2026-08-24) ===
+// AKTUALIZACIA (2026-08-24): bod 1 (CONFIRM podmienka - project owner + per-user consent toggle v Zzz1-R17)
+// je TERAZ IMPLEMENTOVANY - viz [Zzz6-F2:AUTHOR-MANAGEMENT] (per-user consent section) + GATE v
+// submit_entries_to_db, obe vyssie v subore. Bod 2 (viazanost na R2/R3/popis/price-share) OSTAVA MEMO -
+// nizsie popisane, zatial NEIMPLEMENTOVANE, caka na "price/share" tlacidlo, ktore Vrso este vytvori.
 //
-// POZIADAVKA (Vrso, doslovne): "oznacenie ze iba project owner moze potvrdit entry ak je tam viacero users
-// pri jednej entry, resp. musi byt aj viazany na project number/name/description a price/share (button
-// este vytvorim)... vyplnene"
+// POZIADAVKA (Vrso, doslovne, 2026-08-21): "oznacenie ze iba project owner moze potvrdit entry ak je tam
+// viacero users pri jednej entry, resp. musi byt aj viazany na project number/name/description a
+// price/share (button este vytvorim)... vyplnene"
+// UPRESNENIE (Vrso, doslovne, 2026-08-24): "zatial bude hlavna podmienka ze takéto entries kde je viac
+// users tak moze potvrdit iba project owner. Cize na entry bude project owner potrebovat zapnuty toggle
+// consent v 1-R* user bunke vsetkych userov ktorych vyznacil... nebude sa tato podmienka vztahovat na
+// communication toggle consent (R31), pretoze ten len garantuje/odsuhlasi ze user ma pristup ku
+// komunikacii v databaze" - presne toto je teraz zapracovane (bod 1 nizsie).
 //
-// Rozpisane/interpretovane pre buduce spracovanie:
-// 1. CONFIRM/POTVRDENIE entry - ak je pri JEDNEJ entry (R17/USER) navisanych VIACERO userov naraz, potvrdit
-//    takuto entry moze VYLUCNE project owner daneho projektu - nie hocijaky z pripojenych userov.
-// 2. VIAZANOST/PODMIENKA - toto confirm-opravnenie MUSI byt naviac podmienene tym, ze su VYPLNENE:
+// Rozpisane/interpretovane:
+// 1. [HOTOVO 2026-08-24] CONFIRM/POTVRDENIE entry - ak je pri JEDNEJ entry (Zzz1-R17/USER) navisanych VIACERO
+//    userov naraz (okrem samotneho project ownera), zapisat (Zzz2-R14 ENTRY submit = "potvrdenie") takuto
+//    entry moze VYLUCNE project owner, a to LEN ked ma zapnuty consent toggle pre KAZDEHO z tychto userov
+//    (per-user, NIE jeden spolocny flag ako R31). Implementacia: entryData["33"] (JSON {username:boolean}),
+//    zzz6f2_authors_consent_satisfied() ako Zzz1-D1 brana, UI v Zzz1-R17 kontextovom okne.
+// 2. [MEMO, NEIMPLEMENTOVANE] VIAZANOST/PODMIENKA - toto confirm-opravnenie by MALO byt naviac podmienene
+//    tym, ze su VYPLNENE:
 //      - Zzz1-R2 (Project Number), Zzz1-R3 (Project Name), projektovy popis (R-cislo doplni Vrso pri
 //        implementacii - "description" tu mieni PROJECT-level popis, nie Zzz1-R9 entry-level)
 //      - "price/share" - NOVE pole/tlacidlo, ktore Vrso ESTE len vytvori (zatial ziadne R* cislo)
-// 3. SUVISLOST s existujucimi PLACEHOLDER funkciami (nezamenat, prepojit pri implementacii):
+// 3. SUVISLOST s existujucimi PLACEHOLDER funkciami (nezamenat, prepojit pri implementacii bodu 2):
 //      - Zzz6-F29 select/copy mechanizmus (aktualny vyberovy system pre CL/EL bunky)
 //      - Zzz4-R2 (owner/user management)
-// 4. Ziadna z tychto veci sa TERAZ NEIMPLEMENTUJE - cakame na dalsie instrukcie/definiciu | Vrso -> Claude AI | 2026-08-21 ===
+// 4. Bod 2 sa TERAZ NEIMPLEMENTUJE - cakame na "price/share" detaily/instrukcie | Vrso -> Claude AI | 2026-08-21 / 2026-08-24 ===
 // === [/Zzz6-F2:AUTHOR-MANAGEMENT] (MEMO) ===
 
 // === [/Zzz6-F22:ACKNOWLEDGEMENT] (SPECIAL) ===
@@ -4503,6 +4700,12 @@ const submittedEntriesFullCache = {};
 
 // === [Zzz2-R14:SUCCESS-FLASH-CL] vyrazne zelene bliknutie (presne 1 sekundu) CELEHO CL riadku R* DATA
 // buniek (.entry-cell + .priority-dot-button) po uspesnom zapise do databazy | Vrso -> Claude AI | 2026-08-20 ===
+// === [Zzz2-R14:INSERT-FLASH] entry_id posledne uspesne vlozeneho zaznamu, cakajuci na zvyraznenie v
+// Database Workspace (Zzz4-0) po najblizsom vykresleni - viz nastavenie v submit_entries_to_db + spotreba
+// na konci open_database_workspace() nizsie. null = nic nezostava zvyraznit. | Vrso -> Claude AI | 2026-08-24
+let zzz4_0_justInsertedEntryId = null;
+// === [/Zzz2-R14:INSERT-FLASH] ===
+
 function zzz1r_flash_all_cells_success() {
   const cells = document.querySelectorAll('.numbers-row .entry-cell, .numbers-row .priority-dot-button');
   cells.forEach(cell => cell.classList.add('zzz1r-success-flash'));
@@ -4527,6 +4730,7 @@ const FIELDS_JSON_KEYS = [
   ['16', 'r16'], ['17', 'r17'], ['18', 'r18'], ['19', 'r19'], ['20', 'r20'],
   ['21', 'tags'], ['22', 'r22'],
   ['31', 'r31'], // Zzz1-M22 Credits Module (SPECIAL) - R31 Consent Toggle ("on"/"off")
+  ['33', 'r33'], // Zzz6-F2:AUTHOR-MANAGEMENT (SYSTEM FUNCTION) - per-user consent toggle, JSON {username: boolean}
 ];
 function zzz4_0_build_fields_json_from_entrydata() {
   const obj = {};
@@ -4546,6 +4750,17 @@ async function submit_entries_to_db() {
     return false;
   }
   // === [/Zzz1-M22:CREDITS-MODULE] Zzz1-D1 brana ===
+
+  // === [Zzz6-F2:AUTHOR-MANAGEMENT] GATE (SYSTEM FUNCTION) - Vrso 2026-08-24: entries s VIACERYMI tagovanymi
+  // userami (Zzz1-R17, okrem samotneho project ownera) sa smu zapisat LEN ak project owner (entryData["4"])
+  // zapol consent toggle pre KAZDEHO z nich (viz zzz6f2_build_author_consent_section v R17 modali). Toto je
+  // SAMOSTATNA/NEZAVISLA brana od R31 (Communication Consent Toggle) vyssie - R31 sa tejto podmienky
+  // NETYKA (Vrso vyslovne 2026-08-24: R31 len garantuje pristup ku komunikacii, nie autorske potvrdenie).
+  if (!zzz6f2_authors_consent_satisfied()) {
+    zzz6f2_show_toast('Viacero userov na entry - project owner musi zapnut consent pre kazdeho (Zzz6-F2)');
+    return false;
+  }
+  // === [/Zzz6-F2:AUTHOR-MANAGEMENT] GATE ===
 
   // === [Zzz4-1:USER-OWNER-VERIFICATION] GATE (SYSTEM FUNCTION) - MUSI byt UPLNE PRVY krok Zzz4-0 zapisu ===
   // ZASADNE: Zzz4-0 (verso_entries) smie prideliť entry number / vlozit Entry Line LEN AZ PO overeni
@@ -4623,6 +4838,10 @@ async function submit_entries_to_db() {
   submittedEntriesFullCache[payload.entry_id] = payload; // Zzz2-R29-FIX: cely payload pre fallback zobrazenie/duplicity
   zzz6f2_update_entry_number_button(payload.entry_id);  // Zzz6-F2: vyznacenie priradeneho cisla na R1a
   zzz6f14_update_entry_date_button(payload.entry_date); // Zzz6-F14: vyznacenie priradeneho datumu na R14/R14a
+  // === [Zzz2-R14:INSERT-FLASH] (Vrso 2026-08-24: "po vlozeni entry oznac 2-R* entry bunku aj vkladane
+  // command lines zelenou") - oznaci, ktory entry_id sa ma po najblizsom vykresleni Database Workspace
+  // (Zzz4-0) zvyraznit zelenou - viz kontrola na konci open_database_workspace() nizsie v subore.
+  zzz4_0_justInsertedEntryId = payload.entry_id;
   refresh_database_workspace_if_open();
 
   try {
@@ -4637,11 +4856,15 @@ async function submit_entries_to_db() {
       const errDetail = (error && (error.message || error.details || error.hint)) || String(error);
       console.error(`Zzz1-D1 Supabase error (zapis do vzdialenej DB zlyhal, lokalne je ale ulozene). DOVOD: ${errDetail}`);
       zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
-      return;
+      // OPRAVA (2026-08-24, Vrso hlasenie "neoznacil sa CL ani entry button"): tu bol PREDCASNY "return;",
+      // ktory PRESKOCIL zzz1r_flash_all_cells_success() nizsie zakazdym, ked vzdialeny Supabase zapis zlyhal
+      // (RLS, network, chybajuci stlpec...) - aj ked lokalne zaznam UZ JE ulozeny/vidiet (viz cache vyssie),
+      // zelene potvrdenie sa nikdy nezobrazilo. Teraz NEVRACIA sa tu - pokracuje az na koniec funkcie (flash
+      // + return true), rovnaky princip ako uz mal catch{} blok nizsie (ten tento bug nemal).
+    } else {
+      console.log('Zzz1-D1 Supabase zapis uspesny:', data);
+      zzz0r1_set_db_connection_state(true); // Zzz6-F7:DB-CONNECTION
     }
-
-    console.log('Zzz1-D1 Supabase zapis uspesny:', data);
-    zzz0r1_set_db_connection_state(true); // Zzz6-F7:DB-CONNECTION
   } catch (err) {
     const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
     console.error(`Zzz1-D1 neocakavana chyba pri zapise (lokalne je ale ulozene). DOVOD: ${errDetail}`);
@@ -4982,6 +5205,7 @@ function zzz6f6_open_el_cell_context_modal(field, val, row) {
 function zzz4_0_build_entry_row(row) {
   const rowEl = document.createElement('div');
   rowEl.className = 'numbers-row db-workspace-entry-row';
+  rowEl.setAttribute('data-entry-id', row && row.entry_id !== undefined ? row.entry_id : ''); // Zzz2-R14: cielenie post-insert zeleneho zablikania
   ZZZ_FULL_DISPLAY_FIELDS.forEach(field => {
     const wrapEl = document.createElement('div');
     wrapEl.className = field.wrap;
@@ -5194,6 +5418,24 @@ async function open_database_workspace() {
 
   workspace.innerHTML = '';
   workspace.appendChild(wrap);
+
+  // === [Zzz2-R14:INSERT-FLASH] (Vrso 2026-08-24: "po vlozeni entry oznac 2-R* entry bunku aj vkladane
+  // command lines zelenou") - ak prave prebehol uspesny zapis (zzz4_0_justInsertedEntryId nastavene v
+  // submit_entries_to_db), zvyrazni PRESNE ten riadok, ktory bol prave vlozeny (rovnaka zelena farba/trvanie
+  // ako zzz1r_flash_all_cells_success na CL hore - .zzz1r-success-flash, uz definovana pre .numbers-row
+  // .entry-cell/.priority-dot-button, takze funguje aj tu bez novej CSS). Po spotrebovani sa flag vzdy
+  // vynuluje, aby sa rovnaky riadok nezvyraznoval opakovane pri kazdom dalsom (nesuvisiacom) refreshi.
+  if (zzz4_0_justInsertedEntryId !== null) {
+    const insertedRow = wrap.querySelector(`.db-workspace-entry-row[data-entry-id="${zzz4_0_justInsertedEntryId}"]`);
+    if (insertedRow) {
+      const insertedCells = insertedRow.querySelectorAll('.entry-cell, .priority-dot-button');
+      insertedCells.forEach(cell => cell.classList.add('zzz1r-success-flash'));
+      setTimeout(() => insertedCells.forEach(cell => cell.classList.remove('zzz1r-success-flash')), 1000);
+    }
+    zzz4_0_justInsertedEntryId = null;
+  }
+  // === [/Zzz2-R14:INSERT-FLASH] ===
+
   zzz6f10_sync_content_space(); // Zzz6-F10: Database workspace prave otvoreny -> Content Space sa automaticky schova (viz podmienka pri funkcii)
 }
 
@@ -5535,3 +5777,4 @@ async function open_trash_workspace() {
 </script>
 </body>
 </html>
+
