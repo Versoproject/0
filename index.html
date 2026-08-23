@@ -3711,6 +3711,309 @@ function zzz6f2_update_entry_number_button(entryId) {
 }
 // === [/Zzz6-F2:AUTO-NUMBER] ===
 
+// === [Zzz4-1:USER-OWNER-VERIFICATION] (SYSTEM FUNCTION) - Vrso 2026-08-23 request, rozsirene 2026-08-23 o heslo/pristup ===
+// ZASADNA SYSTEMOVA FUNKCIA: Zzz4-0 (verso_entries) SMIE prideliť entry number / vlozit Entry Line LEN
+// AZ PO TOM, co Zzz4-1 (verso_verification) NAJPRV overi username (Zzz0-R1), project owner (Zzz1-R4)
+// A HESLO/PRISTUP tohto zaznamu. Toto je VZDY prvy krok v submit_entries_to_db (SYSTEM FUNCTION, pred
+// cislovanim aj pred duplicate-check) - poradie sa nesmie obratit bez vyslovneho schvalenia project ownera (Vrso).
+//
+// HESLO/PRISTUP (Vrso 2026-08-23 rozsirenie povodnej registracie):
+// - Prvy vyskyt username (este nie je v Zzz4-1) -> modal "VYTVOR HESLO", zapise sa HASH (SHA-256, nie
+//   ciste heslo) do noveho zaznamu v Zzz4-1.
+// - Znamy username -> modal "ZADAJ HESLO", hash zadaneho hesla sa porovna s ulozenym hash-om. Nespravne
+//   heslo = zamietnuty pristup, Zzz4-0 zapis sa VOBEC nespusti (submit_entries_to_db vrati false skor,
+//   nez dojde k cislovaniu/zapisu).
+// - Zrusenie modalu (CANCEL) = tiez zamietnuty pristup (rovnaky vysledok ako nespravne heslo).
+// - SESSION CACHE (zzz4f1SessionVerifiedUsernames): po prvom uspesnom overeni v ramci tejto session
+//   (tento nacitany index.html, do reloadu) sa pre TEN ISTY username uz heslo nepyta znova pri kazdom
+//   dalsom ENTRY zazname - inak by sa musel pouzivatel prihlasovat heslom pri kazdom jednom riadku.
+//   Po reloade stranky sa musi zadat znova (rovnaky princip ako bezne "session" prihlasenie).
+//
+// POZNAMKA (dolezite - NEMIESAT s [Zzz6-F7:DELEGATED-LOGIN] MEMO vyssie): plnohodnotny delegovany
+// prihlasovaci system (cudzi username prihlaseny "v mene" povodneho, cervene oznacenie a pod.) zostava
+// VYSLOVNE odlozeny na neskor (viz ten memo). TOTO tu je uz REALNA pristupova kontrola (heslo), ale
+// stale bez delegacie/rolí - jeden username = jedno heslo, ziadne "v mene niekoho ineho" zatial.
+// BEZPECNOSTNA POZNAMKA: toto je klientska (browser-side) kontrola cez verejny (anon) Supabase kluc -
+// nie je to kryptograficky ekvivalent serverovej autentifikacie (RLS politiky su "true" pre vsetkych s
+// anon klucom). Chrani pred nahodnym/bezmyslienkovitym pouzitim cudzieho username, nie pred niekym, kto
+// si cielene precita zdrojovy kod/API. Realna serverova autentifikacia je buduca poloha.
+
+const zzz4f1UserVerificationCache = {}; // lokalna cache: username -> {project_owner, password_hash, first_seen_at, last_verified_at}
+const zzz4f1SessionVerifiedUsernames = new Set(); // username-y uz overene heslom v tejto session (do reloadu)
+
+// pomocna: bezpecne id do Zzz4-1 z username (id musi byt text, bez medzier/lomitok/uvodzoviek - viz storage limity)
+function zzz4f1_safe_id_from_username(username) {
+  const cleaned = (username || 'unknown').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+  return `user-${cleaned || 'unknown'}`;
+}
+
+// SHA-256 hash hesla (hex string) - heslo sa NIKDY neuklada ani neposiela v ciste
+async function zzz4f1_hash_password(password) {
+  const enc = new TextEncoder().encode(password || '');
+  const digestBuffer = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(digestBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// modal na vytvorenie/zadanie hesla - vracia Promise<string|null> (null = CANCEL)
+function zzz4f1_prompt_password_modal(mode, username) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'entry-modal-overlay';
+
+    const box = document.createElement('div');
+    box.className = 'entry-modal-box';
+
+    const label = document.createElement('div');
+    label.style.fontSize = '11px';
+    label.style.fontWeight = '700';
+    label.style.color = '#171717';
+    label.textContent = mode === 'create'
+      ? `Zzz4-1: Vytvor heslo pre "${username}"`
+      : `Zzz4-1: Zadaj heslo pre "${username}"`;
+
+    const input = document.createElement('input');
+    input.type = 'password';
+    input.autocomplete = mode === 'create' ? 'new-password' : 'current-password';
+    input.style.width = '100%';
+    input.style.boxSizing = 'border-box';
+    input.style.height = '36px';
+    input.style.padding = '6px';
+    input.style.borderRadius = '6px';
+    input.style.border = '1px solid #171717';
+    input.style.fontSize = '13px';
+    input.placeholder = mode === 'create' ? 'Nove heslo' : 'Heslo';
+
+    const actions = document.createElement('div');
+    actions.className = 'entry-modal-actions';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'entry-modal-close';
+    cancelBtn.textContent = 'ZRUSIT';
+    cancelBtn.onclick = () => {
+      document.body.removeChild(overlay);
+      resolve(null);
+    };
+
+    const okBtn = document.createElement('button');
+    okBtn.className = 'entry-modal-save';
+    okBtn.textContent = mode === 'create' ? 'VYTVORIT' : 'POTVRDIT';
+    const submitVal = () => {
+      const val = input.value;
+      document.body.removeChild(overlay);
+      resolve(val || null);
+    };
+    okBtn.onclick = submitVal;
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitVal(); });
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(okBtn);
+    box.appendChild(label);
+    box.appendChild(input);
+    box.appendChild(actions);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    input.focus();
+  });
+}
+
+// najde existujuci Zzz4-1 zaznam pre username (Supabase best-effort + lokalna cache fallback)
+async function zzz4f1_lookup_user_record(username) {
+  const recordId = zzz4f1_safe_id_from_username(username);
+  try {
+    const fetchPromise = sb.from('verso_verification').select('*').eq('id', recordId).eq('record_type', 'user_verification');
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('zzz4-1 Supabase fetch timeout (4s)')), 4000)
+    );
+    const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+    if (error) throw error;
+    if (data && data.length > 0) {
+      zzz0r1_set_db_connection_state(true); // Zzz6-F7:DB-CONNECTION
+      return JSON.parse(data[0].data_json || '{}');
+    }
+    zzz0r1_set_db_connection_state(true); // Zzz6-F7:DB-CONNECTION
+    return zzz4f1UserVerificationCache[username] || null; // Supabase OK, ale ziadny zaznam - over aj lokalnu cache pre istotu
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    console.warn(`zzz4-1 Supabase fetch zlyhal/timeout pri user/owner verifikacii - pouziva sa len lokalna cache. DOVOD: ${errDetail}`);
+    zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
+    return zzz4f1UserVerificationCache[username] || null;
+  }
+}
+
+// zapise (novy alebo aktualizovany) Zzz4-1 zaznam - lokalne VZDY okamzite, Supabase best-effort
+async function zzz4f1_save_user_record(username, record) {
+  const recordId = zzz4f1_safe_id_from_username(username);
+  zzz4f1UserVerificationCache[username] = record; // lokalne OKAMZITE, nezavisle od siete
+
+  const payload = {
+    id: recordId,
+    record_type: 'user_verification',
+    data_json: JSON.stringify(record),
+    updated_at: new Date().toISOString()
+  };
+  try {
+    const { error } = await sb.from('verso_verification').upsert(payload, { onConflict: 'id' });
+    if (error) {
+      const errDetail = (error && (error.message || error.details || error.hint)) || String(error);
+      console.error(`Zzz4-1 Supabase error (zapis zaznamu username "${username}" zlyhal vzdialene, lokalne je ale ulozeny). DOVOD: ${errDetail}`);
+      zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
+      return { success: false, error: errDetail };
+    }
+    zzz0r1_set_db_connection_state(true); // Zzz6-F7:DB-CONNECTION
+    return { success: true, error: null };
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    console.error(`Zzz4-1 neocakavana chyba pri zapise zaznamu username "${username}" (lokalne je ale ulozeny). DOVOD: ${errDetail}`);
+    zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
+    return { success: false, error: errDetail };
+  }
+}
+
+// HLAVNA GATE FUNKCIA: over username + project owner + PRISTUP (aktualne "password", v buducnosti
+// mozne pridat "webauthn"/biometria, "qr" a pod. - viz DISPATCHER poznamka nizsie) v Zzz4-1.
+// Musi sa dokoncit (a vratit verified:true) PRED akymkolvek dalsim krokom v submit_entries_to_db
+// (cislovanie aj zapis do Zzz4-0).
+//
+// DISPATCHER / BUDUCE ROZSIRENIE (Vrso 2026-08-23 otazka "co ked bude prihlasenie biometricky/QR"):
+// kazdy Zzz4-1 zaznam nesie pole "auth_method" (zatial VZDY "password"). SQL schema (data_json ako
+// jeden flexibilny text/JSON stlpec) sa NIKDY nemusi menit pre novu metodu - staci sem pridat dalsiu
+// vetvu podla existing.auth_method (napr. "webauthn" -> volat navigator.credentials.get(...) namiesto
+// modalu s heslom, "qr" -> zobrazit/naskenovat QR kod). Existujuce "password" zaznamy zostanu funkcne
+// bez zmeny, kedze auth_method je explicitne ulozeny per-zaznam (nie globalne nastavenie appky).
+async function zzz4f1_verify_user_and_owner(username, projectOwner) {
+  // uz overene v tejto session (viz SESSION CACHE poznamka vyssie) - netreba pytat heslo znova
+  if (zzz4f1SessionVerifiedUsernames.has(username)) {
+    return { verified: true, isNewRegistration: false, reason: 'session_cached' };
+  }
+
+  const existing = await zzz4f1_lookup_user_record(username);
+  const nowIso = new Date().toISOString();
+
+  if (existing) {
+    // DISPATCHER: zatial jedina vetva (auth_method === 'password'); buduce metody sa pridaju sem ako
+    // dalsie "else if (existing.auth_method === 'webauthn') { ... }" bloky, bez zmeny SQL/schemy.
+    if (existing.auth_method && existing.auth_method !== 'password') {
+      console.warn(`zzz4-1 Neznama/nepodporovana auth_method "${existing.auth_method}" pre "${username}" - fallback na password.`);
+    }
+    // znamy username - vyzaduje spravne heslo
+    const enteredPassword = await zzz4f1_prompt_password_modal('verify', username);
+    if (enteredPassword === null) {
+      zzz6f2_show_toast('Pristup zruseny (heslo nezadane)');
+      return { verified: false, isNewRegistration: false, reason: 'cancelled' };
+    }
+    const enteredHash = await zzz4f1_hash_password(enteredPassword);
+    if (enteredHash !== existing.password_hash) {
+      zzz6f2_show_toast('Nespravne heslo - pristup zamietnuty');
+      return { verified: false, isNewRegistration: false, reason: 'wrong_password' };
+    }
+    // spravne heslo - osviezi project_owner/last_verified_at, oznaci ako overene pre tuto session
+    await zzz4f1_save_user_record(username, { ...existing, project_owner: projectOwner, last_verified_at: nowIso });
+    zzz4f1SessionVerifiedUsernames.add(username);
+    return { verified: true, isNewRegistration: false };
+  }
+
+  // neexistuje - VYTVORENIE hesla (prva registracia tohto username v Zzz4-1)
+  const newPassword = await zzz4f1_prompt_password_modal('create', username);
+  if (newPassword === null || newPassword.length === 0) {
+    zzz6f2_show_toast('Registracia zrusena (heslo nevytvorene)');
+    return { verified: false, isNewRegistration: true, reason: 'cancelled_or_empty' };
+  }
+  const newHash = await zzz4f1_hash_password(newPassword);
+  const newRecord = {
+    username,
+    project_owner: projectOwner,
+    auth_method: 'password', // DISPATCHER: oznacuje, akou metodou sa tento zaznam overuje (viz komentar vyssie)
+    password_hash: newHash,
+    first_seen_at: nowIso,
+    last_verified_at: nowIso
+  };
+  const saveResult = await zzz4f1_save_user_record(username, newRecord);
+  zzz4f1SessionVerifiedUsernames.add(username);
+  return { verified: true, isNewRegistration: true, remoteError: saveResult.error };
+}
+// === [/Zzz4-1:USER-OWNER-VERIFICATION] ===
+
+// === [Zzz4-1:ENTRY-NUMBER-CONFIRMATION] (SYSTEM FUNCTION) - Vrso 2026-08-23 request ===
+// ZASADNA SYSTEMOVA FUNKCIA: kazde entry_id (Zzz1-R1) MUSI byt NAJPRV oznacene ako volne (posledne
+// potvrdene cislo + 1) a ZAZNAMENANE v samostatnej Zzz4-1 databaze (verso_verification) - az POTOM
+// smie byt samotny Entry Line ulozeny/presunuty do externej databazy (Zzz4-0/verso_entries, v buducnosti
+// prip. aj ine/komercne servery - viz otvorena otazka "Entry Number Allocation" v pamati). Cielom je, aby
+// VZDY, bez ohladu na to, kde napokon skoncia bezne data, samotne cislo + potvrdenie prechadzalo
+// jednotnym Verso registracnym systemom (Zzz4-1).
+// POZOR: rovnako ako Zzz6-F2/Zzz6-F22/Zzz0-R1 - toto je SYSTEM FUNCTION, zmenu poradia (confirm VZDY
+// PRED zapisom do Zzz4-0) musi vyslovne schvalit project owner (Vrso).
+//
+// OFFLINE POZNAMKA (zname buduce dorobenie, viz otvorena otazka "Entry Number Allocation" v pamati):
+// confirm zapisuje OKAMZITE do lokalnej cache (nezavisle od siete), paralelne sa POKUSI o realny zapis
+// do Supabase. Appka tak zostava pouzitelna aj offline, ale cislo sa vo vzdialenej Zzz4-1 tabulke realne
+// potvrdi az po obnoveni spojenia. Plnohodnotny offline->fixne cislo mechanizmus (docasne oznacenie,
+// prevod na fixne po reconnect) je planovany samostatne neskor - toto je zatial zakladna verzia.
+
+const zzz4f1ConfirmedNumbersCache = {}; // lokalna cache: entry_id -> {username, confirmed_at} (offline fallback)
+
+// nacita vsetky UZ POTVRDENE entry_id z Zzz4-1 (verso_verification, record_type='entry_number_confirmation')
+// - rovnaky vzor ako zzz6f2_get_known_entries (Supabase best-effort s 4s timeoutom + VZDY aj lokalna cache)
+async function zzz4f1_get_confirmed_entry_numbers() {
+  let remoteIds = [];
+  try {
+    const fetchPromise = sb.from('verso_verification').select('*').eq('record_type', 'entry_number_confirmation');
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('zzz4-1 Supabase fetch timeout (4s)')), 4000)
+    );
+    const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+    if (error) throw error;
+    remoteIds = (data || []).map(row => {
+      try {
+        return JSON.parse(row.data_json || '{}').entry_id;
+      } catch (e) {
+        return null;
+      }
+    }).filter(id => id !== null && id !== undefined);
+    zzz0r1_set_db_connection_state(true); // Zzz6-F7:DB-CONNECTION
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    console.warn(`zzz4-1 Supabase fetch zlyhal/timeout pri potvrdzovani entry number - pouziva sa len lokalna cache. DOVOD: ${errDetail}`);
+    zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
+  }
+  const localIds = Object.keys(zzz4f1ConfirmedNumbersCache);
+  return remoteIds.concat(localIds);
+}
+
+// zapise POTVRDENIE cisla entryId do Zzz4-1 (verso_verification) - MUSI byt zavolane/dokoncene PRED
+// akymkolvek zapisom Entry Line do Zzz4-0 (verso_entries), viz volanie v submit_entries_to_db nizsie.
+async function zzz4f1_confirm_entry_number(entryId, username) {
+  const confirmedAt = new Date().toISOString();
+
+  // 1) lokalne OKAMZITE (nezavisle od siete) - viz OFFLINE POZNAMKA vyssie
+  zzz4f1ConfirmedNumbersCache[entryId] = { username, confirmed_at: confirmedAt };
+
+  // 2) pokus o realny zapis do Supabase (verso_verification)
+  const payload = {
+    id: `entrynum-${entryId}`,
+    record_type: 'entry_number_confirmation',
+    data_json: JSON.stringify({ entry_id: entryId, username, confirmed_at: confirmedAt }),
+    updated_at: confirmedAt
+  };
+
+  try {
+    const { error } = await sb.from('verso_verification').upsert(payload, { onConflict: 'id' });
+    if (error) {
+      const errDetail = (error && (error.message || error.details || error.hint)) || String(error);
+      console.error(`Zzz4-1 Supabase error (potvrdenie entry number #${entryId} zlyhalo vzdialene, lokalne je ale zaznamenane). DOVOD: ${errDetail}`);
+      zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
+      return { success: false, error: errDetail };
+    }
+    zzz0r1_set_db_connection_state(true); // Zzz6-F7:DB-CONNECTION
+    return { success: true, error: null };
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    console.error(`Zzz4-1 neocakavana chyba pri potvrdzovani entry number #${entryId} (lokalne je ale zaznamenane). DOVOD: ${errDetail}`);
+    zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
+    return { success: false, error: errDetail };
+  }
+}
+// === [/Zzz4-1:ENTRY-NUMBER-CONFIRMATION] ===
+
 // === [Zzz6-F14:AUTO-DATE] automaticke zobrazenie aktualneho datumu na Zzz1-R14/Zzz1-R14a po zapise do databazy (automatic date - non editable) | Vrso -> Claude AI | 2026-08-18 ===
 // Rovnaky princip ako Zzz6-F2 pre Zzz1-R1a (ENTRY NUMBER #x): Zzz1-R14a je needitovatelny button
 // a Zzz1-R14 je needitovatelna/siva bunka - obe sa prepisu az v momente uspesneho submit_entries_to_db (Zzz1-D1), nie skor.
@@ -3897,6 +4200,19 @@ async function submit_entries_to_db() {
   }
   // === [/Zzz1-M22:CREDITS-MODULE] Zzz1-D1 brana ===
 
+  // === [Zzz4-1:USER-OWNER-VERIFICATION] GATE (SYSTEM FUNCTION) - MUSI byt UPLNE PRVY krok Zzz4-0 zapisu ===
+  // ZASADNE: Zzz4-0 (verso_entries) smie prideliť entry number / vlozit Entry Line LEN AZ PO overeni
+  // username + project owner + HESLO v Zzz4-1 (verso_verification). Viz komentar pri
+  // [Zzz4-1:USER-OWNER-VERIFICATION] vyssie (funkcia zzz4f1_verify_user_and_owner). Nespravne heslo
+  // alebo zrusenie modalu = zapis sa VOBEC nespusti (SKUTOCNA pristupova brana, nie len zaznamenanie).
+  const currentUsernameForVerification = zzz0r1_get_current_username();
+  const currentProjectOwnerForVerification = entryData["4"] || "";
+  const accessVerification = await zzz4f1_verify_user_and_owner(currentUsernameForVerification, currentProjectOwnerForVerification);
+  if (!accessVerification.verified) {
+    return false; // Zzz2-R14: signalizuje volajucemu (napr. ENTRY button), ze sa NEZAPISALO (zamietnuty pristup)
+  }
+  // === [/Zzz4-1:USER-OWNER-VERIFICATION] GATE ===
+
   const clText = entryData["1"] || ""; // vzdy prazdne (R1 needitovatelne od 2026-08-18) - ponechane pre r1 stlpec/spatnu kompatibilitu
   const clSummary = zzz_build_cl_summary_from_entrydata(); // Zzz2-R29-FIX: skutocny obsah CL na duplicate-check (nie prazdne r1)
 
@@ -3911,7 +4227,25 @@ async function submit_entries_to_db() {
   }
 
   // Zzz6-F2: entry_id = posledne priradene cislo v databaze + 1 (uz nie pevne "1")
-  const nextEntryId = zzz6f2_compute_next_entry_id(knownEntries);
+  // Zzz4-1 FIX: do vypoctu MAX cisla sa teraz zapocitavaju aj cisla uz POTVRDENE v Zzz4-1
+  // (verso_verification), nielen tie uz zapisane v Zzz4-0 (verso_entries) - zabranuje kolizii,
+  // ak by bolo cislo potvrdene v Zzz4-1, ale zapis do Zzz4-0 este neprebehol/zlyhal.
+  const confirmedNumbers = await zzz4f1_get_confirmed_entry_numbers();
+  const combinedKnownForNumbering = knownEntries.concat(confirmedNumbers.map(id => ({ entry_id: id })));
+  const nextEntryId = zzz6f2_compute_next_entry_id(combinedKnownForNumbering);
+
+  const currentUsername = zzz0r1_get_current_username(); // Zzz0-R1: vlastnik zaznamu = text v Zzz0-R1 bunke
+
+  // === [Zzz4-1:ENTRY-NUMBER-CONFIRMATION] GATE (SYSTEM FUNCTION) ===
+  // ZASADNE: cislo MUSI byt najprv potvrdene/zaznamenane v Zzz4-1 (verso_verification) - az POTOM
+  // smie pokracovat zapis samotneho Entry Line do Zzz4-0 (verso_entries) nizsie.
+  const numberConfirmation = await zzz4f1_confirm_entry_number(nextEntryId, currentUsername);
+  if (!numberConfirmation.success) {
+    // Vzdialene potvrdenie zlyhalo, ale lokalne JE cislo zaznamenane (viz OFFLINE POZNAMKA) -
+    // appka pokracuje (nezostane zaseknuta offline), len na to jasne upozorni.
+    zzz6f2_show_toast(`Entry #${nextEntryId} potvrdene len lokalne (Zzz4-1 offline)`);
+  }
+  // === [/Zzz4-1:ENTRY-NUMBER-CONFIRMATION] GATE ===
 
   // Zzz6-F22 (SPECIAL) + Zzz6-F22-link (NON EDITABLE): pri kazdom zapise doplni povodneho autora do R22,
   // VRATANE finalneho entry number (nextEntryId, uz zname v tomto bode - PREUSPORIADANE 2026-08-21 oproti
@@ -3920,7 +4254,6 @@ async function submit_entries_to_db() {
   zzz6f22_ensure_original_author(nextEntryId);
 
   const entryDateStr = zzz6f14_format_today(); // Zzz6-F14: aktualny datum priradeny k tomuto zaznamu
-  const currentUsername = zzz0r1_get_current_username(); // Zzz0-R1: vlastnik zaznamu = text v Zzz0-R1 bunke
 
   // === [Zzz0-R1:home-module-database-entry] 3s podrzanie loga = zapis CELEJ Command Line (vsetky bunky
   // modulu Zzz1-M1/CL, nie len R1) ako jeden zaznam do D-4 (Databaza). Kazde dalsie R* pribudajuce do
@@ -4772,6 +5105,11 @@ function refresh_database_workspace_if_open() {
 </script>
 </body>
 </html>
+
+
+
+
+
 
 
 
