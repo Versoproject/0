@@ -3479,7 +3479,7 @@ async function zzz6f2_get_known_entries() {
     // nebolo vidiet. Teraz je detail VZDY zaretazeny priamo do jedneho textu.
     const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
     console.warn(`zzz6-F2 Supabase fetch zlyhal/timeout pri cislovani/duplicite - pouziva sa len lokalna cache. DOVOD: ${errDetail}`);
-    zzz0r1_set_db_connection_state(false); // Zzz6-F7:DB-CONNECTION
+    zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
   }
   const localEntries = Object.values(submittedEntriesFullCache).map(row => ({ entry_id: row.entry_id, summary: zzz_build_cl_summary_from_row(row) }));
   return remoteEntries.concat(localEntries);
@@ -3617,10 +3617,14 @@ function zzz6f7_set_login_state(isLoggedIn) {
 // (Databaza/Supabase). Volane z KAZDEHO existujuceho Supabase try/catch miesta (Zzz1-D1 zapis, Zzz6-F2
 // citanie pre cislovanie, Zzz2-R29 citanie pre Database Workspace) - true pri uspechu, false pri
 // chybe/timeoute. DRY - jedna spolocna funkcia namiesto opakovania logiky na kazdom mieste. | Vrso -> Claude AI | 2026-08-23
-function zzz0r1_set_db_connection_state(isConnected) {
+function zzz0r1_set_db_connection_state(isConnected, errorDetail) {
   const label = document.getElementById('zzz6f7UsernameLabel');
-  if (!label) return;
-  label.classList.toggle('zzz0r1-db-disconnected', !isConnected);
+  if (label) label.classList.toggle('zzz0r1-db-disconnected', !isConnected);
+  // zzz0r1-DIAG (Vrso 2026-08-23 hlasenie: "chybu nevidiem" na mobile bez konzoly) - ak zlyhanie,
+  // presny dovod (errorDetail) sa teraz zobrazi AJ ako toast na obrazovke, nie len do console.error.
+  if (!isConnected && errorDetail) {
+    zzz6f2_show_toast(`DB chyba: ${errorDetail}`);
+  }
 }
 // === [/Zzz6-F7:DB-CONNECTION] ===
 
@@ -3751,7 +3755,7 @@ async function submit_entries_to_db() {
       // RLS policy, atd.) VZDY priamo v texte, nie ako oddeleny 2. argument (niektore in-app konzoly ho zahodia)
       const errDetail = (error && (error.message || error.details || error.hint)) || String(error);
       console.error(`Zzz1-D1 Supabase error (zapis do vzdialenej DB zlyhal, lokalne je ale ulozene). DOVOD: ${errDetail}`);
-      zzz0r1_set_db_connection_state(false); // Zzz6-F7:DB-CONNECTION
+      zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
       return;
     }
 
@@ -3760,7 +3764,7 @@ async function submit_entries_to_db() {
   } catch (err) {
     const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
     console.error(`Zzz1-D1 neocakavana chyba pri zapise (lokalne je ale ulozene). DOVOD: ${errDetail}`);
-    zzz0r1_set_db_connection_state(false); // Zzz6-F7:DB-CONNECTION
+    zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
   }
   zzz1r_flash_all_cells_success(); // Zzz2-R14: vyrazne zelene bliknutie (1s) celeho CL riadku po uspesnom zapise
   return true; // Zzz2-R14: signalizuje volajucemu (napr. ENTRY button), ze zapis (aspon lokalne) prebehol uspesne
@@ -4216,7 +4220,7 @@ async function open_database_workspace() {
   } catch (err) {
     const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
     console.warn(`zzz2-R29 Supabase fetch zlyhal/timeout, pouzivam lokalne ulozene command lines. DOVOD: ${errDetail}`);
-    zzz0r1_set_db_connection_state(false); // Zzz6-F7:DB-CONNECTION
+    zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
     usedFallback = true;
     // Zzz2-R29-FIX (2026-08-20): predtym sa tu bralo submittedEntriesCache (len r1) A filtrovalo sa podla
     // toho, ci r1 nie je prazdne - ale r1 je od 2026-08-18 VZDY prazdne (needitovatelne pole), takze tento
@@ -4567,4 +4571,6 @@ function refresh_database_workspace_if_open() {
 </script>
 </body>
 </html>
+
+
 
