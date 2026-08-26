@@ -4366,10 +4366,10 @@ async function zzz1_save_my_quickchips(chips) {
     fields.r_quickchips = JSON.stringify(chips);
     payload = { ...row, fields_json: JSON.stringify(fields), updated_at: new Date().toISOString() };
   } else {
-    const knownEntries = await zzz6f2_get_known_entries();
-    const confirmedNumbers = await zzz4f1_get_confirmed_entry_numbers();
-    const combined = knownEntries.concat(confirmedNumbers.map(id => ({ entry_id: id })));
-    const nextId = zzz6f2_compute_next_entry_id(combined);
+    // Zzz6-F2 UPDATE (2026-08-26): rovnaka RPC oprava ako v submit_entries_to_db (atomicke
+    // cislovanie namiesto client-side MAX+1).
+    const { data: nextIdData } = await sb.rpc('get_next_entry_id');
+    const nextId = nextIdData;
     fields = { r2: '', r3: 'QuickChips', r4: current, r5: 'QuickChips', r7: 'ano', r_quickchips: JSON.stringify(chips) };
     payload = { entry_id: nextId, r1: '', fields_json: JSON.stringify(fields), entry_date: zzz6f14_format_today(), username: current, updated_at: new Date().toISOString() };
   }
@@ -5840,9 +5840,11 @@ async function submit_entries_to_db(options = {}) {
   // Zzz4-1 FIX: do vypoctu MAX cisla sa teraz zapocitavaju aj cisla uz POTVRDENE v Zzz4-1
   // (verso_verification), nielen tie uz zapisane v Zzz4-0 (verso_entries) - zabranuje kolizii,
   // ak by bolo cislo potvrdene v Zzz4-1, ale zapis do Zzz4-0 este neprebehol/zlyhal.
-  const confirmedNumbers = await zzz4f1_get_confirmed_entry_numbers();
-  const combinedKnownForNumbering = knownEntries.concat(confirmedNumbers.map(id => ({ entry_id: id })));
-  const nextEntryId = zzz6f2_compute_next_entry_id(combinedKnownForNumbering);
+  // Zzz6-F2 UPDATE (2026-08-26, race condition fix): client-side MAX+1 vymenene za atomicku
+  // Supabase RPC (get_next_entry_id, viz verso_entry_id_seq) - zabranuje duplicitnym cislam
+  // pri suvislych zapisoch od viacerych userov naraz.
+  const { data: nextIdData, error: nextIdErr } = await sb.rpc('get_next_entry_id');
+  const nextEntryId = nextIdData;
 
   const currentUsername = zzz0r1_get_current_username(); // Zzz0-R1: vlastnik zaznamu = text v Zzz0-R1 bunke
 
@@ -8086,6 +8088,10 @@ function zzz10m2_render_login_setup(body) {
 // === [/Zzz10-M2:LOGIN-SETUP] ===
 </script>
 </body>
+
+
+
+
 
 
 
