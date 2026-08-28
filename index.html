@@ -250,6 +250,25 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     color: #0a0a0a !important;
   }
 </style>
+
+<!-- === [Zzz4-0:STATUS-COLOR] (SYSTEM FUNCTION) - Vrso 2026-08-28: "akekolvek docasne entry number vyznac
+     oranzovou, problemove cervenou". Trvale (nie len 1s flash ako uspesny zapis vyssie) - ostava zafarbene,
+     kym stav trva (docasne cislo caka na atomicku vymenu / zapis caka na retry), automaticky zmizne po
+     uspesnej synchronizacii (viz Zzz4-1:OFFLINE-SYNC a Zzz1-D1:RETRY-SYNC, ktore po sebe prekreslia
+     Database Workspace cez refresh_database_workspace_if_open()). Aplikuje sa LEN na ENTRY NUMBER bunku
+     (field.wrap === 'entry-number-wrap' v zzz4_0_build_entry_row), nie na cely riadok. | Vrso -> Claude AI | 2026-08-28 -->
+<style>
+  .numbers-row .entry-cell.zzz4-0-status-temp {
+    background-color: #ff8c00 !important;
+    border-color: #cc7000 !important;
+    color: #fff !important;
+  }
+  .numbers-row .entry-cell.zzz4-0-status-problematic {
+    background-color: #dc2626 !important;
+    border-color: #991b1b !important;
+    color: #fff !important;
+  }
+</style>
 <!-- === [/Zzz2-R14:SUCCESS-FLASH-CL] (CSS cast) === -->
 
 <!-- === [Zzz6-F6:COPY-FLASH-BLUE] OPRAVA (2026-08-21, Vrso): Zzz6-F6 kopirovanie (cell/entry-line/context okno)
@@ -645,6 +664,19 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+  /* === [Zzz10-SCALE] "NACITAT STARSIE" tlacidlo - Vrso 2026-08-28 === */
+  .zzz10-scale-load-more-btn {
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px dashed #fff;
+    background-color: transparent;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    cursor: pointer;
   }
   /* === [Zzz4-0:GRID-COPY] (CSS cast) FIX4 (Vrso 2026-08-20): ZIADNA vlastna hlavicka/label vnutri Database
      Workspace - kazdy zaznam je LEN entry line (R* data bunky), zarovnana 1:1 pod jedinym realnym CL
@@ -1845,12 +1877,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
      entryData["17"] aj entryData["10"] boli NEPRAZDNE, ZIADNE realne overenie hesla oproti ulozenej
      hodnote sa nekona (nie je kam by sa dalo overovat). Toto je zamerne oznacene ako MEMO/limitacia
      prvej verzie, nie bug - realnu autentifikaciu Vrso doplni neskor, ked bude specifikovany mechanizmus.
-     ZAPIS DO DB ("Entry je ok ale entries pojdu do verification database"): Zzz6-F36 ENTRY OKREM
-     prihlasenia AJ SKUTOCNE ZAPISUJE zaznam do D-4 databazy (vola ten isty submit_entries_to_db() ako
-     Zzz2-R14) - PRED zapisom explicitne nastavi entryData["5"] (Zzz1-R5, Project Category) na
-     "Verification" (write_to_entry("5","Verification")), takze kazdy zaznam odoslany cez Login je v
-     databaze oznaceny kategoriou "Verification". OSTATNE R* polia (R2/R3/R4/...) sa NEPREPISUJU natvrdo -
-     ide do DB presne to, co je aktualne v CL.
+     ZAPIS DO DB (PRESUN 2026-08-28, Vrso: "beries do uvahy ze login mam viazany na command line?"):
+     PREDTYM Zzz6-F36 ENTRY zapisovalo NOVY riadok do D-4 (verso_entries) PRI KAZDOM prihlaseni (cez
+     submit_entries_to_db(), rovnako ako Zzz2-R14) - to bolo v rozpore s povodnym zamerom ("Entry je ok ale
+     entries pojdu do verification database") aj s rovnakym privacy rizikom ako pri registracii (mohlo
+     skoncit v siroko citatelnej/trvalej Trash). TERAZ zapisuje VYLUCNE do verso_verification
+     (zzz6f36_write_login_event, id=`login-${username}`, jeden zaznam na username = "posledne prihlasenie"),
+     NIKDY do verso_entries - ziadny zapis do D-4 sa pri Login uz vobec nekona.
      PO USPESNOM "PRIHLASENI": username (Zzz0-R1 napis, #zzz6f7UsernameLabel) sa PREPISE na hodnotu z
      entryData["17"], zzz6f7_set_login_state(true) sa zavola (LOGIN-STATE prepne na zelenu), a
      open_settings_workspace() sa zavola znova - teraz uz zobrazi normalny Settings obsah (branch 1 vyssie).
@@ -2655,6 +2688,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz10-0 Settings button vetvenie: prihlaseny=Settings obsah / neprihlaseny=Zzz6-F36/Zzz10-M1 Login</span>
   <span class="module-tag">Zzz1-R7:CELL Privacy - PREROBENE na kruhovy toggle (zlata gulocka), rovnaky princip ako Zzz1-R12 Priority</span>
   <span class="module-tag">Zzz10-R1 Multiverification button (Zzz10-M1) - zlaty ramcek, zatial bez kliku funkcie, v Login riadku</span>
+  <span class="module-tag">Zzz4-1:OFFLINE-SYNC (SYSTEM FUNCTION) - automaticka synchronizacia offline potvrdenych entry numbers po obnoveni spojenia, s precislovanim pri kolizii</span>
+  <span class="module-tag">Zzz1-D1:RETRY-SYNC (SYSTEM FUNCTION) - automaticky retry zaznamov, ktorym zlyhal samotny zapis do verso_entries (online, ale zapis sa nepodaril)</span>
+  <span class="module-tag">Zzz6-F4:FULLTEXT-SEARCH (SYSTEM FUNCTION) - Postgres tsvector/GIN fulltext hladanie naprieč celou tabulkou, s fallbackom na limitovany client-side filter</span>
+  <span class="module-tag">Zzz6-F34:RETRY-SYNC (SYSTEM FUNCTION) - automaticke dokoncenie nedokoncenych presunov do Trash po obnoveni spojenia (KROK 1 aj KROK 2 samostatne)</span>
+  <span class="module-tag">Zzz10-V1:REGISTER-LOCK (SYSTEM FUNCTION) - registracne zaznamy (username/aktivacny kod/user ID) sa NIKDY nesmu presunut do Trash (citlive udaje, Trash je siroko citatelna a trvala)</span>
+  <span class="module-tag">Zzz10-V1:VERIFICATION-STORAGE (SYSTEM FUNCTION) - registracia sa uklada VYLUCNE do verso_verification, uz nikdy do verso_entries (oddelenie citlivych dat od beznych CL zaznamov)</span>
+  <span class="module-tag">Zzz6-F36:VERIFICATION-STORAGE (SYSTEM FUNCTION) - Login sa uklada VYLUCNE do verso_verification (jeden zaznam na username = posledne prihlasenie), uz nikdy do verso_entries</span>
   <span class="module-tag">Zzz10-R1 Multiverification - automaticky sa spusti po 10x nespravnom hesle POCAS Login pokusu (Zzz4-1 hook)</span>
   <span class="module-tag">Zzz10-R1:USERNAME-GUARD - cerveny ram na Zzz0-R1, ak login username nesedi s poslednym znamym na zariadeni</span>
   <span class="module-tag">Zzz10-R2 Log Out button (Zzz10-0 Settings Workspace, branch 1) - odhlasi, vrati na Zzz6-F36 Login</span>
@@ -3739,6 +3779,84 @@ function zzz6f29_toggle_el_cell(field, val, row, el) {
 })();
 // === [/Zzz6-F29:SELECT-BUTTON] ===
 
+// === [Zzz6-F34:RETRY-SYNC] (SYSTEM FUNCTION) - Vrso 2026-08-28: "Trash musi byt zapracovany vsetko vzdy" -
+// rovnaky princip ako Zzz1-D1:RETRY-SYNC/Zzz4-1:OFFLINE-SYNC vyssie v subore, aplikovany na Zzz6-F34 Move.
+// DVE oddelene fronty, kedze zlyhanie KROKU 1 vs KROKU 2 vyzaduje INY retry:
+//   - zzz6f34_pendingMoves: KROK 1 (insert do verso_trash) zlyhal - NIC sa este nestalo, cely presun
+//     (insert + delete) sa da bezpecne zopakovat od zaciatku.
+//   - zzz6f34_pendingDeletes: KROK 1 uspesny, ale KROK 2 (delete z verso_entries) zlyhal - zaznam UZ JE
+//     v Trash, retry-ovat insert znova by vytvorilo DUPLICITNY riadok v Trash - retry-uje sa LEN delete.
+// Obe persistentne cez localStorage (prezije reload), oba automaticky pri obnoveni spojenia (rovnaky
+// zzz0r1_set_db_connection_state hook ako ostatne retry mechanizmy). | Vrso -> Claude AI | 2026-08-28
+const ZZZ6F34_PENDING_MOVES_KEY = 'verso_zzz6f34_pending_moves';
+const ZZZ6F34_PENDING_DELETES_KEY = 'verso_zzz6f34_pending_deletes';
+
+function zzz6f34_load_pending_from_storage(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+function zzz6f34_save_pending_to_storage(key, obj) {
+  try {
+    localStorage.setItem(key, JSON.stringify(obj));
+  } catch (e) {
+    console.warn(`Zzz6-F34:RETRY-SYNC localStorage zapis zlyhal pre ${key} (napr. private mode):`, e);
+  }
+}
+
+const zzz6f34_pendingMoves = zzz6f34_load_pending_from_storage(ZZZ6F34_PENDING_MOVES_KEY);     // entry_id -> row (celý presun na zopakovanie)
+const zzz6f34_pendingDeletes = zzz6f34_load_pending_from_storage(ZZZ6F34_PENDING_DELETES_KEY); // entry_id -> true (uz v Trash, caka LEN na delete)
+let zzz6f34_syncInProgress = false;
+
+async function zzz6f34_sync_pending_trash() {
+  if (zzz6f34_syncInProgress) return;
+  const moveIds = Object.keys(zzz6f34_pendingMoves);
+  const deleteIds = Object.keys(zzz6f34_pendingDeletes);
+  if (moveIds.length === 0 && deleteIds.length === 0) return;
+
+  zzz6f34_syncInProgress = true;
+  console.log(`Zzz6-F34:RETRY-SYNC - skusam dokoncit ${moveIds.length} presun(y) + ${deleteIds.length} zavisly(ch) delete(ov)`);
+
+  try {
+    // najprv dokonci zavisle delete (KROK 2) - uz su v Trash, len treba zmazat z Zzz4-0
+    for (const entryId of deleteIds) {
+      try {
+        const { data: deleteData, error: deleteError } = await sb.from('verso_entries').delete().eq('entry_id', entryId).select();
+        if (deleteError) {
+          console.warn(`Zzz6-F34:RETRY-SYNC - opakovany delete #${entryId} zase zlyhal, skusi sa znova pri buducom pripojeni:`, deleteError);
+          continue;
+        }
+        if (!deleteData || deleteData.length === 0) {
+          // 0 riadkov = uz bol medzicasom zmazany inak (napr. manualny retry) - povazuj za vybavene
+        }
+        delete zzz6f34_pendingDeletes[entryId];
+        zzz6f2_show_toast(`Presun #${entryId} do Trash dokonceny (delete z Zzz4-0)`);
+      } catch (err) {
+        console.warn(`Zzz6-F34:RETRY-SYNC - neocakavana chyba pri opakovanom delete #${entryId}:`, err);
+        continue;
+      }
+      zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_DELETES_KEY, zzz6f34_pendingDeletes);
+      refresh_database_workspace_if_open();
+    }
+
+    // potom skus cele nedokoncene presuny odznova (KROK 1 nikdy neuspel)
+    for (const entryId of moveIds) {
+      const row = zzz6f34_pendingMoves[entryId];
+      if (!row) { delete zzz6f34_pendingMoves[entryId]; continue; }
+      delete zzz6f34_pendingMoves[entryId]; // odstran PRED retry (zzz6f34_move_row_to_trash by inak znova pridala pri zlyhani, co je OK/idempotentne)
+      zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_MOVES_KEY, zzz6f34_pendingMoves);
+      await zzz6f34_move_row_to_trash(row, true); // silent=true, viz nizsie (bez duplicitneho "presun zlyhal" toastu pri kazdom automatickom pokuse)
+    }
+  } finally {
+    zzz6f34_syncInProgress = false;
+  }
+}
+// === [/Zzz6-F34:RETRY-SYNC] ===
+
 // === [Zzz6-F34:MOVE] Interna (nie samostatne tlacidlo) pomocna funkcia - presunie CELY EL riadok
 // z verso_entries (Zzz4-0) do verso_trash (Zzz4-2). "Presun" = insert do verso_trash + delete z verso_entries
 // + vycistenie lokalnych cache (submittedEntriesCache/OwnerCache/FullCache), aby zaznam okamzite zmizol
@@ -3746,7 +3864,7 @@ function zzz6f29_toggle_el_cell(field, val, row, el) {
 // tato appka do verso_trash NIKDY nezapise delete/update, len insert (skutocna nemennost vyzaduje
 // Supabase RLS policy na strane Vrso, viz poznamka pri dorucení). Pouziva ju VYLUCNE Zzz6-F33 (Delete),
 // nie je to samostatna user-facing akcia. | Vrso -> Claude AI | 2026-08-23 ===
-async function zzz6f34_move_row_to_trash(row) {
+async function zzz6f34_move_row_to_trash(row, silent = false) {
   if (!row || row.entry_id === undefined || row.entry_id === null) {
     console.warn('Zzz6-F34 Move: chybajuci row/entry_id, presun preruseny.');
     return false;
@@ -3756,6 +3874,17 @@ async function zzz6f34_move_row_to_trash(row) {
   // ohladu na to, kto sa o to pokusa (aj project owner). | Vrso -> Claude AI | 2026-08-25 ===
   if (zzz1r5_is_final(row)) {
     zzz6f2_show_toast('Final entry sa neda presunut do Trash (needitovatelna/nezmazatelna).');
+    return false;
+  }
+  // === [Zzz10-V1:REGISTER-LOCK] (SYSTEM FUNCTION) - Vrso 2026-08-28: "user id moze skoncit v trash? ...
+  // verifikacne databazy musia byt uplne oddelene od databaz kvoli max citlivym datam". Registracne zaznamy
+  // (fields_json.r3 === 'Register' - obsahuju username, aktivacny kod R34, user ID R36) NIKDY nesmu skoncit
+  // v Trash: Trash ma podla RLS SELECT pristup pre "anon" (siroko citatelne) a je NAVRHNUTA ako TRVALA/
+  // needitovatelna (ziadna DELETE/UPDATE politika) - citlive registracne udaje by tak boli navzdy uzamknute
+  // v mieste, kam vobec nepatria. Docasna/rychla poistka (Option A) - definitivne riesenie (Option B, plne
+  // oddelenie registracie do verso_verification) caka na dalsie spracovanie. | Vrso -> Claude AI | 2026-08-28 ===
+  if (zzz4_0_get_field_value(row, { key: 'r3' }) === 'Register') {
+    zzz6f2_show_toast('Registracny zaznam sa neda presunut do Trash (citlive udaje - Zzz10-V1:REGISTER-LOCK).');
     return false;
   }
   const currentUsername = zzz0r1_get_current_username();
@@ -3811,7 +3940,12 @@ async function zzz6f34_move_row_to_trash(row) {
   if (!insertOk) {
     console.error(`Zzz6-F34 Move KROK 1 (insert do verso_trash) zlyhal AJ po 2. pokuse - presun PRERUSENY, riadok NEBOL zmazany z verso_entries. Over ci tabulka "verso_trash" existuje v Supabase so spravnymi stlpcami. DOVOD: ${lastInsertErrDetail}`);
     zzz0r1_set_db_connection_state(false, lastInsertErrDetail, true);
-    zzz6f2_show_toast(`Presun do Trash zlyhal - insert (#${row.entry_id})`);
+    // Zzz6-F34:RETRY-SYNC (Vrso 2026-08-28, "vsetko vzdy") - PREDTYM sa tu len nahlasila chyba a NIC dalej;
+    // presun bolo treba spustit rucne znova. Teraz sa cely presun (KROK 1 nikdy neuspel, teda bezpecne
+    // opakovatelny) zaradi do fronty a automaticky sa skusi znova pri obnoveni spojenia.
+    zzz6f34_pendingMoves[row.entry_id] = row;
+    zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_MOVES_KEY, zzz6f34_pendingMoves);
+    if (!silent) zzz6f2_show_toast(`Presun do Trash zlyhal - insert (#${row.entry_id}), skusi sa automaticky znova`);
     return false;
   }
 
@@ -3829,7 +3963,12 @@ async function zzz6f34_move_row_to_trash(row) {
       const errDetail = (deleteError && (deleteError.message || deleteError.details || deleteError.hint)) || String(deleteError);
       console.error(`Zzz6-F34 Move KROK 2 (delete z verso_entries) zlyhal - zaznam JE v Trash, ale ostal AJ v Zzz4-0. DOVOD: ${errDetail}`);
       zzz0r1_set_db_connection_state(false, errDetail, true);
-      zzz6f2_show_toast(`Zaznam #${row.entry_id} v Trash, ale zostal aj v Zzz4-0 (chyba delete)`);
+      // Zzz6-F34:RETRY-SYNC (Vrso 2026-08-28) - toto je NEBEZPECNEJSI stav (duplicita v oboch tabulkach),
+      // PREDTYM zostal navzdy bez automatickej opravy. Teraz sa entry_id zaradi do fronty na delete-only
+      // retry (BEZ opatovneho insertu do Trash, ten uz uspesne prebehol).
+      zzz6f34_pendingDeletes[row.entry_id] = true;
+      zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_DELETES_KEY, zzz6f34_pendingDeletes);
+      if (!silent) zzz6f2_show_toast(`Zaznam #${row.entry_id} v Trash, ale zostal aj v Zzz4-0 (automaticky sa opravi)`);
       refresh_database_workspace_if_open();
       return false;
     }
@@ -3837,7 +3976,11 @@ async function zzz6f34_move_row_to_trash(row) {
       // ZIADNA JS/Supabase chyba, ale 0 riadkov skutocne zmazanych - typicky chybajuca RLS DELETE
       // policy na verso_entries (INSERT policy uz existuje, kedze zapis funguje, ale DELETE nie).
       console.error(`Zzz6-F34 Move KROK 2: delete vratil 0 riadkov BEZ chyby (#${row.entry_id}) - PODOZRENIE: chybajuca Supabase RLS DELETE policy na tabulke "verso_entries". Zaznam JE v Trash, ale ostal AJ v Zzz4-0.`);
-      zzz6f2_show_toast(`Zaznam #${row.entry_id} v Trash, ale zostal aj v Zzz4-0 (over RLS DELETE policy)`);
+      // Zzz6-F34:RETRY-SYNC - aj tento pripad sa zaradi do fronty (ak je to skutocne chybajuca RLS policy,
+      // retry to nevyriesi, ale ak islo o docasny problem, dalsi pokus uspeje bez zasahu usera).
+      zzz6f34_pendingDeletes[row.entry_id] = true;
+      zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_DELETES_KEY, zzz6f34_pendingDeletes);
+      if (!silent) zzz6f2_show_toast(`Zaznam #${row.entry_id} v Trash, ale zostal aj v Zzz4-0 (over RLS DELETE policy)`);
       refresh_database_workspace_if_open();
       return false;
     }
@@ -3845,7 +3988,9 @@ async function zzz6f34_move_row_to_trash(row) {
     const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
     console.error(`Zzz6-F34 Move KROK 2 (delete z verso_entries) neocakavana chyba - zaznam JE v Trash, ale ostal AJ v Zzz4-0. DOVOD: ${errDetail}`);
     zzz0r1_set_db_connection_state(false, errDetail, true);
-    zzz6f2_show_toast(`Zaznam #${row.entry_id} v Trash, ale zostal aj v Zzz4-0 (chyba delete)`);
+    zzz6f34_pendingDeletes[row.entry_id] = true;
+    zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_DELETES_KEY, zzz6f34_pendingDeletes);
+    if (!silent) zzz6f2_show_toast(`Zaznam #${row.entry_id} v Trash, ale zostal aj v Zzz4-0 (automaticky sa opravi)`);
     refresh_database_workspace_if_open();
     return false;
   }
@@ -3854,9 +3999,14 @@ async function zzz6f34_move_row_to_trash(row) {
   delete submittedEntriesCache[row.entry_id];
   delete submittedEntriesOwnerCache[row.entry_id];
   delete submittedEntriesFullCache[row.entry_id];
+  // Zzz6-F34:RETRY-SYNC - pre istotu vycisti frontu aj tu (napr. ak uspel manualny pokus mimo auto-sync)
+  delete zzz6f34_pendingMoves[row.entry_id];
+  delete zzz6f34_pendingDeletes[row.entry_id];
+  zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_MOVES_KEY, zzz6f34_pendingMoves);
+  zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_DELETES_KEY, zzz6f34_pendingDeletes);
 
   zzz0r1_set_db_connection_state(true);
-  zzz6f2_show_toast(`Zaznam #${row.entry_id} presunuty do Trash`);
+  if (!silent) zzz6f2_show_toast(`Zaznam #${row.entry_id} presunuty do Trash`);
   refresh_database_workspace_if_open();
   return true;
 }
@@ -4547,12 +4697,35 @@ async function zzz1_get_quickchips_entry() {
     // OPRAVA (Vrso 2026-08-25, "neda sa session cache pridat aj na samotnu databazu"): ROVNAKY vzor ako
     // uz existujuci open_database_workspace() - Promise.race s 4s timeoutom, aby sa pri zlyhavajucom/
     // pomalom Supabase spojeni nepocakalo neurcito dlho, ale RYCHLO prepadlo na lokalny fallback.
-    const fetchPromise = sb.from('verso_entries').select('*');
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Zzz1-QUICKCHIPS fetch timeout (4s)')), 4000)
-    );
-    const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
-    if (error) throw error;
+    // Zzz10-SCALE FIX (Vrso 2026-08-28, "preco nezapracujes na vela dat/entries"): predtym sa siahalo VSETKO
+    // (select('*') bez filtra) a filtrovalo sa az v JS - pri velkom mnozstve zaznamov by to znamenalo
+    // stahovat celu tabulku len kvoli JEDNEMU riadku. Teraz sa SKUSA filtrovat UZ NA STRANE Postgres cez
+    // JSON cestu vo fields_json (->> operator) - POZOR: toto funguje LEN ak je stlpec fields_json typu
+    // jsonb (nie text)! Ak je text, Postgrest tento filter odmietne chybou - preto je cely pokus v try/catch
+    // s automatickym fallbackom na povodny plny fetch, takze funkcnost sa NIKDY nerozbije, len sa neusetri
+    // prenos dat, kym Vrso stlpec neprekonvertuje na jsonb (ALTER TABLE verso_entries ALTER COLUMN
+    // fields_json TYPE jsonb USING fields_json::jsonb;).
+    let data = null;
+    try {
+      const fetchPromise = sb.from('verso_entries').select('*')
+        .filter('fields_json->>r5', 'eq', 'QuickChips')
+        .filter('fields_json->>r4', 'eq', current);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Zzz1-QUICKCHIPS fetch timeout (4s)')), 4000)
+      );
+      const result = await Promise.race([fetchPromise, timeoutPromise]);
+      if (result.error) throw result.error;
+      data = result.data;
+    } catch (jsonFilterErr) {
+      console.warn('Zzz10-SCALE - JSON filter na fields_json zlyhal (pravdepodobne stlpec nie je jsonb), fallback na plny fetch:', jsonFilterErr);
+      const fetchPromise = sb.from('verso_entries').select('*');
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Zzz1-QUICKCHIPS fetch timeout (4s)')), 4000)
+      );
+      const result = await Promise.race([fetchPromise, timeoutPromise]);
+      if (result.error) throw result.error;
+      data = result.data;
+    }
     const found = (data || []).find(matches);
     if (found) return found;
   } catch (err) {
@@ -4597,10 +4770,20 @@ async function zzz1_save_my_quickchips(chips) {
     fields.r_quickchips = JSON.stringify(chips);
     payload = { ...row, fields_json: JSON.stringify(fields), updated_at: new Date().toISOString() };
   } else {
-    // Zzz6-F2 UPDATE (2026-08-26): rovnaka RPC oprava ako v submit_entries_to_db (atomicke
-    // cislovanie namiesto client-side MAX+1).
-    const { data: nextIdData } = await sb.rpc('get_next_entry_id');
-    const nextId = nextIdData;
+    // OPRAVA (Vrso 2026-08-28, "je vsetko zapracovane vo vsetkych databazach a procesoch?"): predtym mal
+    // tento kod VLASTNE, samostatne "sb.rpc('get_next_entry_id')" volanie - bez timeoutu, bez error
+    // handlingu, bez offline-fallback cisla, mimo cele Zzz1-D1:RETRY-SYNC/Zzz4-1:OFFLINE-SYNC prostredie.
+    // Teraz pouziva ROVNAKU zdielanu funkciu ako submit_entries_to_db (zzz6f2_get_next_entry_id_atomic) -
+    // rovnaky 4s timeout + rovnaky offline fallback (klientsky MAX+1), DRY.
+    const atomicResult = await zzz6f2_get_next_entry_id_atomic();
+    let nextId;
+    if (atomicResult.success) {
+      nextId = atomicResult.id;
+    } else {
+      console.warn(`Zzz1-QUICKCHIPS - RPC get_next_entry_id zlyhalo, docasny klientsky fallback. DOVOD: ${atomicResult.error}`);
+      const knownEntries = await zzz6f2_get_known_entries();
+      nextId = zzz6f2_compute_next_entry_id(knownEntries);
+    }
     fields = { r2: '', r3: 'QuickChips', r4: current, r5: 'QuickChips', r7: 'ano', r_quickchips: JSON.stringify(chips) };
     payload = { entry_id: nextId, r1: '', fields_json: JSON.stringify(fields), entry_date: zzz6f14_format_today(), username: current, updated_at: new Date().toISOString() };
   }
@@ -4608,9 +4791,17 @@ async function zzz1_save_my_quickchips(chips) {
     const { error } = await sb.from('verso_entries').upsert(payload, { onConflict: 'entry_id' });
     if (error) throw error;
     submittedEntriesFullCache[payload.entry_id] = payload;
+    delete zzz4_0_unsyncedEntryIds[payload.entry_id]; // Zzz1-D1:RETRY-SYNC - uspesne, netreba retry
+    zzz4_0_save_unsynced_entries_to_storage();
     return true;
   } catch (err) {
     console.warn('Zzz1-QUICKCHIPS DB zapis zlyhal (offline/preview limit) - chip OSTAVA zachovany v session-cache:', err);
+    // OPRAVA (Vrso 2026-08-28): predtym sa pri zlyhani NIC dalej nedialo - zaznam sa nikdy neskusil zapisat
+    // znova. Teraz sa zapoji do TOHO ISTEHO automatickeho retry mechanizmu ako vsetky ostatne zapisy
+    // (Zzz1-D1:RETRY-SYNC, spusti sa automaticky pri obnoveni spojenia).
+    submittedEntriesFullCache[payload.entry_id] = payload;
+    zzz4_0_unsyncedEntryIds[payload.entry_id] = true;
+    zzz4_0_save_unsynced_entries_to_storage();
     return false;
   }
 }
@@ -5673,7 +5864,10 @@ async function zzz6f2_get_known_entries() {
   return remoteEntries.concat(localEntries);
 }
 
-// posledne priradene cislo entry_id v databaze + 1
+// posledne priradene cislo entry_id v databaze + 1 - FALLBACK LEN (Vrso 2026-08-27): odkedy existuje
+// Zzz6-F2:ATOMIC-COUNTER (RPC get_next_entry_id), tato funkcia sa uz NEPOUZIVA ako primarny zdroj cisla pri
+// online zapise (nevie zabranit kolizii pri sucasnom pristupe viacerych userov/entries) - zostava aktivna
+// LEN ako docasny fallback pri vypadku spojenia (viz submit_entries_to_db + Zzz4-1:OFFLINE-SYNC nizsie).
 function zzz6f2_compute_next_entry_id(knownEntries) {
   let maxId = 0;
   knownEntries.forEach(({ entry_id }) => {
@@ -5683,20 +5877,91 @@ function zzz6f2_compute_next_entry_id(knownEntries) {
   return String(maxId + 1);
 }
 
-// === [Zzz6-F22:NO-DOUBLE-ENTRIES] (SYSTEM FUNCTION) - Vrso 2026-08-20 request ===
+// === [Zzz6-F2:ATOMIC-COUNTER] (SYSTEM FUNCTION) - Vrso 2026-08-27: "bude to stacit aj pri
+// tisickach/milionoch entries a users?" - odpoved: klientske MAX+1 pocitanie (zzz6f2_compute_next_entry_id
+// vyssie) NEVIE zabranit kolizii pri sucasnom pristupe viacerych userov (dvaja useria mozu vypocitat rovnake
+// cislo naraz, ak obaja citaju databazu PRED tym, nez ten druhy stihne zapisat). RIESENIE: pridelovanie
+// cisla PRIAMO v Postgres cez RPC funkciu 'get_next_entry_id' (bakovana SEQUENCE 'verso_entry_id_seq',
+// uz nastavena v Supabase, viz Vrso potvrdenie 2026-08-27) - nextval() na sequence je ATOMICKA operacia,
+// garantuje unikatnost aj pri tisickach/milionoch sucasnych zapisov (Postgres to interne serializuje).
+// POZOR (uprimny limit, ostava pri velkom meritku): toto RIESI race condition pri cislovani. NERIESI
+// vsak vykonnostny strop `select('*')` bez LIMIT/pagination pouzivany inde v subore (zzz6f2_get_known_entries,
+// Database Workspace fetch a pod.) - pri miliónoch riadkov by tieto volania boli pomale/tazke na data.
+// To je samostatny buduci krok (stránkovanie/keyset pagination), zatial NEIMPLEMENTOVANE.
+async function zzz6f2_get_next_entry_id_atomic() {
+  try {
+    // FIX (Vrso 2026-08-28, "ked je system offline bude mat pridelene aspon lokalne entry number?"):
+    // predtym TOTO volanie nemalo ZIADNY casovy limit - pri skutocnom offline stave (nie len pomalom
+    // pripojeni) mohol prehliadac cakat desiatky sekund na fetch, nez by appka vobec zacala pouzivat
+    // lokalny fallback nizsie v submit_entries_to_db. Teraz rovnaky 4s Promise.race vzor ako vsade inde
+    // v subore - offline sa rozpozna rychlo, lokalne cislo sa pridelí takmer okamzite.
+    const rpcPromise = sb.rpc('get_next_entry_id');
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Zzz6-F2:ATOMIC-COUNTER RPC timeout (4s)')), 4000)
+    );
+    const { data, error } = await Promise.race([rpcPromise, timeoutPromise]);
+    if (error) throw error;
+    if (data === null || data === undefined) throw new Error('RPC vratilo prazdnu hodnotu');
+    return { success: true, id: String(data) };
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    return { success: false, id: null, error: errDetail };
+  }
+}
+// === [/Zzz6-F2:ATOMIC-COUNTER] ===
+
+// === [Zzz10-V1:USER-ID] (SYSTEM FUNCTION) - Vrso 2026-08-28: "cislo asi istejsie" - stabilne NUMERICKE ID
+// pridelene KAZDEMU userovi RAZ, pri uspesnej registracii (viz zzz10v1_submit_register nizsie v subore).
+// Username OSTAVA hlavny identifikator vo VSETKEJ existujucej logike (Zzz0-R1, zzz0r1_can_edit, R4 Project
+// Owner, R17 tagovanie...) - NIC z toho sa NEMENI. Toto cislo je zatial LEN ulozene popri username (R36/
+// fields_json.r36), pripravene pre buducu potrebu (napr. ak by sa niekedy povolila zmena username - cislo
+// by prezilo, na rozdiel od textoveho mena). Rovnaky princip ako Zzz6-F2:ATOMIC-COUNTER vyssie - AKO SAMOSTATNA
+// Postgres SEQUENCE (nie tá isté ako entry_id, aby cisla userov a entries nekolidovali/nemiesali sa).
+// SQL, ktore MUSI Vrso spustit v Supabase SQL Editore (viz sprievodny text mimo kodu pre cely zoznam):
+//   CREATE SEQUENCE IF NOT EXISTS verso_user_id_seq START 1;
+//   CREATE OR REPLACE FUNCTION get_next_user_id() RETURNS INT LANGUAGE sql AS $$ SELECT nextval('verso_user_id_seq')::int; $$;
+async function zzz10v1_get_next_user_id_atomic() {
+  try {
+    const { data, error } = await sb.rpc('get_next_user_id');
+    if (error) throw error;
+    if (data === null || data === undefined) throw new Error('RPC vratilo prazdnu hodnotu');
+    return { success: true, id: String(data) };
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    return { success: false, id: null, error: errDetail };
+  }
+}
+// === [/Zzz10-V1:USER-ID] ===
+
+// === [Zzz6-F22:NO-DOUBLE-ENTRIES] (SYSTEM FUNCTION) - Vrso 2026-08-20 request, PRESUNUTE NA DB-SIDE 2026-08-28 ===
 // POZOR: toto je oznacene ako SYSTEM FUNCTION (rovnaky princip ako Zzz0-R1/Zzz6-F7/Zzz6-F2) - zmenu tejto
 // logiky musi vyslovne schvalit project owner (Vrso). Zabranuje vlozeniu DVOCH ROVNAKYCH Zzz1-M2 Entry Line
 // (CELY obsah CL - vsetky vyplnene R* bunky, nie len R1) do databazy naraz.
-// KRIZOVY ODKAZ: technicka implementacia zostava pod Zzz6-F2 (AUTO-NUMBER blok vyssie, nemeni sa aby sa nic
-// nerozbilo) - tento tag len oficialne oznacuje/dokumentuje TU ISTU funkciu aj pod Zzz6-F22, kedze sa tyka
-// R22/entry-submission integrity. Zzz6-F22 tak teraz pokriva DVE prepojene, ale odlisne veci: (a) povodne
-// Zzz6-F22:ACKNOWLEDGEMENT (credits/autorstvo, viz [Zzz6-F22:ACKNOWLEDGEMENT] nizsie), (b) toto
-// Zzz6-F22:NO-DOUBLE-ENTRIES (SYSTEM FUNCTION, duplicate-check pri kazdom zapise). Skutocna funkcia:
-// vrati existujuci zaznam, ak je CELY CL summary (nie len r1) zhodny s uz ulozenym zaznamom
-function zzz6f2_find_duplicate(knownEntries, summary) {
-  const normalized = (summary || '').trim();
-  if (!normalized) return null;
-  return knownEntries.find(e => (e.summary || '').trim() === normalized) || null;
+// SKALOVATELNOST FIX (Vrso 2026-08-28, "preco nezapracujes na vela dat/entries"): povodna funkcia
+// zzz6f2_find_duplicate() porovnavala proti VSETKYM doteraz stiahnutym zaznamom (plny fetch tabulky) - pri
+// tisickach/milionoch zaznamov neefektivne. NAHRADENE: content_hash stlpec (SHA-256, viz
+// zzz6f2_compute_content_hash nizsie) + Postgres UNIQUE index - Postgres samotny odmietne duplicitny insert
+// (error.code '23505'), bez ohladu na velkost tabulky, viz error handling v submit_entries_to_db. Rychly
+// LOKALNY pre-check (submittedEntriesFullCache, bez network) zostava priamo v submit_entries_to_db.
+// KRIZOVY ODKAZ: viz aj [Zzz6-F2:ATOMIC-COUNTER] vyssie v subore. Zzz6-F22 pokriva DVE prepojene, ale
+// odlisne veci: (a) povodne Zzz6-F22:ACKNOWLEDGEMENT (credits/autorstvo, viz [Zzz6-F22:ACKNOWLEDGEMENT]
+// nizsie), (b) toto Zzz6-F22:NO-DOUBLE-ENTRIES (SYSTEM FUNCTION, teraz DB-side).
+//
+// SQL, ktore MUSI Vrso spustit v Supabase SQL Editore (viz sprievodny text mimo kodu pre cely zoznam):
+//   ALTER TABLE verso_entries ADD COLUMN IF NOT EXISTS content_hash text;
+//   CREATE UNIQUE INDEX IF NOT EXISTS verso_entries_content_hash_unique ON verso_entries (content_hash)
+//     WHERE content_hash IS NOT NULL;
+async function zzz6f2_compute_content_hash(text) {
+  const normalized = (text || '').trim();
+  if (!normalized) return null; // prazdny CL sa nehashuje (viac prazdnych zaznamov je OK, WHERE NOT NULL v indexe)
+  try {
+    const encoded = new TextEncoder().encode(normalized);
+    const digestBuffer = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(digestBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (e) {
+    console.warn('Zzz6-F22:NO-DOUBLE-ENTRIES - crypto.subtle nedostupne, content_hash sa vynecha pre tento zaznam:', e);
+    return null; // hash sa nevypocital - DB UNIQUE constraint sa jednoducho pre tento zaznam neuplatni (nie kriticke, lokalny pre-check stale funguje)
+  }
 }
 // === [/Zzz6-F22:NO-DOUBLE-ENTRIES] ===
 
@@ -5733,7 +5998,40 @@ function zzz6f2_update_entry_number_button(entryId) {
 // potvrdi az po obnoveni spojenia. Plnohodnotny offline->fixne cislo mechanizmus (docasne oznacenie,
 // prevod na fixne po reconnect) je planovany samostatne neskor - toto je zatial zakladna verzia.
 
-const zzz4f1ConfirmedNumbersCache = {}; // lokalna cache: entry_id -> {username, confirmed_at} (offline fallback)
+// === [Zzz4-1:OFFLINE-SYNC] (SYSTEM FUNCTION) - Vrso 2026-08-24 request: "ak by bol system offline od verif
+// databazy a nasledne sa pripojil, aby entries dostali patricne entry numbers". PREDTYM (viz OFFLINE
+// POZNAMKA vyssie) zzz4f1ConfirmedNumbersCache bola LEN in-memory (JS objekt) - pri offline potvrdeni sa
+// cislo ulozilo len docasne v pamati a: (a) po reloade stranky sa STRATILO uplne, (b) aj ked appka bezala
+// dalej, NIKDY sa neskusilo znova poslat do Supabase, ked sa spojenie obnovilo - potvrdenie tak v realnej
+// (vzdialenej) Zzz4-1 tabulke NIKDY nevzniklo, kym niekto rucne neobnovil stranku a nevytvoril NOVY zaznam.
+// RIESENIE: 1) cache sa teraz uklada aj do localStorage (prezije reload), 2) kazdy zaznam ma flag `synced`,
+// 3) pri detekcii OBNOVENIA spojenia (prechod offline -> online, viz zzz0r1_set_db_connection_state nizsie
+// v subore) sa automaticky spusti zzz4f1_sync_pending_confirmations(), ktora pre kazde este-nesynchronizovane
+// cislo: over ci je stale volne (niekto iny mohol medzitym cislo obsadit) - ak ANO, potvrdi ho pod povodnym
+// cislom; ak NIE (kolizia), PRECISLUJE dany zaznam (Zzz4-0 aj Zzz4-1) na najblizsie volne cislo a upozorni
+// usera toastom. | Vrso -> Claude AI | 2026-08-24 ===
+const ZZZ4F1_OFFLINE_CACHE_KEY = 'verso_zzz4f1_pending_confirmations';
+
+function zzz4f1_load_confirmed_numbers_cache_from_storage() {
+  try {
+    const raw = localStorage.getItem(ZZZ4F1_OFFLINE_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function zzz4f1_save_confirmed_numbers_cache_to_storage() {
+  try {
+    localStorage.setItem(ZZZ4F1_OFFLINE_CACHE_KEY, JSON.stringify(zzz4f1ConfirmedNumbersCache));
+  } catch (e) {
+    console.warn('Zzz4-1:OFFLINE-SYNC localStorage zapis zlyhal (napr. private mode) - offline cache ostava len in-memory:', e);
+  }
+}
+
+// entry_id -> {username, confirmed_at, synced} (offline fallback, TERAZ AJ v localStorage - prezije reload)
+const zzz4f1ConfirmedNumbersCache = zzz4f1_load_confirmed_numbers_cache_from_storage();
 
 // nacita vsetky UZ POTVRDENE entry_id z Zzz4-1 (verso_verification, record_type='entry_number_confirmation')
 // - rovnaky vzor ako zzz6f2_get_known_entries (Supabase best-effort s 4s timeoutom + VZDY aj lokalna cache)
@@ -5765,11 +6063,16 @@ async function zzz4f1_get_confirmed_entry_numbers() {
 
 // zapise POTVRDENIE cisla entryId do Zzz4-1 (verso_verification) - MUSI byt zavolane/dokoncene PRED
 // akymkolvek zapisom Entry Line do Zzz4-0 (verso_entries), viz volanie v submit_entries_to_db nizsie.
-async function zzz4f1_confirm_entry_number(entryId, username) {
+async function zzz4f1_confirm_entry_number(entryId, username, isOfflineTemp = false) {
   const confirmedAt = new Date().toISOString();
 
-  // 1) lokalne OKAMZITE (nezavisle od siete) - viz OFFLINE POZNAMKA vyssie
-  zzz4f1ConfirmedNumbersCache[entryId] = { username, confirmed_at: confirmedAt };
+  // 1) lokalne OKAMZITE (nezavisle od siete) - viz OFFLINE POZNAMKA vyssie. synced:false = zatial nepotvrdene
+  // vzdialene, cim je kandidat pre zzz4f1_sync_pending_confirmations() pri buducom obnoveni spojenia.
+  // isOfflineTemp (Zzz6-F2:ATOMIC-COUNTER, 2026-08-27): true = toto entryId NEPOCHADZA z atomickeho RPC
+  // (bol pridelene len docasnym klientskym MAX+1 vypoctom pri offline vypadku RPC) - sync funkcia preto pri
+  // reconnecte MUSI ziskat NOVE skutocne cislo z RPC (nie len skusit znova potvrdit TOTO iste cislo).
+  zzz4f1ConfirmedNumbersCache[entryId] = { username, confirmed_at: confirmedAt, synced: false, isOfflineTemp };
+  zzz4f1_save_confirmed_numbers_cache_to_storage(); // Zzz4-1:OFFLINE-SYNC - prezije aj reload stranky
 
   // 2) pokus o realny zapis do Supabase (verso_verification)
   const payload = {
@@ -5780,13 +6083,22 @@ async function zzz4f1_confirm_entry_number(entryId, username) {
   };
 
   try {
-    const { error } = await sb.from('verso_verification').upsert(payload, { onConflict: 'id' });
+    // FIX (Vrso 2026-08-28, offline scenario check): pridany 4s timeout, rovnaky dovod ako pri
+    // zzz6f2_get_next_entry_id_atomic vyssie - bez neho by toto volanie mohlo pri skutocnom offline stave
+    // dlho visiet, aj ked lokalne (krok 1 vyssie) je cislo uz davno zaznamenane.
+    const upsertPromise = sb.from('verso_verification').upsert(payload, { onConflict: 'id' });
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Zzz4-1 upsert timeout (4s)')), 4000)
+    );
+    const { error } = await Promise.race([upsertPromise, timeoutPromise]);
     if (error) {
       const errDetail = (error && (error.message || error.details || error.hint)) || String(error);
       console.error(`Zzz4-1 Supabase error (potvrdenie entry number #${entryId} zlyhalo vzdialene, lokalne je ale zaznamenane). DOVOD: ${errDetail}`);
       zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
       return { success: false, error: errDetail };
     }
+    zzz4f1ConfirmedNumbersCache[entryId].synced = true; // Zzz4-1:OFFLINE-SYNC - uspesne vzdialene potvrdene
+    zzz4f1_save_confirmed_numbers_cache_to_storage();
     zzz0r1_set_db_connection_state(true); // Zzz6-F7:DB-CONNECTION
     return { success: true, error: null };
   } catch (err) {
@@ -5797,6 +6109,114 @@ async function zzz4f1_confirm_entry_number(entryId, username) {
   }
 }
 // === [/Zzz4-1:ENTRY-NUMBER-CONFIRMATION] ===
+
+// === [Zzz4-1:OFFLINE-SYNC] hlavna synchronizacna funkcia - Vrso 2026-08-24, ZJEDNODUSENE 2026-08-27 po
+// zavedeni Zzz6-F2:ATOMIC-COUNTER (RPC get_next_entry_id / verso_entry_id_seq, viz submit_entries_to_db) ===
+// Spusti sa automaticky pri detekcii OBNOVENIA spojenia (offline -> online prechod, viz hook v
+// zzz0r1_set_db_connection_state nizsie v subore). Prejde vsetky LOKALNE potvrdenia, ktore este NEBOLI
+// uspesne zapisane vzdialene (synced === false), a pre kazde:
+//   1) ak islo o DOCASNE cislo (isOfflineTemp === true, pridelene klientskym MAX+1 fallbackom, kedze RPC
+//      vtedy nebolo dostupne) -> poziada TERAZ (uz online) atomicky RPC counter o SKUTOCNE, garantovane
+//      unikatne cislo a zaznam PRECISLUJE (Zzz4-1 aj Zzz4-0, vratane vsetkych lokalnych cache)
+//   2) ak islo o REALNE atomicke cislo (isOfflineTemp === false, len samotne POTVRDENIE do Zzz4-1 zlyhalo
+//      vzdialene, napr. kratky vypadok) -> staci znova skusit zapisat POD TYM ISTYM cislom (ziadne
+//      precislovanie, atomicke cislo z RPC uz je garantovane unikatne, nemoze kolidovat)
+// VYHODA oproti povodnej verzii (do 2026-08-26): uz sa NEMUSI rucne overovat "je cislo volne" cez fetch
+// celych tabuliek verso_verification/verso_entries - atomicky RPC counter je AUTORITATIVNY zdroj, takze
+// akekolvek cislo, ktore vrati, je vzdy zarucene volne, bez ohladu na to, kolko inych userov medzitym
+// pribudlo. Toto je zaroven odpoved na otazku skalovatelnosti pri tisickach/milionoch userov - kolizia sa
+// uz na urovni RPC volania stat nemoze (nextval() na Postgres sequence je atomicka operacia).
+let zzz4f1_syncInProgress = false; // zabrani sucasnemu bezaniu viacerych sync-behov naraz (napr. viacnasobne rychle reconnect eventy)
+
+async function zzz4f1_sync_pending_confirmations() {
+  if (zzz4f1_syncInProgress) return;
+  const pendingIds = Object.keys(zzz4f1ConfirmedNumbersCache).filter(id => !zzz4f1ConfirmedNumbersCache[id].synced);
+  if (pendingIds.length === 0) return; // nic na synchronizaciu
+
+  zzz4f1_syncInProgress = true;
+  console.log(`Zzz4-1:OFFLINE-SYNC - spojenie obnovene, synchronizujem ${pendingIds.length} offline potvrdenie(a):`, pendingIds);
+
+  try {
+    // zorad podla confirmed_at (najstarsie prve) - zachova poradie, v akom boli offline vytvorene
+    pendingIds.sort((a, b) => {
+      const ta = new Date(zzz4f1ConfirmedNumbersCache[a].confirmed_at).getTime();
+      const tb = new Date(zzz4f1ConfirmedNumbersCache[b].confirmed_at).getTime();
+      return ta - tb;
+    });
+
+    for (const oldId of pendingIds) {
+      const record = zzz4f1ConfirmedNumbersCache[oldId];
+      if (!record || record.synced) continue; // uz vybavene v predoslej iteracii (napr. renumber ineho zaznamu ho medzicasom stiahol)
+
+      let finalId = oldId;
+      if (record.isOfflineTemp) {
+        // 1) docasne (klientske) cislo -> teraz uz online, poziada o SKUTOCNE atomicke z RPC
+        const atomicResult = await zzz6f2_get_next_entry_id_atomic();
+        if (atomicResult.success) {
+          finalId = atomicResult.id;
+          if (finalId !== oldId) {
+            zzz4f1_renumber_local_entry(oldId, finalId);
+            console.warn(`Zzz4-1:OFFLINE-SYNC - docasne offline cislo #${oldId} nahradene skutocnym atomickym #${finalId}`);
+          }
+        } else {
+          // RPC zlyhalo aj TERAZ (vynimocne) - sync tohto zaznamu preskoc, skusi sa znova pri dalsom reconnecte
+          console.warn(`Zzz4-1:OFFLINE-SYNC - RPC stale nedostupne pre #${oldId}, sync tohto zaznamu odlozeny`);
+          continue;
+        }
+      }
+      // 2) inak (realne atomicke cislo, len potvrdenie zlyhalo) -> ziadne precislovanie, skusi sa znova pod tym istym
+
+      // 3) zapis potvrdenia (pod finalnym cislom) do Zzz4-1
+      const confirmResult = await zzz4f1_confirm_entry_number(finalId, record.username, false);
+
+      // 4) ak pod finalnym cislom existuje uz aj zapisany Entry Line (Zzz4-0), zapis/preupsertuj ho
+      if (submittedEntriesFullCache[finalId]) {
+        try {
+          const { error: entriesError } = await sb.from('verso_entries')
+            .upsert(submittedEntriesFullCache[finalId], { onConflict: 'entry_id' })
+            .select();
+          if (entriesError) {
+            const errDetail = (entriesError.message || entriesError.details || entriesError.hint) || String(entriesError);
+            console.error(`Zzz4-1:OFFLINE-SYNC - dodatocny zapis Entry Line #${finalId} do Zzz4-0 zlyhal. DOVOD: ${errDetail}`);
+          }
+        } catch (err) {
+          console.error('Zzz4-1:OFFLINE-SYNC - neocakavana chyba pri dodatocnom zapise do Zzz4-0:', err);
+        }
+      }
+
+      // 5) precistenie stareho zaznamu z cache (ak sa premenoval) a ulozenie stavu
+      if (finalId !== oldId) delete zzz4f1ConfirmedNumbersCache[oldId];
+      if (confirmResult.success) {
+        zzz6f2_show_toast(finalId !== oldId
+          ? `Offline zaznam #${oldId} bol po pripojeni precislovany na #${finalId}`
+          : `Offline zaznam #${finalId} bol uspesne synchronizovany`);
+      }
+      zzz4f1_save_confirmed_numbers_cache_to_storage();
+      refresh_database_workspace_if_open(); // Zzz4-0 zobrazenie moze byt teraz zastarale (precislovanie)
+    }
+  } finally {
+    zzz4f1_syncInProgress = false;
+  }
+}
+
+// prevedie VSETKY lokalne cache zaznamy z oldId na newId (submittedEntriesFullCache/Cache/OwnerCache) -
+// pouzite pri precislovani docasneho offline cisla na skutocne atomicke pri sync-e
+function zzz4f1_renumber_local_entry(oldId, newId) {
+  if (submittedEntriesFullCache[oldId]) {
+    const movedPayload = { ...submittedEntriesFullCache[oldId], entry_id: newId };
+    submittedEntriesFullCache[newId] = movedPayload;
+    delete submittedEntriesFullCache[oldId];
+  }
+  if (submittedEntriesCache[oldId] !== undefined) {
+    submittedEntriesCache[newId] = submittedEntriesCache[oldId];
+    delete submittedEntriesCache[oldId];
+  }
+  if (submittedEntriesOwnerCache[oldId] !== undefined) {
+    submittedEntriesOwnerCache[newId] = submittedEntriesOwnerCache[oldId];
+    delete submittedEntriesOwnerCache[oldId];
+  }
+}
+// === [/Zzz4-1:OFFLINE-SYNC] ===
 
 // === [Zzz6-F14:AUTO-DATE] automaticke zobrazenie aktualneho datumu na Zzz1-R14/Zzz1-R14a po zapise do databazy (automatic date - non editable) | Vrso -> Claude AI | 2026-08-18 ===
 // Rovnaky princip ako Zzz6-F2 pre Zzz1-R1a (ENTRY NUMBER #x): Zzz1-R14a je needitovatelny button
@@ -5927,6 +6347,9 @@ function zzz6f7_set_login_state(isLoggedIn) {
 // po sebe (napr. viacero paralelnych/nasledujucich Supabase fetchov zlyha naraz). Do console.warn/error
 // sa DOVOD zapisuje VZDY (nic sa nestraca pre debugging), obmedzuje sa LEN opakovany vizualny toast.
 let zzz0r1_lastDbErrorToastAt = 0;
+// === [Zzz4-1:OFFLINE-SYNC] sleduje PREDOSLY stav spojenia, aby sa dal presne zachytit prechod offline ->
+// online (nie kazde volanie s isConnected=true, len SKUTOCNY prechod) - null = este neznamy (prvy beh appky). ===
+let zzz0r1_lastKnownConnectionState = null;
 // suppressToast (2026-08-23, Vrso hlasenie "dva prekryvajuce sa toasty naraz"): niektore volajuce funkcie
 // (napr. Zzz6-F34 Move) uz zobrazuju VLASTNY presnejsi toast pre tu istu chybu - suppressToast=true potom
 // zabrani DUPLICITNEMU vseobecnemu "DB chyba: ..." toastu (vizualny border-stav sa aj tak vzdy aktualizuje).
@@ -5942,6 +6365,22 @@ function zzz0r1_set_db_connection_state(isConnected, errorDetail, suppressToast 
       zzz6f2_show_toast(`DB chyba: ${errorDetail}`);
     }
   }
+  // === [Zzz4-1:OFFLINE-SYNC] AUTOMATICKY trigger - Vrso 2026-08-24: "ak by bol system offline od verif
+  // databazy a nasledne sa pripojil, aby entries dostali patricne entry numbers". Detekuje PRESNE prechod
+  // offline (false/null) -> online (true) a hned spusti zzz4f1_sync_pending_confirmations() (definovana
+  // vyssie v subore) - zzz4f1_syncInProgress vo vnutri zaruci, ze sa nespusti viackrat naraz pri rychlo za
+  // sebou iducich reconnect eventoch.
+  // ROZSIRENE (Zzz1-D1:RETRY-SYNC, Vrso 2026-08-28 "je online system ale nepodari sa zaznam?"): ROVNAKY
+  // trigger teraz VOLA AJ zzz4_0_sync_pending_entries() - retry pre zaznamy, ktorym zlyhal SAMOTNY zapis do
+  // verso_entries (nie len potvrdenie cisla, ktore uz riesi zzz4f1_sync_pending_confirmations vyssie).
+  // ROZSIRENE (Zzz6-F34:RETRY-SYNC, Vrso 2026-08-28 "Trash musi byt zapracovany vsetko vzdy"): ROVNAKY
+  // trigger teraz VOLA AJ zzz6f34_sync_pending_trash() - dokonci nedokoncene presuny do Trash.
+  if (isConnected && zzz0r1_lastKnownConnectionState !== true) {
+    zzz4f1_sync_pending_confirmations();
+    zzz4_0_sync_pending_entries();
+    zzz6f34_sync_pending_trash();
+  }
+  zzz0r1_lastKnownConnectionState = isConnected;
 }
 // === [/Zzz6-F7:DB-CONNECTION] ===
 
@@ -5983,6 +6422,83 @@ const submittedEntriesOwnerCache = {};
 const submittedEntriesFullCache = {};
 // === [/Zzz0-R1:OWNERSHIP] (helpers) ===
 
+// === [Zzz1-D1:RETRY-SYNC] (SYSTEM FUNCTION) - Vrso 2026-08-28: "myslel si aj na situaciu ze je online
+// system ale nepodari sa zaznam?" ODPOVED: nie, predtym nie - existujuci Zzz4-1:OFFLINE-SYNC retry-uje LEN
+// pripad, kedy zlyhalo samotne POTVRDENIE cisla (verso_verification). Ak vsak cislo bolo v poriadku
+// pridelene/potvrdene (system JE online), ale samotny zapis Entry Line do verso_entries zlyhal (docasny
+// vypadok Supabase, RLS problem, network hiccup...), ZIADNY mechanizmus to doteraz neopakoval - zaznam
+// ostal LEN v lokalnej cache navzdy, bez akehokolvek automatickeho pokusu o dohranie do databazy.
+// RIESENIE: samostatna cache neuspesnych verso_entries zapisov (entry_id -> true), persistentna cez
+// localStorage (prezije reload), s automatickym retry hookom PRESNE tam, kde uz beziaci Zzz4-1:OFFLINE-SYNC
+// (viz zzz0r1_set_db_connection_state nizsie v subore - jeden hook, oba mechanizmy).
+const ZZZ4_0_UNSYNCED_ENTRIES_KEY = 'verso_zzz4_0_unsynced_entries';
+
+function zzz4_0_load_unsynced_entries_from_storage() {
+  try {
+    const raw = localStorage.getItem(ZZZ4_0_UNSYNCED_ENTRIES_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function zzz4_0_save_unsynced_entries_to_storage() {
+  try {
+    localStorage.setItem(ZZZ4_0_UNSYNCED_ENTRIES_KEY, JSON.stringify(zzz4_0_unsyncedEntryIds));
+  } catch (e) {
+    console.warn('Zzz1-D1:RETRY-SYNC localStorage zapis zlyhal (napr. private mode) - zoznam ostava len in-memory:', e);
+  }
+}
+
+// entry_id -> true = tento zaznam este NIKDY neprebehol uspesne do verso_entries, caka na retry
+const zzz4_0_unsyncedEntryIds = zzz4_0_load_unsynced_entries_from_storage();
+let zzz4_0_entriesSyncInProgress = false; // zabrani sucasnemu bezaniu viacerych retry-behov naraz
+
+async function zzz4_0_sync_pending_entries() {
+  if (zzz4_0_entriesSyncInProgress) return;
+  const pendingIds = Object.keys(zzz4_0_unsyncedEntryIds);
+  if (pendingIds.length === 0) return;
+
+  zzz4_0_entriesSyncInProgress = true;
+  console.log(`Zzz1-D1:RETRY-SYNC - skusam dodatocne zapisat ${pendingIds.length} predtym neuspesny(ch) zaznam(ov):`, pendingIds);
+
+  try {
+    for (const entryId of pendingIds) {
+      const payload = submittedEntriesFullCache[entryId];
+      if (!payload) {
+        // uz neexistuje lokalne (napr. bol medzicasom zmazany/presunuty inou funkciou) - nic na retry
+        delete zzz4_0_unsyncedEntryIds[entryId];
+        continue;
+      }
+      try {
+        const { error } = await sb.from('verso_entries').upsert(payload, { onConflict: 'entry_id' }).select();
+        if (error) {
+          if (error.code === '23505') {
+            // duplicita - zaznam s tymto obsahom uz v databaze existuje (napr. sa medzicasom predsa len
+            // zapisal, alebo bol vytvoreny inde) - dalej retry-ovat nema zmysel, povazuj za vybavene
+            delete zzz4_0_unsyncedEntryIds[entryId];
+          } else {
+            console.warn(`Zzz1-D1:RETRY-SYNC - opakovany zapis entry #${entryId} zase zlyhal, skusi sa znova pri buducom pripojeni. DOVOD:`, error);
+            continue; // ostava v pending, retry sa pri dalsom reconnecte
+          }
+        } else {
+          delete zzz4_0_unsyncedEntryIds[entryId];
+          zzz6f2_show_toast(`Entry #${entryId} bol dodatocne uspesne ulozeny do databazy`);
+        }
+      } catch (err) {
+        console.warn(`Zzz1-D1:RETRY-SYNC - neocakavana chyba pri opakovanom zapise #${entryId}, skusi sa znova neskor:`, err);
+        continue;
+      }
+      zzz4_0_save_unsynced_entries_to_storage();
+      refresh_database_workspace_if_open();
+    }
+  } finally {
+    zzz4_0_entriesSyncInProgress = false;
+  }
+}
+// === [/Zzz1-D1:RETRY-SYNC] ===
+
 // === [Zzz2-R14:SUCCESS-FLASH-CL] vyrazne zelene bliknutie (presne 1 sekundu) CELEHO CL riadku R* DATA
 // buniek (.entry-cell + .priority-dot-button) po uspesnom zapise do databazy | Vrso -> Claude AI | 2026-08-20 ===
 // === [Zzz2-R14:INSERT-FLASH] entry_id posledne uspesne vlozeneho zaznamu, cakajuci na zvyraznenie v
@@ -5999,6 +6515,23 @@ function zzz1r_flash_all_cells_success() {
   }, 1000);
 }
 // === [/Zzz2-R14:SUCCESS-FLASH-CL] ===
+
+// === [Zzz4-0:LOCAL-STORAGE-VISION] (MEMO, NEIMPLEMENTOVANE - Vrso 2026-08-27) ===
+// POZIADAVKA (Vrso, doslovne): "myslim ze potom by bolo dobre urobit 4-database ako lokalnu (planujem
+// vyuzit pridelit userovi garantovane zadarmo nejaku pamat a cez sluzbu aj s virtualnym pc, nielen kvoli
+// cloudu ale aj ako online system ak ma pripojenie! Neskor pridam mozno nekonecny cloud a pod."
+// Interpretacia (pre buduce spracovanie, ZATIAL NIC z tohto nie je aktivne):
+//   1. Zzz4-0 (verso_entries) by mala mat LOKALNU vrstvu ako primarne/garantovane ulozisko pre kazdeho
+//      usera (nie len docasny offline-fallback cache ako teraz - Zzz4-1:OFFLINE-SYNC vyssie), s pevne
+//      pridelenou volnou kapacitou.
+//   2. Pripojenie na "sluzbu s virtualnym pc" - mimo rozsahu jedneho HTML/JS suboru (vyzaduje vlastny
+//      backend/hosting koncept), zatial nedefinovane.
+//   3. Supabase/cloud zostava POUZITY, ked je pripojenie k dispozicii (online sync), nie ako jediny zdroj.
+//   4. "Nekonecny cloud" ako buduci PLATENY/rozsireny tier - zatial ziadne detaily.
+// SUVISLOST s uz existujucim Zzz4-1:OFFLINE-SYNC (vyssie v subore): ten uz cast zakladov riesi (lokalna
+// cache prezivajuca reload, automaticka synchronizacia po reconnect) - buduca "plna lokalna databaza" by na
+// tomto pravdepodobne stavala, nie zacinala od nuly. Caka sa na dalsie instrukcie/definiciu rozsahu.
+// === [/Zzz4-0:LOCAL-STORAGE-VISION] (MEMO) ===
 
 // === [Zzz4-0:FLEX-SCHEMA] jeden extenzibilny stlpec fields_json namiesto samostatneho Supabase stlpca pre
 // kazde R* pole (Vrso 2026-08-20 request: "adekvatny stlpec... ako pri tagoch, kde je mozne rozsirovat ich
@@ -6019,6 +6552,7 @@ const FIELDS_JSON_KEYS = [
   ['33', 'r33'], // Zzz6-F2:AUTHOR-MANAGEMENT (SYSTEM FUNCTION) - per-user consent toggle, JSON {username: boolean}
   ['34', 'r34'], // Zzz10-V1:REGISTER-SETUP (SYSTEM FUNCTION) - system-generated ACTIVATION CODE (co by sa emailom poslalo)
   ['35', 'r35'], // Zzz10-V1:REGISTER-SETUP (SYSTEM FUNCTION) - USER-TYPED activation code (bunka na zadanie kodu, buduca overovacia logika)
+  ['36', 'r36'], // Zzz10-V1:USER-ID (SYSTEM FUNCTION) - stabilne numericke ID prideleneho usera pri registracii (atomicky RPC, Vrso 2026-08-28)
   ['17c', 'r17c'], // Zzz1-R17b consent mapa (Vrso 2026-08-25 restart) - JSON per-user {username:true/false} pre R17 (User)
   ['17d', 'r17d'], // Zzz1-R17b extra chat/poznamky (Vrso 2026-08-25 UPDATE) - VOLNY TEXT, sucast ulozenej CL, ale
   // NEVIDITELNY/NEFILTROVATELNY kdekolvek inde - zobrazi sa LEN po otvoreni R17b (User) okna.
@@ -6059,32 +6593,59 @@ async function submit_entries_to_db(options = {}) {
   const clText = entryData["1"] || ""; // vzdy prazdne (R1 needitovatelne od 2026-08-18) - ponechane pre r1 stlpec/spatnu kompatibilitu
   const clSummary = zzz_build_cl_summary_from_entrydata(); // Zzz2-R29-FIX: skutocny obsah CL na duplicate-check (nie prazdne r1)
 
-  // Zzz6-F2: najprv zisti zname zaznamy (potrebne pre cislovanie aj kontrolu duplicity)
-  const knownEntries = await zzz6f2_get_known_entries();
-
-  // Zzz6-F2: ak je CL zhodne s uz existujucim zaznamom, neprida sa znova - iba kratke upozornenie
-  const duplicate = skipDuplicateCheck ? null : zzz6f2_find_duplicate(knownEntries, clSummary);
+  // === [Zzz6-F22:NO-DOUBLE-ENTRIES] FIX (Vrso 2026-08-28, "preco nezapracujes na vela dat/entries"):
+  // PREDTYM sa pri KAZDOM zapise stiahla CELA tabulka verso_entries len kvoli tejto rychlej kontrole - pri
+  // tisickach/milionoch zaznamov extremne neefektivne. Skutocna/autoritativna kontrola duplicit je TERAZ
+  // presunuta do Postgres (content_hash stlpec + UNIQUE index, viz Zzz6-F2:ATOMIC-COUNTER poznamka + SQL
+  // nizsie a upsert error handling dalej v tejto funkcii) - to funguje bez ohladu na velkost tabulky. Tu
+  // ostava LEN rychla, ZADARMO (ziadny network) LOKALNA kontrola voci uz-znamym zaznamom z TEJTO session
+  // (submittedEntriesFullCache) - chyta bezny pripad "dvakrat rychlo za sebou stlaceny ENTRY s rovnakym
+  // obsahom", DB constraint chyta VSETKO ostatne (aj naprec usermi/zariadeniami/historiou).
+  const duplicate = skipDuplicateCheck ? null : Object.values(submittedEntriesFullCache)
+    .find(row => zzz_build_cl_summary_from_row(row).trim() === clSummary.trim() && clSummary.trim() !== '');
   if (duplicate) {
     zzz6f2_show_toast(`Zaznam uz existuje (#${duplicate.entry_id})`);
     return false; // Zzz2-R14: signalizuje volajucemu (napr. ENTRY button), ze sa NEZAPISALO (duplicita)
   }
 
-  // Zzz6-F2: entry_id = posledne priradene cislo v databaze + 1 (uz nie pevne "1")
-  // Zzz4-1 FIX: do vypoctu MAX cisla sa teraz zapocitavaju aj cisla uz POTVRDENE v Zzz4-1
-  // (verso_verification), nielen tie uz zapisane v Zzz4-0 (verso_entries) - zabranuje kolizii,
-  // ak by bolo cislo potvrdene v Zzz4-1, ale zapis do Zzz4-0 este neprebehol/zlyhal.
-  // Zzz6-F2 UPDATE (2026-08-26, race condition fix): client-side MAX+1 vymenene za atomicku
-  // Supabase RPC (get_next_entry_id, viz verso_entry_id_seq) - zabranuje duplicitnym cislam
-  // pri suvislych zapisoch od viacerych userov naraz.
-  const { data: nextIdData, error: nextIdErr } = await sb.rpc('get_next_entry_id');
-  const nextEntryId = nextIdData;
+  // Zzz6-F2: obsahovy hash CL (SHA-256) - posiela sa v payloade nizsie, DB-side UNIQUE index na content_hash
+  // je AUTORITATIVNA ochrana pred duplicitami (funguje aj ked lokalny pre-check vyssie nic nenajde, napr.
+  // iny user/zariadenie/session). Prazdny CL sa nehashuje (vracia null - viac prazdnych zaznamov je OK).
+  const contentHash = await zzz6f2_compute_content_hash(clSummary);
+
+  // Zzz6-F2: entry_id = atomicke cislo z Postgres SEQUENCE (verso_entry_id_seq) cez RPC 'get_next_entry_id'
+  // - UZ NIE klientsky MAX+1 vypocet (ten NEVIE zabranit kolizii pri sucasnom pristupe viacerych userov,
+  // pozri Zzz6-F2:ATOMIC-COUNTER poznamku nizsie). Toto garantuje UNIKATNOST aj pri tisickach/milionoch
+  // sucasnych zapisov, kedze nextval() na Postgres sequence je atomicka DB operacia.
+  // OPRAVA (Vrso 2026-08-27, "bude to stacit aj pri tisickach/milionoch entries a users?"): predtym tu
+  // CHYBAL akykolvek error handling - ak RPC zlyhalo (offline, network, docasny vypadok Supabase), nextEntryId
+  // by bolo null/undefined a cely zapis by sa nenapravitelne rozbil. Teraz: pri zlyhani RPC sa pouzije
+  // PODOBNY klientsky MAX+1 vypocet ako predtym (zzz6f2_compute_next_entry_id), ale VYSLOVNE oznaceny ako
+  // DOCASNE cislo (isOfflineTempNumber) - Zzz4-1:OFFLINE-SYNC (definovane vyssie v subore) ho pri buducom
+  // obnoveni spojenia VYMENI za skutocne atomicke cislo z RPC (nie len skontroluje kolíziu, ako povodne).
+  let nextEntryId;
+  let isOfflineTempNumber = false;
+  const atomicResult = await zzz6f2_get_next_entry_id_atomic();
+  if (atomicResult.success) {
+    nextEntryId = atomicResult.id;
+  } else {
+    console.warn(`Zzz6-F2:ATOMIC-COUNTER - RPC get_next_entry_id zlyhalo, docasny klientsky fallback. DOVOD: ${atomicResult.error}`);
+    zzz0r1_set_db_connection_state(false, atomicResult.error, true); // suppressToast=true, nizsie uz beziaci gate zobrazi vlastny toast
+    // Zzz10-SCALE: plny fetch (zzz6f2_get_known_entries) sa TERAZ vola LEN v tejto zriedkavej offline-fallback
+    // vetve (nie na kazdom zapise ako predtym) - hot-path (bezny online zapis) uz ZIADNY plny fetch nepotrebuje.
+    const knownEntries = await zzz6f2_get_known_entries();
+    const confirmedNumbers = await zzz4f1_get_confirmed_entry_numbers();
+    const combinedKnownForNumbering = knownEntries.concat(confirmedNumbers.map(id => ({ entry_id: id })));
+    nextEntryId = zzz6f2_compute_next_entry_id(combinedKnownForNumbering);
+    isOfflineTempNumber = true;
+  }
 
   const currentUsername = zzz0r1_get_current_username(); // Zzz0-R1: vlastnik zaznamu = text v Zzz0-R1 bunke
 
   // === [Zzz4-1:ENTRY-NUMBER-CONFIRMATION] GATE (SYSTEM FUNCTION) ===
   // ZASADNE: cislo MUSI byt najprv potvrdene/zaznamenane v Zzz4-1 (verso_verification) - az POTOM
   // smie pokracovat zapis samotneho Entry Line do Zzz4-0 (verso_entries) nizsie.
-  const numberConfirmation = await zzz4f1_confirm_entry_number(nextEntryId, currentUsername);
+  const numberConfirmation = await zzz4f1_confirm_entry_number(nextEntryId, currentUsername, isOfflineTempNumber);
   if (!numberConfirmation.success) {
     // Vzdialene potvrdenie zlyhalo, ale lokalne JE cislo zaznamenane (viz OFFLINE POZNAMKA) -
     // appka pokracuje (nezostane zaseknuta offline), len na to jasne upozorni.
@@ -6107,6 +6668,7 @@ async function submit_entries_to_db(options = {}) {
     entry_id: nextEntryId,      // Zzz6-F2: automaticky priradene cislo (max existujuceho +1)
     r1: clText,                 // needitovatelne (R1 = auto-cislo), ponechane pre spatnu kompatibilitu, VZDY prazdne
     fields_json: zzz4_0_build_fields_json_from_entrydata(), // Zzz4-0:FLEX-SCHEMA - VSETKY R2-R22+tags v jednom stlpci (viz komentar vyssie)
+    content_hash: contentHash,  // Zzz6-F22:NO-DOUBLE-ENTRIES - DB-side UNIQUE ochrana pred duplicitami (SQL viz sprievodny text)
     entry_date: entryDateStr,   // Zzz6-F14: aktualny datum priradeny pri zapise (Zzz1-R14/R14a)
     username: currentUsername,  // Zzz0-R1: vlastnik zaznamu (porovnava sa s textom v Zzz0-R1 bunke)
     updated_at: new Date().toISOString()
@@ -6134,11 +6696,31 @@ async function submit_entries_to_db(options = {}) {
       .select();
 
     if (error) {
+      // Zzz6-F22:NO-DOUBLE-ENTRIES FIX (Vrso 2026-08-28): Postgres UNIQUE constraint na content_hash je
+      // TERAZ autoritativny zdroj pravdy pre duplicity (funguje aj ked lokalny pre-check vyssie nic nenasiel -
+      // napr. iny user/zariadenie). Kod "23505" = unique_violation. V tomto specifickom pripade sa MUSI
+      // vratit spat optimisticky lokalny zapis (cache vyssie), kedze zaznam v skutocnosti NEVZNIKOL - inak
+      // by appka klamala, ze zapis prebehol (zelene bliknutie, cislo priradene, atd.).
+      if (error.code === '23505') {
+        delete submittedEntriesCache[payload.entry_id];
+        delete submittedEntriesOwnerCache[payload.entry_id];
+        delete submittedEntriesFullCache[payload.entry_id];
+        zzz6f2_show_toast('Zaznam s rovnakym obsahom uz existuje (DB kontrola)');
+        refresh_database_workspace_if_open();
+        return false; // NEZAPISALO sa - realna duplicita zachytena az na urovni databazy
+      }
       // Zzz1-D1 FIX (2026-08-20, Vrso: "chybu nevidiem"): detail (napr. "column fields_json does not exist",
       // RLS policy, atd.) VZDY priamo v texte, nie ako oddeleny 2. argument (niektore in-app konzoly ho zahodia)
       const errDetail = (error && (error.message || error.details || error.hint)) || String(error);
       console.error(`Zzz1-D1 Supabase error (zapis do vzdialenej DB zlyhal, lokalne je ale ulozene). DOVOD: ${errDetail}`);
       zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
+      // === [Zzz1-D1:RETRY-SYNC] (Vrso 2026-08-28, "je online system ale nepodari sa zaznam?"): tento zapis
+      // ZLYHAL z INEHO dovodu nez duplicita (network, RLS, docasny Supabase vypadok...) - PREDTYM sa to
+      // jednoducho zalogovalo a NIC viac. Teraz sa entry_id oznaci ako "unsynced" a AUTOMATICKY sa skusi
+      // znova pri najblizsom obnoveni spojenia (viz zzz4_0_sync_pending_entries + hook v
+      // zzz0r1_set_db_connection_state nizsie v subore) - zaznam tak uz nezostava navzdy "len lokalny".
+      zzz4_0_unsyncedEntryIds[payload.entry_id] = true;
+      zzz4_0_save_unsynced_entries_to_storage();
       // OPRAVA (2026-08-24, Vrso hlasenie "neoznacil sa CL ani entry button"): tu bol PREDCASNY "return;",
       // ktory PRESKOCIL zzz1r_flash_all_cells_success() nizsie zakazdym, ked vzdialeny Supabase zapis zlyhal
       // (RLS, network, chybajuci stlpec...) - aj ked lokalne zaznam UZ JE ulozeny/vidiet (viz cache vyssie),
@@ -6146,12 +6728,17 @@ async function submit_entries_to_db(options = {}) {
       // + return true), rovnaky princip ako uz mal catch{} blok nizsie (ten tento bug nemal).
     } else {
       console.log('Zzz1-D1 Supabase zapis uspesny:', data);
+      delete zzz4_0_unsyncedEntryIds[payload.entry_id]; // Zzz1-D1:RETRY-SYNC - uspesne, netreba dalej retry-ovat
+      zzz4_0_save_unsynced_entries_to_storage();
       zzz0r1_set_db_connection_state(true); // Zzz6-F7:DB-CONNECTION
     }
   } catch (err) {
     const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
     console.error(`Zzz1-D1 neocakavana chyba pri zapise (lokalne je ale ulozene). DOVOD: ${errDetail}`);
     zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
+    // Zzz1-D1:RETRY-SYNC - aj neocakavana (nie len Supabase-vratena) chyba sa musi oznacit pre buduci retry
+    zzz4_0_unsyncedEntryIds[payload.entry_id] = true;
+    zzz4_0_save_unsynced_entries_to_storage();
   }
   zzz1r_flash_all_cells_success(); // Zzz2-R14: vyrazne zelene bliknutie (1s) celeho CL riadku po uspesnom zapise
   return true; // Zzz2-R14: signalizuje volajucemu (napr. ENTRY button), ze zapis (aspon lokalne) prebehol uspesne
@@ -6242,6 +6829,16 @@ const filterData = {};
 // #2 nespravne zobrazil aj #12/#20-29/#200 atd., tento filter naopak porovnava entry_id PRESNE (===), takze
 // vzdy zobrazi VYLUCNE jeden jediny spravny zaznam | Vrso -> Claude AI | 2026-08-21 === //
 let zzz6f22EntryIdFilter = null;
+
+// === [Zzz10-SCALE] Database Workspace keyset pagination state - Vrso 2026-08-28 request ("preco
+// nezapracujes na vela dat/entries"). Nacita sa vzdy len ZZZ4_0_WORKSPACE_PAGE_SIZE najnovsich zaznamov
+// naraz (ORDER BY entry_id DESC), s moznostou dofetchovat starsie cez "NACITAT STARSIE" tlacidlo (cursor =
+// posledne entry_id z predoslej stranky, .lt('entry_id', cursor)). Reset (na null/[]) sa deje pri KAZDOM
+// "svieziom" otvoreni workspace (open_database_workspace() bez loadMore=true) - viz volanie nizsie. ===
+const ZZZ4_0_WORKSPACE_PAGE_SIZE = 30;
+let zzz4_0_workspacePageCursor = null;    // entry_id posledneho nacitaneho riadku (null = od zaciatku)
+let zzz4_0_workspaceLoadedRows = [];      // akumulovane uz nacitane riadky (naprec vsetkymi doteraz nacitanymi strankami)
+let zzz4_0_workspaceHasMore = false;      // true = existuju dalsie, este nenacitane starsie zaznamy
 
 const ZZZ4R17_FILTERABLE_IDS = ["2", "3", "4", "5", "8", "6", "7", "9", "10", "11", "13", "18", "19", "20"];
 
@@ -6357,6 +6954,36 @@ function zzz6f4_row_matches_filters(row, terms) {
   const haystack = JSON.stringify(row).toLowerCase();
   return terms.every(term => haystack.includes(term));
 }
+
+// === [Zzz6-F4:FULLTEXT-SEARCH] (SYSTEM FUNCTION) - Vrso 2026-08-28: "pomoze zapracovat teraz aspon
+// fulltext search?" PREDTYM substring filter (zzz6f4_row_matches_filters vyssie) fungoval LEN na uz
+// nacitanej (stránkovanej, max ZZZ4_0_WORKSPACE_PAGE_SIZE) sade - pri velkom mnozstve zaznamov by hladanie
+// nenaslo nic mimo poslednej stranky. TERAZ: ak su aktivne filter terms, Database Workspace namiesto
+// bezneho LIMIT-fetchu zavola TOTO - realny Postgres fulltext dotaz (tsvector/GIN index, SQL viz sprievodny
+// text) NAPRIEC CELOU tabulkou, nie len nacitanou strankou. websearch syntax (viacero slov = AND, uvodzovky
+// = presna fraza). Vyzaduje stlpec 'search_vector' + GIN index v Supabase (viz SQL). Ak SQL este nie je
+// spustene alebo dotaz zlyha, funkcia vrati {success:false} a volajuci automaticky spadne na povodne
+// (limitovane) spravanie - ziadna funkcnost sa nerozbije, len sa neziska plny rozsah hladania.
+async function zzz6f4_fulltext_search_remote(terms) {
+  const query = terms.join(' '); // websearch_to_tsquery: viacero slov oddelenych medzerou = AND
+  try {
+    const fetchPromise = sb.from('verso_entries').select('*')
+      .textSearch('search_vector', query, { type: 'websearch', config: 'simple' })
+      .order('entry_id', { ascending: false })
+      .limit(200); // rozumny strop na jedno vyhladavanie (nie neobmedzene, ale oveľa sirsie nez 1 stranka)
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Zzz6-F4:FULLTEXT-SEARCH timeout (4s)')), 4000)
+    );
+    const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+    if (error) throw error;
+    return { success: true, rows: data || [] };
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    console.warn(`Zzz6-F4:FULLTEXT-SEARCH zlyhalo (pravdepodobne SQL este nie je spustene v Supabase), fallback na limitovane hladanie. DOVOD: ${errDetail}`);
+    return { success: false, rows: [], error: errDetail };
+  }
+}
+// === [/Zzz6-F4:FULLTEXT-SEARCH] ===
 // === end zzz6-F4 (filter funkcie) ===
 
 // === [Zzz4-0:DATABASE-WORKSPACE] oznacenie modulu "Database Workspace", kam sa vklada cela Command Line
@@ -6495,7 +7122,21 @@ function zzz6f6_open_el_cell_context_modal(field, val, row) {
 function zzz4_0_build_entry_row(row) {
   const rowEl = document.createElement('div');
   rowEl.className = 'numbers-row db-workspace-entry-row';
-  rowEl.setAttribute('data-entry-id', row && row.entry_id !== undefined ? row.entry_id : ''); // Zzz2-R14: cielenie post-insert zeleneho zablikania
+  const entryIdForRow = row && row.entry_id !== undefined ? row.entry_id : '';
+  rowEl.setAttribute('data-entry-id', entryIdForRow); // Zzz2-R14: cielenie post-insert zeleneho zablikania
+
+  // === [Zzz4-0:STATUS-COLOR] (SYSTEM FUNCTION) - Vrso 2026-08-28: "akekolvek docasne entry number vyznac
+  // oranzovou, problemove cervenou". Poradie kontroly: PROBLEMOVE (cervena) ma prednost pred DOCASNE
+  // (oranzova), kedze je zavaznejsie - zaznam, ktoremu SAMOTNY zapis do verso_entries zlyhal (Zzz1-D1:
+  // RETRY-SYNC pending), je horsi stav ako zaznam, ktory len este ceka na vymenu docasneho cisla za
+  // atomicke (Zzz4-1:OFFLINE-SYNC pending, isOfflineTemp). Retry mechanizmy (uz existujuce) su AUTOMATICKE -
+  // toto je LEN vizualny indikator aktualneho stavu, ziadna nova logika zapisu/opravy.
+  const zzz4_0_isProblematic = !!zzz4_0_unsyncedEntryIds[entryIdForRow];
+  const zzz4_0_isTemp = !zzz4_0_isProblematic
+    && zzz4f1ConfirmedNumbersCache[entryIdForRow]
+    && zzz4f1ConfirmedNumbersCache[entryIdForRow].isOfflineTemp === true;
+  // === [/Zzz4-0:STATUS-COLOR] (detekcia) ===
+
   ZZZ_FULL_DISPLAY_FIELDS.forEach(field => {
     const wrapEl = document.createElement('div');
     wrapEl.className = field.wrap;
@@ -6509,6 +7150,17 @@ function zzz4_0_build_entry_row(row) {
     } else {
       const cellEl = document.createElement('div');
       cellEl.className = 'entry-cell';
+      // [Zzz4-0:STATUS-COLOR] farba sa aplikuje LEN na samotnu ENTRY NUMBER bunku (field.wrap ===
+      // 'entry-number-wrap'), aby zvyrazenie bolo presne a citatelne (nie cely riadok prefarbeny).
+      if (field.wrap === 'entry-number-wrap') {
+        if (zzz4_0_isProblematic) {
+          cellEl.classList.add('zzz4-0-status-problematic');
+          cellEl.title = 'Zapis tohto zaznamu do databazy zlyhal - caka na automaticky retry (Zzz1-D1:RETRY-SYNC)';
+        } else if (zzz4_0_isTemp) {
+          cellEl.classList.add('zzz4-0-status-temp');
+          cellEl.title = 'Docasne (offline) cislo - bude nahradene skutocnym po obnoveni spojenia (Zzz4-1:OFFLINE-SYNC)';
+        }
+      }
       cellEl.textContent = val || '-';
       // [Zzz6-F6:COPY-EL-CELL] len kopirovatelne polia (v ZZZ_CL_FIELDS) dostanu klikatelny vzhlad + handler
       if (field.key && ZZZ_CL_FIELDS.some(([, rowKey]) => rowKey === field.key)) {
@@ -6607,22 +7259,72 @@ function zzz4_0_build_entry_row(row) {
 }
 // === [/Zzz4-0:GRID-COPY] ===
 
-async function open_database_workspace() {
+async function open_database_workspace(loadMore = false) {
   const workspace = document.getElementById('versoWorkspaceSection');
   if (!workspace) return;
 
-  workspace.innerHTML = '<div class="db-workspace"><div class="db-workspace-title">DATABASE WORKSPACE</div><div class="db-workspace-loading">Nacitavam command lines...</div></div>';
+  // Zzz10-SCALE: "svieze" otvorenie (nie pokracovanie cez "NACITAT STARSIE") = reset stavu strankovania
+  if (!loadMore) {
+    zzz4_0_workspacePageCursor = null;
+    zzz4_0_workspaceLoadedRows = [];
+    zzz4_0_workspaceHasMore = false;
+  }
+
+  if (!loadMore) {
+    workspace.innerHTML = '<div class="db-workspace"><div class="db-workspace-title">DATABASE WORKSPACE</div><div class="db-workspace-loading">Nacitavam command lines...</div></div>';
+  }
 
   let rows = [];
   let usedFallback = false;
+  let usedFulltextSearch = false;
+  // Zzz10-SCALE FIX (Vrso 2026-08-28, "preco nezapracujes na vela dat/entries"): predtym sa siahalo
+  // UPLNE VSETKO (select('*') bez LIMIT) - pri tisickach/milionoch zaznamov by to znamenalo stahovat
+  // a vykreslovat CELU tabulku naraz pri kazdom otvoreni Database Workspace, co by appku prakticky
+  // zaseklo/spravilo nepouzitelnou na mobilnych datach. TERAZ: (a) ak je aktivny presny Zzz6-F22-link
+  // entry-number filter, filtruje sa UZ NA STRANE Postgres (.eq) - prenesie sa len 1 riadok namiesto
+  // vsetkych; (b) ak je aktivny Zzz6-F4 textovy filter, pouzije sa Zzz6-F4:FULLTEXT-SEARCH (Postgres
+  // tsvector/GIN, viz nizsie) - prehlada CELU tabulku, nie len nacitanu stranku; (c) inak sa nacita LEN
+  // najnovsich ZZZ4_0_WORKSPACE_PAGE_SIZE zaznamov (ORDER BY entry_id DESC LIMIT), s tlacidlom "NACITAT
+  // STARSIE" pre dalsie stranky (keyset pagination cez .lt entry_id).
+  const entryIdFilterActive = zzz6f22EntryIdFilter !== null;
+  const activeFilterTerms = entryIdFilterActive ? [] : zzz6f4_get_active_filter_terms();
+
   try {
-    const fetchPromise = sb.from('verso_entries').select('*');
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('zzz2-R29 Supabase fetch timeout (4s)')), 4000)
-    );
-    const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
-    if (error) throw error;
-    rows = data || [];
+    if (entryIdFilterActive) {
+      const fetchPromise = sb.from('verso_entries').select('*').eq('entry_id', zzz6f22EntryIdFilter);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('zzz2-R29 Supabase fetch timeout (4s)')), 4000)
+      );
+      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+      if (error) throw error;
+      rows = data || [];
+    } else if (activeFilterTerms.length > 0) {
+      // Zzz6-F4:FULLTEXT-SEARCH - hlada NAPRIEC CELOU tabulkou, nie len nacitanou strankou
+      const searchResult = await zzz6f4_fulltext_search_remote(activeFilterTerms);
+      if (searchResult.success) {
+        rows = searchResult.rows;
+        usedFulltextSearch = true;
+      } else {
+        // SQL este nie je spustene v Supabase (alebo docasny vypadok) - fallback na doteraz nacitane
+        // stranky + povodny client-side substring filter (rovnake spravanie ako predtym)
+        rows = zzz4_0_workspaceLoadedRows.length > 0 ? zzz4_0_workspaceLoadedRows : Object.values(submittedEntriesFullCache);
+      }
+    } else {
+      const beforeId = zzz4_0_workspacePageCursor; // null = od zaciatku (najnovsie), inak keyset pokracovanie
+      let query = sb.from('verso_entries').select('*').order('entry_id', { ascending: false }).limit(ZZZ4_0_WORKSPACE_PAGE_SIZE);
+      if (beforeId !== null) query = query.lt('entry_id', beforeId);
+      const fetchPromise = query;
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('zzz2-R29 Supabase fetch timeout (4s)')), 4000)
+      );
+      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+      if (error) throw error;
+      const pageRows = data || [];
+      zzz4_0_workspaceLoadedRows = zzz4_0_workspaceLoadedRows.concat(pageRows);
+      zzz4_0_workspaceHasMore = pageRows.length === ZZZ4_0_WORKSPACE_PAGE_SIZE;
+      if (pageRows.length > 0) zzz4_0_workspacePageCursor = pageRows[pageRows.length - 1].entry_id;
+      rows = zzz4_0_workspaceLoadedRows;
+    }
     zzz0r1_set_db_connection_state(true); // Zzz6-F7:DB-CONNECTION
   } catch (err) {
     const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
@@ -6638,14 +7340,19 @@ async function open_database_workspace() {
 
   const currentUsername = zzz0r1_get_current_username(); // Zzz0-R1: pre porovnanie MOJE/cudzie
 
+
   const totalCount = rows.length;
   // [Zzz6-F22-link:ENTRY-LINK] EXAKTNY entry-number filter (klik na R22 credit-link) ma prednost pred
   // zzz6-F4 substring textovym filtrom - obe naraz by nedavali zmysel (link chce PRESNE jeden zaznam).
-  const entryIdFilterActive = zzz6f22EntryIdFilter !== null;
-  const filterTerms = entryIdFilterActive ? [] : zzz6f4_get_active_filter_terms();
+  // (entryIdFilterActive uz deklarovane vyssie pri fetch logike, Zzz10-SCALE FIX)
+  // Zzz6-F4:FULLTEXT-SEARCH: ak fulltext dotaz uz uspesne prebehol (usedFulltextSearch), Postgres uz
+  // vykonal presne zhodne filtrovanie - client-side substring re-filter by mohol nespravne vyradit
+  // legitimne vysledky (stemming/tokenizacia sa mierne lisi od holeho .includes()), takze sa NEAPLIKUJE
+  // znova. Iba pri fallbacku (SQL este nie je spustene) sa pouzije povodny substring filter ako predtym.
+  const filterTerms = entryIdFilterActive ? [] : activeFilterTerms;
   const filteredRows = entryIdFilterActive
     ? rows.filter(row => String(row.entry_id) === String(zzz6f22EntryIdFilter))
-    : rows.filter(row => zzz6f4_row_matches_filters(row, filterTerms));
+    : (usedFulltextSearch ? rows : rows.filter(row => zzz6f4_row_matches_filters(row, filterTerms)));
 
   const wrap = document.createElement('div');
   wrap.className = 'db-workspace';
@@ -6655,7 +7362,7 @@ async function open_database_workspace() {
   title.textContent = entryIdFilterActive
     ? `DATABASE WORKSPACE (Zzz4-0) (Zzz6-F22-link filter: #${zzz6f22EntryIdFilter})`
     : (filterTerms.length > 0
-      ? `DATABASE WORKSPACE (Zzz4-0) (filter: ${filterTerms.length} kriterii)`
+      ? `DATABASE WORKSPACE (Zzz4-0) (${usedFulltextSearch ? 'fulltext hladanie - cela databaza' : 'filter (len nacitana stranka)'}: ${filterTerms.length} kriterii)`
       : 'DATABASE WORKSPACE (Zzz4-0)');
   wrap.appendChild(title);
 
@@ -6716,10 +7423,18 @@ async function open_database_workspace() {
     });
 
     wrap.appendChild(rowsWrap);
-  }
 
-  workspace.innerHTML = '';
-  workspace.appendChild(wrap);
+    // Zzz10-SCALE: "NACITAT STARSIE" - len ked NIE je aktivny ziadny filter (filter/link uz zobrazuje presny
+    // vysledok, stránkovanie tam nema zmysel) a existuju dalsie, este nenacitane starsie zaznamy.
+    if (!entryIdFilterActive && filterTerms.length === 0 && zzz4_0_workspaceHasMore) {
+      const loadMoreBtn = document.createElement('button');
+      loadMoreBtn.type = 'button';
+      loadMoreBtn.className = 'zzz10-scale-load-more-btn';
+      loadMoreBtn.textContent = `NACITAT STARSIE (zobrazenych ${zzz4_0_workspaceLoadedRows.length})`;
+      loadMoreBtn.onclick = () => open_database_workspace(true);
+      wrap.appendChild(loadMoreBtn);
+    }
+  }
 
   // === [Zzz2-R14:INSERT-FLASH] (Vrso 2026-08-24: "po vlozeni entry oznac 2-R* entry bunku aj vkladane
   // command lines zelenou") - ak prave prebehol uspesny zapis (zzz4_0_justInsertedEntryId nastavene v
@@ -7317,20 +8032,80 @@ let zzz10v1CachedRegistrations = { usernames: [], emails: [] }; // posledny naci
 // nacita VSETKY doteraz uspesne zaregistrovane username/email (fields_json.r3 === 'Register', rovnaky vzor
 // ako zzz6f2_get_known_entries/zzz4f1_get_confirmed_entry_numbers - best-effort Supabase + lokalny fallback
 // z submittedEntriesFullCache pre offline-friendly spravanie).
+// === [Zzz10-V1:VERIFICATION-STORAGE] (SYSTEM FUNCTION) - Vrso 2026-08-28 request ("B) chcem to riesit
+// teraz"): registracia (username, email, aktivacny kod, user ID) sa TERAZ uklada VYLUCNE do
+// verso_verification (record_type='user_registration'), NIKDY viac do verso_entries. Dovod (Vrso, doslovne):
+// "verifikacne databazy musia byt uplne oddelene od databaz kvoli max citlivym datam". PREDTYM (do
+// 2026-08-28) sa registracia ukladala ako BEZNY CL zaznam do verso_entries (fields.r3='Register') - taky
+// zaznam sa DAL zmazat/presunut do Trash (Zzz6-F33/F34), a Trash je siroko citatelna (RLS SELECT pre anon)
+// a TRVALA (ziadny DELETE/UPDATE) - citlive registracne udaje by tak mohli skoncit navzdy v mieste, kam
+// vobec nepatria. Zzz10-V1:REGISTER-LOCK (vyssie v subore) zostava ako poistka pre STARE zaznamy z obdobia
+// pred touto zmenou, ale NOVE registracie uz do verso_entries vobec nikdy nezapisu. | Vrso -> Claude AI | 2026-08-28 ===
+const zzz10v1_registrationsLocalCache = {}; // username (normalizovany) -> {username, email, ...} - offline fallback
+
+// === [Zzz6-F36:VERIFICATION-STORAGE] (SYSTEM FUNCTION) - Vrso 2026-08-28: rovnaky presun ako Zzz10-V1
+// registracia vyssie ("beries do uvahy ze login mam viazany na command line?") - Login zapisoval NOVY
+// riadok do verso_entries PRI KAZDOM prihlaseni (horsie nez registracia, tam to bolo len raz) - kazdy
+// takyto riadok spotreboval cislo z atomickeho counteru, mohol skoncit v Trash (rovnake riziko ako pri
+// registracii) a zbytocne miesal login-log udaje medzi bezny CL obsah. TERAZ: JEDEN upsert-ovany zaznam na
+// username (id=`login-${username}`, sleduje POSLEDNE prihlasenie) v verso_verification, ZIADNY zapis do
+// verso_entries. Ak niekedy budes chciet PLNU historiu (kazdy pokus zvlast, nie len posledny) namiesto
+// tohto "posledne prihlasenie" pristupu, staci zmenit `id` na jedinecny per-pokus (napr. s timestampom) -
+// jednoducha uprava neskor. | Vrso -> Claude AI | 2026-08-28 ===
+async function zzz6f36_write_login_event(payload) {
+  try {
+    const writePromise = sb.from('verso_verification').upsert(payload, { onConflict: 'id' });
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Zzz6-F36 login upsert timeout (4s)')), 4000)
+    );
+    const { error } = await Promise.race([writePromise, timeoutPromise]);
+    if (error) throw error;
+    zzz0r1_set_db_connection_state(true);
+    return { success: true, error: null };
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    console.error(`Zzz6-F36:VERIFICATION-STORAGE - zapis login udalosti do verso_verification zlyhal. DOVOD: ${errDetail}`);
+    zzz0r1_set_db_connection_state(false, errDetail, true);
+    return { success: false, error: errDetail };
+  }
+}
+// === [/Zzz6-F36:VERIFICATION-STORAGE] ===
+
+async function zzz10v1_write_registration(payload) {
+  try {
+    const writePromise = sb.from('verso_verification').upsert(payload, { onConflict: 'id' });
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Zzz10-V1 registration upsert timeout (4s)')), 4000)
+    );
+    const { error } = await Promise.race([writePromise, timeoutPromise]);
+    if (error) throw error;
+    zzz0r1_set_db_connection_state(true);
+    return { success: true, error: null };
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    console.error(`Zzz10-V1:VERIFICATION-STORAGE - zapis registracie do verso_verification zlyhal. DOVOD: ${errDetail}`);
+    zzz0r1_set_db_connection_state(false, errDetail, true);
+    return { success: false, error: errDetail };
+  }
+}
+// === [/Zzz10-V1:VERIFICATION-STORAGE] ===
+
 async function zzz10v1_fetch_known_registrations() {
   const usernames = [];
   const emails = [];
 
   function collectFromRow(row) {
-    let fields = {};
-    try { fields = JSON.parse(row.fields_json || '{}'); } catch (e) { return; /* poskodeny fields_json - preskocit riadok */ }
-    if (fields.r3 !== 'Register') return;
-    if (fields.r17) usernames.push(fields.r17);
-    if (fields.r10) emails.push(fields.r10);
+    let data = {};
+    try { data = JSON.parse(row.data_json || '{}'); } catch (e) { return; /* poskodeny data_json - preskocit riadok */ }
+    if (data.username) usernames.push(data.username);
+    if (data.email) emails.push(data.email);
   }
 
   try {
-    const fetchPromise = sb.from('verso_entries').select('*');
+    // Zzz10-V1:VERIFICATION-STORAGE (2026-08-28): teraz cita PRIAMO z verso_verification (record_type=
+    // 'user_registration'), nie z verso_entries - jednoduchsie AJ rychlejsie (verso_verification je
+    // navrhnuta ako mala/lahka tabulka, netreba ziadny JSON-path filter/fallback ako predtym).
+    const fetchPromise = sb.from('verso_verification').select('*').eq('record_type', 'user_registration');
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('Zzz10-V1 Supabase fetch timeout (4s)')), 4000)
     );
@@ -7343,7 +8118,7 @@ async function zzz10v1_fetch_known_registrations() {
     console.warn(`Zzz10-V1 fetch known registrations zlyhal/timeout - pouziva sa len lokalna cache. DOVOD: ${errDetail}`);
     zzz0r1_set_db_connection_state(false, errDetail, true);
   }
-  Object.values(submittedEntriesFullCache).forEach(collectFromRow); // lokalny fallback (offline-friendly)
+  Object.values(zzz10v1_registrationsLocalCache).forEach(collectFromRow); // lokalny fallback (offline-friendly)
 
   return {
     usernames: usernames.map(zzz10v1_normalize),
@@ -7519,18 +8294,13 @@ function zzz10v1_build_terms_note() {
   return note;
 }
 
-// === [Zzz10-V1:SUBMIT] ENTRY submit pre registraciu - rovnaka kostra ako zzz6f36_submit_login (reset CL,
-// nastavenie zakladnych CRM poli, submit_entries_to_db), ALE navyse:
+// === [Zzz10-V1:SUBMIT] Registracia - Vrso 2026-08-28 PRESUN: uz NEPOUZIVA submit_entries_to_db() (verso_entries)
+// vobec - zapisuje PRIAMO do verso_verification (viz [Zzz10-V1:VERIFICATION-STORAGE] vyssie v subore). Kostra:
 //   1) validacia USER + EMAIL (povinne, EMAIL musi mat platny format),
 //   2) GATE - case+diakritika-insenzitivna kontrola oproti VSETKYM doteraz zaregistrovanym username/email
-//      (zzz10v1_fetch_known_registrations) - ak uz existuje zhoda na hociktorom z oboch, registracia sa
-//      ZAMIETNE ("druhy krat sa uz nemozno registrovat pod danym username ani emailom"),
-//   3) DOLEZITE PORADIE: username/email sa do entryData zapisu AZ PO zzz6f36_reset_command_line() (ten
-//      resetuje VSETKY R* polia vratane R17/R10 na prazdne) - inak by fields_json ulozil prazdne
-//      username/email (presne tento poradie-bug existuje aj v povodnom zzz6f36_submit_login pre R17, tu
-//      je VEDOME OPRAVENE, aby buduce Zzz10-V2 zobrazenie/duplicate-check malo co citat),
-//   4) po uspesnom zapise vygeneruje 6-mistny SYSTEM activation kod (R34, co by sa realne poslalo emailom -
-//      NEZOBRAZUJE sa priamo v UI, viz zzz10v1_build_activation_code_field vyssie). ===
+//      (zzz10v1_fetch_known_registrations, teraz cita z verso_verification) - ak uz existuje zhoda na
+//      hociktorom z oboch, registracia sa ZAMIETNE,
+//   3) po uspesnom zapise vygeneruje 6-mistny SYSTEM activation kod (co by sa realne poslalo emailom). ===
 async function zzz10v1_submit_register() {
   const username = (entryData['17'] || '').trim();
   const email = (entryData['10'] || '').trim();
@@ -7568,29 +8338,50 @@ async function zzz10v1_submit_register() {
     return;
   }
 
-  zzz6f36_reset_command_line(); // vynuluje VSETKY R* bunky - AZ POTOM nizsie znova zapisujeme, viz poznamka vyssie
-  write_to_entry('17', username);
-  write_to_entry('10', email);
-  write_to_entry('2', '1');            // Project Number
-  write_to_entry('3', 'Register');     // Project Name (odlisenie od "Login")
-  write_to_entry('4', username);       // Project Owner = novy username (nie "Verso" ako pri Login - toto je JEHO vlastny zaznam)
-  write_to_entry('5', 'Registration'); // Project Category (odlisenie od "Verification")
-  write_to_entry('7', 'ano');          // Privacy (toggle ZAP)
-
   const activationCode = String(Math.floor(100000 + Math.random() * 900000)); // 6-mistny nahodny kod (co by sa poslalo emailom)
-  write_to_entry('34', activationCode);
 
-  const success = await submit_entries_to_db(); // ROVNAKA funkcia ako Login/Zzz2-R14 ENTRY (DRY)
-  if (!success) {
-    zzz6f2_show_toast('Zzz10-V1 Register: registracia zlyhala alebo bola zrusena.');
-    return;
+  // === [Zzz10-V1:USER-ID] stabilne numericke ID prideleneho usera, viz vysvetlenie vyssie v subore. Ak
+  // RPC zlyha (offline/vypadok), registracia POKRACUJE aj bez neho - username uz je sam o sebe funkcny
+  // identifikator, user_id je len navyse pre buducu potrebu (napr. zmena username).
+  const userIdResult = await zzz10v1_get_next_user_id_atomic();
+  const userId = userIdResult.success ? userIdResult.id : null;
+  if (!userIdResult.success) {
+    console.warn(`Zzz10-V1:USER-ID - RPC get_next_user_id zlyhalo, registracia pokracuje bez user_id. DOVOD: ${userIdResult.error}`);
   }
+
+  // Zzz10-V1:VERIFICATION-STORAGE - CELY registracny zaznam ide LEN sem, ziadny CL/verso_entries zapis
+  const registeredAt = new Date().toISOString();
+  const registrationPayload = {
+    id: `register-${normalizedUsername}`, // stabilne ID = jeden registracny zaznam na username (upsert)
+    record_type: 'user_registration',
+    data_json: JSON.stringify({
+      username,
+      email,
+      activation_code: activationCode,
+      user_id: userId,
+      registered_at: registeredAt
+    }),
+    updated_at: registeredAt
+  };
+
+  const writeResult = await zzz10v1_write_registration(registrationPayload);
+  if (!writeResult.success) {
+    // OFFLINE FALLBACK - rovnaky princip ako ostatne cache v subore: lokalne sa registracia zaznamena
+    // OKAMZITE (aby duplicate-check hned fungoval aj offline), vzdialeny zapis sa NESKUSA znova automaticky
+    // (registracia je jednorazova akcia, user proste skusi znova, ak zlyhala - na rozdiel od bezneho entry
+    // submitu tu automaticky retry nema rovnaky zmysel).
+    zzz10v1_registrationsLocalCache[normalizedUsername] = JSON.parse(registrationPayload.data_json);
+    zzz6f2_show_toast('Zzz10-V1 Register: registracia ulozena len lokalne (offline) - skus znova neskor pre plne zapisanie.');
+  }
+  zzz10v1_registrationsLocalCache[normalizedUsername] = JSON.parse(registrationPayload.data_json);
+
+  zzz6f36_reset_command_line(); // vycisti formular (USER/EMAIL bunky) pre dalsie pouzitie
 
   // === [Zzz10-V1:SEND-EMAIL] Vrso 2026-08-25 - po uspesnej registracii posle activation kod emailom cez
   // Supabase Edge Function "send-activation-email" (Deno + Resend API, RESEND_API_KEY je server-side
   // secret, nikdy v tomto HTML). ZAMERNE NEBLOKUJUCE/best-effort - ak Edge Function este nie je nasadena
-  // alebo RESEND_API_KEY nie je nastaveny, registracia SAMOTNA ostava uspesna (uz je zapisana v D-4), len
-  // sa email neposle a chyba sa loguje do console + toast (nie hard failure). | Vrso -> Claude AI | 2026-08-25 ===
+  // alebo RESEND_API_KEY nie je nastaveny, registracia SAMOTNA ostava uspesna (uz je zapisana v
+  // verso_verification), len sa email neposle a chyba sa loguje do console + toast (nie hard failure). | Vrso -> Claude AI | 2026-08-25 ===
   try {
     const { error: emailError } = await sb.functions.invoke('bright-responder', { // Zzz10-V1: nazov Edge Function podla toho, co sa Vrsovi realne podarilo nasadit v Supabase dashboarde (Vrso 2026-08-25)
       body: { email, code: activationCode, username }
@@ -7766,9 +8557,19 @@ async function zzz10v2_render_verification_database(tabContent) {
     try { parsed = JSON.parse(row.data_json || '{}'); } catch (e) { /* poskodeny data_json - zobraz prazdne */ }
 
     const meta = document.createElement('div');
-    meta.style.cssText = 'font-size:8px;font-weight:700;color:#a3a3a3;padding:6px 4px 2px;';
+    // === [Zzz4-0:STATUS-COLOR] rovnaky princip ako Database Workspace vyssie v subore - "v databazach" (Vrso
+    // 2026-08-28) = aj tento Zzz4-1 pohlad. row._local_only = zaznam este NIE JE potvrdeny vzdialene v
+    // Zzz4-1 (oranzova). Pritomnost v zzz4_0_unsyncedEntryIds = SAMOTNY Entry Line zapis do Zzz4-0 zlyhal,
+    // aj ked cislo v Zzz4-1 je v poriadku (cervena, zavaznejsie, ma prednost).
+    const isProblematic = !!zzz4_0_unsyncedEntryIds[parsed.entry_id];
+    const isTemp = !isProblematic && !!row._local_only;
+    const statusColor = isProblematic ? '#dc2626' : (isTemp ? '#ff8c00' : '#a3a3a3');
+    meta.style.cssText = `font-size:8px;font-weight:700;color:${statusColor};padding:6px 4px 2px;`;
     const when = row.updated_at ? new Date(row.updated_at).toLocaleString() : '?';
-    meta.textContent = `${row.record_type || '?'} - #${parsed.entry_id ?? '?'} - ${parsed.username || '?'} - ${when}${row._local_only ? ' (len lokalne, este nepotvrdene vzdialene)' : ''}`;
+    const statusSuffix = isProblematic
+      ? ' (PROBLEM - zapis do Zzz4-0 zlyhal, caka na retry)'
+      : (row._local_only ? ' (len lokalne, este nepotvrdene vzdialene)' : '');
+    meta.textContent = `${row.record_type || '?'} - #${parsed.entry_id ?? '?'} - ${parsed.username || '?'} - ${when}${statusSuffix}`;
     rowsWrap.appendChild(meta);
   });
   tabContent.appendChild(rowsWrap);
@@ -8088,30 +8889,31 @@ async function zzz6f36_submit_login() {
     return;
   }
 
-  // POZNAMKA: Zzz0-R1 napis sa nastavuje TU, PRED submit_entries_to_db() (zvyk z predchadzajucej verzie,
+  // POZNAMKA: Zzz0-R1 napis sa nastavuje TU, PRED zapisom (zvyk z predchadzajucej verzie,
   // ked to vyzadoval odstraneny Zzz4-1 heslo-gate - momentalne uz nema funkcny dovod, ale neskodi).
   const label = document.getElementById('zzz6f7UsernameLabel');
   if (label) label.textContent = username;
 
+  const enteredPassword = (entryData["10"] || '').trim(); // heslo (nie je realne overovane, viz MEMO vyssie v subore)
+
   // "Cely command line pri login zresetuj bunky na prazdne" - vynuluje VSETKY R* bunky
   zzz6f36_reset_command_line();
-
-  // "Entry sa vlozi s nasledujucimi bunkami": Entry Number = auto (4-0 databaza pridel'uje sama, ziadna
-  // akcia tu netreba), Project Number = 1, Project Name = Login, Project Owner = Verso,
-  // Project Category = Verification, Privacy = ano (toggle ZAP)
-  write_to_entry("2", "1");            // Project Number
-  write_to_entry("3", "Login");        // Project Name
-  write_to_entry("4", "Verso");        // Project Owner
-  write_to_entry("5", "Verification"); // Project Category
-  write_to_entry("7", "ano");          // Privacy (toggle ZAP, viz [Zzz1-R7:CELL])
 
   if (zzz4r17SearchMode) { // rovnaky guard ako Zzz2-R14 - v search mode sa nezapisuje
     zzz6f2_show_toast('Zzz6-F36 Login: vypni SEARCH mod pred prihlasenim (zapis do DB je v search mode blokovany).');
     return;
   }
-  // POZOR (Zzz4-1 heslo-gate bol odstraneny - viz vyssie v subore): submit_entries_to_db() uz heslo
-  // NEPYTA, LEN R31 Consent Toggle gate (musi byt vopred rucne "on").
-  let success = await submit_entries_to_db(); // ROVNAKA funkcia ako Zzz2-R14 ENTRY button (DRY)
+
+  // Zzz6-F36:VERIFICATION-STORAGE (2026-08-28 presun) - login udalost ide LEN do verso_verification,
+  // ZIADNY zapis do verso_entries (viz vysvetlenie pri zzz6f36_write_login_event vyssie v subore).
+  const loginAt = new Date().toISOString();
+  const loginPayload = {
+    id: `login-${zzz10v1_normalize(username)}`, // jeden zaznam na username = "posledne prihlasenie" (upsert)
+    record_type: 'login_event',
+    data_json: JSON.stringify({ username, password: enteredPassword, logged_in_at: loginAt }),
+    updated_at: loginAt
+  };
+  let success = (await zzz6f36_write_login_event(loginPayload)).success;
 
   // UPDATE (Vrso 2026-08-24, "ked by doslo vypadnutiu databazy tak oranzovym"): submit_entries_to_db()
   // (a vsetko co vola, vratane Zzz4-1) uz VZDY samo o sebe prepina .zzz0r1-db-disconnected na Zzz0-R1
@@ -8328,9 +9130,6 @@ function zzz10m2_render_login_setup(body) {
 // === [/Zzz10-M2:LOGIN-SETUP] ===
 </script>
 </body>
-
-
-
 
 
 
