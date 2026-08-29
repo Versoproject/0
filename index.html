@@ -3891,7 +3891,10 @@ async function zzz6f34_move_row_to_trash(row, silent = false) {
   const trashPayload = {
     entry_id: row.entry_id,
     r1: row.r1 || '',
-    fields_json: row.fields_json || '',
+    // ZzzF:FIELDS-JSON-PARSE (2026-08-29): verso_entries.fields_json je teraz jsonb (objekt), ale
+    // verso_trash.fields_json zostava text - preto sa tu MUSI explicitne restringifikovat, inak by sa do
+    // text stlpca poslal surovy objekt (chyba/nekonzistentne ulozenie).
+    fields_json: (row.fields_json && typeof row.fields_json === 'object') ? JSON.stringify(row.fields_json) : (row.fields_json || ''),
     entry_date: row.entry_date || '',
     username: row.username || '',
     updated_at: row.updated_at || new Date().toISOString(),
@@ -4685,12 +4688,32 @@ function zzz1r5_can_set_final() {
 // sa ako dedikovany "system-entry" (rovnaky princip ako Zzz6-F36 Login/Contacts) - Project Category=
 // "QuickChips", Project Owner=username, JSON pole textov v r_quickchips. Kazdy username ma SVOJU vlastnu
 // sadu, nikto nevidi/needituje cudziu. | Vrso -> Claude AI | 2026-08-25 ===
+// === [ZzzF:FIELDS-JSON-PARSE] (SYSTEM FUNCTION) - Vrso 2026-08-29: po zmene stlpca fields_json v Supabase
+// z text na jsonb (krok 1/11 schema migracie) vracia Supabase JS klient hodnotu row.fields_json UZ AKO
+// hotovy JS objekt, nie ako text retazec. Predtym VSETKY 4 miesta v subore, ktore citaju fields_json, robili
+// JSON.parse(row.fields_json) - co bolo spravne LEN pokial bol stlpec typu text. Po jsonb zmene JSON.parse()
+// nad uz-existujucim objektom throwuje (JSON.parse ocakava string), try/catch to ale potichu prehltne a
+// funkcia dostane prazdny fallback ({}/null) - teda citanie poli zo VSETKYCH existujucich zaznamov mohlo byt
+// od tejto DB zmeny ticho rozbite (bez viditelnej chyby v appke). Tato zdielana helper funkcia zvladne OBA
+// pripady (string aj uz-hotovy objekt), DRY - nahradzuje 4 samostatne JSON.parse(row.fields_json) miesta.
+// | Vrso -> Claude AI | 2026-08-29 === */
+function zzz_parse_fields_json(row) {
+  const raw = row && row.fields_json;
+  if (raw === undefined || raw === null || raw === '') return {};
+  if (typeof raw === 'object') return raw; // uz hotovy objekt (jsonb stlpec) - pouzi priamo
+  try {
+    return JSON.parse(raw); // stary/legacy pripad (text stlpec) - treba este rozparsovat
+  } catch (e) {
+    return {};
+  }
+}
+// === [/ZzzF:FIELDS-JSON-PARSE] ===
+
 async function zzz1_get_quickchips_entry() {
   const current = zzz0r1_get_current_username();
   if (!current) return null;
   const matches = row => {
-    let f = {};
-    try { f = JSON.parse(row.fields_json || '{}'); } catch (e) { return false; }
+    const f = zzz_parse_fields_json(row);
     return f.r5 === 'QuickChips' && f.r4 === current;
   };
   try {
@@ -4766,7 +4789,7 @@ async function zzz1_save_my_quickchips(chips) {
   let fields = {};
   let payload;
   if (row) {
-    try { fields = JSON.parse(row.fields_json || '{}'); } catch (e) { fields = {}; }
+    fields = zzz_parse_fields_json(row); // ZzzF:FIELDS-JSON-PARSE (2026-08-29)
     fields.r_quickchips = JSON.stringify(chips);
     payload = { ...row, fields_json: JSON.stringify(fields), updated_at: new Date().toISOString() };
   } else {
@@ -5792,10 +5815,7 @@ function zzz_build_cl_summary_from_entrydata() {
 // ktore este mozu mat hodnoty v samostatnych stlpcoch (r2, r3, ...) zo starsej schemy pred 2026-08-20.
 // vrati pole hodnot [{label, val}] pre VSETKY ZZZ_CL_FIELDS - spolocny zaklad pre obe pouzitia nizsie (DRY)
 function zzz_extract_cl_values_from_row(row) {
-  let fields = null;
-  if (row && row.fields_json) {
-    try { fields = JSON.parse(row.fields_json); } catch (e) { fields = null; }
-  }
+  const fields = zzz_parse_fields_json(row); // ZzzF:FIELDS-JSON-PARSE (2026-08-29)
   return ZZZ_CL_FIELDS.map(([, rowKey, label]) => {
     let val = '';
     if (fields && fields[rowKey] !== undefined) {
@@ -7025,10 +7045,7 @@ const ZZZ_FULL_DISPLAY_FIELDS = [
 
 function zzz4_0_get_field_value(row, field) {
   if (field.get) return field.get(row) || '';
-  let fields = null;
-  if (row && row.fields_json) {
-    try { fields = JSON.parse(row.fields_json); } catch (e) { fields = null; }
-  }
+  const fields = zzz_parse_fields_json(row); // ZzzF:FIELDS-JSON-PARSE (2026-08-29)
   if (fields && fields[field.key] !== undefined) return (fields[field.key] || '').toString();
   if (row && row[field.key] !== undefined) return (row[field.key] || '').toString(); // legacy fallback
   return '';
@@ -8499,6 +8516,110 @@ function open_register_setup_standalone() {
 // riadkovy vypis (record_type, entry_id, username, confirmed_at). Neskor asi pribudne aj Zzz4-2 Verification
 // Trash (presun uz nepouzitych/neplatnych zaznamov, kody a nastavenia) - miesto pripravene, zatial
 // nevytvorene. | Vrso -> Claude AI | 2026-08-24 ===
+// === [ZzzF:LEGACY-REGISTER-MIGRATION] (jednorazova, owner-spustena akcia) - Vrso 2026-08-29 poziadavka
+// ("Verifikacia - presun starych zaznamov do verification"): pred 2026-08-28 sa VSETKY registracie ukladali
+// ako bezny CL zaznam priamo do verso_entries (fields.r3='Register', viz Zzz10-V1:REGISTER-LOCK vyssie v
+// subore). Odvtedy nove registracie idu VYLUCNE do verso_verification (Zzz10-V1:VERIFICATION-STORAGE) - tato
+// funkcia PRESUNIE zvysne STARE zaznamy z obdobia PRED zmenou do verso_verification (AKTIVNA tabulka, nie
+// trash - Vrso 2026-08-29: "ako moze ist stary zaznam do verification kde maju byt iba posledne aktualne
+// verifikacne udaje", spravne - legacy zaznam JE stale platny/aktualny udaj o danom userovi, pokial nebol
+// medzicasom nahradeny novsou registraciou). BEZPECNOSTNA POISTKA: ak pre dany (normalizovany) username uz
+// vo verso_verification EXISTUJE zaznam (=user sa odvtedy registroval znova cez novy system), legacy zaznam
+// sa NEPREPISE ani nezmaze - preskoci sa a ostane vo verso_entries na rucnu kontrolu (predist strate/prepisu
+// novsich udajov). Po USPESNOM zapise do verso_verification sa povodny riadok TRVALE zmaze z verso_entries
+// (Vrso 2026-08-29 potvrdenie: "ano vymazat"). ZAMERNE zapisuje do verso_verification, NIE do
+// verso_verification_trash (ten je urceny len pre UZ NEAKTUALNE/nahradene zaznamy, viz diskusia vyssie).
+// | Vrso -> Claude AI | 2026-08-29 ===
+async function zzzF_migrate_legacy_register_entries() {
+  if (!confirm('Migrovat vsetky stare Register zaznamy z verso_entries do verso_verification?\n\nTato akcia je NEVRATNA - povodne zaznamy sa po uspesnom presune TRVALE zmazu z verso_entries.')) {
+    return;
+  }
+
+  zzz6f2_show_toast('ZzzF Migracia: nacitavam stare Register zaznamy z verso_entries...');
+
+  let entriesRows = [];
+  try {
+    const { data, error } = await sb.from('verso_entries').select('*');
+    if (error) throw error;
+    entriesRows = data || [];
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    zzz6f2_show_toast(`ZzzF Migracia: nacitanie verso_entries zlyhalo (${errDetail}). Migracia preruseni, skus znova.`);
+    return;
+  }
+
+  const legacyRegisterRows = entriesRows.filter(row => zzz4_0_get_field_value(row, { key: 'r3' }) === 'Register');
+  if (legacyRegisterRows.length === 0) {
+    zzz6f2_show_toast('ZzzF Migracia: ziadne stare Register zaznamy vo verso_entries neexistuju - nic na migrovanie.');
+    return;
+  }
+
+  // existujuce (uz aktivne) registracie vo verso_verification - legacy zaznam so ZHODNYM usernamom sa
+  // NESMIE prepisat (novsi udaj ma vzdy prednost pred starym)
+  let existingUsernameIds = new Set();
+  try {
+    const { data, error } = await sb.from('verso_verification').select('id').eq('record_type', 'user_registration');
+    if (error) throw error;
+    (data || []).forEach(r => existingUsernameIds.add(r.id));
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    zzz6f2_show_toast(`ZzzF Migracia: kontrola existujucich registracii zlyhala (${errDetail}). Migracia preruseni (bezpecnost pred prepisom).`);
+    return;
+  }
+
+  let migrated = 0, skippedExisting = 0, skippedNoUsername = 0, failed = 0;
+
+  for (const row of legacyRegisterRows) {
+    const fields = zzz_parse_fields_json(row);
+    const username = (fields.r17 || '').trim();
+    if (!username) { skippedNoUsername++; continue; } // bez username sa neda spolahlivo migrovat, ostava vo verso_entries
+
+    const normalizedUsername = zzz10v1_normalize(username);
+    const id = `register-${normalizedUsername}`;
+
+    if (existingUsernameIds.has(id)) {
+      skippedExisting++; // novsia registracia uz existuje - legacy zaznam ostava vo verso_entries na rucnu kontrolu
+      continue;
+    }
+
+    const email = (fields.r10 || '').trim();
+    const activationCode = fields.r34 || '';
+    const userId = fields.r36 || null;
+    const registeredAt = row.entry_date || row.updated_at || new Date().toISOString();
+
+    const payload = {
+      id,
+      record_type: 'user_registration',
+      data_json: JSON.stringify({
+        username, email, activation_code: activationCode, user_id: userId,
+        registered_at: registeredAt,
+        migrated_from: 'verso_entries', migrated_at: new Date().toISOString()
+      }),
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      const { error: writeError } = await sb.from('verso_verification').upsert(payload, { onConflict: 'id' });
+      if (writeError) throw writeError;
+
+      const { error: deleteError } = await sb.from('verso_entries').delete().eq('entry_id', row.entry_id);
+      if (deleteError) throw deleteError; // zapis do verso_verification uz prebehol - zaznam teraz existuje na OBOCH miestach, treba rucne dorieist mazanie
+
+      existingUsernameIds.add(id);
+      migrated++;
+    } catch (err) {
+      failed++;
+      const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+      console.warn(`ZzzF Migracia: zaznam #${row.entry_id} (username "${username}") zlyhal. DOVOD: ${errDetail}`);
+    }
+  }
+
+  zzz6f2_show_toast(`ZzzF Migracia dokoncena: ${migrated} presunutych, ${skippedExisting} preskocenych (uz existuje novsia registracia), ${skippedNoUsername} bez username, ${failed} zlyhalo.`);
+  refresh_database_workspace_if_open();
+  if (zzz10v0ActiveTab === 'verification-database') open_verification_workspace(); // prekresli Verification Database, aby sa novo-presunute zaznamy hned zobrazili
+}
+// === [/ZzzF:LEGACY-REGISTER-MIGRATION] ===
+
 async function zzz10v2_render_verification_database(tabContent) {
   tabContent.innerHTML = '<div class="db-workspace-loading">Nacitavam Verification Database...</div>';
 
@@ -8541,6 +8662,15 @@ async function zzz10v2_render_verification_database(tabContent) {
   title.className = 'db-workspace-title';
   title.textContent = `VERIFICATION DATABASE (Zzz4-1)${rows.length ? ' - ' + rows.length + ' zaznamov' : ''}`;
   tabContent.appendChild(title);
+
+  // === [ZzzF:LEGACY-REGISTER-MIGRATION] tlacidlo - jednorazova akcia, viditelna priamo tu (Verification
+  // Database tab), spusti zzzF_migrate_legacy_register_entries() vyssie v subore. Vrso -> Claude AI 2026-08-29 ===
+  const migrateBtn = document.createElement('button');
+  migrateBtn.type = 'button';
+  migrateBtn.textContent = 'MIGROVAT STARE REGISTER ZAZNAMY (z verso_entries)';
+  migrateBtn.style.cssText = 'display:block;margin:4px auto 10px;padding:8px 12px;font-size:10px;font-weight:700;border-radius:8px;background-color:#171717;border:2px solid #D4AF37;color:#D4AF37;cursor:pointer;';
+  migrateBtn.addEventListener('click', () => { zzzF_migrate_legacy_register_entries(); });
+  tabContent.appendChild(migrateBtn);
 
   if (rows.length === 0) {
     const empty = document.createElement('div');
@@ -9130,6 +9260,7 @@ function zzz10m2_render_login_setup(body) {
 // === [/Zzz10-M2:LOGIN-SETUP] ===
 </script>
 </body>
+
 
 
 
