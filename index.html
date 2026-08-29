@@ -2695,6 +2695,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz10-V1:REGISTER-LOCK (SYSTEM FUNCTION) - registracne zaznamy (username/aktivacny kod/user ID) sa NIKDY nesmu presunut do Trash (citlive udaje, Trash je siroko citatelna a trvala)</span>
   <span class="module-tag">Zzz10-V1:VERIFICATION-STORAGE (SYSTEM FUNCTION) - registracia sa uklada VYLUCNE do verso_verification, uz nikdy do verso_entries (oddelenie citlivych dat od beznych CL zaznamov)</span>
   <span class="module-tag">Zzz6-F36:VERIFICATION-STORAGE (SYSTEM FUNCTION) - Login sa uklada VYLUCNE do verso_verification (jeden zaznam na username = posledne prihlasenie), uz nikdy do verso_entries</span>
+  <span class="module-tag">Zzz6-F37:AUDIT-LOG (SYSTEM FUNCTION, append-only) - trvaly needitovatelny/nezmazatelny zaznam "kto co urobil a kedy" (entry_create/entry_trash_move/user_register/user_login/legacy_register_migrated), vlastna tabulka verso_audit_log, ODDELENA od verso_entries/CL (nikdy sa nezobrazuje v Database Workspace)</span>
   <span class="module-tag">Zzz10-R1 Multiverification - automaticky sa spusti po 10x nespravnom hesle POCAS Login pokusu (Zzz4-1 hook)</span>
   <span class="module-tag">Zzz10-R1:USERNAME-GUARD - cerveny ram na Zzz0-R1, ak login username nesedi s poslednym znamym na zariadeni</span>
   <span class="module-tag">Zzz10-R2 Log Out button (Zzz10-0 Settings Workspace, branch 1) - odhlasi, vrati na Zzz6-F36 Login</span>
@@ -4009,6 +4010,7 @@ async function zzz6f34_move_row_to_trash(row, silent = false) {
   zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_DELETES_KEY, zzz6f34_pendingDeletes);
 
   zzz0r1_set_db_connection_state(true);
+  zzz6f37_write_audit_log('entry_trash_move', { entry_id: row.entry_id }); // Zzz6-F37:AUDIT-LOG (2026-08-29)
   if (!silent) zzz6f2_show_toast(`Zaznam #${row.entry_id} presunuty do Trash`);
   refresh_database_workspace_if_open();
   return true;
@@ -4708,6 +4710,48 @@ function zzz_parse_fields_json(row) {
   }
 }
 // === [/ZzzF:FIELDS-JSON-PARSE] ===
+
+// === [Zzz6-F37:AUDIT-LOG] (SYSTEM FUNCTION, append-only) - Vrso 2026-08-29 poziadavka (bod 2 z "Navrh poradia":
+// "Audit log (INSERT/SELECT only, append-only)"). VYSVETLENIE (co to je a preco): trvaly, NIKDY needitovatelny/
+// nezmazatelny zaznam KAZDEJ vyznamnej akcie v appke - "KTO (username) urobil CO (action_type) a KEDY
+// (created_at)", + volitelne detaily. Priklady akcii, ktore sa logujú: vytvorenie zaznamu (entry_create),
+// presun do Trash (entry_trash_move), registracia (user_register), prihlasenie (user_login), migracia
+// legacy Register zaznamov (legacy_register_migrated). Ucel: SPATNA KONTROLOVATELNOST - ak sa niekedy niekto
+// spyta "kto zmazal zaznam #123?" alebo "kolko krat sa dnes prihlasil username X?", da sa to dohladat, aj
+// keby sa medzicasom zaznam uz nezobrazoval nikde inde v appke (napr. bol uz presunuty do Trash a odtial
+// zmazany). Rovnaky append-only princip ako verso_trash/verso_verification_trash: appka do audit logu
+// zapisuje VYLUCNE cez INSERT, nikdy UPDATE/DELETE - realnu nemennost zabezpecuje az Supabase RLS (ziadna
+// UPDATE/DELETE policy). NIE JE (zatial) nikde v UI vidiet - da sa neskor dorobit dedikovany Audit Log
+// workspace na prezeranie (podobny ako Trash/Verification Database), ak bude treba. ZAMERNE NEBLOKUJUCE/
+// best-effort (rovnaky vzor ako napr. send-activation-email) - zapis do audit logu NIKDY nezastavi/nezablokuje
+// samotnu akciu (napr. Entry submit alebo Delete prebehnu aj ked audit log zapis zlyha, napr. offline) - len
+// sa to potichu zaloguje do console.
+// VYZADUJE Supabase tabulku "verso_audit_log" (SQL + RLS - viz sprievodny text pri dorucení tohto suboru,
+// rovnaky vzor ako verso_trash/verso_verification_trash: append-only, INSERT+SELECT pre anon, ziadny
+// UPDATE/DELETE). Kym tabulka neexistuje, kazdy zapis len potichu zlyha (console.warn), nic sa nerozbije.
+// | Vrso -> Claude AI | 2026-08-29 ===
+async function zzz6f37_write_audit_log(actionType, details = {}) {
+  try {
+    const currentUsername = zzz0r1_get_current_username();
+    const payload = {
+      action_type: actionType,
+      username: currentUsername || '(neprihlaseny)',
+      entry_id: (details && details.entry_id !== undefined && details.entry_id !== null) ? String(details.entry_id) : null,
+      details_json: JSON.stringify(details || {}),
+      created_at: new Date().toISOString()
+    };
+    const writePromise = sb.from('verso_audit_log').insert(payload);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('ZzzF Audit Log insert timeout (4s)')), 4000)
+    );
+    const { error } = await Promise.race([writePromise, timeoutPromise]);
+    if (error) throw error;
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    console.warn(`ZzzF Audit Log: zapis akcie "${actionType}" zlyhal (samotna akcia POKRACUJE, toto je LEN log, nie hard failure). DOVOD: ${errDetail}`);
+  }
+}
+// === [/Zzz6-F37:AUDIT-LOG] ===
 
 async function zzz1_get_quickchips_entry() {
   const current = zzz0r1_get_current_username();
@@ -6760,6 +6804,7 @@ async function submit_entries_to_db(options = {}) {
     zzz4_0_unsyncedEntryIds[payload.entry_id] = true;
     zzz4_0_save_unsynced_entries_to_storage();
   }
+  zzz6f37_write_audit_log('entry_create', { entry_id: payload.entry_id, r5_category: (zzz4_0_get_field_value(payload, { key: 'r5' }) || '') }); // Zzz6-F37:AUDIT-LOG (2026-08-29)
   zzz1r_flash_all_cells_success(); // Zzz2-R14: vyrazne zelene bliknutie (1s) celeho CL riadku po uspesnom zapise
   return true; // Zzz2-R14: signalizuje volajucemu (napr. ENTRY button), ze zapis (aspon lokalne) prebehol uspesne
 }
@@ -8088,23 +8133,36 @@ async function zzz6f36_write_login_event(payload) {
 }
 // === [/Zzz6-F36:VERIFICATION-STORAGE] ===
 
+// === [PPP-1:USERNAME-UNIQUE-GUARD] (podmienka/gate) - Vrso 2026-08-29 poziadavka ("chybajuca DB-level UNIQUE ochrana username -
+// riesit teraz"): PREDTYM pouzival zapis .upsert(payload, {onConflict:'id'}) - co znamena, ze ak by sa DVAJA
+// ludia pokusili zaregistrovat ROVNAKY username takmer sucasne (race condition, oba JS pre-checky vidia
+// username este ako volny), DRUHY zapis by TICHO PREPISAL prvy (rovnake id=`register-${username}`) namiesto
+// toho, aby bol odmietnuty. Riesenie: .insert() (NIE upsert) - DB-level PRIMARY KEY na stlpci "id" (uz
+// existuje, verso_verification_pkey) teraz FUNGUJE AKO SKUTOCNA OCHRANA - druhy pokus dostane Postgres
+// error 23505 (unique_violation) a JE ODMIETNUTY, prvy registrovany user ostava nedotknuty. | Vrso -> Claude AI | 2026-08-29 ===
 async function zzz10v1_write_registration(payload) {
   try {
-    const writePromise = sb.from('verso_verification').upsert(payload, { onConflict: 'id' });
+    const writePromise = sb.from('verso_verification').insert(payload); // PPP-1:USERNAME-UNIQUE-GUARD: insert (nie upsert) - DB PK odmietne kolizne id
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Zzz10-V1 registration upsert timeout (4s)')), 4000)
+      setTimeout(() => reject(new Error('Zzz10-V1 registration insert timeout (4s)')), 4000)
     );
     const { error } = await Promise.race([writePromise, timeoutPromise]);
-    if (error) throw error;
+    if (error) {
+      if (error.code === '23505') { // PPP-1:USERNAME-UNIQUE-GUARD: username uz existuje (DB-level kolizia, aj napriek JS pre-checku)
+        return { success: false, duplicate: true, error: 'username uz je obsadeny (zachytene na urovni databazy)' };
+      }
+      throw error;
+    }
     zzz0r1_set_db_connection_state(true);
-    return { success: true, error: null };
+    return { success: true, duplicate: false, error: null };
   } catch (err) {
     const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
     console.error(`Zzz10-V1:VERIFICATION-STORAGE - zapis registracie do verso_verification zlyhal. DOVOD: ${errDetail}`);
     zzz0r1_set_db_connection_state(false, errDetail, true);
-    return { success: false, error: errDetail };
+    return { success: false, duplicate: false, error: errDetail };
   }
 }
+// === [/PPP-1:USERNAME-UNIQUE-GUARD] ===
 // === [/Zzz10-V1:VERIFICATION-STORAGE] ===
 
 async function zzz10v1_fetch_known_registrations() {
@@ -8382,6 +8440,12 @@ async function zzz10v1_submit_register() {
   };
 
   const writeResult = await zzz10v1_write_registration(registrationPayload);
+  if (writeResult.duplicate) {
+    // PPP-1:USERNAME-UNIQUE-GUARD: DB odmietla kolizny username (race condition zachytena) - registracia sa NEULOZI ani lokalne,
+    // aby appka neklamala usera ze je zaregistrovany, ked v skutocnosti prvy pokus uz zabral tento username.
+    zzz6f2_show_toast(`Zzz10-V1 Register: username "${username}" je uz zaregistrovany (zachytene na urovni databazy) - registracia zamietnuta.`);
+    return;
+  }
   if (!writeResult.success) {
     // OFFLINE FALLBACK - rovnaky princip ako ostatne cache v subore: lokalne sa registracia zaznamena
     // OKAMZITE (aby duplicate-check hned fungoval aj offline), vzdialeny zapis sa NESKUSA znova automaticky
@@ -8392,6 +8456,7 @@ async function zzz10v1_submit_register() {
   }
   zzz10v1_registrationsLocalCache[normalizedUsername] = JSON.parse(registrationPayload.data_json);
 
+  zzz6f37_write_audit_log('user_register', { username, email }); // Zzz6-F37:AUDIT-LOG (2026-08-29)
   zzz6f36_reset_command_line(); // vycisti formular (USER/EMAIL bunky) pre dalsie pouzitie
 
   // === [Zzz10-V1:SEND-EMAIL] Vrso 2026-08-25 - po uspesnej registracii posle activation kod emailom cez
@@ -8599,14 +8664,23 @@ async function zzzF_migrate_legacy_register_entries() {
     };
 
     try {
-      const { error: writeError } = await sb.from('verso_verification').upsert(payload, { onConflict: 'id' });
-      if (writeError) throw writeError;
+      const { error: writeError } = await sb.from('verso_verification').insert(payload); // PPP-1:USERNAME-UNIQUE-GUARD (2026-08-29): insert (nie upsert) - konzistentne s registraciou, DB PK ako poistka
+      if (writeError) {
+        if (writeError.code === '23505') {
+          // PPP-1:USERNAME-UNIQUE-GUARD: medzicasom (nepravdepodobne, ale mozne) niekto s tymto usernamom uz zaregistroval - preskoc, nemaz z verso_entries
+          skippedExisting++;
+          existingUsernameIds.add(id);
+          continue;
+        }
+        throw writeError;
+      }
 
       const { error: deleteError } = await sb.from('verso_entries').delete().eq('entry_id', row.entry_id);
       if (deleteError) throw deleteError; // zapis do verso_verification uz prebehol - zaznam teraz existuje na OBOCH miestach, treba rucne dorieist mazanie
 
       existingUsernameIds.add(id);
       migrated++;
+      zzz6f37_write_audit_log('legacy_register_migrated', { entry_id: row.entry_id, username }); // Zzz6-F37:AUDIT-LOG (2026-08-29)
     } catch (err) {
       failed++;
       const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
@@ -9060,6 +9134,7 @@ async function zzz6f36_submit_login() {
   }
 
   zzz6f7_set_login_state(true); // Zzz6-F7:LOGIN-STATE - zlate pozadie (prihlaseny)
+  zzz6f37_write_audit_log('user_login', { username }); // Zzz6-F37:AUDIT-LOG (2026-08-29)
   zzz10r1_check_and_flag_username_mismatch(username); // Zzz10-R1:USERNAME-GUARD - cerveny ram, ak nesedi s poslednym username tohto zariadenia
 
   if (!success && dbWasDownDuringAttempt) {
