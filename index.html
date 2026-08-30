@@ -3351,8 +3351,10 @@ function render_entry_cell(id) {
 }
 
 function write_to_entry(id, text) {
+  const zzz6f38_prevValue = entryData[id]; // Zzz6-F38:CL-UNDO (2026-08-30) - zachyt PRED-hodnotu PRED prepisom
   entryData[id] = text;
   render_entry_cell(id);
+  zzz6f38_record_edit(id, zzz6f38_prevValue, text); // Zzz6-F38:CL-UNDO (2026-08-30)
   // === [Zzz1-M1:CL / Zzz1-M2:EL] FIX (Vrso 2026-08-20 hlasenie): PREDTYM sa tu volalo submit_entries_to_db()
   // pri KAZDOM ulozeni JEDNEJ bunky (context okno/modal) - takze aj obycajna uprava jedneho R* pola (napr.
   // Content, Description) zapisala CELU Command Line (a teda aj Entry Line/EL, Zzz4-0) do databazy. To bolo
@@ -4109,6 +4111,165 @@ async function zzz6f33_handle_delete_click() {
   btn.addEventListener('click', zzz6f33_handle_delete_click);
 })();
 // === [/Zzz6-F33:DELETE] ===
+
+// === [Zzz6-F38:CL-UNDO / Zzz6-F39:CL-REDO] (SEKCIA 1 CORE, versoBackButton/versoForwardButton) - Vrso
+// 2026-08-30: "Back"/"Forward" = krok spat/vpred v akejkolvek akcii v Command Line (Zzz1-M1). Rozsah
+// (potvrdene Vrso, "Ano presne tak ako pises"):
+//   - LEN upravy v Command Line (pole edity cez write_to_entry + ENTRY submit), NIE Database/EL akcie
+//     mimo CL, NIE verso_verification (ta ma vlastny prisny flow s PPP-1:USERNAME-UNIQUE-GUARD/
+//     register-lock - miesanie s undo by mohlo tieto poistky obist).
+//   - Zasobnik LEN v JS pamati (session-only), ZIADNA perzistencia (localStorage/DB) - vymaze sa pri
+//     reloade AJ pri logout-e (viz hook v zzz10r2_logout).
+//   - Limit hlbky: poslednych 10 akcii (ZZZ6F38_MAX_DEPTH), nie casovy limit (predvidatelnejsie ako TTL).
+//   - Vlozeny zaznam (ENTRY tlacidlo, submit_entries_to_db) sa neda skutocne zmazat (zaznamy sa nemazu) -
+//     Back preto taky zapis PRESUNIE do Trash (existujuca Zzz6-F34 logika, VRATANE Zzz10-V1:REGISTER-LOCK
+//     a Zzz1-R5:FINAL-LOCK ochran), Forward ho VRATI SPAT (re-insert do verso_entries s rovnakym
+//     payloadom/entry_id). Zodpovedajuci Trash zaznam sa NEMAZE (verso_trash je zamerne append-only) -
+//     ostava ako permanentna audit stopa, rovnaky princip ako Zzz6-F37:AUDIT-LOG.
+//   - Ak presun do Trash zlyha (register-lock/final-lock/DB vypadok), akcia sa NEKONZUMUJE (ostava na
+//     stacku, da sa skusit znova) - stack sa meni LEN pri realne uspesnej akcii.
+//   - OPRAVA (Vrso 2026-08-30 hlasenie "Back ide po jednotlivych pismenach"): write_to_entry() sa vola
+//     PRI KAZDOM STLACENI KLAVESY v textovom poli (F1:CELL-LOGIC-LIVE-SAVE, zamerne kvoli ochrane pred
+//     stratou textu) - keby kazdy jeden call vytvoril vlastny undo krok, Back by vracal text pismeno po
+//     pismene namiesto CELEHO obsahu bunky. Riesenie: "coalescing" - viacero po sebe iducich zmien TOHO
+//     ISTEHO pola sa zluci do JEDNEHO undo kroku (PRED-hodnota = hodnota PRED ZACIATKOM cele edit-session,
+//     PO-hodnota = najnovsia). Krok sa "uzavrie" (flush) bud (a) automaticky po kratkej pauze v pisani
+//     (ZZZ6F38_COALESCE_MS), (b) hned ked zacne edit INEHO pola, alebo (c) hned pri stlaceni samotneho
+//     Back/Forward/ENTRY (aby prve kliknutie na Back vzdy vratilo CELY prave dopisany obsah, nie len cast).
+//     Bezne male opravy (backspace/delete v ramci pisania) sa TAKTO do Back vobec nedostanu - tie rieši
+//     klasicka klavesnica, presne ako Vrso navrhol. | Vrso -> Claude AI | 2026-08-30 ===
+const ZZZ6F38_MAX_DEPTH = 10;
+const ZZZ6F38_COALESCE_MS = 900; // pauza v pisani, po ktorej sa rozpisana zmena "uzavrie" ako 1 undo krok
+let zzz6f38_undoStack = [];
+let zzz6f39_redoStack = [];
+let zzz6f38_isReplaying = false; // potlaci re-zaznamenanie akcie POCAS samotneho undo/redo prehravania
+let zzz6f38_pendingEdit = null; // { id, prevValue } - rozpisana, este NEUZAVRETA edit-session
+let zzz6f38_pendingEditTimer = null;
+
+function zzz6f38_push_bounded(stack, action) {
+  stack.push(action);
+  if (stack.length > ZZZ6F38_MAX_DEPTH) stack.shift(); // najstarsia polozka sa zahodi (limit hlbky)
+}
+
+// Uzavrie (flush) rozpisanu edit-session ako JEDEN undo krok (ak sa hodnota realne zmenila).
+function zzz6f38_flush_pending_edit() {
+  if (zzz6f38_pendingEditTimer) { clearTimeout(zzz6f38_pendingEditTimer); zzz6f38_pendingEditTimer = null; }
+  if (!zzz6f38_pendingEdit) return;
+  const { id, prevValue } = zzz6f38_pendingEdit;
+  zzz6f38_pendingEdit = null;
+  const newValue = entryData[id] || '';
+  if (prevValue === newValue) return; // napr. dopisane a potom zmazane spat na povodnu hodnotu - ziadna skutocna zmena
+  zzz6f38_push_bounded(zzz6f38_undoStack, { type: 'edit', id, prevValue, newValue });
+  zzz6f39_redoStack = []; // novy krok zmaze "buducnost" (klasicke undo/redo spravanie)
+}
+
+// Volane z write_to_entry PRI KAZDOM STLACENI KLAVESY - NEVYTVARA vlastny undo krok, len priebezne
+// aktualizuje/predlzuje rozpisanu edit-session (viz zzz6f38_flush_pending_edit vyssie pre skutocny zapis na stack).
+function zzz6f38_record_edit(id, prevValue, newValue) {
+  if (zzz6f38_isReplaying) return; // undo/redo prehravanie samo osebe nesmie vytvarat dalsie kroky
+  if ((prevValue || '') === (newValue || '')) return; // ziadna skutocna zmena
+  if (zzz6f38_pendingEdit && zzz6f38_pendingEdit.id !== id) {
+    zzz6f38_flush_pending_edit(); // zacina sa edit INEHO pola - predosle rozpisane pole sa najprv uzavrie
+  }
+  if (!zzz6f38_pendingEdit) {
+    zzz6f38_pendingEdit = { id, prevValue: prevValue || '' }; // zapamataj hodnotu PRED ZACIATKOM tejto edit-session
+  }
+  if (zzz6f38_pendingEditTimer) clearTimeout(zzz6f38_pendingEditTimer);
+  zzz6f38_pendingEditTimer = setTimeout(zzz6f38_flush_pending_edit, ZZZ6F38_COALESCE_MS);
+}
+
+// Volane zo submit_entries_to_db (Zzz2-R14 ENTRY) po ulozeni (aspon lokalne) - zaznamena cely payload.
+function zzz6f38_record_submit(payload) {
+  if (zzz6f38_isReplaying) return;
+  zzz6f38_flush_pending_edit(); // najprv uzavri prip. rozpisany edit, aby poradie krokov na stacku bolo spravne
+  zzz6f38_push_bounded(zzz6f38_undoStack, { type: 'submit', payload: Object.assign({}, payload) });
+  zzz6f39_redoStack = [];
+}
+
+async function zzz6f38_undo() {
+  zzz6f38_flush_pending_edit(); // uzavri prip. rozpisany text - Back ma vratit CELY prave napisany obsah, nie cast
+  const action = zzz6f38_undoStack[zzz6f38_undoStack.length - 1];
+  if (!action) {
+    zzz6f2_show_toast('Zzz6-F38 Back: nie je co vratit spat');
+    return;
+  }
+  zzz6f38_isReplaying = true;
+  try {
+    if (action.type === 'edit') {
+      zzz6f38_undoStack.pop();
+      write_to_entry(action.id, action.prevValue);
+      zzz6f39_redoStack.push(action);
+    } else if (action.type === 'submit') {
+      const row = {
+        entry_id: action.payload.entry_id, r1: action.payload.r1, fields_json: action.payload.fields_json,
+        entry_date: action.payload.entry_date, username: action.payload.username, updated_at: action.payload.updated_at
+      };
+      const moved = await zzz6f34_move_row_to_trash(row); // zzz6f34 uz sam hlasi vlastny toast pri zlyhani/uspechu
+      if (moved) {
+        zzz6f38_undoStack.pop();
+        zzz6f39_redoStack.push(action);
+      }
+      // moved === false (register-lock/final-lock/DB vypadok): akcia OSTAVA na stacku, nekonzumovat
+    }
+  } finally {
+    zzz6f38_isReplaying = false;
+  }
+}
+
+async function zzz6f39_redo() {
+  zzz6f38_flush_pending_edit(); // konzistentnost s Back-om (viz vyssie)
+  const action = zzz6f39_redoStack[zzz6f39_redoStack.length - 1];
+  if (!action) {
+    zzz6f2_show_toast('Zzz6-F39 Forward: nie je co vratit vpred');
+    return;
+  }
+  zzz6f38_isReplaying = true;
+  try {
+    if (action.type === 'edit') {
+      zzz6f39_redoStack.pop();
+      write_to_entry(action.id, action.newValue);
+      zzz6f38_undoStack.push(action);
+    } else if (action.type === 'submit') {
+      // Vrati zaznam SPAT do verso_entries s rovnakym payloadom/entry_id. Zodpovedajuci Trash zaznam
+      // (append-only, ziadny DELETE) NAMERNE OSTAVA - je to permanentna audit stopa "toto tu bolo presunute".
+      try {
+        const { error } = await sb.from('verso_entries').upsert(action.payload, { onConflict: 'entry_id' });
+        if (error) {
+          const errDetail = (error && (error.message || error.details || error.hint)) || String(error);
+          console.error(`Zzz6-F39 Forward (obnova z Trash) zlyhala. DOVOD: ${errDetail}`);
+          zzz0r1_set_db_connection_state(false, errDetail, true);
+          zzz6f2_show_toast(`Forward zlyhal - zaznam #${action.payload.entry_id} sa nepodarilo obnovit`);
+          return; // nekonzumovat, stack sa nemeni - da sa skusit znova
+        }
+        submittedEntriesCache[action.payload.entry_id] = action.payload.r1;
+        submittedEntriesOwnerCache[action.payload.entry_id] = action.payload.username;
+        submittedEntriesFullCache[action.payload.entry_id] = action.payload;
+        zzz0r1_set_db_connection_state(true);
+        zzz6f37_write_audit_log('entry_restore_from_trash', { entry_id: action.payload.entry_id }); // Zzz6-F37:AUDIT-LOG
+        zzz6f2_show_toast(`Zzz6-F39 Forward: zaznam #${action.payload.entry_id} obnoveny`);
+        refresh_database_workspace_if_open();
+        zzz6f39_redoStack.pop();
+        zzz6f38_undoStack.push(action);
+      } catch (err) {
+        const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+        console.error(`Zzz6-F39 Forward neocakavana chyba. DOVOD: ${errDetail}`);
+        zzz0r1_set_db_connection_state(false, errDetail, true);
+        zzz6f2_show_toast(`Forward zlyhal - zaznam #${action.payload.entry_id} sa nepodarilo obnovit`);
+        // nekonzumovat, stack sa nemeni
+      }
+    }
+  } finally {
+    zzz6f38_isReplaying = false;
+  }
+}
+
+(function bindZzz6F38F39BackForwardButtons() {
+  const backBtn = document.getElementById('versoBackButton'); // Zzz6-F38:CL-UNDO
+  const fwdBtn = document.getElementById('versoForwardButton'); // Zzz6-F39:CL-REDO
+  if (backBtn) backBtn.addEventListener('click', zzz6f38_undo);
+  if (fwdBtn) fwdBtn.addEventListener('click', zzz6f39_redo);
+})();
+// === [/Zzz6-F38:CL-UNDO / Zzz6-F39:CL-REDO] ===
 
 function open_entry_modal(id) {
   const overlay = document.createElement('div');
@@ -6805,6 +6966,7 @@ async function submit_entries_to_db(options = {}) {
     zzz4_0_save_unsynced_entries_to_storage();
   }
   zzz6f37_write_audit_log('entry_create', { entry_id: payload.entry_id, r5_category: (zzz4_0_get_field_value(payload, { key: 'r5' }) || '') }); // Zzz6-F37:AUDIT-LOG (2026-08-29)
+  zzz6f38_record_submit(payload); // Zzz6-F38:CL-UNDO (2026-08-30) - Back po tomto zapise presunie zaznam do Trash
   zzz1r_flash_all_cells_success(); // Zzz2-R14: vyrazne zelene bliknutie (1s) celeho CL riadku po uspesnom zapise
   return true; // Zzz2-R14: signalizuje volajucemu (napr. ENTRY button), ze zapis (aspon lokalne) prebehol uspesne
 }
@@ -9051,6 +9213,10 @@ function zzz10r2_logout() {
     label.classList.remove('zzz0r1-db-disconnected');
   }
   zzz6f7_set_login_state(false); // Zzz6-F7:LOGIN-STATE - odstrani zlate pozadie
+  zzz6f38_undoStack = []; // Zzz6-F38:CL-UNDO (2026-08-30) - session-only, vyprazdni sa pri odhlaseni
+  zzz6f39_redoStack = []; // Zzz6-F39:CL-REDO (2026-08-30)
+  if (zzz6f38_pendingEditTimer) { clearTimeout(zzz6f38_pendingEditTimer); zzz6f38_pendingEditTimer = null; }
+  zzz6f38_pendingEdit = null;
   zzz6f2_show_toast('Zzz10-R2 Log Out: odhlaseny');
   open_settings_workspace(); // prekresli Zzz10-T1 Login setup tab (uz zase ukaze ENTRY namiesto LOG OUT)
 }
@@ -9335,6 +9501,7 @@ function zzz10m2_render_login_setup(body) {
 // === [/Zzz10-M2:LOGIN-SETUP] ===
 </script>
 </body>
+
 
 
 
