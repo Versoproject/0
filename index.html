@@ -4186,6 +4186,19 @@ function zzz6f38_record_submit(payload) {
   zzz6f39_redoStack = [];
 }
 
+// === [Zzz6-F38:FLASH-CELL] (Vrso 2026-08-30, "vyznac vsetky zmeny pri back a forward zvyraznenim buniek
+// bliknutim, napr. zelenou forward a back cervenou"): zvyrazni KONKRETNU CL bunku, ktoru Back/Forward prave
+// zmenili - znovupouziva UZ EXISTUJUCE flash triedy (DRY, rovnaka logika ako Zzz6-F33 delete/Zzz2-R14
+// success): .zzz6f33-danger (cervena) pre Back, .zzz1r-success-flash (zelena) pre Forward - rovnaky vizualny
+// jazyk, aky uz appka pouziva inde ("cervena = odobrate/vrateny krok spat", "zelena = potvrdene/aplikovane").
+function zzz6f38_flash_cl_cell(id, cssClass, duration = 600) {
+  const cell = document.querySelector(`.numbers-row .entry-cell[data-entry-id="${id}"]`);
+  if (!cell) return;
+  cell.classList.add(cssClass);
+  setTimeout(() => cell.classList.remove(cssClass), duration);
+}
+// === [/Zzz6-F38:FLASH-CELL] ===
+
 async function zzz6f38_undo() {
   zzz6f38_flush_pending_edit(); // uzavri prip. rozpisany text - Back ma vratit CELY prave napisany obsah, nie cast
   const action = zzz6f38_undoStack[zzz6f38_undoStack.length - 1];
@@ -4198,6 +4211,7 @@ async function zzz6f38_undo() {
     if (action.type === 'edit') {
       zzz6f38_undoStack.pop();
       write_to_entry(action.id, action.prevValue);
+      zzz6f38_flash_cl_cell(action.id, 'zzz6f33-danger'); // Zzz6-F38:FLASH-CELL - cervena = Back
       zzz6f39_redoStack.push(action);
     } else if (action.type === 'submit') {
       const row = {
@@ -4228,6 +4242,7 @@ async function zzz6f39_redo() {
     if (action.type === 'edit') {
       zzz6f39_redoStack.pop();
       write_to_entry(action.id, action.newValue);
+      zzz6f38_flash_cl_cell(action.id, 'zzz1r-success-flash'); // Zzz6-F38:FLASH-CELL - zelena = Forward
       zzz6f38_undoStack.push(action);
     } else if (action.type === 'submit') {
       // Vrati zaznam SPAT do verso_entries s rovnakym payloadom/entry_id. Zodpovedajuci Trash zaznam
@@ -6968,6 +6983,12 @@ async function submit_entries_to_db(options = {}) {
   zzz6f37_write_audit_log('entry_create', { entry_id: payload.entry_id, r5_category: (zzz4_0_get_field_value(payload, { key: 'r5' }) || '') }); // Zzz6-F37:AUDIT-LOG (2026-08-29)
   zzz6f38_record_submit(payload); // Zzz6-F38:CL-UNDO (2026-08-30) - Back po tomto zapise presunie zaznam do Trash
   zzz1r_flash_all_cells_success(); // Zzz2-R14: vyrazne zelene bliknutie (1s) celeho CL riadku po uspesnom zapise
+  // === [Zzz6-F38:CL-AUTO-CLEAR] (Vrso 2026-08-30, "CL by sa mal vymazat ked uz bola entry uspesna, pred
+  // prvym Back ukonom"): PO uspesnom zapise (aspon lokalne) sa CELA Command Line vycisti (rovnaky mechanizmus
+  // ako DELETE tlacidlo, zzz6f33_clear_whole_cl) - pripravena na dalsi zaznam. Toto NIJAKO neovplyvnuje
+  // Back/Forward na tento zapis: zzz6f38_record_submit vyssie uz ma svoju VLASTNU kopiu payloadu, Back/Forward
+  // pracuju priamo s DB riadkom (Trash <-> verso_entries), nie s aktualnym obsahom CL. | Vrso -> Claude AI | 2026-08-30 ===
+  zzz6f33_clear_whole_cl();
   return true; // Zzz2-R14: signalizuje volajucemu (napr. ENTRY button), ze zapis (aspon lokalne) prebehol uspesne
 }
 
@@ -9501,6 +9522,11 @@ function zzz10m2_render_login_setup(body) {
 // === [/Zzz10-M2:LOGIN-SETUP] ===
 </script>
 </body>
+
+
+
+
+
 
 
 
