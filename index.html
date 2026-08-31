@@ -7407,6 +7407,10 @@ function zzz6f40_clear_all_fixes() {
   if (!logoBtn) return;
   let pressStart = 0;
   let clearTimer = null;
+  let lastActionAt = 0; // [Zzz6-F40:DEBOUNCE-FIX] zabrani duplicitnemu spusteniu, ked mobilny prehliadac
+  // vygeneruje AJ touchend AJ nasledny "synteticky" mouseup pre ten isty jeden fyzicky dotyk (Vrso hlasenie
+  // 2026-09-01: viacero "Ziadne FIX zaznamy" toastov naraz po jednom kliku) | Vrso -> Claude AI | 2026-09-01
+  const ZZZ6F40_DEBOUNCE_MS = 400;
 
   const onPressStart = () => {
     pressStart = Date.now();
@@ -7414,6 +7418,7 @@ function zzz6f40_clear_all_fixes() {
     clearTimer = setTimeout(() => {
       zzz6f40_clear_all_fixes();
       pressStart = 0; // uz osetrene tu - zabrani duplicitnemu FIX-CREATE/FIX-CYCLE po pusteni prsta/mysi
+      lastActionAt = Date.now();
     }, ZZZ6F40_HOLD_CLEAR_MS);
   };
   const onPressEnd = () => {
@@ -7421,6 +7426,9 @@ function zzz6f40_clear_all_fixes() {
     if (!pressStart) return; // uz vybavene 20s vetvou (FIX-CLEAR-ALL) vyssie
     const heldMs = Date.now() - pressStart;
     pressStart = 0;
+    const now = Date.now();
+    if (now - lastActionAt < ZZZ6F40_DEBOUNCE_MS) return; // [Zzz6-F40:DEBOUNCE-FIX] ignoruje duplicitny event
+    lastActionAt = now;
     if (heldMs >= ZZZ6F40_HOLD_FIX_MS) {
       zzz6f40_create_fix();
     } else {
@@ -8091,6 +8099,16 @@ async function open_database_workspace(loadMore = false) {
       wrap.appendChild(loadMoreBtn);
     }
   }
+
+  // === [Zzz4-0:ATTACH-FIX] OPRAVA (Vrso hlasenie 2026-09-01, "nenacitava sa databaza... Nacitavam command
+  // lines... zostava navzdy") - "wrap" sa doteraz VYBUDOVAL kompletne (vratane vsetkych riadkov), ale
+  // NIKDY sa neprilepil do #versoWorkspaceSection (na rozdiel od Trash/Settings/Verification Workspace,
+  // ktore vsetky maju presne tento par prikazov). Povodny "Nacitavam command lines..." placeholder (nastaveny
+  // synchronne na zaciatku funkcie) tak zostal navzdy zobrazeny aj po uspesnom fetchi - zzz0r1_set_db_connection_state(true)
+  // sa zavolalo spravne (preto zlate, nie oranzove logo), ale realne data sa nikdy nedostali do DOM. | Vrso -> Claude AI | 2026-09-01
+  workspace.innerHTML = '';
+  workspace.appendChild(wrap);
+  // === [/Zzz4-0:ATTACH-FIX] ===
 
   // === [Zzz2-R14:INSERT-FLASH] (Vrso 2026-08-24: "po vlozeni entry oznac 2-R* entry bunku aj vkladane
   // command lines zelenou") - ak prave prebehol uspesny zapis (zzz4_0_justInsertedEntryId nastavene v
