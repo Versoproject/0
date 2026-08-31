@@ -2328,6 +2328,11 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz10v1-entry-button-wide:hover {
     background-color: #262626;
   }
+  .zzz10v1-entry-button-wide:disabled {
+    opacity: 0.4;
+    border-color: #525252 !important;
+    cursor: default;
+  }
   .zzz10v1-entry-button-wide.zzz6f36-success-flash {
     background-color: #22c55e !important;
     color: #0a0a0a !important;
@@ -8439,6 +8444,7 @@ async function zzz10v1_write_registration(payload) {
 // ZAROVEN vratil PRAZDNY vysledok (ak by prvy pokus zlyhal ale lokalna cache uz nieco obsahovala, druhy
 // pokus by len zbytocne zdrzoval) - realna DB-level ochrana (PPP-1:USERNAME-UNIQUE-GUARD, insert-only PK)
 // zostava vzdy funkcna aj pri zlyhani oboch pokusov, TOTO rieši LEN spravnost vizualnej napovedy. | Vrso -> Claude AI | 2026-08-31 ===
+// Zzz10-R6:EMAIL-FIELD (aj) - zbiera 'emails' pole popri 'usernames'
 async function zzz10v1_fetch_known_registrations_once(timeoutMs) {
   const usernames = [];
   const emails = [];
@@ -8458,6 +8464,7 @@ async function zzz10v1_fetch_known_registrations_once(timeoutMs) {
   return { usernames, emails };
 }
 
+// Zzz10-R6:EMAIL-FIELD (aj) - zbiera 'emails' pole popri 'usernames'
 async function zzz10v1_fetch_known_registrations() {
   let usernames = [];
   let emails = [];
@@ -8559,39 +8566,83 @@ async function zzz10v1_fetch_reservation(normalizedUsername) {
 }
 // === [/Zzz10-V1:RESERVATION] ===
 
-// prekresli zivy per-pismenny nahlad v USER poli - pre kazde pismeno skontroluje, ci JEHO POZICIA (zlava)
-// este stale zodpoveda ZACIATKU nejakeho uz zaregistrovaneho username (cervena = mozna zhoda), alebo uz
-// ziadny znamy username takto nezacina (zelena = od tohto miesta odlisny/pravdepodobne volny)
+// === [Zzz10-V1:WHOLE-STRING-FINAL] Vrso 2026-09-XX KOREKCIA predchadzajuceho PER-PREFIX pokusu, doslovne:
+// "Stale to mas zle. Vsak som dal V - prve pismeno malo byt cervene ale po dalsom ako Vr uz mali byt obe
+// zelene atd... Vers detto...cervena ma oznacovat len posledne pismeno zadane ci je este medzi volnymi
+// alebo nie. Ak je cele vpisane slovo uz registrovane tak vsetky samozrejme cervene a ked volne tak zelene.
+// Vsak to musi ladit so send activation button" - Claude analyza: PER-PREFIX pokus (kazda dlzka prefixu
+// zvlast, cervena/zelena podla toho, ci PRESNE TENTO KONKRETNY prefix uz je niekde CELY zaregistrovany) bol
+// nespravne pochopenie - spravaval sa napr. tak, ze "V" bolo cervene aj ked "Vr" uz bolo cele zelene, teda
+// STALE farbil kazde pismeno OSOBITNE namiesto CELEHO aktualne napisaneho retazca ako JEDNEJ jednotky.
+// Vrsov posledny odsek ("ak je cele vpisane slovo uz registrovane tak vsetky cervene, ked volne tak
+// zelene") je JEDNOZNACNY - vraciame sa na PREDCHADZAJUCI (WHOLE-STRING) pristup: CELY aktualne napisany
+// retazec sa PRI KAZDOM PISMENE ZNOVA vyhodnoti ako JEDEN CELOK (presna zhoda oproti zoznamu
+// zaregistrovanych username) a VSETKY jeho pismena dostanu tu istu farbu - zelena = tento presny (cely,
+// doteraz napisany) retazec NIE JE zaregistrovany, cervena = JE. "Vsak to musi ladit so send activation
+// button" - zzz10v1_update_send_button_state (nizsie v subore) uz pouziva PRESNE TENTO ISTY typ kontroly
+// (cely-retazec, presna zhoda), takze oba indikatory (mirror text + SEND ACTIVATION CODE tlacidlo) su teraz
+// VZDY synchronizovane - farba pismen v poli vzdy zodpoveda tomu, ci je tlacidlo prave TERAZ stlacitelne. | Vrso -> Claude AI | 2026-09-XX ===
 function zzz10v1_render_username_highlight(mirrorEl, value, takenUsernamesNormalized) {
   mirrorEl.innerHTML = '';
   if (!value) return;
-  const chars = [...value];
-  let cumulativeNormalized = '';
-  chars.forEach(ch => {
-    cumulativeNormalized += zzz10v1_normalize(ch) || ch.toLowerCase();
-    const stillPossibleMatch = takenUsernamesNormalized.some(u => u.startsWith(cumulativeNormalized));
-    const span = document.createElement('span');
-    span.className = stillPossibleMatch ? 'zzz10v1-char-taken' : 'zzz10v1-char-free';
-    span.textContent = ch;
-    mirrorEl.appendChild(span);
-  });
+  const isExactTaken = takenUsernamesNormalized.includes(zzz10v1_normalize(value));
+  const span = document.createElement('span');
+  span.className = isExactTaken ? 'zzz10v1-char-taken' : 'zzz10v1-char-free';
+  span.textContent = value;
+  mirrorEl.appendChild(span);
 }
+// === [/Zzz10-V1:WHOLE-STRING-FINAL] ===
 
 // === [Zzz10-V1:BTN-AVAILABILITY-COLOR] Vrso 2026-08-31 poziadavka, doslovne: "Send activation text in
 // green if the username is avilabl" - zlive farbenie SEND ACTIVATION CODE tlacidla podla PRESNEJ (cely
 // retazec) zhody oproti zoznamu uz zaregistrovanych username (rovnaky princip ako finalna kontrola v
 // zzz10v1_submit_register). Zelena (.zzz10v1-btn-available) = tento presny username este nie je
 // zaregistrovany, cervena (.zzz10v1-btn-taken) = uz existuje. Prazdne pole = ziadna trieda (povodna zlata
-// farba tlacidla). | Vrso -> Claude AI | 2026-08-31 ===
+// farba tlacidla). Vrso 2026-09-XX DOPLNENIE, doslovne: "Send activation code sa bude dat button stlacit
+// az ked bude username volne cize vsetky pismena zelenou" - tlacidlo je TERAZ AJ realne disabled, kym
+// username nie je vyplneny A zaroven volny (presna zhoda = disabled). | Vrso -> Claude AI | 2026-09-XX ===
 function zzz10v1_update_send_button_state(btn, username, takenUsernamesNormalized) {
   if (!btn) return;
   btn.classList.remove('zzz10v1-btn-available', 'zzz10v1-btn-taken');
   const trimmed = (username || '').trim();
-  if (!trimmed) return;
+  if (!trimmed) {
+    btn.disabled = true; // prazdne pole = este nie je co posielat
+    return;
+  }
   const taken = takenUsernamesNormalized.includes(zzz10v1_normalize(trimmed));
   btn.classList.add(taken ? 'zzz10v1-btn-taken' : 'zzz10v1-btn-available');
+  btn.disabled = taken; // stlacitelne LEN ked je presne tento username volny
 }
 // === [/Zzz10-V1:BTN-AVAILABILITY-COLOR] ===
+
+// === [Zzz10-V1:REGISTER-ENTRY-GATE] Vrso 2026-09-XX poziadavka, doslovne: "entry button zmen na register
+// entry!!! Stlacit sa bude dat az ked activstion code bude totozny s tym co bol zaslany na email a pod
+// danym usersname/email ked ho bude znovu vyplnat samozrejme" - REGISTER ENTRY tlacidlo je disabled, kym sa
+// PRESNE nezhoduje (a) username, (b) email a (c) activation code s tym, co bolo vygenerovane/"odoslane"
+// pri poslednom uspesnom kliknuti na SEND ACTIVATION CODE (zzz10v1LastSentActivation nizsie v subore) - a
+// zaroven rezervacia este NEVYPRSALA (24h). POZOR - toto je LEN klientska UX-napoveda (rychla, bez dalsieho
+// DB volania na kazdy keystroke); AUTORITATIVNA kontrola (proti realnej rezervacii v DB, nie proti tejto
+// lokalnej premennej) sa aj tak vzdy vykonava az v zzz10v1_submit_register pri samotnom kliknuti - takze aj
+// keby niekto tento klientsky gate obisiel (napr. cez devtools), server-side/DB kontrola registraciu bez
+// spravneho kodu aj tak odmietne. | Vrso -> Claude AI | 2026-09-XX ===
+let zzz10v1LastSentActivation = null; // { username, email, code, expiresAt } - normalizovane username/email, nastavene po uspesnom SEND ACTIVATION CODE
+
+// Zzz10-R6:EMAIL-FIELD (aj) - porovnava entryData['10'] s zzz10v1LastSentActivation.email
+function zzz10v1_update_register_entry_button_state() {
+  const btn = document.getElementById('versoRegisterSetupEntryButton');
+  if (!btn) return; // btn neexistuje ak je user uz prihlaseny (vtedy sa renderuje LOG OUT namiesto)
+  const username = zzz10v1_normalize((entryData['17'] || '').trim());
+  const email = zzz10v1_normalize((entryData['10'] || '').trim());
+  const code = (entryData['35'] || '').trim();
+  const s = zzz10v1LastSentActivation;
+  const enabled = !!s
+    && username === s.username
+    && email === s.email
+    && code === s.code
+    && Date.now() < new Date(s.expiresAt).getTime();
+  btn.disabled = !enabled;
+}
+// === [/Zzz10-V1:REGISTER-ENTRY-GATE] ===
 
 function zzz10v1_build_username_field() {
   const wrap = document.createElement('div');
@@ -8638,12 +8689,32 @@ function zzz10v1_build_username_field() {
     write_to_entry('17', input.value); // perzistuje do zdielaneho entryData["17"]
     zzz10v1_render_username_highlight(mirror, input.value, zzz10v1CachedRegistrations.usernames);
     zzz10v1_update_send_button_state(document.getElementById('versoRegisterSetupSearchButton'), input.value, zzz10v1CachedRegistrations.usernames); // Zzz10-V1:BTN-AVAILABILITY-COLOR - zive prekreslenie SEND ACTIVATION CODE farby pri kazdom pismene
+    zzz10v1_update_register_entry_button_state(); // Zzz10-V1:REGISTER-ENTRY-GATE - zmena username invaliduje predchadzajuci zapas
     box.classList.remove('zzz10v1-available', 'zzz10v1-taken'); // zmena textu = predchadzajuci SEARCH vysledok uz neplati
   });
 
   return { wrap, box, input };
 }
 
+// === [Zzz10-R6:EMAIL-FIELD] Vrso 2026-09-XX poziadavka, doslovne: "oznac to funkciou zzz10-R* user id
+// (nazvanu hlavne email) v kode pod register alebo user id aby sa dalo lahko potom vynat..." - VSETKY
+// miesta v subore, ktore pracuju s EMAIL-om v ramci registracie (Zzz10-V1), su oznacene tymto rovnakym
+// tagom "Zzz10-R6:EMAIL-FIELD", aby sa dali NAJST JEDNYM grep-om ("Zzz10-R6") a v buducnosti LAHKO
+// ODSTRANIT/NAHRADIT (napr. Vrsov napad s autorskym dielom namiesto emailu). ZOZNAM VSETKYCH miest s tymto
+// tagom v subore (aktualny k 2026-09-XX):
+//   1) TOTO - zzz10v1_build_email_field() - cely EMAIL vstupny field (label+cell+modal-click)
+//   2) zzz10v1_build_email_info_note() - info text "An activation code will be sent to this email..."
+//   3) zzz10v1_build_send_activation_button() - validacia formatu emailu, kontrola uz-pouziteho emailu
+//      (fresh.emails.includes), kontrola zhody emailu s existujucou rezervaciou, ulozenie emailu do
+//      reservationPayload.data_json a do zzz10v1LastSentActivation
+//   4) zzz10v1_fetch_known_registrations() / _once() - zber "emails" zo vsetkych zaznamov (data.email)
+//   5) zzz10v1_update_register_entry_button_state() - porovnanie entryData['10'] (email) s poslednou
+//      odoslanou aktivaciou (zzz10v1LastSentActivation.email)
+//   6) zzz10v1_submit_register() - validacia formatu emailu, kontrola uz-registrovaneho emailu, kontrola
+//      zhody emailu s rezervaciou, ulozenie emailu do finalneho registrationPayload.data_json
+// Ak sa email v buducnosti odstrani: vsetky tieto miesta treba najst (grep "Zzz10-R6") a bud zmazat, alebo
+// nahradit inym mechanizmom (napr. autorske dielo). entryData['10'] (zdielane pole s Login CONTENT) by sa
+// v takom pripade prestalo pouzivat LEN pre register - Login CONTENT/heslo pouzitie ostava nedotknute. | Vrso -> Claude AI | 2026-09-XX ===
 // EMAIL pole (predtym CONTENT) - zostava klasicka .entry-cell + modal-click editacia (DRY, rovnaky vzor
 // ako inde v appke), ale stylizovana ako link (.zzz10v1-email-cell) a bez akehokolvek maskovania (nie je to
 // uz heslo). Zdiela data-entry-id="10" s Login CONTENT bunkou.
@@ -8678,6 +8749,7 @@ function zzz10v1_build_email_field() {
 // kod. CSS trieda ".zzz10v1-search-button" (a DOM id "versoRegisterSetupSearchButton") ZAMERNE OSTAVAJU
 // nezmenene (len vizual, DRY - novy nazov by vyzadoval len duplicitny CSS blok bez akehokolvek funkcneho
 // rozdielu). | Vrso -> Claude AI | 2026-08-31 ===
+// Zzz10-R6:EMAIL-FIELD (aj) - validacia/kontrola/ulozenie emailu, viz master-tag pri zzz10v1_build_email_field
 function zzz10v1_build_send_activation_button(usernameBox) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -8748,6 +8820,12 @@ function zzz10v1_build_send_activation_button(usernameBox) {
       usernameBox.classList.add('zzz10v1-available');
       usernameBox.classList.remove('zzz10v1-taken');
 
+      // === [Zzz10-V1:REGISTER-ENTRY-GATE] ulozenie ocakavanych hodnot pre klientsky UX-gate REGISTER ENTRY
+      // tlacidla (viz definicia vyssie v subore) - AUTORITATIVNA kontrola je aj tak vzdy v zzz10v1_submit_register.
+      zzz10v1LastSentActivation = { username: normalizedUsername, email: normalizedEmail, code: activationCode, expiresAt };
+      zzz10v1_update_register_entry_button_state();
+      // === [/Zzz10-V1:REGISTER-ENTRY-GATE] ===
+
       // best-effort email (viz Zzz10-V1:SEND-EMAIL nizsie pri finalnej registracii) - NEBLOKUJUCE, ak
       // zlyha/Edge Function chyba, kod sa AJ TAK zobrazi v toaste nizsie (Vrso 2026-08-31: "nejde odosielat
       // emaily... zatial sa nikto nejde prihlasovat" - kym email nefunguje, kod musi byt vidiet aj bez neho,
@@ -8758,9 +8836,9 @@ function zzz10v1_build_send_activation_button(usernameBox) {
         console.warn(`Zzz10-V1 SEND-ACTIVATION-BUTTON: best-effort email zlyhal (nekriticke). DOVOD: ${(err && err.message) || String(err)}`);
       }
 
-      zzz6f2_show_toast(`Zzz10-V1: aktivacny kod pre "${username}": ${activationCode} (rezervovane na 24 hodin, zadaj kod nizsie a stlac ENTRY).`);
+      zzz6f2_show_toast(`Zzz10-V1: aktivacny kod pre "${username}": ${activationCode} (rezervovane na 24 hodin, zadaj kod nizsie a stlac REGISTER ENTRY).`);
     } finally {
-      btn.disabled = false;
+      zzz10v1_update_send_button_state(btn, entryData['17'] || '', zzz10v1CachedRegistrations.usernames); // Zzz10-V1:BTN-AVAILABILITY-COLOR - namiesto natvrdo "false", respektuje disabled-kym-taken pravidlo
     }
   });
   return btn;
@@ -8769,6 +8847,7 @@ function zzz10v1_build_send_activation_button(usernameBox) {
 
 // Vrso 2026-08-31: "upozorni ze dane usernsme bude rezervovane iba po dobu jedneho dna" - info-poznamka
 // pod SEND ACTIVATION CODE tlacidlom teraz explicitne uvadza 24h rezervacne okno.
+// Zzz10-R6:EMAIL-FIELD (viz master-tag vyssie v subore pri zzz10v1_build_email_field) - info text o emaile
 function zzz10v1_build_email_info_note() {
   const note = document.createElement('div');
   note.className = 'zzz10v1-email-info-note';
@@ -8825,6 +8904,7 @@ function zzz10v1_build_terms_note() {
 //     verso_verification (Zzz10-V1:VERIFICATION-STORAGE) - "registruj cez command line vo verifikacnej
 //     databaze". Po uspesnom zapise NEOTVARA znova Register Setup, ale rovno Zzz10-M1 Login modal
 //     (zzz6f36_open_login_modal), aby si novy user hned nastavil heslo pod svojim novym username-om. ===
+// Zzz10-R6:EMAIL-FIELD (aj) - validacia/kontrola/ulozenie emailu, viz master-tag pri zzz10v1_build_email_field
 async function zzz10v1_submit_register() {
   const username = (entryData['17'] || '').trim();
   const email = (entryData['10'] || '').trim();
@@ -8942,6 +9022,7 @@ async function zzz10v1_submit_register() {
   // (USER/USERNAME, zdielane pole s Login), preto sa musi RUCNE zapisat znova PO resete, aby Login modal
   // otvoril uz s PREDVYPLNENYM novym username-om (user rovno len zada/potvrdi heslo do CONTENT R10). | Vrso -> Claude AI | 2026-08-31 ===
   write_to_entry('17', username);
+  zzz10v1LastSentActivation = null; // Zzz10-V1:REGISTER-ENTRY-GATE - vyuzita rezervacia, nech sa nedá znovu "zneuzit" ten isty kod na dalsi pokus
   zzz6f36_open_login_modal();
   // === [/Zzz10-V1:OPEN-LOGIN-AFTER-REGISTER] ===
 }
@@ -8989,20 +9070,39 @@ function zzz10v1_render_register_setup(body) {
     logoutBtn.addEventListener('click', zzz10r2_logout);
     entrySection.appendChild(logoutBtn);
   } else {
+    // === [Zzz10-V1:REGISTER-ENTRY-GATE] Vrso 2026-09-XX, doslovne: "entry button zmen na register entry!!!
+    // Stlacit sa bude dat az ked activstion code bude totozny s tym co bol zaslany na email a pod danym
+    // usersname/email ked ho bude znovu vyplnat samozrejme" - ENTRY premenovane na REGISTER ENTRY + PRIDANY
+    // disabled=true default (btn sa odomkne az zzz10v1_update_register_entry_button_state(), viz nizsie). | Vrso -> Claude AI | 2026-09-XX ===
     const entryBtn = document.createElement('button');
     entryBtn.type = 'button';
     entryBtn.className = 'zzz10v1-entry-button-wide';
     entryBtn.id = 'versoRegisterSetupEntryButton';
-    entryBtn.setAttribute('aria-label', 'Entry');
-    entryBtn.textContent = 'ENTRY';
+    entryBtn.setAttribute('aria-label', 'Register entry');
+    entryBtn.textContent = 'REGISTER ENTRY';
+    entryBtn.disabled = true; // odomkne sa len ked sedi username+email+activation code s poslednym SEND ACTIVATION CODE
     entryBtn.addEventListener('click', zzz10v1_submit_register);
     entrySection.appendChild(entryBtn);
+    // === [/Zzz10-V1:REGISTER-ENTRY-GATE] ===
   }
   panel.appendChild(entrySection);
 
   panel.appendChild(zzz10v1_build_terms_note());
 
   body.appendChild(panel);
+
+  // === [Zzz10-V1:REGISTER-ENTRY-GATE] MutationObserver na EMAIL a ACTIVATION CODE bunky - obe su
+  // klikatelne-modalove polia (open_entry_modal), nie zive <input> ako USERNAME, takze zmenu ich hodnoty
+  // nemozno zachytit cez 'input' event - namiesto toho sa sleduje zmena textContent po zavreni modalu. | Vrso -> Claude AI | 2026-09-XX ===
+  if (!zzz6f7_isLoggedIn) {
+    const emailCell = document.getElementById('versoRegisterSetupEmailCell');
+    const activationCell = document.getElementById('versoRegisterSetupActivationCell');
+    const gateObserver = new MutationObserver(() => zzz10v1_update_register_entry_button_state());
+    if (emailCell) gateObserver.observe(emailCell, { childList: true, characterData: true, subtree: true });
+    if (activationCell) gateObserver.observe(activationCell, { childList: true, characterData: true, subtree: true });
+    zzz10v1_update_register_entry_button_state(); // pociatocny stav (napr. po znovu-otvoreni panelu s uz vyplnenymi udajmi)
+  }
+  // === [/Zzz10-V1:REGISTER-ENTRY-GATE] ===
 
   // po pripojeni do DOM nacitaj CERSTVY zoznam zaregistrovanych (async) a prekresli zivy nahlad presnejsie
   zzz10v1_fetch_known_registrations().then(fresh => {
