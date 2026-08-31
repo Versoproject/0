@@ -2280,6 +2280,20 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     opacity: 0.6;
     cursor: default;
   }
+  /* === [Zzz10-V1:BTN-AVAILABILITY-COLOR] Vrso 2026-08-31 poziadavka, doslovne: "Send activation text in
+     green if the username is avilabl" - text SEND ACTIVATION CODE tlacidla ZIVO meni farbu podla presnej
+     (cely retazec) zhody oproti zoznamu uz zaregistrovanych username, viz zzz10v1_update_send_button_state
+     nizsie v subore. Zelena = volny (mozes registrovat), cervena = presne tento username uz existuje. Bez
+     tejto triedy (napr. prazdne pole) ostava povodna zlata farba (.zzz10v1-search-button default). === */
+  .zzz10v1-search-button.zzz10v1-btn-available {
+    color: #16a34a;
+    border-color: #16a34a;
+  }
+  .zzz10v1-search-button.zzz10v1-btn-taken {
+    color: #dc2626;
+    border-color: #dc2626;
+  }
+  /* === [/Zzz10-V1:BTN-AVAILABILITY-COLOR] === */
   .zzz10v1-email-info-note {
     font-size: 9px;
     font-weight: 700;
@@ -8315,7 +8329,8 @@ function open_verification_workspace() {
 // emailom"):
 //   - CHANGE PASSWORD tlacidlo ODSTRANENE (bolo bez funkcie).
 //   - SHOW PASSWORD tlacidlo NAHRADENE za SEARCH AVAILABLE USERNAME (cervene ak obsadeny/zelene ak volny,
-//     viz zzz10v1_build_search_username_button), + pod nim info-poznamka o odoslani emailu.
+//     viz zzz10v1_build_send_activation_button, premenovane 2026-08-31 na SEND ACTIVATION CODE), + pod nim
+//     info-poznamka o 24h rezervacii/odoslani kodu.
 //   - CONTENT bunka premenovana na EMAIL a stylizovana ako link (modra, podciarknute) - zdiela
 //     data-entry-id="10" s Login (DRY, rovnaky princip ako predtym pri CONTENT/hesle).
 //   - USER pole uz NIE JE .entry-cell/modal-click, ale ZIVE textove pole (mirror+input overlay technika,
@@ -8414,41 +8429,135 @@ async function zzz10v1_write_registration(payload) {
 // === [/PPP-1:USERNAME-UNIQUE-GUARD] ===
 // === [/Zzz10-V1:VERIFICATION-STORAGE] ===
 
-async function zzz10v1_fetch_known_registrations() {
+// === [Zzz10-V1:FETCH-RETRY] Vrso 2026-08-31 bug-report, doslovne: "You chsnged something but when verso
+// was written it wasnt in red but in green as available!!! Correct it" - PRICINA (Claude analyza): NIE zmena
+// logiky highlightu (ta ostava spravna, viz zzz10v1_render_username_highlight), ale to, ze PRVY (jediny)
+// pokus o nacitanie zoznamu zaregistrovanych username cez Supabase obcas NESTIHNE povodny 4s timeout
+// (mobilne pripojenie) - vtedy fetch zlyha/timeoutne, zoznam ostane PRAZDNY (ziadna lokalna cache z tejto
+// session) a "Verso" (uz DAVNO permanentne zaregistrovany v DB) sa tak vizualne javi ako volny (zelena).
+// OPRAVA: 1 automaticky RETRY s DLHSIM timeoutom (8s namiesto 4s) PRESNE VTEDY, ked prvy pokus zlyhal a
+// ZAROVEN vratil PRAZDNY vysledok (ak by prvy pokus zlyhal ale lokalna cache uz nieco obsahovala, druhy
+// pokus by len zbytocne zdrzoval) - realna DB-level ochrana (PPP-1:USERNAME-UNIQUE-GUARD, insert-only PK)
+// zostava vzdy funkcna aj pri zlyhani oboch pokusov, TOTO rieši LEN spravnost vizualnej napovedy. | Vrso -> Claude AI | 2026-08-31 ===
+async function zzz10v1_fetch_known_registrations_once(timeoutMs) {
   const usernames = [];
   const emails = [];
-
   function collectFromRow(row) {
     let data = {};
     try { data = JSON.parse(row.data_json || '{}'); } catch (e) { return; /* poskodeny data_json - preskocit riadok */ }
     if (data.username) usernames.push(data.username);
     if (data.email) emails.push(data.email);
   }
+  const fetchPromise = sb.from('verso_verification').select('*').eq('record_type', 'user_registration');
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`Zzz10-V1 Supabase fetch timeout (${timeoutMs / 1000}s)`)), timeoutMs)
+  );
+  const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+  if (error) throw error;
+  (data || []).forEach(collectFromRow);
+  return { usernames, emails };
+}
+
+async function zzz10v1_fetch_known_registrations() {
+  let usernames = [];
+  let emails = [];
+  let succeeded = false;
 
   try {
-    // Zzz10-V1:VERIFICATION-STORAGE (2026-08-28): teraz cita PRIAMO z verso_verification (record_type=
-    // 'user_registration'), nie z verso_entries - jednoduchsie AJ rychlejsie (verso_verification je
-    // navrhnuta ako mala/lahka tabulka, netreba ziadny JSON-path filter/fallback ako predtym).
-    const fetchPromise = sb.from('verso_verification').select('*').eq('record_type', 'user_registration');
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Zzz10-V1 Supabase fetch timeout (4s)')), 4000)
-    );
-    const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
-    if (error) throw error;
-    (data || []).forEach(collectFromRow);
+    const result = await zzz10v1_fetch_known_registrations_once(4000); // prvy pokus - povodny 4s timeout (bezny pripad, rychle pripojenie)
+    usernames = result.usernames;
+    emails = result.emails;
+    succeeded = true;
     zzz0r1_set_db_connection_state(true);
   } catch (err) {
     const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
-    console.warn(`Zzz10-V1 fetch known registrations zlyhal/timeout - pouziva sa len lokalna cache. DOVOD: ${errDetail}`);
-    zzz0r1_set_db_connection_state(false, errDetail, true);
+    console.warn(`Zzz10-V1 fetch known registrations (1. pokus) zlyhal/timeout - skusam znova s dlhsim timeoutom. DOVOD: ${errDetail}`);
+    try {
+      const retryResult = await zzz10v1_fetch_known_registrations_once(8000); // === [Zzz10-V1:FETCH-RETRY] retry s 8s ===
+      usernames = retryResult.usernames;
+      emails = retryResult.emails;
+      succeeded = true;
+      zzz0r1_set_db_connection_state(true);
+    } catch (retryErr) {
+      const retryErrDetail = (retryErr && (retryErr.message || retryErr.details || retryErr.hint)) || String(retryErr);
+      console.warn(`Zzz10-V1 fetch known registrations (2. pokus/retry) tiez zlyhal - pouziva sa len lokalna cache. DOVOD: ${retryErrDetail}`);
+      zzz0r1_set_db_connection_state(false, retryErrDetail, true);
+    }
   }
-  Object.values(zzz10v1_registrationsLocalCache).forEach(collectFromRow); // lokalny fallback (offline-friendly)
+
+  function collectFromRow(row) {
+    let data = {};
+    try { data = JSON.parse(row.data_json || '{}'); } catch (e) { return; }
+    if (data.username) usernames.push(data.username);
+    if (data.email) emails.push(data.email);
+  }
+  Object.values(zzz10v1_registrationsLocalCache).forEach(collectFromRow); // lokalny fallback (offline-friendly), VZDY pridany navyse (aj po uspesnom fetch)
 
   return {
     usernames: usernames.map(zzz10v1_normalize),
     emails: emails.map(zzz10v1_normalize)
   };
 }
+// === [/Zzz10-V1:FETCH-RETRY] ===
+
+// === [Zzz10-V1:RESERVATION] Vrso 2026-08-31 poziadavka, doslovne: "Search available username zmen na
+// send activation code a upozorni ze dane usernsme bude rezervovane iba po dobu jedneho dna(zapracuj).
+// Povlozeni activacneho kodu registruj cez command line vo verifikacnej databaze." NOVY docasny stav
+// medzi "username este vobec nikto neskusal" a "username je NAVZDY zaregistrovany" (zzz10v1_submit_register
+// nizsie): kliknutim na (premenovane) tlacidlo sa vygeneruje 6-mistny aktivacny kod a ulozi sa DOCASNA
+// REZERVACIA (record_type='username_reservation', id=`reservation-${username}`) s expires_at = teraz+24h.
+// Na rozdiel od finalnej registracie (PPP-1:USERNAME-UNIQUE-GUARD, .insert() only) pouziva REZERVACIA
+// .upsert() - rovnaky user si moze kod nechat znova vygenerovat/predlzit (napr. ak povodny kod stratil
+// alebo mu vyprsal cas), bez toho aby narazil na DB-level unique-violation ako pri ostrej registracii. Po
+// uplynuti 24h (alebo po dokonceni ENTRY registracie) sa rezervacia uz dalej nekontroluje - novy pokus o
+// rovnaky username tak zase moze uspiet (zapocitava sa VZDY len ci existuje NEVYPRSANA rezervacia ALEBO uz
+// hotova permanentna registracia). | Vrso -> Claude AI | 2026-08-31 ===
+const ZZZ10V1_RESERVATION_DURATION_MS = 24 * 60 * 60 * 1000; // "rezervovane iba po dobu jedneho dna"
+
+async function zzz10v1_write_reservation(payload) {
+  try {
+    const writePromise = sb.from('verso_verification').upsert(payload, { onConflict: 'id' }); // upsert (nie insert) - rezervacia sa smie prepisat/obnovit tym istym userom
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Zzz10-V1 reservation upsert timeout (4s)')), 4000)
+    );
+    const { error } = await Promise.race([writePromise, timeoutPromise]);
+    if (error) throw error;
+    zzz0r1_set_db_connection_state(true);
+    return { success: true, error: null };
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    console.error(`Zzz10-V1:RESERVATION - zapis rezervacie do verso_verification zlyhal. DOVOD: ${errDetail}`);
+    zzz0r1_set_db_connection_state(false, errDetail, true);
+    return { success: false, error: errDetail };
+  }
+}
+
+// najde AKTIVNU (este nevyprsanu) rezervaciu pre dany normalizovany username, ak existuje. Vracia null ak
+// ziadna rezervacia neexistuje ALEBO uz vyprsala (24h, viz ZZZ10V1_RESERVATION_DURATION_MS).
+async function zzz10v1_fetch_reservation(normalizedUsername) {
+  const id = `reservation-${normalizedUsername}`;
+  try {
+    const fetchPromise = sb.from('verso_verification').select('*').eq('id', id).eq('record_type', 'username_reservation');
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Zzz10-V1 reservation fetch timeout (4s)')), 4000)
+    );
+    const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+    if (error) throw error;
+    zzz0r1_set_db_connection_state(true);
+    const row = (data || [])[0];
+    if (!row) return null;
+    let parsed = {};
+    try { parsed = JSON.parse(row.data_json || '{}'); } catch (e) { return null; /* poskodeny data_json */ }
+    if (!parsed.expires_at || new Date(parsed.expires_at).getTime() <= Date.now()) return null; // vyprsana rezervacia = ako keby neexistovala
+    return parsed;
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    console.warn(`Zzz10-V1:RESERVATION - nacitanie rezervacie zlyhalo/timeout. DOVOD: ${errDetail}`);
+    zzz0r1_set_db_connection_state(false, errDetail, true);
+    return null;
+  }
+}
+// === [/Zzz10-V1:RESERVATION] ===
 
 // prekresli zivy per-pismenny nahlad v USER poli - pre kazde pismeno skontroluje, ci JEHO POZICIA (zlava)
 // este stale zodpoveda ZACIATKU nejakeho uz zaregistrovaneho username (cervena = mozna zhoda), alebo uz
@@ -8468,16 +8577,36 @@ function zzz10v1_render_username_highlight(mirrorEl, value, takenUsernamesNormal
   });
 }
 
+// === [Zzz10-V1:BTN-AVAILABILITY-COLOR] Vrso 2026-08-31 poziadavka, doslovne: "Send activation text in
+// green if the username is avilabl" - zlive farbenie SEND ACTIVATION CODE tlacidla podla PRESNEJ (cely
+// retazec) zhody oproti zoznamu uz zaregistrovanych username (rovnaky princip ako finalna kontrola v
+// zzz10v1_submit_register). Zelena (.zzz10v1-btn-available) = tento presny username este nie je
+// zaregistrovany, cervena (.zzz10v1-btn-taken) = uz existuje. Prazdne pole = ziadna trieda (povodna zlata
+// farba tlacidla). | Vrso -> Claude AI | 2026-08-31 ===
+function zzz10v1_update_send_button_state(btn, username, takenUsernamesNormalized) {
+  if (!btn) return;
+  btn.classList.remove('zzz10v1-btn-available', 'zzz10v1-btn-taken');
+  const trimmed = (username || '').trim();
+  if (!trimmed) return;
+  const taken = takenUsernamesNormalized.includes(zzz10v1_normalize(trimmed));
+  btn.classList.add(taken ? 'zzz10v1-btn-taken' : 'zzz10v1-btn-available');
+}
+// === [/Zzz10-V1:BTN-AVAILABILITY-COLOR] ===
+
 function zzz10v1_build_username_field() {
   const wrap = document.createElement('div');
   wrap.className = 'zzz10v1-field-col';
 
+  // === [Zzz10-V1:USERNAME-LABEL] Vrso 2026-08-31 poziadavka, doslovne: "Ussr button premenuj na
+  // username button" - label bunky sa premenuval z "USER" na "USERNAME" (presnejsie pomenovanie, USER
+  // pole samotne - data-zdroj entryData["17"] - ostava nezmenene, meni sa len viditelny label text). | Vrso -> Claude AI | 2026-08-31 ===
   const label = document.createElement('button');
   label.type = 'button';
   label.className = 'entry-number-button';
   label.disabled = true;
-  label.textContent = 'USER';
+  label.textContent = 'USERNAME';
   wrap.appendChild(label);
+  // === [/Zzz10-V1:USERNAME-LABEL] ===
 
   // === [Zzz10-V1:USERNAME-LIVE] .zzz10v1-username-box je ZAMERNE NIE ".entry-cell" (a NEMA
   // data-entry-id atribut) - render_entry_cell() (F1:CELL-LOGIC) by inak querySelectorAll-om nasiel tuto
@@ -8508,6 +8637,7 @@ function zzz10v1_build_username_field() {
   input.addEventListener('input', () => {
     write_to_entry('17', input.value); // perzistuje do zdielaneho entryData["17"]
     zzz10v1_render_username_highlight(mirror, input.value, zzz10v1CachedRegistrations.usernames);
+    zzz10v1_update_send_button_state(document.getElementById('versoRegisterSetupSearchButton'), input.value, zzz10v1CachedRegistrations.usernames); // Zzz10-V1:BTN-AVAILABILITY-COLOR - zive prekreslenie SEND ACTIVATION CODE farby pri kazdom pismene
     box.classList.remove('zzz10v1-available', 'zzz10v1-taken'); // zmena textu = predchadzajuci SEARCH vysledok uz neplati
   });
 
@@ -8539,43 +8669,110 @@ function zzz10v1_build_email_field() {
   return wrap;
 }
 
-// SEARCH AVAILABLE USERNAME - nahradza povodne SHOW PASSWORD tlacidlo. Presna (cely retazec) zhoda,
-// case+diakritika-insenzitivne, oproti CERSTVO nacitanemu zoznamu uz zaregistrovanych username.
-function zzz10v1_build_search_username_button(usernameBox) {
+// === [Zzz10-V1:SEND-ACTIVATION-BUTTON] Vrso 2026-08-31 poziadavka, doslovne: "Inak tlacitko search
+// username je zbytocne kedze je ten vyznacovaci mechanizmus... Search available username zmen na send
+// activation code a upozorni ze dane usernsme bude rezervovane iba po dobu jedneho dna(zapracuj)." -
+// povodne SEARCH AVAILABLE USERNAME tlacidlo (cisto informacne, zzz10v1-username-box farebny highlight uz
+// samostatne zobrazuje volne/obsadene pismena zivo) je PREROBENE na SEND ACTIVATION CODE tlacidlo - teraz
+// realne SPUSTA docasnu REZERVACIU username-u (Zzz10-V1:RESERVATION vyssie v subore) + vygeneruje aktivacny
+// kod. CSS trieda ".zzz10v1-search-button" (a DOM id "versoRegisterSetupSearchButton") ZAMERNE OSTAVAJU
+// nezmenene (len vizual, DRY - novy nazov by vyzadoval len duplicitny CSS blok bez akehokolvek funkcneho
+// rozdielu). | Vrso -> Claude AI | 2026-08-31 ===
+function zzz10v1_build_send_activation_button(usernameBox) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'zzz10v1-search-button';
   btn.id = 'versoRegisterSetupSearchButton';
-  btn.setAttribute('aria-label', 'Search available username');
-  btn.textContent = 'SEARCH AVAILABLE USERNAME';
+  btn.setAttribute('aria-label', 'Send activation code');
+  btn.textContent = 'SEND ACTIVATION CODE';
   btn.addEventListener('click', async () => {
     const username = (entryData['17'] || '').trim();
+    const email = (entryData['10'] || '').trim();
     if (!username) {
-      zzz6f2_show_toast('Zzz10-V1: najprv vypln USER');
+      zzz6f2_show_toast('Zzz10-V1: najprv vypln USERNAME');
       return;
     }
-    btn.disabled = true;
-    const fresh = await zzz10v1_fetch_known_registrations();
-    zzz10v1CachedRegistrations = fresh;
-    const mirror = usernameBox.querySelector('.zzz10v1-username-mirror');
-    const input = usernameBox.querySelector('.zzz10v1-username-input');
-    if (mirror && input) zzz10v1_render_username_highlight(mirror, input.value, fresh.usernames);
-    btn.disabled = false;
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      zzz6f2_show_toast('Zzz10-V1: najprv vypln platny EMAIL');
+      return;
+    }
 
-    const taken = fresh.usernames.includes(zzz10v1_normalize(username));
-    usernameBox.classList.toggle('zzz10v1-available', !taken);
-    usernameBox.classList.toggle('zzz10v1-taken', taken);
-    zzz6f2_show_toast(taken
-      ? `Zzz10-V1: username "${username}" je uz obsadeny`
-      : `Zzz10-V1: username "${username}" je volny`);
+    btn.disabled = true;
+    try {
+      const normalizedUsername = zzz10v1_normalize(username);
+      const normalizedEmail = zzz10v1_normalize(email);
+
+      const fresh = await zzz10v1_fetch_known_registrations();
+      zzz10v1CachedRegistrations = fresh;
+      const mirror = usernameBox.querySelector('.zzz10v1-username-mirror');
+      const input = usernameBox.querySelector('.zzz10v1-username-input');
+      if (mirror && input) zzz10v1_render_username_highlight(mirror, input.value, fresh.usernames);
+      zzz10v1_update_send_button_state(btn, username, fresh.usernames); // Zzz10-V1:BTN-AVAILABILITY-COLOR
+
+      // permanentne (uz DOKONCENE) registracie - tie NEMOZU byt znova rezervovane vobec
+      if (fresh.usernames.includes(normalizedUsername)) {
+        usernameBox.classList.add('zzz10v1-taken');
+        usernameBox.classList.remove('zzz10v1-available');
+        zzz6f2_show_toast(`Zzz10-V1: username "${username}" je uz obsadeny`);
+        return;
+      }
+      if (fresh.emails.includes(normalizedEmail)) {
+        zzz6f2_show_toast(`Zzz10-V1: email "${email}" je uz zaregistrovany`);
+        return;
+      }
+
+      // aktivna (este nevyprsana) rezervacia CUDZIEHO pokusu o ten isty username - vlastnu rezervaciu
+      // (rovnaky email) mozno vzdy bez problemu obnovit/predlzit (upsert nizsie)
+      const existingReservation = await zzz10v1_fetch_reservation(normalizedUsername);
+      if (existingReservation && zzz10v1_normalize(existingReservation.email || '') !== normalizedEmail) {
+        usernameBox.classList.add('zzz10v1-taken');
+        usernameBox.classList.remove('zzz10v1-available');
+        zzz6f2_show_toast(`Zzz10-V1: username "${username}" je momentalne rezervovany inym pokusom o registraciu - skus neskor.`);
+        return;
+      }
+
+      const activationCode = String(Math.floor(100000 + Math.random() * 900000)); // 6-mistny nahodny kod
+      const expiresAt = new Date(Date.now() + ZZZ10V1_RESERVATION_DURATION_MS).toISOString();
+      const reservationPayload = {
+        id: `reservation-${normalizedUsername}`,
+        record_type: 'username_reservation',
+        data_json: JSON.stringify({ username, email, activation_code: activationCode, expires_at: expiresAt }),
+        updated_at: new Date().toISOString()
+      };
+      const writeResult = await zzz10v1_write_reservation(reservationPayload);
+      if (!writeResult.success) {
+        zzz6f2_show_toast(`Zzz10-V1: rezervaciu sa nepodarilo ulozit (${writeResult.error}). Skus znova.`);
+        return;
+      }
+
+      usernameBox.classList.add('zzz10v1-available');
+      usernameBox.classList.remove('zzz10v1-taken');
+
+      // best-effort email (viz Zzz10-V1:SEND-EMAIL nizsie pri finalnej registracii) - NEBLOKUJUCE, ak
+      // zlyha/Edge Function chyba, kod sa AJ TAK zobrazi v toaste nizsie (Vrso 2026-08-31: "nejde odosielat
+      // emaily... zatial sa nikto nejde prihlasovat" - kym email nefunguje, kod musi byt vidiet aj bez neho,
+      // inak by sa aktivacny flow nedal vobec otestovat)
+      try {
+        await sb.functions.invoke('bright-responder', { body: { email, code: activationCode, username } });
+      } catch (err) {
+        console.warn(`Zzz10-V1 SEND-ACTIVATION-BUTTON: best-effort email zlyhal (nekriticke). DOVOD: ${(err && err.message) || String(err)}`);
+      }
+
+      zzz6f2_show_toast(`Zzz10-V1: aktivacny kod pre "${username}": ${activationCode} (rezervovane na 24 hodin, zadaj kod nizsie a stlac ENTRY).`);
+    } finally {
+      btn.disabled = false;
+    }
   });
   return btn;
 }
+// === [/Zzz10-V1:SEND-ACTIVATION-BUTTON] ===
 
+// Vrso 2026-08-31: "upozorni ze dane usernsme bude rezervovane iba po dobu jedneho dna" - info-poznamka
+// pod SEND ACTIVATION CODE tlacidlom teraz explicitne uvadza 24h rezervacne okno.
 function zzz10v1_build_email_info_note() {
   const note = document.createElement('div');
   note.className = 'zzz10v1-email-info-note';
-  note.textContent = 'An activation email will be sent to this address only after successful registration.';
+  note.textContent = 'An activation code will be sent to this email. The username stays reserved for you for 24 hours only - complete registration with the code before it expires, or it becomes available to others again.';
   return note;
 }
 
@@ -8618,19 +8815,23 @@ function zzz10v1_build_terms_note() {
   return note;
 }
 
-// === [Zzz10-V1:SUBMIT] Registracia - Vrso 2026-08-28 PRESUN: uz NEPOUZIVA submit_entries_to_db() (verso_entries)
-// vobec - zapisuje PRIAMO do verso_verification (viz [Zzz10-V1:VERIFICATION-STORAGE] vyssie v subore). Kostra:
-//   1) validacia USER + EMAIL (povinne, EMAIL musi mat platny format),
-//   2) GATE - case+diakritika-insenzitivna kontrola oproti VSETKYM doteraz zaregistrovanym username/email
-//      (zzz10v1_fetch_known_registrations, teraz cita z verso_verification) - ak uz existuje zhoda na
-//      hociktorom z oboch, registracia sa ZAMIETNE,
-//   3) po uspesnom zapise vygeneruje 6-mistny SYSTEM activation kod (co by sa realne poslalo emailom). ===
+// === [Zzz10-V1:SUBMIT] Registracia - Vrso 2026-08-31 PREROBENE na 2-krokovy flow ("Search available
+// username zmen na send activation code... Povlozeni activacneho kodu registruj cez command line vo
+// verifikacnej databaze. Potom otvor login module nech si novy username nastavi svoje heslo..."):
+//   KROK 1 (SEND ACTIVATION CODE tlacidlo, Zzz10-V1:SEND-ACTIVATION-BUTTON vyssie v subore) - vygeneruje
+//     kod + docasnu 24h REZERVACIU username-u (Zzz10-V1:RESERVATION).
+//   KROK 2 (TOTO - ENTRY tlacidlo) - overi vpisany ACTIVATION CODE (R35) oproti tejto rezervacii; ak sedi
+//     A rezervacia este NEVYPRSALA, teprv TERAZ zapise FINALNU/permanentnu registraciu priamo do
+//     verso_verification (Zzz10-V1:VERIFICATION-STORAGE) - "registruj cez command line vo verifikacnej
+//     databaze". Po uspesnom zapise NEOTVARA znova Register Setup, ale rovno Zzz10-M1 Login modal
+//     (zzz6f36_open_login_modal), aby si novy user hned nastavil heslo pod svojim novym username-om. ===
 async function zzz10v1_submit_register() {
   const username = (entryData['17'] || '').trim();
   const email = (entryData['10'] || '').trim();
+  const enteredActivationCode = (entryData['35'] || '').trim();
 
   if (!username) {
-    zzz6f2_show_toast('Zzz10-V1 Register: vypln USER (username je povinny).');
+    zzz6f2_show_toast('Zzz10-V1 Register: vypln USERNAME (username je povinny).');
     return;
   }
   if (!email) {
@@ -8639,6 +8840,10 @@ async function zzz10v1_submit_register() {
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     zzz6f2_show_toast('Zzz10-V1 Register: EMAIL nema platny format.');
+    return;
+  }
+  if (!enteredActivationCode) {
+    zzz6f2_show_toast('Zzz10-V1 Register: najprv stlac SEND ACTIVATION CODE a potom vypln ACTIVATION CODE.');
     return;
   }
 
@@ -8657,12 +8862,27 @@ async function zzz10v1_submit_register() {
     return;
   }
 
+  // === [Zzz10-V1:RESERVATION-CHECK] bez platnej (nevyprsanej), na TENTO username+email znejucej
+  // rezervacie sa nesmie registrovat - musi sa najprv stlacit SEND ACTIVATION CODE (viz vyssie v subore).
+  const reservation = await zzz10v1_fetch_reservation(normalizedUsername);
+  if (!reservation) {
+    zzz6f2_show_toast('Zzz10-V1 Register: ziadna platna rezervacia pre tento username - stlac najprv SEND ACTIVATION CODE (rezervacia trva 24h).');
+    return;
+  }
+  if (zzz10v1_normalize(reservation.email || '') !== normalizedEmail) {
+    zzz6f2_show_toast('Zzz10-V1 Register: EMAIL sa nezhoduje s emailom pouzitym pri SEND ACTIVATION CODE.');
+    return;
+  }
+  if ((reservation.activation_code || '') !== enteredActivationCode) {
+    zzz6f2_show_toast('Zzz10-V1 Register: nespravny ACTIVATION CODE.');
+    return;
+  }
+  // === [/Zzz10-V1:RESERVATION-CHECK] ===
+
   if (zzz4r17SearchMode) { // rovnaky guard ako Login/Zzz2-R14
     zzz6f2_show_toast('Zzz10-V1 Register: vypni SEARCH mod pred registraciou.');
     return;
   }
-
-  const activationCode = String(Math.floor(100000 + Math.random() * 900000)); // 6-mistny nahodny kod (co by sa poslalo emailom)
 
   // === [Zzz10-V1:USER-ID] stabilne numericke ID prideleneho usera, viz vysvetlenie vyssie v subore. Ak
   // RPC zlyha (offline/vypadok), registracia POKRACUJE aj bez neho - username uz je sam o sebe funkcny
@@ -8687,7 +8907,7 @@ async function zzz10v1_submit_register() {
     data_json: JSON.stringify({
       username,
       email,
-      activation_code: activationCode,
+      activation_code: enteredActivationCode, // rovnaky kod ako v rezervacii (uz overeny vyssie)
       user_id: userId,
       system_id: systemId, // Zzz10-R5:SYSTEM-ID (2026-08-31) - hashovany, urceny LEN pre buduci multiverifikacny lookup, NIKDY pre bezny login
       registered_at: registeredAt
@@ -8713,30 +8933,17 @@ async function zzz10v1_submit_register() {
   zzz10v1_registrationsLocalCache[normalizedUsername] = JSON.parse(registrationPayload.data_json);
 
   zzz6f37_write_audit_log('user_register', { username, email }); // Zzz6-F37:AUDIT-LOG (2026-08-29)
-  zzz6f36_reset_command_line(); // vycisti formular (USER/EMAIL bunky) pre dalsie pouzitie
+  zzz6f36_reset_command_line(); // vycisti formular (VSETKY R* bunky vratane USER/EMAIL/ACTIVATION CODE) pre dalsie pouzitie
 
-  // === [Zzz10-V1:SEND-EMAIL] Vrso 2026-08-25 - po uspesnej registracii posle activation kod emailom cez
-  // Supabase Edge Function "send-activation-email" (Deno + Resend API, RESEND_API_KEY je server-side
-  // secret, nikdy v tomto HTML). ZAMERNE NEBLOKUJUCE/best-effort - ak Edge Function este nie je nasadena
-  // alebo RESEND_API_KEY nie je nastaveny, registracia SAMOTNA ostava uspesna (uz je zapisana v
-  // verso_verification), len sa email neposle a chyba sa loguje do console + toast (nie hard failure). | Vrso -> Claude AI | 2026-08-25 ===
-  try {
-    const { error: emailError } = await sb.functions.invoke('bright-responder', { // Zzz10-V1: nazov Edge Function podla toho, co sa Vrsovi realne podarilo nasadit v Supabase dashboarde (Vrso 2026-08-25)
-      body: { email, code: activationCode, username }
-    });
-    if (emailError) {
-      const errDetail = (emailError && (emailError.message || emailError.context)) || String(emailError);
-      console.warn(`Zzz10-V1 send-activation-email zlyhalo (registracia napriek tomu uspesna). DOVOD: ${errDetail}`);
-      zzz6f2_show_toast(`Zzz10-V1 Register: uspesne zaregistrovany ako "${username}", ale activation email sa NEPODARILO odoslat.`);
-    } else {
-      zzz6f2_show_toast(`Zzz10-V1 Register: uspesne zaregistrovany ako "${username}" - activation email odoslany.`);
-    }
-  } catch (err) {
-    const errDetail = (err && err.message) || String(err);
-    console.warn(`Zzz10-V1 send-activation-email zlyhalo (registracia napriek tomu uspesna). DOVOD: ${errDetail}`);
-    zzz6f2_show_toast(`Zzz10-V1 Register: uspesne zaregistrovany ako "${username}", ale activation email sa NEPODARILO odoslat.`);
-  }
-  // === [/Zzz10-V1:SEND-EMAIL] ===
+  zzz6f2_show_toast(`Zzz10-V1 Register: uspesne zaregistrovany ako "${username}" - teraz si nastav heslo.`);
+
+  // === [Zzz10-V1:OPEN-LOGIN-AFTER-REGISTER] Vrso 2026-08-31, doslovne: "Potom otvor login module nech si
+  // novy username nastavi svoje heslo..." - zzz6f36_reset_command_line() (vyssie) vynuluje aj entryData["17"]
+  // (USER/USERNAME, zdielane pole s Login), preto sa musi RUCNE zapisat znova PO resete, aby Login modal
+  // otvoril uz s PREDVYPLNENYM novym username-om (user rovno len zada/potvrdi heslo do CONTENT R10). | Vrso -> Claude AI | 2026-08-31 ===
+  write_to_entry('17', username);
+  zzz6f36_open_login_modal();
+  // === [/Zzz10-V1:OPEN-LOGIN-AFTER-REGISTER] ===
 }
 // === [/Zzz10-V1:SUBMIT] ===
 
@@ -8761,7 +8968,7 @@ function zzz10v1_render_register_setup(body) {
 
   const searchSection = document.createElement('div');
   searchSection.className = 'zzz10v1-section';
-  searchSection.appendChild(zzz10v1_build_search_username_button(userBox));
+  searchSection.appendChild(zzz10v1_build_send_activation_button(userBox));
   searchSection.appendChild(zzz10v1_build_email_info_note());
   panel.appendChild(searchSection);
 
@@ -8803,6 +9010,7 @@ function zzz10v1_render_register_setup(body) {
     const mirror = document.querySelector('#versoRegisterSetupUserBox .zzz10v1-username-mirror');
     const input = document.getElementById('versoRegisterSetupUserInput');
     if (mirror && input) zzz10v1_render_username_highlight(mirror, input.value, fresh.usernames);
+    zzz10v1_update_send_button_state(document.getElementById('versoRegisterSetupSearchButton'), input ? input.value : '', fresh.usernames); // Zzz10-V1:BTN-AVAILABILITY-COLOR
   });
 }
 // === [/Zzz10-V1:PANEL] ===
