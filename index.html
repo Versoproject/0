@@ -118,6 +118,14 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   color: #dc2626 !important;
 }
 /* === [/Zzz10-R1:USERNAME-GUARD] === */
+/* === [Zzz6-F40:LOGO-CL-PIN] SYSTEM FUNCTION (rovnaka uroven ako ostatne Zzz0-R1 funkcie) - vizualny indikator
+   na okrouhlom logo tlacidle (#versoEntryButton), KED je CL zafixovana (stav "B" v A/B toggle, viz JS cast
+   nizsie v subore). Zelena farba zvolena rovnako ako .zzz6-f7-active (konzistentny vizualny jazyk "aktivny/
+   zapnuty stav" v ramci Zzz0-R1). | Vrso -> Claude AI | 2026-08-31 === */
+.circle#versoEntryButton.zzz6f40-pinned {
+  box-shadow: 0 0 0 3px #FFD700;
+}
+/* === [/Zzz6-F40:LOGO-CL-PIN] (CSS cast) === */
 </style>
 <!-- <<< Zzz0-R1 END -->
 
@@ -7307,6 +7315,128 @@ document.addEventListener('keydown', (e) => {
   logoBtn.addEventListener('mouseleave', cancelPress);
   logoBtn.addEventListener('touchend', cancelPress);
 })();
+
+// === [Zzz6-F40:LOGO-CL-PIN] SYSTEM FUNCTION (rovnaka uroven opatrnosti ako ostatne Zzz0-R1 funkcie, viz
+// "POZOR - systemova funkcia" pri Zzz6-F7 vyssie) - okrouhle logo tlacidlo (#versoEntryButton) | Vrso ->
+// Claude AI | 2026-08-31 (PREROBENE podla opravy Vrso 2026-08-31: povodny jednoduchy klik A/B toggle
+// nahradeny mechanizmom s viacerymi ulozenymi "FIX" zaznamami - nazov "FIX" navrhol Vrso) ===
+// TRI GESTA na tom istom tlacidle, rozlisene podla dlzky drzania:
+//   - KRATKY KLIK (drzanie < 2000ms) - [Zzz6-F40:FIX-CYCLE] CYKLUJE dopredu, dokola (1->2->3->1...) cez
+//     zoznam ulozenych FIX zaznamov (princip "alt-tab" / back button, Vrso 2026-08-31 - zamerne LEN jeden
+//     smer, "aj dozadu" by vyzadovalo druhe gesto navyse a zbytocne komplikovalo ovladanie jedneho tlacidla).
+//     Pred prepnutim na dalsi FIX sa aktualny (zive upraveny) stav ulozi SPAT do prave-aktivneho FIX
+//     zaznamu (ak nejaky bol aktivny) - takze medzicasom urobene upravy sa neztratia (Vrso: "otvoria sa
+//     vzdy akcie aj s upravami ak boli vykonane").
+//   - PODRZANIE >=2000ms a <20000ms - [Zzz6-F40:FIX-CREATE] ulozi NOVY FIX zaznam = presny "pohlad ako bol
+//     pred zafixovanim" (Vrso 2026-08-31) - aktualny entryData (cela CL) + aktualna scroll pozicia. Limit
+//     100 zaznamov (Vrso ziadost) - po prekroceni sa najstarsi FIX zahodi (FIFO).
+//   - PODRZANIE >=20000ms - [Zzz6-F40:FIX-CLEAR-ALL] vymaze VSETKY ulozene FIX zaznamy naraz.
+// LIMIT/POZOR (zdokumentovane): FIX zaznam si pamata entryData (CL) + scroll poziciu, NIE VSAK prip. prave
+// otvoreny modal (kazdy modal ma iny "open" signature/zdroj dat - generic re-open by bol krehky/nespolahlivy,
+// preto sa otvorene modaly pri CYKLOVANI jednoducho zatvoria, rovnaky bezpecny [Zzz6-F24:CLICK-OUTSIDE-CLOSE]
+// princip ako predtym, zachova autosave tam kde uz existuje).
+let zzz6f40FixList = [];        // pole { entryData: {...snapshot}, scrollY }
+let zzz6f40ActiveFixIndex = -1; // -1 = ziadny FIX prave aktivny (live/nezafixovana rozpracovana CL)
+const ZZZ6F40_MAX_FIXES = 100;
+const ZZZ6F40_HOLD_FIX_MS = 2000;
+const ZZZ6F40_HOLD_CLEAR_MS = 20000;
+
+function zzz6f40_close_open_entry_modals() {
+  document.querySelectorAll('.entry-modal-overlay').forEach(overlay => overlay.click());
+}
+
+function zzz6f40_snapshot_current_state() {
+  return { entryData: JSON.parse(JSON.stringify(entryData)), scrollY: window.scrollY };
+}
+
+function zzz6f40_apply_snapshot(snap) {
+  Object.keys(snap.entryData).forEach(id => {
+    entryData[id] = snap.entryData[id];
+    render_entry_cell(id);
+  });
+  zzz6f10_sync_content_space();
+  window.scrollTo({ top: snap.scrollY, behavior: 'smooth' });
+}
+
+function zzz6f40_set_pinned_indicator(active) {
+  const logoBtn = document.getElementById('versoEntryButton');
+  if (logoBtn) logoBtn.classList.toggle('zzz6f40-pinned', active);
+}
+
+// === [Zzz6-F40:FIX-CREATE] ===
+function zzz6f40_create_fix() {
+  zzz6f40FixList.push(zzz6f40_snapshot_current_state());
+  if (zzz6f40FixList.length > ZZZ6F40_MAX_FIXES) {
+    zzz6f40FixList.shift(); // najstarsi FIX zahodeny (FIFO)
+    if (zzz6f40ActiveFixIndex > 0) zzz6f40ActiveFixIndex -= 1;
+  }
+  zzz6f40ActiveFixIndex = zzz6f40FixList.length - 1;
+  zzz6f40_set_pinned_indicator(true);
+  zzz6f2_show_toast(`FIX ulozeny (${zzz6f40FixList.length}/${ZZZ6F40_MAX_FIXES})`);
+}
+// === [/Zzz6-F40:FIX-CREATE] ===
+
+// === [Zzz6-F40:FIX-CYCLE] ===
+function zzz6f40_cycle_fix() {
+  if (zzz6f40FixList.length === 0) {
+    zzz6f2_show_toast('Ziadne FIX zaznamy');
+    return;
+  }
+  if (zzz6f40ActiveFixIndex !== -1 && zzz6f40FixList[zzz6f40ActiveFixIndex]) {
+    zzz6f40FixList[zzz6f40ActiveFixIndex] = zzz6f40_snapshot_current_state(); // ulozi zive upravy spat
+  }
+  zzz6f40_close_open_entry_modals();
+  zzz6f40ActiveFixIndex = (zzz6f40ActiveFixIndex + 1) % zzz6f40FixList.length; // dopredu, dokola
+  zzz6f40_apply_snapshot(zzz6f40FixList[zzz6f40ActiveFixIndex]);
+  zzz6f40_set_pinned_indicator(true);
+  zzz6f2_show_toast(`FIX ${zzz6f40ActiveFixIndex + 1}/${zzz6f40FixList.length}`);
+}
+// === [/Zzz6-F40:FIX-CYCLE] ===
+
+// === [Zzz6-F40:FIX-CLEAR-ALL] ===
+function zzz6f40_clear_all_fixes() {
+  zzz6f40FixList = [];
+  zzz6f40ActiveFixIndex = -1;
+  zzz6f40_set_pinned_indicator(false);
+  zzz6f2_show_toast('Vsetky FIX zaznamy vymazane');
+}
+// === [/Zzz6-F40:FIX-CLEAR-ALL] ===
+
+(function bindZzz6F40LogoGestures() {
+  const logoBtn = document.getElementById('versoEntryButton');
+  if (!logoBtn) return;
+  let pressStart = 0;
+  let clearTimer = null;
+
+  const onPressStart = () => {
+    pressStart = Date.now();
+    clearTimeout(clearTimer);
+    clearTimer = setTimeout(() => {
+      zzz6f40_clear_all_fixes();
+      pressStart = 0; // uz osetrene tu - zabrani duplicitnemu FIX-CREATE/FIX-CYCLE po pusteni prsta/mysi
+    }, ZZZ6F40_HOLD_CLEAR_MS);
+  };
+  const onPressEnd = () => {
+    clearTimeout(clearTimer);
+    if (!pressStart) return; // uz vybavene 20s vetvou (FIX-CLEAR-ALL) vyssie
+    const heldMs = Date.now() - pressStart;
+    pressStart = 0;
+    if (heldMs >= ZZZ6F40_HOLD_FIX_MS) {
+      zzz6f40_create_fix();
+    } else {
+      zzz6f40_cycle_fix();
+    }
+  };
+  const onPressCancel = () => { clearTimeout(clearTimer); pressStart = 0; };
+
+  // klik na #zzz6f7UsernameLabel prepadne priamo sem (pointer-events:none na labeli, viz Zzz6-F3:USERNAME-STATIC)
+  logoBtn.addEventListener('mousedown', onPressStart);
+  logoBtn.addEventListener('touchstart', onPressStart, { passive: true });
+  logoBtn.addEventListener('mouseup', onPressEnd);
+  logoBtn.addEventListener('touchend', onPressEnd);
+  logoBtn.addEventListener('mouseleave', onPressCancel);
+})();
+// === [/Zzz6-F40:LOGO-CL-PIN] ===
 
 // === [Zzz2-R14:ENTRY-BUTTON] "ENTRY" tlacidlo (SEKCIA 2 - SYSTEM, id="versoSystemEntryButton") | Vrso -> Claude AI | 2026-08-20 ===
 // AKTUALIZACIA (Vrso 2026-08-20: "Zapis ma byt iba ked sa stlaci entry button"): tento button je odteraz
