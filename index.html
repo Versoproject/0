@@ -6189,6 +6189,56 @@ async function zzz10v1_get_next_user_id_atomic() {
 }
 // === [/Zzz10-V1:USER-ID] ===
 
+// === [Zzz10-R5:SYSTEM-ID] (HIDDEN SYSTEM SECRET FUNCTION) - Vrso 2026-08-31 poziadavka, doslovne:
+// "Verso verification kazde registrovane username evidovat pod vlastnim System id(hashovane a skyte v
+// databaze ako sa da)...na zaklade az ktoreho budes robit multiverifikaciu. Bezneho login sa to netyka
+// lebo by bolo lahke zistit aky kod/username mu prislucha. To preto aby nikto nemohol len tak zistit."
+// CISLOVANIE: Vrso vo svojej poziadavke navrhol oznacenie "Zzz10-R4", ALE R4 uz je obsadene existujucim
+// [Zzz10-R4:CHANGE-PASSWORD] tlacidlom (Login Setup tab) - preto tento blok pouziva najblizsie volne
+// cislo v Zzz10 sekcii, Zzz10-R5, aby nedoslo ku kolizii oznaceni dvoch rozdielnych funkcii.
+//
+// UCEL: kazdemu username pri registracii sa PRIDELI hashovane System ID (SHA-256), ulozene v ramci
+// vlastneho registracneho zaznamu (registrationPayload.data_json.system_id, viz zzz10v1_submit_register
+// nizsie v subore) - popri uz existujucom Zzz10-V1:USER-ID (obycajne numericke poradove cislo). Tento
+// System ID sa NEPOUZIVA a NEDOTYKA sa BEZNEHO Login flow (zzz6f36_submit_login, 'normal' rezim) - presne
+// podla Vrsovej poziadavky, aby bezny login zostal bez akejkolvek vazby na System ID (znizuje riziko, ze
+// by niekto z beznej Login komunikacie/requestov odvodil, ktory System ID patri ktoremu username). System
+// ID je REZERVOVANY VYLUCNE pre buduci multiverifikacny lookup (zzz10r1_trigger_multiverification vyssie v
+// subore je ZATIAL LEN placeholder, viz [Zzz10-R1:MULTIVERIFICATION] - System ID sa doplni ako identifikator,
+// AZ ked Vrso rozhodne o konkretnej podobe tohto lookupu).
+//
+// NADVAZUJE NA (nie duplicita): bod 3 "Pseudonymizacia" vo verso-bezpecnost-podklad.md hovoril o systemovom
+// UUID namiesto username ako DB kluci vseobecne. Toto TU je UZSIE/konkretnejsie: nie nahrada username v DB
+// (username OSTAVA hlavny identifikator vsade, rovnako ako pri Zzz10-V1:USER-ID vyssie), ale DOPLNKOVY
+// hashovany identifikator urceny SPECIFICKY pre multiverifikacny kanal (rovnaky duch ako [ZzzF:SECRET-CODE]
+// vyssie v subore - "multiverifikacia je oddeleny, skryty kanal").
+//
+// POCTIVE PRIZNANIE LIMITU (rovnaky princip ako inde v subore, napr. Zzz10-V2 RLS poznamky): appka nema
+// realny Supabase Auth ani server-side secret store (viz verso-bezpecnost-suhrn-2026-08-26.md) - ZZZ10R4_SALT
+// nizsie je teda CLIENT-SIDE konstanta, nie skutocne tajny server-side salt. Niekto s pristupom k tomuto
+// HTML zdrojaku (alebo k otvorenej verso_verification tabulke, ktora ma momentalne verejne SELECT) by
+// teoreticky mohol hash prepocitat pre znamy/tipnuty username (rainbow-table riziko). "Hashovane a skryte
+// v databaze ako sa da" je preto AKTUALNE splnene len ciastocne: system_id sa NEZOBRAZUJE v ziadnom UI
+// vypise (viz zzz10v2_render_verification_database nizsie - meta.textContent nikdy system_id neuvadza) a
+// NEPOUZIVA sa v beznom Login flow, ale skutocne kryptograficky skryte (server-side salt) to bude az po
+// presune tejto logiky do Supabase Edge Function (3-vrstvova A->B->C architektura, bod 4 v podklade) -
+// zatial je to najlepsie dosiahnutelne v single-file client-side appke bez backendu. | Vrso -> Claude AI | 2026-08-31 ===
+const ZZZ10R5_SYSTEM_ID_SALT = 'verso-zzz10r5-system-id-salt-v1'; // client-side, viz POCTIVE PRIZNANIE LIMITU vyssie - docasne, kym nebude server-side Edge Function
+
+async function zzz10r5_compute_system_id(username) {
+  const normalized = zzz10v1_normalize((username || '').trim());
+  if (!normalized) return null;
+  try {
+    const encoded = new TextEncoder().encode(ZZZ10R5_SYSTEM_ID_SALT + ':' + normalized);
+    const digestBuffer = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(digestBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (e) {
+    console.warn('Zzz10-R5:SYSTEM-ID - crypto.subtle nedostupne, system_id sa vynecha pre tuto registraciu:', e);
+    return null; // registracia POKRACUJE aj bez system_id (rovnaky princip ako Zzz10-V1:USER-ID vyssie - username uz je sam o sebe funkcny identifikator)
+  }
+}
+// === [/Zzz10-R5:SYSTEM-ID] ===
+
 // === [Zzz6-F22:NO-DOUBLE-ENTRIES] (SYSTEM FUNCTION) - Vrso 2026-08-20 request, PRESUNUTE NA DB-SIDE 2026-08-28 ===
 // POZOR: toto je oznacene ako SYSTEM FUNCTION (rovnaky princip ako Zzz0-R1/Zzz6-F7/Zzz6-F2) - zmenu tejto
 // logiky musi vyslovne schvalit project owner (Vrso). Zabranuje vlozeniu DVOCH ROVNAKYCH Zzz1-M2 Entry Line
@@ -8623,6 +8673,12 @@ async function zzz10v1_submit_register() {
     console.warn(`Zzz10-V1:USER-ID - RPC get_next_user_id zlyhalo, registracia pokracuje bez user_id. DOVOD: ${userIdResult.error}`);
   }
 
+  // === [Zzz10-R5:SYSTEM-ID] hashovany identifikator VYLUCNE pre buducu multiverifikaciu, viz vysvetlenie
+  // vyssie v subore. Rovnaky "pokracuj aj bez toho" princip ako user_id vyssie - ak crypto.subtle zlyha,
+  // registracia sa NEZASTAVI, system_id ostane null. | Vrso -> Claude AI | 2026-08-31 ===
+  const systemId = await zzz10r5_compute_system_id(username);
+  // === [/Zzz10-R5:SYSTEM-ID] ===
+
   // Zzz10-V1:VERIFICATION-STORAGE - CELY registracny zaznam ide LEN sem, ziadny CL/verso_entries zapis
   const registeredAt = new Date().toISOString();
   const registrationPayload = {
@@ -8633,6 +8689,7 @@ async function zzz10v1_submit_register() {
       email,
       activation_code: activationCode,
       user_id: userId,
+      system_id: systemId, // Zzz10-R5:SYSTEM-ID (2026-08-31) - hashovany, urceny LEN pre buduci multiverifikacny lookup, NIKDY pre bezny login
       registered_at: registeredAt
     }),
     updated_at: registeredAt
@@ -9538,6 +9595,17 @@ function zzz10m2_render_login_setup(body) {
 // === [/Zzz10-M2:LOGIN-SETUP] ===
 </script>
 </body>
+
+
+
+
+
+
+
+
+
+
+
 
 
 
