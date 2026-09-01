@@ -900,6 +900,23 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     justify-content: center;
     z-index: 1000;
   }
+  /* === [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] (CSS cast) kontajner pre DOKOVANE kontextove okna (viz HTML cast pri
+     Zzz1-M1:ANCHOR) - nahradza .entry-modal-overlay pre vsetky CL-editacne kontextove okna (F1:MODAL generic,
+     F16 date, F17/F18 chat, F21 tagy, F22 view, F6 EL cell, DB record view). Filter modal (Zzz4-R17) a Login
+     modal (Zzz6-F36) ZOSTAVAJU ako klasicky centrovany .entry-modal-overlay (system/search-level, nie
+     CL-bunka editacia) - Vrso potvrdi/zmeni podla potreby. | Vrso -> Claude AI | 2026-09-01 === */
+  .context-window-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    position: relative;
+    z-index: 500;
+  }
+  .context-window-stack:empty {
+    display: none;
+  }
+  /* === [/Zzz6-F41:CONTEXT-WINDOW-LAYOUT] (CSS cast) === */
   /* === [Zzz6-F17:CONTEXT-WINDOW-ADAPTIVE-SIZE] rozsirene z povodneho R17-dedicated riesenia na CELY generic modal
      systemus (.entry-modal-box / .entry-modal-textarea) -> plati teraz pre VSETKY 1-R* command line bunky/buttony
      ktore modal pouzivaju (content, acknowledgment, F16 date, F17 user, F21 tagy, F22, DB record view atd.),
@@ -3441,6 +3458,15 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
 <div id="versoZzz1M1AnchorPoint" class="zzz1-m1-anchor-point" aria-hidden="true"></div>
 <!-- === [/Zzz1-M1:ANCHOR] === -->
 
+<!-- === [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] Kontajner pre kontextove okna, ktore predtym boli centrovany fixed
+     overlay cez cele obrazovky - teraz su dokovane PRIAMO POD Command Line (rovnaky anchor princip ako
+     Zzz7-R Content Space nizsie). Flex-column + gap: viacero sucasne otvorenych okien sa PRIRODZENE rovna
+     pod seba (zaklad pre buduce Zzz6-F44 stacking). Zatial (kym nie je hotova Zzz6-F47 Attach CL) je kotviaci
+     bod VZDY tento container hned pod klasickou CL - po Zzz6-F47 sa kotvenie presunie na poslednu
+     attachnutu CL/entry (Vrso 2026-09-01). | Vrso -> Claude AI | 2026-09-01 === -->
+<div class="context-window-stack" id="versoContextWindowStack"></div>
+<!-- === [/Zzz6-F41:CONTEXT-WINDOW-LAYOUT] (HTML cast) === -->
+
 <!-- === [Zzz1-M2:ENTRY-MODULE] OPRAVA (Vrso 2026-08-20): "Entry Line Module" NIE JE vizualna sekcia/workspace -
      je to LEN programatorske oznacenie pre skupinu buniek CL, ktore sa uklaladaju do databazy (Zzz4-0).
      Ziadny samostatny vizualny box preto tu NIE JE (predtym som chybne pridal "ENTRY MODULE" placeholder
@@ -3636,6 +3662,39 @@ function write_to_entry(id, text) {
   // ak je Database workspace prave otvoreny, R1 bunka funguje ako filter -> obnov zoznam
   refresh_database_workspace_if_open();
 }
+
+// === [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] zdielane funkcie - kontextove okno ako DOKOVANY panel v
+// #versoContextWindowStack (hned POD Command Line), namiesto povodneho centrovaneho fixed .entry-modal-overlay
+// cez cele obrazovky. Viac sucasne otvorenych okien sa vdaka flex-column stacku PRIRODZENE rovna pod seba
+// (zaklad pre buduce Zzz6-F44 stacking). | Vrso -> Claude AI | 2026-09-01 ===
+//
+// zzz6f41_create_context_window(): vytvori a pripoji .entry-modal-box do stacku. Vracia { box, removeBox } -
+// removeBox() robi LEN odstranenie z DOM (ziadna business logika) - kazda funkcia si nad tym postavi VLASTNE
+// closeModal (napr. s autosave/write_to_entry pred zatvorenim, presne ako predtym), aby sa zachovalo povodne
+// spravanie pri roznych sposoboch zatvorenia (DELETE vs. klik mimo vs. ULOZIT).
+function zzz6f41_create_context_window() {
+  const stack = document.getElementById('versoContextWindowStack');
+  const box = document.createElement('div');
+  box.className = 'entry-modal-box';
+  stack.appendChild(box);
+  function removeBox() {
+    if (box.parentNode) box.parentNode.removeChild(box);
+  }
+  return { box, removeBox };
+}
+
+// zzz6f41_bind_outside_click(box, closeFn): klik KAMKOLVEK MIMO box (bez dimmed pozadia, kedze uz nejde o
+// fullscreen overlay) zavola closeFn (typicky funkcia closeModal danej funkcie, DRY - rovnaky close-mechanizmus
+// pre outside-click aj pre explicitne tlacidla). Maly odklad po vytvoreni, aby sa nezachytil ten isty klik,
+// ktory okno otvoril.
+function zzz6f41_bind_outside_click(box, closeFn) {
+  function handler(e) {
+    if (!box.contains(e.target)) closeFn();
+  }
+  setTimeout(() => document.addEventListener('click', handler), 0);
+  return () => document.removeEventListener('click', handler);
+}
+// === [/Zzz6-F41:CONTEXT-WINDOW-LAYOUT] ===
 
 // === [Zzz6-F17:CONTEXT-WINDOW-ADAPTIVE-SIZE] zdielana funkcia - adaptivny rast textarea podla obsahu (pocet
 // riadkov/vyska textu), spolocna pre VSETKY 1-R* command line modaly (generic content, F17 user, DB record view atd.).
@@ -3902,11 +3961,7 @@ function zzz_build_context_header(id) {
 // klik-handler (vylucene z generic F1:CELL-LOGIC). Jednoduchy read-only prehliadac: label + readonly textarea
 // + COPY do OS schranky (zdielane zzz_copy_text_to_clipboard_silent) + klik mimo = zatvorenie. ZIADNY zapis. | Vrso -> Claude AI | 2026-08-22 ===
 function zzz6f29_open_readonly_viewer(label, value) {
-  const overlay = document.createElement('div');
-  overlay.className = 'entry-modal-overlay';
-
-  const box = document.createElement('div');
-  box.className = 'entry-modal-box';
+  const { box, removeBox } = zzz6f41_create_context_window(); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] dokovane pod CL
   const header = document.createElement('div');
   header.className = 'zzz-context-header';
   header.textContent = label;
@@ -3927,9 +3982,7 @@ function zzz6f29_open_readonly_viewer(label, value) {
   actions.appendChild(copyBtn);
   box.appendChild(actions);
 
-  overlay.appendChild(box);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) document.body.removeChild(overlay); });
-  document.body.appendChild(overlay);
+  zzz6f41_bind_outside_click(box, removeBox); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT]
 }
 // === [/Zzz6-F29:READONLY-VIEWER] ===
 
@@ -4559,11 +4612,7 @@ async function zzz6f39_redo() {
 // === [/Zzz6-F38:CL-UNDO / Zzz6-F39:CL-REDO] ===
 
 function open_entry_modal(id) {
-  const overlay = document.createElement('div');
-  overlay.className = 'entry-modal-overlay';
-
-  const box = document.createElement('div');
-  box.className = 'entry-modal-box';
+  const { box, removeBox } = zzz6f41_create_context_window(); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] dokovane pod CL
   box.appendChild(zzz_build_context_header(id)); // [Zzz6-F23:CONTEXT-HEADER]
 
   const textarea = document.createElement('textarea');
@@ -4617,7 +4666,7 @@ function open_entry_modal(id) {
   function closeModal() {
     write_to_entry(id, textarea.value);
     stopAutosize();
-    document.body.removeChild(overlay);
+    removeBox();
   }
 
   // === [Zzz6-F6:COPY-CELL] Zzz6-F6 Copy (Cell) - zapisuje aktualny text z textarea do prislusnej Zzz1-M1 CL
@@ -4640,7 +4689,7 @@ function open_entry_modal(id) {
   deleteBtn.onclick = () => {
     write_to_entry(id, '');
     stopAutosize();
-    document.body.removeChild(overlay);
+    removeBox();
   };
   // === [/Zzz6-F25:DELETE-CELL] ===
 
@@ -4648,9 +4697,7 @@ function open_entry_modal(id) {
   actions.appendChild(copyBtn);
   box.appendChild(textarea);
   box.appendChild(actions);
-  overlay.appendChild(box);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); }); // [Zzz6-F24:CLICK-OUTSIDE-CLOSE]
-  document.body.appendChild(overlay);
+  zzz6f41_bind_outside_click(box, closeModal); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] nahradza povodne [Zzz6-F24:CLICK-OUTSIDE-CLOSE] cez overlay
   textarea.focus();
   const stopAutosize = verso_autosize_modal_textarea(textarea); // [Zzz6-F17:CONTEXT-WINDOW-ADAPTIVE-SIZE]
 }
@@ -4933,11 +4980,7 @@ function zzz1_f16_open_schedule_date_modal() {
   const defaultHour = (existing && existing.hour) ? existing.hour : String(today.getHours()).padStart(2, '0');
   const defaultMinute = (existing && existing.minute) ? existing.minute : String(today.getMinutes()).padStart(2, '0');
 
-  const overlay = document.createElement('div');
-  overlay.className = 'entry-modal-overlay';
-
-  const box = document.createElement('div');
-  box.className = 'entry-modal-box';
+  const { box, removeBox } = zzz6f41_create_context_window(); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] dokovane pod CL
   box.appendChild(zzz_build_context_header('16')); // [Zzz6-F23:CONTEXT-HEADER]
 
   const label = document.createElement('div');
@@ -5033,7 +5076,7 @@ function zzz1_f16_open_schedule_date_modal() {
   // sa rozpisany vyber nestratil aj bez COPY. DELETE ma vlastnu vetvu (explicitne vymazanie, nie autosave).
   function closeModal() {
     write_to_entry("16", buildDateStr());
-    document.body.removeChild(overlay);
+    removeBox();
   }
 
   const deleteBtn = document.createElement('button');
@@ -5041,7 +5084,7 @@ function zzz1_f16_open_schedule_date_modal() {
   deleteBtn.textContent = 'DELETE';
   deleteBtn.onclick = () => {
     write_to_entry("16", '');
-    document.body.removeChild(overlay);
+    removeBox();
   };
 
   const copyBtn = document.createElement('button');
@@ -5052,9 +5095,7 @@ function zzz1_f16_open_schedule_date_modal() {
   actions.appendChild(deleteBtn);
   actions.appendChild(copyBtn);
   box.appendChild(actions);
-  overlay.appendChild(box);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); }); // [Zzz6-F24:CLICK-OUTSIDE-CLOSE]
-  document.body.appendChild(overlay);
+  zzz6f41_bind_outside_click(box, closeModal); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT]
 }
 
 // === [Zzz1-F16-date-a:BUTTON-CELL-BIND] klik na R16a (SCHEDULE button) aj na R16 (cell) otvara date-picker modal namiesto generickeho textoveho modalu ===
@@ -5448,11 +5489,7 @@ function zzz1_build_context_chat_window(fieldId) {
   const priceKey = fieldId + "e";
   const unitKey = fieldId + "f";
 
-  const overlay = document.createElement('div');
-  overlay.className = 'entry-modal-overlay';
-
-  const box = document.createElement('div');
-  box.className = 'entry-modal-box';
+  const { box, removeBox } = zzz6f41_create_context_window(); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] dokovane pod CL
   box.appendChild(zzz_build_context_header(fieldId)); // [Zzz6-F23:CONTEXT-HEADER]
 
   const canEdit = zzz1_context_can_edit(consentKey);
@@ -5624,7 +5661,7 @@ function zzz1_build_context_chat_window(fieldId) {
   actions.className = 'entry-modal-actions';
 
   function closeModal() {
-    document.body.removeChild(overlay);
+    removeBox();
   }
 
   if (!isFinalLocked) {
@@ -5650,7 +5687,7 @@ function zzz1_build_context_chat_window(fieldId) {
       const ok = await submit_entries_to_db({ skipDuplicateCheck: true }); // silent-copy zamerne mirroruje existujuci zaznam
       if (ok) {
         box.classList.add('zzz1r17b-success-border');
-        setTimeout(() => { document.body.removeChild(overlay); }, 600);
+        setTimeout(() => { removeBox(); }, 600);
       }
     };
     actions.appendChild(entrySaveBtn);
@@ -5664,9 +5701,7 @@ function zzz1_build_context_chat_window(fieldId) {
   actions.appendChild(closeBtn);
 
   box.appendChild(actions);
-  overlay.appendChild(box);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); }); // [Zzz6-F24:CLICK-OUTSIDE-CLOSE]
-  document.body.appendChild(overlay);
+  zzz6f41_bind_outside_click(box, closeModal); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] nahradza povodne [Zzz6-F24:CLICK-OUTSIDE-CLOSE] cez overlay
 }
 // === [/Zzz1-CONTEXT-CHAT-WINDOW] ===
 
@@ -5718,11 +5753,7 @@ function zzz6f21_parse_tags(raw) {
 }
 
 function zzz6f21_open_tags_context_modal(id) {
-  const overlay = document.createElement('div');
-  overlay.className = 'entry-modal-overlay';
-
-  const box = document.createElement('div');
-  box.className = 'entry-modal-box';
+  const { box, removeBox } = zzz6f41_create_context_window(); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] dokovane pod CL
   box.appendChild(zzz_build_context_header(id)); // [Zzz6-F23:CONTEXT-HEADER]
 
   const label = document.createElement('div');
@@ -5793,7 +5824,7 @@ function zzz6f21_open_tags_context_modal(id) {
   // sa rozpisane tagy nestratili aj bez COPY. DELETE ma vlastnu vetvu (nie cez closeModal).
   function closeModal() {
     write_to_entry(id, tags.join(', '));
-    document.body.removeChild(overlay);
+    removeBox();
   }
 
   const deleteBtn = document.createElement('button');
@@ -5802,7 +5833,7 @@ function zzz6f21_open_tags_context_modal(id) {
   deleteBtn.onclick = () => {
     tags = [];
     write_to_entry(id, '');
-    document.body.removeChild(overlay);
+    removeBox();
   };
 
   const copyBtn = document.createElement('button');
@@ -5815,9 +5846,7 @@ function zzz6f21_open_tags_context_modal(id) {
   box.appendChild(label);
   box.appendChild(list);
   box.appendChild(actions);
-  overlay.appendChild(box);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); }); // [Zzz6-F24:CLICK-OUTSIDE-CLOSE]
-  document.body.appendChild(overlay);
+  zzz6f41_bind_outside_click(box, closeModal); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT]
 }
 
 // === [Zzz6-F21-context-a:BUTTON-CELL-BIND] Zzz1-R21a (TAG button) je LEN staticke oznacenie (hard rule - ziadny
@@ -6122,11 +6151,7 @@ function zzz6f22_record_copy_credit(sourceEntryId, sourceUsername, sourceDescrip
 function zzz6f22_open_view_modal(rawCreditsOverride) {
   const rawCredits = (rawCreditsOverride !== undefined) ? rawCreditsOverride : entryData[ZZZ6_F22_ENTRY_ID];
 
-  const overlay = document.createElement('div');
-  overlay.className = 'entry-modal-overlay';
-
-  const box = document.createElement('div');
-  box.className = 'entry-modal-box';
+  const { box, removeBox } = zzz6f41_create_context_window(); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] dokovane pod CL
 
   const label = document.createElement('div');
   label.style.fontSize = '9px';
@@ -6160,13 +6185,11 @@ function zzz6f22_open_view_modal(rawCreditsOverride) {
   const closeBtn = document.createElement('button');
   closeBtn.className = 'entry-modal-close';
   closeBtn.textContent = 'ZATVORIT';
-  closeBtn.onclick = () => document.body.removeChild(overlay);
+  closeBtn.onclick = () => removeBox();
 
   actions.appendChild(closeBtn);
   box.appendChild(actions);
-  overlay.appendChild(box);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeBtn.click(); }); // [Zzz6-F24:CLICK-OUTSIDE-CLOSE]
-  document.body.appendChild(overlay);
+  zzz6f41_bind_outside_click(box, removeBox); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT]
 }
 
 (function bindZzz6F22ViewAcknowledgement() {
