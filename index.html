@@ -77,6 +77,11 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   text-shadow: 0 1px 2px rgba(0,0,0,0.9);
   padding: 0 3px;
   border-radius: 2px;
+  /* [Zzz6-F40:HIDE-USERNAME-TEXT] Vrso ziadost 2026-09-01, "text username uplne schovaj aby nerusilo
+     stlacenie buttonu" - opacity:0 (nie display:none), aby vsetka existujuca farebna/stavova logika
+     (.zzz6-f7-active, .zzz0r1-db-disconnected, .zzz0r1-username-mismatch) OSTALA funkcna na pozadi,
+     len sa uz nic vizualne nezobrazuje v kruhu. | Vrso -> Claude AI | 2026-09-01 */
+  opacity: 0;
   /* zzz0-R1 FIX 2026-08-19: bez tohto prehliadac na dlhy stlacok (long-press) ponuka natívne "Kopirovat"/
      "Spytat sa Copilota" menu na vyznacenie textu namiesto app-specifickeho spravania - rovnaky princip
      pridany aj na .entry-number-button (viz nizsie) kvoli Zzz6-F10 3s podrzaniu CONTENT tlacidla */
@@ -125,6 +130,28 @@ body{margin:0;color:#fff;font-family:sans-serif;}
 .circle#versoEntryButton.zzz6f40-pinned {
   box-shadow: 0 0 0 3px #FFD700;
 }
+/* [Zzz6-F40:FIX-FLASH] kratky vyraznejsi zlaty pulz (500ms) v momente FIX-CREATE/FIX-CYCLE, navyse k trvalemu
+   tenkemu .zzz6f40-pinned rámceku - Vrso ziadost 2026-09-01 (jednoznacnejsia spatna vazba). | Vrso -> Claude AI | 2026-09-01 */
+@keyframes zzz6f40-fix-flash-anim {
+  0% { box-shadow: 0 0 0 3px #FFD700, 0 0 16px 6px #FFD700; }
+  100% { box-shadow: 0 0 0 3px #FFD700, 0 0 0 0 rgba(255,215,0,0); }
+}
+.circle#versoEntryButton.zzz6f40-fix-flash {
+  animation: zzz6f40-fix-flash-anim 500ms ease-out;
+}
+/* === [Zzz6-F40:NO-NATIVE-LONGPRESS] OPRAVA (Vrso hlasenie 2026-09-01, "ked podrzim zvyrazni sa vyssie nad
+   tym klasicke mimo verso kontextove vyznacenie") - ochrana proti nativnemu "Kopirovat"/vyznaceniu textu
+   (rovnaky princip ako existujuci zzz0-R1 FIX 2026-08-19 na #zzz6f7UsernameLabel) bola doteraz LEN na
+   vnutornom napise, NIE na samotnom kruhovom tlacidle #versoEntryButton, na ktore sa realne drzi prst
+   (napis ma pointer-events:none). touch-action:none navyse zabrani prehliadacu robit VLASTNE gesto-spravanie
+   (scroll/zoom/native-hold-menu) pocas cele drzania na tomto tlacidle. | Vrso -> Claude AI | 2026-09-01 === */
+.circle#versoEntryButton {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+}
+/* === [/Zzz6-F40:NO-NATIVE-LONGPRESS] === */
 /* === [/Zzz6-F40:LOGO-CL-PIN] (CSS cast) === */
 </style>
 <!-- <<< Zzz0-R1 END -->
@@ -7336,31 +7363,140 @@ document.addEventListener('keydown', (e) => {
 // preto sa otvorene modaly pri CYKLOVANI jednoducho zatvoria, rovnaky bezpecny [Zzz6-F24:CLICK-OUTSIDE-CLOSE]
 // princip ako predtym, zachova autosave tam kde uz existuje).
 let zzz6f40FixList = [];        // pole { entryData: {...snapshot}, scrollY }
-let zzz6f40ActiveFixIndex = -1; // -1 = ziadny FIX prave aktivny (live/nezafixovana rozpracovana CL)
+let zzz6f40ActiveFixIndex = -1; // -1 = ziadny FIX prave aktivny (live/nezavixovana rozpracovana CL)
 const ZZZ6F40_MAX_FIXES = 100;
 const ZZZ6F40_HOLD_FIX_MS = 2000;
 const ZZZ6F40_HOLD_CLEAR_MS = 20000;
+
+// === [Zzz6-F40:WORKSPACE-CAPTURE] OPRAVA (Vrso hlasenie 2026-09-01: "ostal napr templates ako predosly fix" -
+// CL sa po prepnuti FIXu spravne obnovil, ale panel POD nim (#versoWorkspaceSection - Database/Trash/Settings/
+// Verification) zostaval z PREDCHADZAJUCEHO kontextu, kedze FIX doteraz ukladal LEN entryData+scroll, nie
+// KTORY panel bol otvoreny. Zdielana premenna sa aktualizuje priamo v uz existujucich click-handleroch
+// jednotlivych navigacnych tlacidiel (DATABASE/TRASH/SETTINGS) - najmensi zasah, ziadna zmena vnutornej
+// logiky tychto panelov samotnych. | Vrso -> Claude AI | 2026-09-01
+// LIMIT (zdokumentovane): NEpokryva Login modal/screen ani Verification Workspace (ten sa iba automaticky
+// spusti po 10x zlom hesle, nema samostatne navigacne tlacidlo) - tieto sa pri cykleni FIXov len zatvoria
+// (rovnaky bezpecny [Zzz6-F24:CLICK-OUTSIDE-CLOSE] princip ako doteraz), ale znova sa AUTOMATICKY neotvoria.
+let zzz6f40_workspaceOpener = null; // funkcia bez argumentov, ktora znovu-otvori prave aktivny workspace panel
+// === [/Zzz6-F40:WORKSPACE-CAPTURE] ===
 
 function zzz6f40_close_open_entry_modals() {
   document.querySelectorAll('.entry-modal-overlay').forEach(overlay => overlay.click());
 }
 
-function zzz6f40_snapshot_current_state() {
-  return { entryData: JSON.parse(JSON.stringify(entryData)), scrollY: window.scrollY };
+// === [Zzz6-F40:SELECT-CAPTURE] rozsirenie FIX zaznamu o Zzz6-F29 Select-mode stav (Vrso navrh 2026-09-01:
+// "ked select viac entry lines, 3s podrzanie by ich malo zafixovat sucasne"). Uklada sa LEN serializovatelny
+// stav (select-mode on/off + zoznam CL cell-id + zoznam EL entry_id), NIE priame DOM referencie (tie sa pri
+// kazdom prekresleni Database Workspace nici, viz existujuci zzz6f6_lastEntryLineRow princip nizsie v subore).
+// LIMIT (zdokumentovane): CL bunky sa vedia obnovit VZDY (CL je vzdy v DOM). EL riadky sa vizualne
+// prezvyraznia LEN ak su tie konkretne zaznamy prave nacitane/vykreslene v otvorenom Database Workspace
+// (rovnaky princip ako existujuce zvyraznenie po insert-e) - inak sa zoznam entry_id ticho preskoci.
+function zzz6f40_snapshot_select_state() {
+  if (!zzz6f29SelectMode) return null;
+  return {
+    clCellIds: zzz6f29_selection.cl.cells.map(c => c.id),
+    elEntryIds: zzz6f29_selection.el.type === 'rows' ? zzz6f29_selection.el.rows.map(r => r.row.entry_id) : []
+  };
 }
 
-function zzz6f40_apply_snapshot(snap) {
+function zzz6f40_restore_select_state(selectState) {
+  const armBtn = document.getElementById('versoAutomateButton');
+  if (!selectState) {
+    zzz6f29SelectMode = false; // predchadzajuci FIX mohol mat select-mode zapnuty - tento ho nema, zosynchronizuj
+    if (armBtn) armBtn.classList.remove('zzz6f29-armed');
+    return;
+  }
+  zzz6f29SelectMode = true; // priamo (nie cez zzz6f29_set_select_mode) - ten by vzapati vynuloval vyber
+  if (armBtn) armBtn.classList.add('zzz6f29-armed');
+
+  selectState.clCellIds.forEach(id => {
+    const el = document.querySelector(`.numbers-row .entry-cell[data-entry-id="${id}"]`);
+    if (el) {
+      el.classList.add('zzz6f28-selected');
+      zzz6f29_selection.cl.cells.push({ kind: 'cl', id, el });
+    }
+  });
+
+  if (selectState.elEntryIds.length > 0) {
+    zzz6f29_selection.el.type = 'rows';
+    selectState.elEntryIds.forEach(entryId => {
+      const rowEl = document.querySelector(`.db-workspace-entry-row[data-entry-id="${entryId}"]`);
+      const rowData = zzz4_0_workspaceLoadedRows.find(r => r.entry_id === entryId) || submittedEntriesFullCache[entryId];
+      if (rowEl && rowData) {
+        rowEl.querySelectorAll('.entry-cell, .priority-dot-button, .privacy-dot-button, .status-dot-button').forEach(el => el.classList.add('zzz6f28-selected'));
+        zzz6f29_selection.el.rows.push({ row: rowData, rowEl });
+      }
+      // ak riadok prave nie je vykresleny (zla stranka/zatvoreny workspace), tento konkretny entry_id sa
+      // ticho preskoci - zvysok vyberu sa aplikuje normalne
+    });
+  }
+}
+// === [/Zzz6-F40:SELECT-CAPTURE] ===
+
+function zzz6f40_snapshot_current_state() {
+  const templatesSection = document.getElementById('versoTemplatesInlineSection');
+  return {
+    entryData: JSON.parse(JSON.stringify(entryData)),
+    scrollY: window.scrollY,
+    selectState: zzz6f40_snapshot_select_state(),
+    workspaceOpener: zzz6f40_workspaceOpener, // [Zzz6-F40:WORKSPACE-CAPTURE]
+    templatesOpen: templatesSection ? templatesSection.classList.contains('is-open') : false // [Zzz6-F40:TEMPLATES-CAPTURE]
+  };
+}
+
+async function zzz6f40_apply_snapshot(snap) {
   Object.keys(snap.entryData).forEach(id => {
     entryData[id] = snap.entryData[id];
     render_entry_cell(id);
   });
   zzz6f10_sync_content_space();
   window.scrollTo({ top: snap.scrollY, behavior: 'smooth' });
+
+  // [Zzz6-F40:WORKSPACE-CAPTURE] obnov spravny panel (Database/Trash/Settings) - MUSI dobehnut PRED select-restore
+  // nizsie, kedze EL-riadkovy vyber potrebuje aby konkretne riadky uz boli vykreslene v DOM (open_database_workspace
+  // je async). Ak FIX ziadny panel nemal otvoreny, workspace sa vyprazdni (rovnaky vysledny stav ako pred prvym
+  // otvorenim akehokolvek panelu).
+  const workspace = document.getElementById('versoWorkspaceSection');
+  if (snap.workspaceOpener) {
+    await snap.workspaceOpener();
+  } else if (workspace) {
+    workspace.innerHTML = '';
+  }
+  zzz6f40_workspaceOpener = snap.workspaceOpener || null; // globalny tracker musi sediet s prave-aplikovanym FIXom
+
+  // [Zzz6-F40:TEMPLATES-CAPTURE] Templates panel je NEZAVISLY toggle (#versoTemplatesInlineSection), nie sucast
+  // #versoWorkspaceSection - preto sa rieši samostatne, cez uz existujucu zzz5t0_toggle_templates() (DRY)
+  const templatesSection = document.getElementById('versoTemplatesInlineSection');
+  if (templatesSection) {
+    const isOpen = templatesSection.classList.contains('is-open');
+    if (isOpen !== !!snap.templatesOpen) zzz5t0_toggle_templates();
+  }
+
+  zzz6f29_reset_selection(); // vycisti PREDCHADZAJUCI vyber (patril inemu FIXu) pred aplikovanim noveho
+  zzz6f40_restore_select_state(snap.selectState);
 }
 
 function zzz6f40_set_pinned_indicator(active) {
   const logoBtn = document.getElementById('versoEntryButton');
   if (logoBtn) logoBtn.classList.toggle('zzz6f40-pinned', active);
+}
+
+// [Zzz6-F40:FIX-FLASH] Vrso hlasenie 2026-09-01: "dost nejednoznacne ide stlacit... pomohlo by ak by blikol
+// po fix logo button zlatou farbou" - kratky FLASH (jasnejsi zlaty prstenec na 500ms) navyse oproti trvalemu
+// tenkemu .zzz6f40-pinned rámceku, aby moment vytvorenia FIXu bol jednoznacne citelny/viditelny.
+function zzz6f40_flash_logo() {
+  const logoBtn = document.getElementById('versoEntryButton');
+  if (!logoBtn) return;
+  logoBtn.classList.add('zzz6f40-fix-flash');
+  setTimeout(() => logoBtn.classList.remove('zzz6f40-fix-flash'), 500);
+}
+
+// [Zzz6-F40:VIBRATE] Vrso navrh 2026-09-01: "idealne aj vibracna funkcia pri podrzani loga... ale ak niekomu
+// nepojde na mobile nic sa nepokazi, funkcnost ostane" - navigator.vibrate je nepovinne Web API (funguje len
+// na niektorych mobilnych prehliadacoch, nikdy na iOS Safari) - feature-detection guard zarucuje, ze na
+// nepodporovanych zariadeniach sa jednoducho nic nestane (ziadna chyba, ziadny vplyv na zvysok funkcnosti).
+function zzz6f40_vibrate(pattern) {
+  if (navigator.vibrate) navigator.vibrate(pattern);
 }
 
 // === [Zzz6-F40:FIX-CREATE] ===
@@ -7372,12 +7508,14 @@ function zzz6f40_create_fix() {
   }
   zzz6f40ActiveFixIndex = zzz6f40FixList.length - 1;
   zzz6f40_set_pinned_indicator(true);
+  zzz6f40_flash_logo(); // [Zzz6-F40:FIX-FLASH]
+  zzz6f40_vibrate(60); // [Zzz6-F40:VIBRATE]
   zzz6f2_show_toast(`FIX ulozeny (${zzz6f40FixList.length}/${ZZZ6F40_MAX_FIXES})`);
 }
 // === [/Zzz6-F40:FIX-CREATE] ===
 
 // === [Zzz6-F40:FIX-CYCLE] ===
-function zzz6f40_cycle_fix() {
+async function zzz6f40_cycle_fix() {
   if (zzz6f40FixList.length === 0) {
     zzz6f2_show_toast('Ziadne FIX zaznamy');
     return;
@@ -7387,8 +7525,9 @@ function zzz6f40_cycle_fix() {
   }
   zzz6f40_close_open_entry_modals();
   zzz6f40ActiveFixIndex = (zzz6f40ActiveFixIndex + 1) % zzz6f40FixList.length; // dopredu, dokola
-  zzz6f40_apply_snapshot(zzz6f40FixList[zzz6f40ActiveFixIndex]);
+  await zzz6f40_apply_snapshot(zzz6f40FixList[zzz6f40ActiveFixIndex]);
   zzz6f40_set_pinned_indicator(true);
+  zzz6f40_flash_logo(); // [Zzz6-F40:FIX-FLASH]
   zzz6f2_show_toast(`FIX ${zzz6f40ActiveFixIndex + 1}/${zzz6f40FixList.length}`);
 }
 // === [/Zzz6-F40:FIX-CYCLE] ===
@@ -7398,6 +7537,8 @@ function zzz6f40_clear_all_fixes() {
   zzz6f40FixList = [];
   zzz6f40ActiveFixIndex = -1;
   zzz6f40_set_pinned_indicator(false);
+  zzz6f40_flash_logo(); // [Zzz6-F40:FIX-FLASH]
+  zzz6f40_vibrate([60, 40, 60]); // [Zzz6-F40:VIBRATE] odlisny (dvojity) vzor od FIX-CREATE - vacsia/destruktivnejsia akcia
   zzz6f2_show_toast('Vsetky FIX zaznamy vymazane');
 }
 // === [/Zzz6-F40:FIX-CLEAR-ALL] ===
@@ -7443,6 +7584,9 @@ function zzz6f40_clear_all_fixes() {
   logoBtn.addEventListener('mouseup', onPressEnd);
   logoBtn.addEventListener('touchend', onPressEnd);
   logoBtn.addEventListener('mouseleave', onPressCancel);
+  // [Zzz6-F40:NO-NATIVE-LONGPRESS] extra poistka - niektore prehliadace spustia "contextmenu" event aj napriek
+  // touch-action:none/-webkit-touch-callout:none v CSS, preto explicitne potlacene aj tu
+  logoBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 })();
 // === [/Zzz6-F40:LOGO-CL-PIN] ===
 
@@ -8456,6 +8600,7 @@ async function open_trash_workspace() {
   trashBtn.addEventListener('click', () => {
     zzz6f22EntryIdFilter = null;
     open_trash_workspace();
+    zzz6f40_workspaceOpener = () => open_trash_workspace(); // [Zzz6-F40:WORKSPACE-CAPTURE]
   });
 })();
 // === end Zzz2-R24 (Trash workspace) ===
@@ -8658,6 +8803,7 @@ function zzz5t0_add_tab(tabsArray, prefix, defaultTemplate) {
     zzz6f22EntryIdFilter = null; // [Zzz6-F22-link:ENTRY-LINK] manualne otvorenie DATABASE tlacidlom = vzdy plny/cisty zoznam
     window.location.hash = 'zzz2-r29-database-workspace';
     open_database_workspace();
+    zzz6f40_workspaceOpener = () => open_database_workspace(); // [Zzz6-F40:WORKSPACE-CAPTURE]
   });
 })();
 // === end zzz2-R29 (Database workspace) ===
@@ -8755,6 +8901,7 @@ function open_settings_workspace() {
       zzz6f36_open_login_modal();
     } else {
       open_settings_workspace();
+      zzz6f40_workspaceOpener = () => open_settings_workspace(); // [Zzz6-F40:WORKSPACE-CAPTURE]
     }
   });
 })();
