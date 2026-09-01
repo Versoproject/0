@@ -4690,6 +4690,17 @@ async function zzz6f33_handle_delete_click() {
 //     Back/Forward/ENTRY (aby prve kliknutie na Back vzdy vratilo CELY prave dopisany obsah, nie len cast).
 //     Bezne male opravy (backspace/delete v ramci pisania) sa TAKTO do Back vobec nedostanu - tie rieši
 //     klasicka klavesnica, presne ako Vrso navrhol. | Vrso -> Claude AI | 2026-08-30 ===
+// === [Zzz1-R5:FINAL-LOCK + ZzzAUDIT:ALWAYS-TRASH-GUARANTEE] (Vrso 2026-09-01, poziadavka: "final entry
+// undo nebude mozny" + "vzdy bol akykolvek databazovy zaznam aspon ulozeny v trash/verification, v limite
+// pravidiel/opravneni") - dva samostatne princípy, overene/zapracovane v tejto uprave:
+//   1) FINAL-LOCK teraz plati AJ pre 'edit' type Back/Forward krokov (viz zzz6f38_undo/zzz6f39_redo nizsie) -
+//      predtym to platilo len pre 'submit' type (cez zzz6f34_move_row_to_trash guard).
+//   2) Audit vsetkych realnych DB .delete() volani v subore (2026-09-01): KAZDE jedno je bezpodmienecne
+//      predchadzane uspesnym zapisom kopie zaznamu inde PRED samotnym delete (Zzz6-F34 Move: insert do
+//      verso_trash AZ POTOM delete; ZzzF Migracia: insert do verso_verification AZ POTOM delete). Neexistuje
+//      cesta kde by zaznam zmizol bez zachovanej kopie - princip je teda uz systematicky dodrzany naprec
+//      celym suborom, nie len v F38/F39. Final-lock zaznamy navyse VOBEC nemozno presunut/zmazat (zzz6f34
+//      guard), teda su chranene este prisnejsie (nemenne, nie len "zachovane inde"). | Vrso -> Claude AI | 2026-09-01 ===
 const ZZZ6F38_MAX_DEPTH = 10;
 const ZZZ6F38_COALESCE_MS = 900; // pauza v pisani, po ktorej sa rozpisana zmena "uzavrie" ako 1 undo krok
 let zzz6f38_undoStack = [];
@@ -4761,6 +4772,15 @@ async function zzz6f38_undo() {
   zzz6f38_isReplaying = true;
   try {
     if (action.type === 'edit') {
+      // === [Zzz1-R5:FINAL-LOCK] (Vrso 2026-09-01, "ked bude v cl v bunke kategoria oznacena ako final tak
+      // proste undo nebude mozny") - ak je AKTUALNY CL stav oznaceny "Final" (zzz1r5_is_final(), cita zo
+      // ziveho entryData), Back na 'edit' krok sa VOBEC nevykona. Akcia OSTAVA na stacku (nekonzumovana,
+      // rovnaky vzor ako pri 'submit' type nizsie) - ak sa Final medzicasom zrusi, Back sa da skusit znova.
+      // 'submit' type nizsie uz FINAL-LOCK ochranu ma "zadarmo" cez zzz6f34_move_row_to_trash. | Vrso -> Claude AI | 2026-09-01 ===
+      if (zzz1r5_is_final()) {
+        zzz6f2_show_toast('Zzz6-F38 Back: zaznam je "Final" - undo nie je mozny.');
+        return;
+      }
       zzz6f38_undoStack.pop();
       write_to_entry(action.id, action.prevValue);
       zzz6f38_flash_cl_cell(action.id, 'zzz6f33-danger'); // Zzz6-F38:FLASH-CELL - cervena = Back
@@ -4792,6 +4812,12 @@ async function zzz6f39_redo() {
   zzz6f38_isReplaying = true;
   try {
     if (action.type === 'edit') {
+      // [Zzz1-R5:FINAL-LOCK] (Vrso 2026-09-01) - symetricka ochrana k Back vyssie: ak je zaznam medzicasom
+      // Final, ani Forward ho nesmie znovu prepisat. Nekonzumovane, ostava na redoStacku.
+      if (zzz1r5_is_final()) {
+        zzz6f2_show_toast('Zzz6-F39 Forward: zaznam je "Final" - undo/redo nie je mozny.');
+        return;
+      }
       zzz6f39_redoStack.pop();
       write_to_entry(action.id, action.newValue);
       zzz6f38_flash_cl_cell(action.id, 'zzz1r-success-flash'); // Zzz6-F38:FLASH-CELL - zelena = Forward
