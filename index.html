@@ -4856,11 +4856,59 @@ async function zzz6f39_redo() {
   }
 }
 
+// === [Zzz6-F38:CL-UNDO-ALL / Zzz6-F39:CL-REDO-ALL] (SPECIAL, 3s hold) - Vrso 2026-09-02: "podrz 2-R* back
+// button, vrati sa najstarsia polozka v F38 undo stacku (hromadny undo)" + rovnaky princip pre Forward
+// (najnovsia polozka v redo stacku). DRY - ZIADNA nova undo/redo logika, len opakovane volanie UZ
+// EXISTUJUCEHO zzz6f38_undo()/zzz6f39_redo() v cykle (LIFO), takze automaticky dedi VSETKY existujuce
+// ochrany (Zzz1-R5:FINAL-LOCK, Zzz10-V1:REGISTER-LOCK, trash-move logika, flash, audit log). Loop guard:
+// ak sa dlzka stacku po volani NEZMENSI (akcia bola blokovana/nekonzumovana), cyklus sa OKAMZITE zastavi -
+// inak by mohol bezat donekonecna na tej istej zablokovanej Final-lock polozke. confirm() poistka pred
+// spustenim (rovnaky vzor ako zzzF_migrate_legacy_register_entries) - hromadna akcia je vyrazne
+// destruktivnejsia nez 1 klik. | Vrso -> Claude AI | 2026-09-02 ===
+async function zzz6f38_undo_all() {
+  if (zzz6f38_undoStack.length === 0) {
+    zzz6f2_show_toast('Zzz6-F38 Back (3s): nie je co vratit spat');
+    return;
+  }
+  if (!confirm(`Vratit VSETKY (${zzz6f38_undoStack.length}) kroky spat az na zaciatok? Tato akcia sa da postupne vratit cez Forward, ale je hromadna.`)) return;
+  let steps = 0;
+  while (zzz6f38_undoStack.length > 0) {
+    const before = zzz6f38_undoStack.length;
+    await zzz6f38_undo();
+    if (zzz6f38_undoStack.length === before) break; // akcia bola blokovana (napr. Final-lock) - zastav, nekonzumovat donekonecna
+    steps++;
+  }
+  if (steps > 0) zzz6f2_show_toast(`Zzz6-F38 Back (3s): vratenych ${steps} krokov`);
+}
+
+async function zzz6f39_redo_all() {
+  if (zzz6f39_redoStack.length === 0) {
+    zzz6f2_show_toast('Zzz6-F39 Forward (3s): nie je co vratit vpred');
+    return;
+  }
+  if (!confirm(`Vratit VSETKY (${zzz6f39_redoStack.length}) kroky vpred az na koniec? Hromadna akcia.`)) return;
+  let steps = 0;
+  while (zzz6f39_redoStack.length > 0) {
+    const before = zzz6f39_redoStack.length;
+    await zzz6f39_redo();
+    if (zzz6f39_redoStack.length === before) break; // akcia bola blokovana (napr. Final-lock/DB vypadok) - zastav
+    steps++;
+  }
+  if (steps > 0) zzz6f2_show_toast(`Zzz6-F39 Forward (3s): vratenych ${steps} krokov`);
+}
+// === [/Zzz6-F38:CL-UNDO-ALL / Zzz6-F39:CL-REDO-ALL] ===
+
 (function bindZzz6F38F39BackForwardButtons() {
   const backBtn = document.getElementById('versoBackButton'); // Zzz6-F38:CL-UNDO
   const fwdBtn = document.getElementById('versoForwardButton'); // Zzz6-F39:CL-REDO
-  if (backBtn) backBtn.addEventListener('click', zzz6f38_undo);
-  if (fwdBtn) fwdBtn.addEventListener('click', zzz6f39_redo);
+  if (backBtn) {
+    backBtn.addEventListener('click', zzz6f38_undo);
+    zzz_bind_long_press(backBtn, 3000, zzz6f38_undo_all); // Zzz6-F38:CL-UNDO-ALL (SPECIAL, 3s)
+  }
+  if (fwdBtn) {
+    fwdBtn.addEventListener('click', zzz6f39_redo);
+    zzz_bind_long_press(fwdBtn, 3000, zzz6f39_redo_all); // Zzz6-F39:CL-REDO-ALL (SPECIAL, 3s)
+  }
 })();
 // === [/Zzz6-F38:CL-UNDO / Zzz6-F39:CL-REDO] ===
 
