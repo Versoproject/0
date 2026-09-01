@@ -1431,7 +1431,24 @@ body{margin:0;color:#fff;font-family:sans-serif;}
      ma INE nastavenie) - teraz PRIDANA, PRESNA kopia .priority-wrap (DRY/symetria). NAVYSE responsive
      rozmerova pravidlo pre .privacy-dot-button (v @media (max-width:640px) bloku nizsie v subore) dostalo
      !important, aby SPOLAHLIVO prebilo tento zakladny 34x34px rozmer na mobile obrazovkach bez akychkolvek
-     pochybnosti o poradi/specificite CSS pravidiel. | Vrso -> Claude AI | 2026-08-24 === */
+     pochybnosti o poradi/specificite CSS pravidiel. | Vrso -> Claude AI | 2026-08-24 ===
+     [Zzz6-F45:PRIVACY-FUNCTION] SYSTEM FUNCTION (Vrso 2026-09-01) - definitivna semantika a editacne pravidla:
+     - CL/entry je VEREJNA (public) LEN ked je toggle vyslovene ZACIARKNUTY ("ano") - default (necheck, "") je
+       VZDY SUKROMNE. Dovod (Vrso): vacsina dat/entries je "pripravnych"/draft (proces tvorby), nie finalnych,
+       takze bezpecny default je private, verejnost je vyslovna volba.
+     - Editacia samotneho togglu (zzz1_r7f1_can_edit_privacy() nizsie v JS): ak R17 (User) NEMA oznacenych viac
+       ako 1 usera (jednouzivatelsky projekt/individualna entry), editacia je volna. Ak R17 MA viac ako 1 usera
+       (multi-user projekt), toggle smie zmenit VYLUCNE Project Owner (entryData["4"]) alebo delegat (delegat
+       rola/proces zatial NEDEFINOVANA, MEMO - Vrso doriesi neskor v ramci delegovania a nastaveni projektu).
+     - Ak je Zzz1-R5 (Project Category) oznacena "Final" (zzz1r5_is_final()), CELA entry (vratane R7) je
+       needitovatelna - rovnaky FINAL-LOCK princip ako inde v subore. Odomknutie/zmena po "Final" bude riesena
+       specialnym procesom (pozastavenie verejneho pristupu + consenty vsetkych R17 userov) - zatial MEMO,
+       NEIMPLEMENTOVANE.
+     - SQL/Supabase POZNAMKA: R7 sa uz DNES zapisuje do stlpca "r7" (viz ZZZ_FIELDS_JSON_KEYS a submit_entries_to_db
+       nizsie) - ZIADNA zmena schemy nutna pre tento toggle samotny. REALNE vynutenie "private" (t.j. zabranenie
+       SELECT cudzim userom cez API/anon key) VSAK tento client-side toggle NEROBI - to vyzaduje Supabase RLS
+       politiku na tabulke verso_entries (napr. SELECT povoleny len ak r7 <> 'ano' OR auth.uid() koresponduje s
+       ownerom/tagovanymi R17 userom) - toto je DALSI krok mimo tohto JS suboru, zatial nedoimplementovane. === */
   .privacy-wrap {
     display: flex;
     flex-direction: column;
@@ -1456,6 +1473,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .privacy-dot-button.is-active {
     background-color: #D4AF37;
     border-color: #D4AF37;
+  }
+  /* [Zzz6-F45:PRIVACY-FUNCTION] needitovatelny stav (Final lock ALEBO nie je Owner/delegate v multi-user
+     projekte) - stlmene, cursor not-allowed, klik ostava funkcny len na zobrazenie toast dovodu (viz JS) */
+  .privacy-dot-button.zzz6f45-locked {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
   /* === [/Zzz1-R7:CELL] === */
 
@@ -3094,6 +3117,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz5-T1/T2:LONGPRESS-MENU (3s podrzanie na tabe, zdielana Zzz6-F27 utilita) - PREMENOVAT/ODSTRANIT popup menu</span>
   <span class="module-tag">Zzz0-R1:DB-CONNECTION oranzovy ram - Login teraz pouziva TENTO existujuci system pri DB vypadku (offline-friendly)</span>
   <span class="module-tag">Zzz1-R17/R10:WIDEN - USER a CONTENT CRM bunky su teraz sirsie (flex:2 namiesto 1), Login mini-USER uz bez tag-modalu</span>
+  <span class="module-tag">Zzz6-F45 Privacy function (SYSTEM FUNCTION) - Zzz1-R7 toggle: "ano"=VEREJNE (musi byt vyslovene zaciarknute), default ""=SUKROMNE. Editacia: jednouzivatelsky projekt (R17<=1 user) volna, multi-user projekt (R17>1) LEN project owner/delegate (delegat MEMO), Category="Final" (zzz1r5_is_final) uplne zamyka editaciu (odomknutie = buduci specialny proces cez consenty, zatial nedoriesene)</span>
 </div>
 <!-- zzz2-M1 layout modul END -->
 
@@ -5051,10 +5075,38 @@ function zzz1_r12f1_sync_priority_dot() {
 })();
 // === [/Zzz1-R12:CELL] ===
 
-// === [Zzz1-R7:CELL] F1 - dedicated logika pre Privacy (kruhovy toggle "gulocka") | Vrso -> Claude AI | 2026-08-24 ===
-// Rovnaky princip ako Zzz1-R12:CELL vyssie (skopirovane/DRY). Hodnota "ano" = zapnute, "" = vypnute.
-// PROVIZORNE (viz CSS cast UPDATE) - Vrso doplni dalsie info neskor.
+// === [Zzz1-R7:CELL] F1 - dedicated logika pre Privacy (kruhovy toggle "gulocka") | Vrso -> Claude AI | 2026-08-24
+// === [Zzz6-F45:PRIVACY-FUNCTION] SYSTEM FUNCTION (Vrso 2026-09-01, oznacene/zapracovane) ===
+// Rovnaky UI princip ako Zzz1-R12:CELL vyssie (skopirovane/DRY), ale s NOVOU editacnou logikou (F45):
+// SEMANTIKA: "ano" = VEREJNE (public), "" (default) = SUKROMNE (private). CL/entry sa stava verejnou VYLUCNE
+// ak je toggle vyslovene zaciarknuty - vacsina dat je "pripravnych"/draft, takze bezpecny default je private.
+// Detailne odovodnenie a SQL/RLS poznamka viz [Zzz6-F45:PRIVACY-FUNCTION] komentar v CSS casti vyssie v subore.
+
+// EDITACNE PRAVO na samotny R7 toggle (kto SMIE kliknut):
+// 1) jednouzivatelsky projekt (R17 <= 1 tagovany user) -> volne editovatelne (bez obmedzenia na ownera)
+// 2) multi-user projekt (R17 > 1 tagovany user, viz zzz1_r26f1_is_multiuser_project() - zdielana R17 logika,
+//    DRY) -> VYLUCNE Project Owner (entryData["4"]) alebo delegat. Delegat rola/proces zatial NEDEFINOVANA
+//    (Vrso MEMO - doriesi neskor v ramci delegovania a nastaveni projektu) - docasne teda LEN owner, rovnaky
+//    docasny princip ako zzz1_r26f1_can_set_confirmed() pri R26 Status (zdielana logika porovnania s ownerom).
+function zzz1_r7f1_can_edit_privacy() {
+  if (!zzz1_r26f1_is_multiuser_project()) return true; // jednouzivatelsky projekt - volna editacia
+  const current = zzz0r1_get_current_username();
+  const owner = (entryData["4"] || '').trim();
+  return !!current && !!owner && current === owner; // multi-user - LEN owner (delegat MEMO)
+}
+
+// FINAL-LOCK: ak je Zzz1-R5 (Project Category) oznacena "Final" (zzz1r5_is_final()), CELA entry je
+// needitovatelna - rovnaky princip ako inde v subore (napr. R17b Notes/Contacts). Odomknutie po "Final" bude
+// riesene specialnym procesom (pozastavenie verejneho pristupu + consenty vsetkych R17 userov) - zatial MEMO.
 function zzz1_r7f1_toggle_privacy() {
+  if (zzz1r5_is_final()) {
+    zzz6f2_show_toast('Zzz6-F45: Project Category je oznacena ako "Final" - Privacy uz nie je mozne menit (specialny proces uvolnenia bude dorieseny neskor).');
+    return;
+  }
+  if (!zzz1_r7f1_can_edit_privacy()) {
+    zzz6f2_show_toast('Zzz6-F45: v multi-user projekte moze Privacy zmenit iba Project Owner (delegat rola zatial nie je definovana).');
+    return;
+  }
   const isActive = (entryData["7"] || "").trim().length > 0;
   const newValue = isActive ? "" : "ano";
   write_to_entry("7", newValue);
@@ -5066,6 +5118,9 @@ function zzz1_r7f1_sync_privacy_dot() {
   const isActive = (entryData["7"] || "").trim().length > 0;
   cell.classList.toggle('is-active', isActive);
   cell.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  // Zzz6-F45: vizualne stlmenie, ak aktualny user NESMIE toggle zmenit (Final lock ALEBO chyba Owner v multi-user projekte)
+  const locked = zzz1r5_is_final() || !zzz1_r7f1_can_edit_privacy();
+  cell.classList.toggle('zzz6f45-locked', locked);
 }
 
 (function bindR7PrivacyDot() {
