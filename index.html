@@ -3036,6 +3036,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz1-R22a</span>
   <span class="module-tag">Zzz1-R22 Acknowledgement (SPECIAL) + Author Credits</span>
   <span class="module-tag">Zzz6-F22-copy (SPECIAL) + Zzz6-F22-copy-credit AUTO-CREDIT (Entry Line + Cell copy)</span>
+  <span class="module-tag">Zzz6-F22-paste-credit AUTO-CREDIT (OS Paste/Ctrl+V do CL bunky, generic modal)</span>
   <span class="module-tag">Zzz6-F22-link R22 Acknowledgement (SPECIAL) + user credit link (NON EDITABLE)</span>
   <span class="module-tag">Zzz6-F22-mini-cl mini Entry Line/Read Line tabulka + ownership colors (green/orange/red)</span>
   <span class="module-tag">Zzz6-F22-add (REMOVED 2026-08-21 - iba poznamka, acknowledgement je uz automaticky)</span>
@@ -4825,6 +4826,9 @@ function open_entry_modal(id) {
   textarea.className = 'entry-modal-textarea';
   textarea.value = entryData[id] || '';
 
+  // [Zzz6-F22-paste-credit:PASTE-CREDIT] kazdy skutocny OS "paste" do tejto bunky = automaticky COPY: zaznam v R22
+  zzz6f22_bind_paste_tracking(textarea, zzz_get_readonly_cell_label(id));
+
   // === [F1:CELL-LOGIC-LIVE-SAVE] OPRAVA (Vrso hlasenie 2026-08-21: "ked vlozim text do CL ako description
   // kontext okna... ked vidim z okna uz tam nie je text, cize nemozem dat entry do CL"): predtym sa text z
   // textarea zapisal do entryData VYLUCNE pri zatvoreni cez klik MIMO okna (closeModal) - ak sa okno zatvorilo
@@ -6385,6 +6389,32 @@ function zzz6f22_record_copy_credit(sourceEntryId, sourceUsername, sourceDescrip
   render_entry_cell(ZZZ6_F22_ENTRY_ID);
 }
 // === [/Zzz6-F22-copy-credit:AUTO-CREDIT] ===
+
+// === [Zzz6-F22-paste-credit:PASTE-CREDIT] (Vrso ziadost 2026-08-31) - AUTOMATICKY zaznamena "COPY:" credit
+// zaznam do R22 vzdy, ked pouzivatel pouzije BEZNU OS "Paste" (Ctrl+V / dlhy stlak Prilepit) do CL bunky -
+// NA ROZDIEL od Zzz6-F22-copy-credit vyssie (ktora sleduje interne verso COPY tlacidla, tie NIKDY nejdu cez
+// prehliadacovu "paste" udalost, pisu priamo cez write_to_entry). Kedze tieto dva mechanizmy su MECHANICKY
+// oddelene (ziadny spolocny kod), NEPOTREBUJEME ziadne porovnavanie/zhodu textu - kazdy skutocny "paste" JE
+// PO DEFINICII externy vklad (Vrso: "kazdy paste automaticky oznacil contentom").
+//
+// Zaznam ma owner = AKTUALNE prihlaseny username (kto vlozil = "autorifikacia"/zodpovednost za vlozenie, VZDY
+// zname), entryId = null (nema sa kam odkazovat - nie je to kopia z ineho zaznamu), cl = kratky popis KTOREHO
+// pola sa to tyka. Skutocny povodny zdroj ("copyright") OSTAVA NEZNAMY/needit automaticky - username ho moze
+// KEDYKOLVEK doplnit/opravit rucne cez existujuci Zzz6-F22-add modal (ZDROJ:, manual=true), memo o "Web Line"
+// (Zzz6-F22-external vyssie) neskor doplni presnejsi sposob zberu tohto zdroja. | Vrso -> Claude AI | 2026-08-31 ===
+function zzz6f22_record_paste_credit(fieldLabel) {
+  const owner = zzz0r1_get_current_username() || 'neznamy';
+  const current = zzz6f22_parse_credits(entryData[ZZZ6_F22_ENTRY_ID]);
+  const record = { owner, cl: `Paste do ${fieldLabel}`, entryId: null, own: false, status: 'verified' };
+  current.push(record); // ziadna dedup kontrola - kazdy paste je vlastna udalost, aj opakovana do toho isteho pola
+  write_to_entry(ZZZ6_F22_ENTRY_ID, JSON.stringify(current));
+}
+
+// viaze 'paste' listener na dane textarea - zdielane pre generic modal (a dalsie kompatibilne modaly v buducnosti)
+function zzz6f22_bind_paste_tracking(textarea, fieldLabel) {
+  textarea.addEventListener('paste', () => zzz6f22_record_paste_credit(fieldLabel));
+}
+// === [/Zzz6-F22-paste-credit:PASTE-CREDIT] ===
 
 // === [Zzz6-F22-view:VIEW-ONLY] (SPECIAL, READ-ONLY) - klik na R22 bunku (aj v Database Workspace grid s
 // rawCreditsOverride) VZDY otvara TENTO needitovatelny prehlad (mini Entry Line/Read Line tabulka) - ziadne
