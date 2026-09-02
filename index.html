@@ -3296,6 +3296,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz10-DEV:QUICK-LOGIN - jednoklikove prihlasenie ako Verso v Login module (vyvojova pomocka, ODSTRANIT pred verejnym spustenim)</span>
   <span class="module-tag">Zzz10-R7:PASSWORD-HASH - PREDCHADZAJUCA client-side verzia, SUPERSEDED Zzz0Auth-Gate (2026-09-02), utility funkcie ponechane bez pouzitia v realnej ceste</span>
   <span class="module-tag">Zzz0Auth-Gate (SYSTEM FUNCTION, variant B - vsetci useri) - server-side Supabase Edge Function "verso-auth-gate" hashuje/overuje heslo, viz edge-function/index.ts + setup.sql</span>
+  <span class="module-tag">Zzz10-V1:SEND-EMAIL - nahradene "bright-responder" novou Edge Function "verso-send-activation-email" (rovnaky Resend vzor ako Zzz0GitHub-Notify)</span>
   <span class="module-tag">Zzz6-F36 Login modal - pridany viditelny titulok "LOG IN" (predtym len maly gold button v riadku)</span>
   <span class="module-tag">Zzz10-0 Settings Workspace - opravene: NEZOBRAZUJE sa uz pred prihlasenim (predtym stary obsah zostaval za Login modalom)</span>
   <span class="module-tag">Zzz10-M1:PRE-REGISTRATION-SETUP - nezabezpecena kontakt/support sprava PRED prihlasenim (mini-CL: USERNAME+CONTENT+ENTRY), databaza [Zzz13-D1] verso_pre_register_support, category vzdy "pre-registration"</span>
@@ -10593,15 +10594,21 @@ function zzz10v1_build_send_activation_button(usernameBox) {
       zzz10v1_update_register_entry_button_state();
       // === [/Zzz10-V1:REGISTER-ENTRY-GATE] ===
 
-      // best-effort email (viz Zzz10-V1:SEND-EMAIL nizsie pri finalnej registracii) - NEBLOKUJUCE, ak
-      // zlyha/Edge Function chyba, kod sa AJ TAK zobrazi v toaste nizsie (Vrso 2026-08-31: "nejde odosielat
-      // emaily... zatial sa nikto nejde prihlasovat" - kym email nefunguje, kod musi byt vidiet aj bez neho,
-      // inak by sa aktivacny flow nedal vobec otestovat)
+      // === [Zzz10-V1:SEND-EMAIL] UPDATE (Vrso 2026-09-02, "vieme to teraz opravit aj ten activation code
+      // emailom?"): NAHRADENE volanie stareho "bright-responder" (dlhodobo nespolahliveho) novou funkciou
+      // "verso-send-activation-email", postavenou rovnakym overenym vzorom ako verso-github-notify.
+      // STALE best-effort/NEBLOKUJUCE - ak zlyha, kod sa AJ TAK zobrazi v toaste nizsie (Vrso 2026-08-31:
+      // "kym email nefunguje, kod musi byt vidiet aj bez neho"). | Vrso -> Claude AI | 2026-09-02 ===
       try {
-        await sb.functions.invoke('bright-responder', { body: { email, code: activationCode, username } });
+        await fetch(`${SUPABASE_URL}/functions/v1/verso-send-activation-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+          body: JSON.stringify({ email, code: activationCode, username })
+        });
       } catch (err) {
-        console.warn(`Zzz10-V1 SEND-ACTIVATION-BUTTON: best-effort email zlyhal (nekriticke). DOVOD: ${(err && err.message) || String(err)}`);
+        console.warn(`Zzz10-V1:SEND-EMAIL - best-effort email zlyhal (nekriticke). DOVOD: ${(err && err.message) || String(err)}`);
       }
+      // === [/Zzz10-V1:SEND-EMAIL] ===
 
       zzz6f2_show_toast(`Zzz10-V1: aktivacny kod pre "${username}": ${activationCode} (rezervovane na 24 hodin, zadaj kod nizsie a stlac REGISTER ENTRY).`);
     } finally {
