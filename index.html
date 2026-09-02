@@ -2738,6 +2738,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz10v1-fields-row {
     display: flex;
     flex-direction: row;
+    flex-wrap: wrap;
     justify-content: center;
     gap: 16px;
     width: 100%;
@@ -3293,6 +3294,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz10-R4 Change Password button (Login Setup tab) - zatial bez funkcie (info toast), Zzz4-1 heslo-system bol odstraneny</span>
   <span class="module-tag">Zzz10-R3 Register button (Zzz10-M1 Login tab) - fialovy ramcek, zatial bez funkcie (cakam na upresnenie)</span>
   <span class="module-tag">Zzz10-DEV:QUICK-LOGIN - jednoklikove prihlasenie ako Verso v Login module (vyvojova pomocka, ODSTRANIT pred verejnym spustenim)</span>
+  <span class="module-tag">Zzz10-R7:PASSWORD-HASH (SYSTEM FUNCTION) - SHA-256 + nahodny salt per registracia, nove PASSWORD pole v Zzz10-V1 Register Setup</span>
+  <span class="module-tag">Zzz10-R8:LOGIN-VERIFICATION (SYSTEM FUNCTION) - Login teraz REALNE overuje zadane heslo oproti hashu z registracie (client-side, viz limity v komentari)</span>
   <span class="module-tag">Zzz6-F36 Login modal - pridany viditelny titulok "LOG IN" (predtym len maly gold button v riadku)</span>
   <span class="module-tag">Zzz10-0 Settings Workspace - opravene: NEZOBRAZUJE sa uz pred prihlasenim (predtym stary obsah zostaval za Login modalom)</span>
   <span class="module-tag">Zzz10-M1:PRE-REGISTRATION-SETUP - nezabezpecena kontakt/support sprava PRED prihlasenim (mini-CL: USERNAME+CONTENT+ENTRY), databaza [Zzz13-D1] verso_pre_register_support, category vzdy "pre-registration"</span>
@@ -7375,6 +7378,38 @@ async function zzz10r5_compute_system_id(username) {
 }
 // === [/Zzz10-R5:SYSTEM-ID] ===
 
+// === [Zzz10-R7:PASSWORD-HASH] (SYSTEM FUNCTION) - Vrso 2026-09-02 poziadavka, doslovne: "prihlasenie
+// pojde cez kod zatial...Ano samozrejme...len to dobre oznac ako zzz10-*SYSTEM FUNCTION...Co sa tyka
+// hashu viem ze sme riesili entry number tymto sposobom...neviem ci je nutny aj hash ale ak lepsie
+// zapracuj". Cislovanie: dalsie volne cislo v Zzz10 sekcii po R6 (EMAIL-FIELD) je R7.
+// DOLEZITY OBJAV pri implementacii (Claude, 2026-09-02): predtym neexistovalo ZIADNE pole na heslo v
+// Zzz10-V1 Register Setup (registrationPayload malo LEN username/email/activation_code/user_id/system_id,
+// ZIADNE heslo) - "prihlasovanie zvolenymi heslami" preto doteraz nemalo z coho vychadzat. Tento blok
+// PRIDAVA heslo do registracie AJ realne overenie pri Login (viz [Zzz10-R8:LOGIN-VERIFICATION] nizsie).
+// HASH (Vrso: "ak lepsie zapracuj [hash]" - ANO, rovnaky princip ako uz existujuci Zzz10-R5:SYSTEM-ID a
+// Zzz6-F22 content_hash vyssie v subore - SHA-256 cez crypto.subtle, DRY): NA ROZDIEL od Zzz10-R5 (jeden
+// zdielany client-side salt pre VSETKY system_id), heslo dostava VLASTNY, NAHODNY salt PRE KAZDU
+// registraciu (crypto.getRandomValues) - zdielany salt by bol pre heslo vyrazne slabsi (rovnaky password
+// na dvoch uctoch by mal identicky hash, co ulahcuje rainbow-table utok). Salt sa uklada VEDLA hashu
+// (bezny, bezpecny postup - salt nemusi byt tajny, len jedinecny).
+// POCTIVE PRIZNANIE LIMITU (rovnaky duch ako Zzz10-R5): toto je CLIENT-SIDE hash, nie server-side
+// bcrypt/argon2 s prisnym rate-limitingom - niekto so znalostou hesla + pristupom k tomuto zdrojaku by
+// mohol hash rucne overit/prelamat offline (najma kratke/bezne heslo). SKUTOCNA bezpecnost (server-side
+// Edge Function, rate limiting) je planovana buduca praca (viz token-system diskusia) - toto je zatial
+// najlepsie dosiahnutelne v single-file client-side appke bez backendu, presne ako Vrso poziadal
+// ("aspon v ramci apky"). | Vrso -> Claude AI | 2026-09-02 ===
+function zzz10r7_generate_password_salt() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function zzz10r7_hash_password(password, salt) {
+  const encoded = new TextEncoder().encode(salt + ':' + password);
+  const digestBuffer = await crypto.subtle.digest('SHA-256', encoded);
+  return Array.from(new Uint8Array(digestBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+// === [/Zzz10-R7:PASSWORD-HASH] ===
+
 // === [Zzz6-F22:NO-DOUBLE-ENTRIES] (SYSTEM FUNCTION) - Vrso 2026-08-20 request, PRESUNUTE NA DB-SIDE 2026-08-28 ===
 // POZOR: toto je oznacene ako SYSTEM FUNCTION (rovnaky princip ako Zzz0-R1/Zzz6-F7/Zzz6-F2) - zmenu tejto
 // logiky musi vyslovne schvalit project owner (Vrso). Zabranuje vlozeniu DVOCH ROVNAKYCH Zzz1-M2 Entry Line
@@ -10346,6 +10381,31 @@ function zzz10v1_update_register_entry_button_state() {
 }
 // === [/Zzz10-V1:REGISTER-ENTRY-GATE] ===
 
+// === [Zzz10-R7:PASSWORD-FIELD] Heslo pole v Register Setup - LOKALNY <input type="password">, VOBEC
+// nesiaha do entryData (rovnaky princip ako Zzz6-F36 Login polia po bezpecnostnom refactore) - registracne
+// heslo nema co robit v zdielanej entryData/hlavnej CRM CL. | Vrso -> Claude AI | 2026-09-02 ===
+function zzz10v1_build_password_field() {
+  const wrap = document.createElement('div');
+  wrap.className = 'zzz10v1-field-col';
+
+  const label = document.createElement('button');
+  label.type = 'button';
+  label.className = 'entry-number-button zzz10v1-field-label';
+  label.disabled = true;
+  label.textContent = 'PASSWORD';
+  wrap.appendChild(label);
+
+  const input = document.createElement('input');
+  input.type = 'password';
+  input.className = 'entry-cell zzz6f36-login-local-input';
+  input.id = 'versoRegisterSetupPasswordInput';
+  input.autocomplete = 'off';
+  wrap.appendChild(input);
+
+  return { wrap, input };
+}
+// === [/Zzz10-R7:PASSWORD-FIELD] ===
+
 function zzz10v1_build_username_field() {
   const wrap = document.createElement('div');
   wrap.className = 'zzz10v1-field-col';
@@ -10611,6 +10671,8 @@ async function zzz10v1_submit_register() {
   const username = (entryData['17'] || '').trim();
   const email = (entryData['10'] || '').trim();
   const enteredActivationCode = (entryData['35'] || '').trim();
+  const passwordInput = document.getElementById('versoRegisterSetupPasswordInput'); // Zzz10-R7:PASSWORD-FIELD - lokalny, nie entryData
+  const password = (passwordInput ? passwordInput.value : '').trim();
 
   if (!username) {
     zzz6f2_show_toast('Zzz10-V1 Register: vypln USERNAME (username je povinny).');
@@ -10622,6 +10684,11 @@ async function zzz10v1_submit_register() {
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     zzz6f2_show_toast('Zzz10-V1 Register: EMAIL nema platny format.');
+    return;
+  }
+  if (!password) {
+    // Zzz10-R7:PASSWORD-FIELD - povinne, inak by Login nemal proti comu overovat (viz Zzz10-R8:LOGIN-VERIFICATION)
+    zzz6f2_show_toast('Zzz10-V1 Register: vypln PASSWORD (heslo je povinne).');
     return;
   }
   if (!enteredActivationCode) {
@@ -10681,6 +10748,12 @@ async function zzz10v1_submit_register() {
   const systemId = await zzz10r5_compute_system_id(username);
   // === [/Zzz10-R5:SYSTEM-ID] ===
 
+  // === [Zzz10-R7:PASSWORD-HASH] heslo sa NIKDY neuklada plaintext - vlastny nahodny salt + SHA-256 hash,
+  // viz plne vysvetlenie pri deklaracii funkcii vyssie v subore. | Vrso -> Claude AI | 2026-09-02 ===
+  const passwordSalt = zzz10r7_generate_password_salt();
+  const passwordHash = await zzz10r7_hash_password(password, passwordSalt);
+  // === [/Zzz10-R7:PASSWORD-HASH] ===
+
   // Zzz10-V1:VERIFICATION-STORAGE - CELY registracny zaznam ide LEN sem, ziadny CL/verso_entries zapis
   const registeredAt = new Date().toISOString();
   const registrationPayload = {
@@ -10692,6 +10765,8 @@ async function zzz10v1_submit_register() {
       activation_code: enteredActivationCode, // rovnaky kod ako v rezervacii (uz overeny vyssie)
       user_id: userId,
       system_id: systemId, // Zzz10-R5:SYSTEM-ID (2026-08-31) - hashovany, urceny LEN pre buduci multiverifikacny lookup, NIKDY pre bezny login
+      password_hash: passwordHash, // Zzz10-R7:PASSWORD-HASH - NIKDY plaintext, pouziva sa v Zzz10-R8:LOGIN-VERIFICATION
+      password_salt: passwordSalt,
       registered_at: registeredAt
     }),
     updated_at: registeredAt
@@ -10716,16 +10791,20 @@ async function zzz10v1_submit_register() {
 
   zzz6f37_write_audit_log('user_register', { username, email }); // Zzz6-F37:AUDIT-LOG (2026-08-29)
   zzz6f36_reset_command_line(); // vycisti formular (VSETKY R* bunky vratane USER/EMAIL/ACTIVATION CODE) pre dalsie pouzitie
+  if (passwordInput) passwordInput.value = ''; // Zzz10-R7:PASSWORD-FIELD - lokalny input, nie entryData, vycistit rucne
 
-  zzz6f2_show_toast(`Zzz10-V1 Register: uspesne zaregistrovany ako "${username}" - teraz si nastav heslo.`);
+  zzz6f2_show_toast(`Zzz10-V1 Register: uspesne zaregistrovany ako "${username}" - prihlas sa svojim novym heslom.`);
 
   // === [Zzz10-V1:OPEN-LOGIN-AFTER-REGISTER] Vrso 2026-08-31, doslovne: "Potom otvor login module nech si
-  // novy username nastavi svoje heslo..." - zzz6f36_reset_command_line() (vyssie) vynuluje aj entryData["17"]
-  // (USER/USERNAME, zdielane pole s Login), preto sa musi RUCNE zapisat znova PO resete, aby Login modal
-  // otvoril uz s PREDVYPLNENYM novym username-om (user rovno len zada/potvrdi heslo do CONTENT R10). | Vrso -> Claude AI | 2026-08-31 ===
-  write_to_entry('17', username);
+  // novy username nastavi svoje heslo..." - UPDATE (Vrso 2026-09-02, Zzz10-R7:PASSWORD-FIELD): heslo sa
+  // TERAZ nastavuje UZ TU pocas registracie (nie dodatocne cez Login CONTENT, ako povodne planovane) -
+  // Login modal sa aj tak otvara hned po registracii, aby si mohol username ROVNO PRIHLASIT svojim novym
+  // heslom (viz Zzz10-R8:LOGIN-VERIFICATION nizsie v subore, ktore ho realne overi). zzz6f36_reset_command_line()
+  // (vyssie) vynuluje aj entryData["17"] (USERNAME, zdielane pole s Login), preto sa musi RUCNE zapisat
+  // znova PO resete, aby Login modal otvoril uz s PREDVYPLNENYM novym username-om. | Vrso -> Claude AI | 2026-09-02 ===
+  write_to_entry('17', username); // legacy pre ine casti appky, ktore este citaju entryData['17'] (napr. Zzz1-DEFAULT-OWNER-USER)
   zzz10v1LastSentActivation = null; // Zzz10-V1:REGISTER-ENTRY-GATE - vyuzita rezervacia, nech sa nedá znovu "zneuzit" ten isty kod na dalsi pokus
-  zzz6f36_open_login_modal();
+  zzz6f36_open_login_modal(username); // Zzz10-R7 UPDATE - username sa teraz odovzdava priamo, viz prefillUsername param vyssie
   // === [/Zzz10-V1:OPEN-LOGIN-AFTER-REGISTER] ===
 }
 // === [/Zzz10-V1:SUBMIT] ===
@@ -10747,6 +10826,7 @@ function zzz10v1_render_register_setup(body) {
   const { wrap: userWrap, box: userBox } = zzz10v1_build_username_field();
   fieldsRow.appendChild(userWrap);
   fieldsRow.appendChild(zzz10v1_build_email_field());
+  fieldsRow.appendChild(zzz10v1_build_password_field().wrap); // Zzz10-R7:PASSWORD-FIELD
   panel.appendChild(fieldsRow);
 
   const searchSection = document.createElement('div');
@@ -11131,15 +11211,16 @@ function zzz6f36_render_login(body) {
   // === [Zzz10-DEV:QUICK-LOGIN] Vrso 2026-09-02 ziadost: "v preview sa neda nejako urychlit prihlasovanie?"
   // - jednoklikove prihlasenie ako "Verso" pocas vyvoja, bez rucneho pisania USER/CONTENT. Funguje LEN v
   // 'normal' rezime (nie multiverification, tam ma CONTENT iny vyznam - tajny kod). Vyplni lokalne inputy
-  // (rovnake ako zzz6f36_build_login_field, ZIADNA entryData vazba) a rovno zavola zzz6f36_submit_login()
-  // - prechadza VSETKYMI existujucimi gate-mi (R31 Consent musi byt "on", DB spojenie musi fungovat) presne
-  // ako rucne zadanie, LEN usetri pisanie. Heslo sa aj tak realne neoveruje (viz MEMO pri zzz6f36_submit_login
-  // vyssie v subore), takze "devquicklogin" ako CONTENT hodnota nie je ziadna dalsia bezpecnostna diera nad
-  // ramec uz existujuceho stavu.
+  // (rovnake ako zzz6f36_build_login_field, ZIADNA entryData vazba) a rovno zavola zzz6f36_submit_login().
+  // UPDATE (Vrso 2026-09-02, Zzz10-R8:LOGIN-VERIFICATION): odkedy Login TERAZ realne overuje heslo, tento
+  // hardcoded "devquicklogin" retazec by uspel LEN ak by mal "Verso" presne toto heslo registrovane -
+  // QUICK LOGIN preto teraz vola zzz6f36_submit_login({ skipVerification: true }) - VYSLOVNE OZNACENY
+  // obchod overenia (nie tichy), kedze cely zmysel tohto tlacidla je usetrit prave TOTO pisanie/overovanie
+  // pocas vyvoja. Zostava hardcoded LEN na "Verso" (nikdy nie na iny/zadany username).
   // POZOR/FLAG: TOTO JE VYVOJOVA POMOCKA, viditelna a funkcna pre KOHOKOLVEK, kto otvori appku (nie je
   // skryta za auth) - pred realnym verejnym spustenim BY SA MALO ODSTRANIT alebo aspon podmienit (napr.
   // URL query parameter, alebo skryte za Vrso-only build flag) - Vrso ju zatial vyslovne ziadal LEN kvoli
-  // urychleniu vlastneho testovania v preview prostredi, kde localStorage (ZZZ0-R1:TRUSTED-DEVICE-AUTOLOGIN)
+  // urychleniu vlastneho testovania v preview prostredi, kde localStorage (ZZZ0-R1:AUTOLOGIN-VERSO)
   // nefunguje/sa maze. | Vrso -> Claude AI | 2026-09-02 ===
   if (zzz6f36LoginMode !== 'multiverification') {
     const quickLoginBtn = document.createElement('button');
@@ -11152,7 +11233,7 @@ function zzz6f36_render_login(body) {
       const contentInput = document.getElementById('versoLoginContentCell');
       if (userInput) userInput.value = 'Verso';
       if (contentInput) contentInput.value = 'devquicklogin';
-      zzz6f36_submit_login();
+      zzz6f36_submit_login({ skipVerification: true }); // Zzz10-R8:LOGIN-VERIFICATION - vyslovny, oznaceny obchod (viz komentar vyssie)
     });
     row.appendChild(quickLoginBtn);
   }
@@ -11214,7 +11295,7 @@ function zzz6f36_close_login_modal() {
   zzz6f36LoginModalOverlay = null;
 }
 
-function zzz6f36_open_login_modal() {
+function zzz6f36_open_login_modal(prefillUsername) {
   zzz6f36_close_login_modal(); // istota - nikdy dva naraz
 
   const overlay = document.createElement('div');
@@ -11244,6 +11325,14 @@ function zzz6f36_open_login_modal() {
   box.appendChild(modalTitle);
 
   zzz6f36_render_login(box); // znovupouzity M1 obsah (titulok+USER+CONTENT+ENTRY+MULTIVERIFICATION), teraz vnutri modalu
+
+  // === [Zzz10-R7:PASSWORD-FIELD] UPDATE (Vrso 2026-09-02): PO Login poliach uz existuju ako LOKALNE
+  // <input> (nie entryData) - preto sa predvyplnenie USERNAME po registracii MUSI teraz robit RUCNO tu (nie
+  // cez write_to_entry, ktory Login uz vobec necita, viz Zzz6-F36:LOGIN JS cast). | Vrso -> Claude AI | 2026-09-02 ===
+  if (prefillUsername) {
+    const userInput = document.getElementById('versoLoginUserCell');
+    if (userInput) userInput.value = prefillUsername;
+  }
 
   zzz10m1_render_pre_registration_setup(box); // Zzz10-M1:PRE-REGISTRATION-SETUP, viz JS cast nizsie v subore
 
@@ -11685,7 +11774,51 @@ function zzz10r2_logout(reason = 'manual') {
 }
 // === [/Zzz10-R2:LOGOUT] ===
 
-async function zzz6f36_submit_login() {
+// === [Zzz10-R8:LOGIN-VERIFICATION] (SYSTEM FUNCTION) - Vrso 2026-09-02 poziadavka (viz [Zzz10-R7:
+// PASSWORD-HASH] vyssie v subore pre plny kontext/citaty). Skutocne porovnanie zadaneho hesla PRI Login
+// oproti hashu ulozenemu pri registracii (Zzz10-V1). Vyhlada registracny zaznam podla username (rovnake
+// "register-<normalizedUsername>" ID ako Zzz10-V1 pouziva pri zapise), prepocita hash zadaneho hesla s
+// ULOZENYM saltom, porovna. POCTIVE PRIZNANIE LIMITU: rovnake ako pri Zzz10-R7 - toto je CLIENT-SIDE
+// porovnanie (appka si sama povie "ano/nie"), nie server-side gate - niekto s DevTools by vedel
+// zzz6f7_set_login_state(true) zavolat priamo a obist to cele. SKUTOCNA bezpecnost caka na buduci
+// token/Edge Function system (viz konverzacia). Toto je "aspon v ramci apky" uroven, presne ako Vrso
+// vyslovne poziadal. | Vrso -> Claude AI | 2026-09-02 ===
+async function zzz10r8_verify_login_password(username, enteredPassword) {
+  const normalized = zzz10v1_normalize(username);
+  try {
+    const fetchPromise = sb.from('verso_verification').select('data_json').eq('id', `register-${normalized}`).maybeSingle();
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Zzz10-R8 lookup timeout (4s)')), 4000)
+    );
+    const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+    if (error) throw error;
+    if (!data) return { verified: false, reason: 'not_registered' };
+
+    let reg = {};
+    try { reg = JSON.parse(data.data_json || '{}'); } catch (e) { return { verified: false, reason: 'corrupt_record' }; }
+
+    if (!reg.password_hash || !reg.password_salt) {
+      // registracia existuje, ale je STARSIA ako Zzz10-R7 (nema ulozene heslo vobec) - napr. "Verso"
+      // registrovany pred tymto updatom. NEODMIETAT - povolit prejst (rovnaky duch ako predtym, kym
+      // heslo neexistovalo vobec nikde) - viz aj QUICK LOGIN DEV skip nizsie pre zamerny obchod.
+      return { verified: true, reason: 'legacy_no_password' };
+    }
+
+    const computedHash = await zzz10r7_hash_password(enteredPassword, reg.password_salt);
+    if (computedHash !== reg.password_hash) {
+      return { verified: false, reason: 'wrong_password' };
+    }
+    return { verified: true };
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    console.error(`Zzz10-R8:LOGIN-VERIFICATION - lookup zlyhal. DOVOD: ${errDetail}`);
+    zzz0r1_set_db_connection_state(false, errDetail, true);
+    return { verified: false, reason: 'lookup_failed' };
+  }
+}
+// === [/Zzz10-R8:LOGIN-VERIFICATION] ===
+
+async function zzz6f36_submit_login(options = {}) {
   // Lokalne inputy (viz zzz6f36_build_login_field vyssie v subore) - VOBEC nesiahaju do entryData.
   const userInput = document.getElementById('versoLoginUserCell');
   const contentInput = document.getElementById('versoLoginContentCell');
@@ -11735,6 +11868,24 @@ async function zzz6f36_submit_login() {
   // nez je nutne, aj ked su uz aj tak mimo entryData/hlavnej CL) | Vrso -> Claude AI | 2026-09-02
   if (userInput) userInput.value = '';
   if (contentInput) contentInput.value = '';
+
+  // === [Zzz10-R8:LOGIN-VERIFICATION] SYSTEM FUNCTION - realne overenie hesla oproti registracii.
+  // options.skipVerification (POUZIVA VYLUCNE Zzz10-DEV:QUICK-LOGIN nizsie v subore) obchadza TENTO krok
+  // zamerne - je to vyslovne oznacena vyvojova skratka, nie tichy bezpecnostny obchod. | Vrso -> Claude AI | 2026-09-02 ===
+  if (!options.skipVerification) {
+    const verifyResult = await zzz10r8_verify_login_password(username, enteredPassword);
+    if (!verifyResult.verified) {
+      const reasonText = {
+        not_registered: `username "${username}" nie je zaregistrovany`,
+        wrong_password: 'nespravne heslo',
+        corrupt_record: 'poskodeny registracny zaznam',
+        lookup_failed: 'nepodarilo sa overit (DB nedostupna?)'
+      }[verifyResult.reason] || 'neznamy dovod';
+      zzz6f2_show_toast(`Zzz6-F36 Login: prihlasenie zamietnute - ${reasonText}.`);
+      return;
+    }
+  }
+  // === [/Zzz10-R8:LOGIN-VERIFICATION] ===
 
   // "Cely command line pri login zresetuj bunky na prazdne" - vynuluje VSETKY R* bunky HLAVNEJ CRM CL
   // (nezavisle od Login poli, ktore uz nie su s CL prepojene, viz vyssie). Zzz1-R17/R10 tu su LEN pre
