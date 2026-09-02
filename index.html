@@ -3294,8 +3294,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz10-R4 Change Password button (Login Setup tab) - zatial bez funkcie (info toast), Zzz4-1 heslo-system bol odstraneny</span>
   <span class="module-tag">Zzz10-R3 Register button (Zzz10-M1 Login tab) - fialovy ramcek, zatial bez funkcie (cakam na upresnenie)</span>
   <span class="module-tag">Zzz10-DEV:QUICK-LOGIN - jednoklikove prihlasenie ako Verso v Login module (vyvojova pomocka, ODSTRANIT pred verejnym spustenim)</span>
-  <span class="module-tag">Zzz10-R7:PASSWORD-HASH (SYSTEM FUNCTION) - SHA-256 + nahodny salt per registracia, nove PASSWORD pole v Zzz10-V1 Register Setup</span>
-  <span class="module-tag">Zzz10-R8:LOGIN-VERIFICATION (SYSTEM FUNCTION) - Login teraz REALNE overuje zadane heslo oproti hashu z registracie (client-side, viz limity v komentari)</span>
+  <span class="module-tag">Zzz10-R7:PASSWORD-HASH - PREDCHADZAJUCA client-side verzia, SUPERSEDED Zzz0Auth-Gate (2026-09-02), utility funkcie ponechane bez pouzitia v realnej ceste</span>
+  <span class="module-tag">Zzz0Auth-Gate (SYSTEM FUNCTION, variant B - vsetci useri) - server-side Supabase Edge Function "verso-auth-gate" hashuje/overuje heslo, viz edge-function/index.ts + setup.sql</span>
   <span class="module-tag">Zzz6-F36 Login modal - pridany viditelny titulok "LOG IN" (predtym len maly gold button v riadku)</span>
   <span class="module-tag">Zzz10-0 Settings Workspace - opravene: NEZOBRAZUJE sa uz pred prihlasenim (predtym stary obsah zostaval za Login modalom)</span>
   <span class="module-tag">Zzz10-M1:PRE-REGISTRATION-SETUP - nezabezpecena kontakt/support sprava PRED prihlasenim (mini-CL: USERNAME+CONTENT+ENTRY), databaza [Zzz13-D1] verso_pre_register_support, category vzdy "pre-registration"</span>
@@ -7397,7 +7397,12 @@ async function zzz10r5_compute_system_id(username) {
 // mohol hash rucne overit/prelamat offline (najma kratke/bezne heslo). SKUTOCNA bezpecnost (server-side
 // Edge Function, rate limiting) je planovana buduca praca (viz token-system diskusia) - toto je zatial
 // najlepsie dosiahnutelne v single-file client-side appke bez backendu, presne ako Vrso poziadal
-// ("aspon v ramci apky"). | Vrso -> Claude AI | 2026-09-02 ===
+// ("aspon v ramci apky").
+// SUPERSEDED (Vrso 2026-09-02, druha sprava rovnaky den, "0auth gate SYSTEM FUNCTION"): tieto dve funkcie
+// UZ NIE SU sucastou skutocnej registracie/loginu (viz [Zzz0Auth-Gate:REGISTER]/[Zzz0Auth-Gate:LOGIN]
+// nizsie v subore, ktore hashuju/porovnavaju SERVER-SIDE v Edge Function). PONECHANE v subore ako
+// vseobecne SHA-256 utility (DRY, mozno buducne pouzitie), nie odstranene, ale mimo realnej bezpecnostnej
+// cesty odteraz. | Vrso -> Claude AI | 2026-09-02 ===
 function zzz10r7_generate_password_salt() {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -10742,17 +10747,43 @@ async function zzz10v1_submit_register() {
     console.warn(`Zzz10-V1:USER-ID - RPC get_next_user_id zlyhalo, registracia pokracuje bez user_id. DOVOD: ${userIdResult.error}`);
   }
 
+  // === [Zzz0Auth-Gate:REGISTER] UPDATE (Vrso 2026-09-02, "urob edge functions...nazvi to 0auth gate
+  // (only Verso a Vrso) SYSTEM FUNCTION...Ok tak variant b...urob pre vsetkych"): heslo sa TERAZ hashuje
+  // A UKLADA VYLUCNE server-side (Supabase Edge Function "verso-auth-gate", service_role kluc, nikdy
+  // neopusti server) - NAHRADZA predchadzajuci Zzz10-R7:PASSWORD-HASH (client-side hash, ktory sa este
+  // aj tak ukladal do verso_verification, tabulky s OTVORENYM anon SELECT - hash+salt boli teda citatelne
+  // komukolvek s anon klucom). Novy zaznam ide do SAMOSTATNEJ uzavretej tabulky verso_auth_credentials
+  // (ZIADNY anon pristup vobec, viz sprievodne SQL) - index.html uz VOBEC nepocita/nevidi hash ani salt,
+  // len posle plaintext heslo cez HTTPS (rovnako ako pri kazdom bez­nom login formulari na internete -
+  // to je normalne a bezpecne, kym beh na HTTPS) a dostane spat len {success: true/false}.
+  // zzz10r7_hash_password/zzz10r7_generate_password_salt (vyssie v subore) su TERAZ NEPOUZIVANE pre tento
+  // ucel - ponechane v subore ako všeobecné SHA-256 utility (rovnaky vzor ako inde, DRY), NIE odstranene,
+  // ale uz nie su sucastou realnej bezpecnostnej cesty. | Vrso -> Claude AI | 2026-09-02 ===
+  let passwordRegisterOk = false;
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ action: 'register', username, password })
+    });
+    const result = await resp.json();
+    passwordRegisterOk = !!result.success;
+    if (!passwordRegisterOk) {
+      zzz6f2_show_toast(`Zzz0Auth-Gate: nepodarilo sa ulozit heslo (${result.reason || 'neznamy dovod'}) - registracia zrusena.`);
+      return;
+    }
+  } catch (err) {
+    console.error('Zzz0Auth-Gate:REGISTER - volanie Edge Function zlyhalo (nasadena? verso-auth-gate)', err);
+    zzz6f2_show_toast('Zzz0Auth-Gate: server-side overenie hesla nedostupne (Edge Function nenasadena?) - registracia zrusena.');
+    return;
+  }
+  // === [/Zzz0Auth-Gate:REGISTER] ===
+
   // === [Zzz10-R5:SYSTEM-ID] hashovany identifikator VYLUCNE pre buducu multiverifikaciu, viz vysvetlenie
   // vyssie v subore. Rovnaky "pokracuj aj bez toho" princip ako user_id vyssie - ak crypto.subtle zlyha,
   // registracia sa NEZASTAVI, system_id ostane null. | Vrso -> Claude AI | 2026-08-31 ===
   const systemId = await zzz10r5_compute_system_id(username);
   // === [/Zzz10-R5:SYSTEM-ID] ===
-
-  // === [Zzz10-R7:PASSWORD-HASH] heslo sa NIKDY neuklada plaintext - vlastny nahodny salt + SHA-256 hash,
-  // viz plne vysvetlenie pri deklaracii funkcii vyssie v subore. | Vrso -> Claude AI | 2026-09-02 ===
-  const passwordSalt = zzz10r7_generate_password_salt();
-  const passwordHash = await zzz10r7_hash_password(password, passwordSalt);
-  // === [/Zzz10-R7:PASSWORD-HASH] ===
 
   // Zzz10-V1:VERIFICATION-STORAGE - CELY registracny zaznam ide LEN sem, ziadny CL/verso_entries zapis
   const registeredAt = new Date().toISOString();
@@ -10765,8 +10796,8 @@ async function zzz10v1_submit_register() {
       activation_code: enteredActivationCode, // rovnaky kod ako v rezervacii (uz overeny vyssie)
       user_id: userId,
       system_id: systemId, // Zzz10-R5:SYSTEM-ID (2026-08-31) - hashovany, urceny LEN pre buduci multiverifikacny lookup, NIKDY pre bezny login
-      password_hash: passwordHash, // Zzz10-R7:PASSWORD-HASH - NIKDY plaintext, pouziva sa v Zzz10-R8:LOGIN-VERIFICATION
-      password_salt: passwordSalt,
+      // password_hash/password_salt UZ TU NIE SU (Zzz0Auth-Gate, 2026-09-02) - ulozene server-side vo
+      // verso_auth_credentials, viz UPDATE komentar vyssie.
       registered_at: registeredAt
     }),
     updated_at: registeredAt
@@ -11755,6 +11786,7 @@ function zzz10r2_logout(reason = 'manual') {
     label.classList.remove('zzz0r1-db-disconnected');
   }
   zzz6f7_set_login_state(false); // Zzz6-F7:LOGIN-STATE - odstrani zlate pozadie
+  zzz0auth_sessionToken = null; // Zzz0Auth-Gate:SESSION-TOKEN - vycistit pri odhlaseni | Vrso -> Claude AI | 2026-09-02
   zzz6f38_undoStack = []; // Zzz6-F38:CL-UNDO (2026-08-30) - session-only, vyprazdni sa pri odhlaseni
   zzz6f39_redoStack = []; // Zzz6-F39:CL-REDO (2026-08-30)
   if (zzz6f38_pendingEditTimer) { clearTimeout(zzz6f38_pendingEditTimer); zzz6f38_pendingEditTimer = null; }
@@ -11783,40 +11815,62 @@ function zzz10r2_logout(reason = 'manual') {
 // zzz6f7_set_login_state(true) zavolat priamo a obist to cele. SKUTOCNA bezpecnost caka na buduci
 // token/Edge Function system (viz konverzacia). Toto je "aspon v ramci apky" uroven, presne ako Vrso
 // vyslovne poziadal. | Vrso -> Claude AI | 2026-09-02 ===
+// === [Zzz0Auth-Gate:LOGIN] UPDATE (Vrso 2026-09-02, "urob edge functions...nazvi to 0auth gate SYSTEM
+// FUNCTION...variant b...urob pre vsetkych"): NAHRADZA predchadzajuce [Zzz10-R8:LOGIN-VERIFICATION]
+// client-side porovnanie (fetch data_json cez anon key + hash v prehliadaci) - teraz sa CELE porovnanie
+// deje SERVER-SIDE, cez Edge Function "verso-auth-gate". index.html posle username+plaintext heslo (cez
+// HTTPS, rovnako ako pri kazdom bez­nom login formulari) a dostane spat LEN {verified: true/false, reason}
+// - hash/salt appka uz nikdy ani nevidi, nevypocitava, nesiaha do verso_verification pre toto vobec.
+// STARE ZAZNAMY (registrovane PRED touto zmenou, napr. povodny "Verso" ucet) NEMAJU zaznam vo
+// verso_auth_credentials - Edge Function v takom pripade vrati {verified: false, reason: 'not_registered'}
+// (viz SQL poznamka pri migracii v setup.sql) - takyto ucet sa musi ZNOVA zaregistrovat/mat heslo
+// nastavene, inak sa realnym Login uz neprihlasi (QUICK LOGIN DEV button naďalej funguje - ten realne
+// overenie explicitne obchadza, viz jeho vlastny komentar).
+// HONEST LIMIT (rovnaky text ako v sprievodnom Edge Function subore, drzat konzistentne): toto NEVYDAVA
+// podpisanu session/token - appka sa sama rozhodne, ci sa "ukaze" ako prihlasena, na zaklade tejto
+// odpovede. Niekto s DevTools by si vedel VLASTNY klientsky stav sfalsovat aj tak (zavolat
+// zzz6f7_set_login_state(true) priamo) - co TOTO garantuje, je, ze NIKTO nevie vypocitat platne heslo pre
+// cudzi username, a ze surove hashe/salty uz nie su verejne citatelne cez otvoreny anon SELECT na
+// verso_verification. Plny session/JWT model je samostatny, vacsi buduci krok.
+// UPDATE (Vrso 2026-09-02, tretie kolo, "aha ok mozes zapracovat" k JWT/session): Edge Function TERAZ
+// (ak ma nastaveny VERSO_SESSION_SECRET, viz edge-function/index.ts hlavicka) VRACIA aj podpisany session
+// token spolu s verified:true. Token sa uklada do zzz0auth_sessionToken (LEN v pamati JS, nie localStorage/
+// cookie - stratí sa pri reloade, co je zatial OK, kedze ho este NIC nekontroluje). VRSO VLASTNA OTAZKA
+// (presna a spravna): "malo by to mat kazda system funkcia?" - ANO malo, ale spravne riesenie NIE JE
+// pridat kontrolu do kazdej JS funkcie zvlast - je to napojit RLS pravidla v databaze na tento token
+// VSADE NARAZ (Postgres funkcia, ktora token overi, pouzita v kazdej RLS policy) - TOTO JE SAMOSTATNY,
+// VACSI KROK, este NEUROBENY. Zatial token EXISTUJE (zaklad), ale ZIADNA RLS policy ho este nevyzaduje -
+// anon-key zapisy zostavaju rovnako otvorene ako pred timto krokom, kym RLS-enforcement fazu nedokoncime. | Vrso -> Claude AI | 2026-09-02 ===
+let zzz0auth_sessionToken = null; // Zzz0Auth-Gate:SESSION-TOKEN - LEN v pamati, zatial nikym nevyzadovany (viz UPDATE komentar vyssie)
+
 async function zzz10r8_verify_login_password(username, enteredPassword) {
-  const normalized = zzz10v1_normalize(username);
   try {
-    const fetchPromise = sb.from('verso_verification').select('data_json').eq('id', `register-${normalized}`).maybeSingle();
+    const fetchPromise = fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ action: 'login', username, password: enteredPassword })
+    });
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Zzz10-R8 lookup timeout (4s)')), 4000)
+      setTimeout(() => reject(new Error('Zzz0Auth-Gate login timeout (4s)')), 4000)
     );
-    const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
-    if (error) throw error;
-    if (!data) return { verified: false, reason: 'not_registered' };
-
-    let reg = {};
-    try { reg = JSON.parse(data.data_json || '{}'); } catch (e) { return { verified: false, reason: 'corrupt_record' }; }
-
-    if (!reg.password_hash || !reg.password_salt) {
-      // registracia existuje, ale je STARSIA ako Zzz10-R7 (nema ulozene heslo vobec) - napr. "Verso"
-      // registrovany pred tymto updatom. NEODMIETAT - povolit prejst (rovnaky duch ako predtym, kym
-      // heslo neexistovalo vobec nikde) - viz aj QUICK LOGIN DEV skip nizsie pre zamerny obchod.
-      return { verified: true, reason: 'legacy_no_password' };
+    const resp = await Promise.race([fetchPromise, timeoutPromise]);
+    const result = await resp.json();
+    if (typeof result.verified !== 'boolean') {
+      throw new Error(result.error || 'neocakavana odpoved z verso-auth-gate');
     }
-
-    const computedHash = await zzz10r7_hash_password(enteredPassword, reg.password_salt);
-    if (computedHash !== reg.password_hash) {
-      return { verified: false, reason: 'wrong_password' };
+    zzz0r1_set_db_connection_state(true);
+    if (result.verified) {
+      zzz0auth_sessionToken = result.token || null; // moze byt null, ak VERSO_SESSION_SECRET este nie je nastaveny na serveri
     }
-    return { verified: true };
+    return { verified: result.verified, reason: result.reason || undefined };
   } catch (err) {
-    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
-    console.error(`Zzz10-R8:LOGIN-VERIFICATION - lookup zlyhal. DOVOD: ${errDetail}`);
+    const errDetail = (err && err.message) || String(err);
+    console.error(`Zzz0Auth-Gate:LOGIN - volanie zlyhalo (Edge Function nasadena? viz edge-function/setup.sql + index.ts). DOVOD: ${errDetail}`);
     zzz0r1_set_db_connection_state(false, errDetail, true);
     return { verified: false, reason: 'lookup_failed' };
   }
 }
-// === [/Zzz10-R8:LOGIN-VERIFICATION] ===
+// === [/Zzz0Auth-Gate:LOGIN] ===
 
 async function zzz6f36_submit_login(options = {}) {
   // Lokalne inputy (viz zzz6f36_build_login_field vyssie v subore) - VOBEC nesiahaju do entryData.
