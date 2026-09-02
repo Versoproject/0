@@ -3236,7 +3236,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-F36 Login modal - pridany viditelny titulok "LOG IN" (predtym len maly gold button v riadku)</span>
   <span class="module-tag">Zzz10-0 Settings Workspace - opravene: NEZOBRAZUJE sa uz pred prihlasenim (predtym stary obsah zostaval za Login modalom)</span>
   <span class="module-tag">Zzz10-M1:PRE-REGISTRATION-SETUP - nezabezpecena kontakt/support sprava PRED prihlasenim (mini-CL: USERNAME+CONTENT+ENTRY), tabulka verso_pre_register_support, category vzdy "pre-registration"</span>
-  <span class="module-tag">Zzz11-M1:USERNAME-SETUP - hore v Zzz10-V0 Verification Workspace, zapisuje do verso_verification_trash, category vzdy "username support" - POZOR: tato tabulka moze mat verejny SELECT pre anon, over v Supabase</span>
+  <span class="module-tag">Zzz11-M1:USERNAME-SETUP - hore v Zzz10-V0 Verification Workspace, zapisuje do NOVEJ uzavretej tabulky verso_username_setup (nie verification_trash - ta ma verejny SELECT), category vzdy "username support"</span>
   <span class="module-tag">Zzz5-T0 Workspace Templates (Zzz2-R23, versoTemplatesButton) - ZIADNY overlay, toggle sekcia pripojena pod Zzz1-M1:ANCHOR (rovnaky princip ako Zzz7-R Content Space)</span>
   <span class="module-tag">Zzz5-T1 Tabs (workspaces rada, prehliadacovy styl, prepisovatelne + pridavatelne, zlava doprava, quick-close "x" na tabe) - pomocne workspaces</span>
   <span class="module-tag">Zzz5-T2 Tabs (user templates rada, rovnaky princip ako Zzz5-T1 bez quick-close) - kazdy tab si neskor vyberie vlastnu Zzz5-T* sablonu z Templates, zatial vzdy T0</span>
@@ -11388,48 +11388,46 @@ function zzz10m1_render_pre_registration_setup(box) {
 // bude doplnena neskor") - ZIADNY skutocny CRM modul tam este nebol. Tento placeholder je teraz NAHRADENY
 // skutocnym Zzz11-M1 Username Setup riadkom (rovnaky [ZzzSUPPORT:CL-ROW] builder ako Zzz10-M1 Pre-
 // Registration Setup vyssie, DRY) - USERNAME + CONTENT + ENTRY.
-// CIELOVA TABULKA (Vrso explicitne): `verso_verification_trash` - NIE hlavna verso_verification.
-// SCHEMA OVERENA (Vrso 2026-09-02, information_schema dotaz): `verso_verification_trash` MA rovnake
-// zakladne stlpce ako verso_verification (id text NULLABLE - narozdiel od hlavnej tabulky, kde je NOT
-// NULL, record_type text, data_json text, created_at timestamptz, updated_at timestamptz) PLUS TRI
-// NAVYSE: trash_id (bigint, NOT NULL, is_identity=YES/ALWAYS - OVERENE, DB generuje sama, nikdy neposielat),
-// archived_at (NULLABLE, ale MA column_default=now() - OVERENE, takze sa aj tak vzdy vyplni casom zapisu
-// aj ked ho neposielame), archived_reason (NULLABLE, bez defaultu, ostava null).
-// POZOR/BEZPECNOSTNY FLAG (Vrso 2026-09-02, "napadlo ma ci sekcia 3 nie je nebezpecna kedze odtial sa data
-// dostavaju iba do klasickej databazy...neviem"): TOTO JE OPRAVNENA OBAVA. Podla povodnych projektovych
-// poznamok (verso-bezpecnost-suhrn) ma `verso_verification_trash` byt "v poriadku (len SELECT)" - teda
-// SELECT je pre anon OTVORENY. Ak je to stale tak, KAZDA sprava odoslana cez Username Setup (vratane
-// username a obsahu spravy) je VEREJNE CITATELNA komukolvek s anon klucom (ten je v tomto frontend kode,
-// teda prakticky verejny). Toto je INY bezpecnostny profil ako Zzz10-M1 Pre-Registration Setup vyssie
-// (jeho tabulka verso_pre_register_support NEMA ziadnu SELECT policy pre anon - teda zapisy tam citat
-// nemoze nikto neprihlaseny). ODPORUCANIE: over v Supabase, ci verso_verification_trash skutocne ma
-// verejny SELECT (SELECT policyname, roles, cmd FROM pg_policies WHERE tablename =
-// 'verso_verification_trash') - ak ano, zvaz BUD (a) pridat SELECT policy LEN pre authenticated/vlastnika
-// (nie anon), alebo (b) presunut Username Setup na samostatnu, rovnako uzavretu tabulku ako
-// verso_pre_register_support. Toto NEMENÍM sam bez tvojho rozhodnutia, kedze si sam pouzitie tejto
-// tabulky vyslovne ziadal - len flag. === -->
+//
+// UPDATE (Vrso 2026-09-02, "napadlo ma ci nie je nebezpecna kedze odtial sa data dostavaju iba do
+// klasickej databazy" -> nasledne OVERENE cez SQL, ze verso_verification_trash MA verejny SELECT pre
+// anon: policyname "verso_verification_trash_select_anon", roles {anon}, cmd SELECT): CIELOVA TABULKA
+// PRESUNUTA z `verso_verification_trash` na NOVU, SAMOSTATNU, UZAVRETU tabulku `verso_username_setup`
+// (rovnaky vzor ako Zzz10-M1 Pre-Registration Setup - INSERT-only pre anon, ZIADNY SELECT). Dovod voľby
+// (b) namiesto (a) [pridat SELECT policy len pre authenticated na povodnej tabulke]: verso_verification_trash
+// moze mat verejny SELECT ZAMERNE kvoli inej, existujucej funkcii v appke (napr. "verejna cast DB" koncept
+// z povodnych bezpecnostnych poznamok) - menit tuto policy by mohlo nieco ine rozbit bez isteho vedomia,
+// co presne na nu spolieha. Vlastna nova tabulka je bezpecnejsia a nulove riziko pre existujuce funkcie.
+// SQL na vytvorenie (Vrso musi spustit v Supabase SQL Editore, Claude nema priamy pristup k projektu):
+//
+//     CREATE TABLE IF NOT EXISTS public.verso_username_setup (
+//       id bigint generated always as identity primary key,
+//       username text,
+//       content text NOT NULL,
+//       category text NOT NULL DEFAULT 'username support',
+//       created_at timestamptz NOT NULL DEFAULT now()
+//     );
+//     ALTER TABLE public.verso_username_setup ENABLE ROW LEVEL SECURITY;
+//     CREATE POLICY "verso_username_setup_insert_anon" ON public.verso_username_setup
+//       FOR INSERT TO anon WITH CHECK (true);
+//     -- ZIADNA SELECT/UPDATE/DELETE policy pre anon = anon moze LEN pridavat, nikdy nic citat/menit/mazat.
+//
+// "cl bude prednastaveny pri entry v kategorii ako username support" - category vzdy pevne "username
+// support" (DEFAULT stlpca + explicitne v payloade pre istotu), rovnaky princip ako Zzz10-M1 (tam
+// "pre-registration"). === -->
 async function zzz11m1_submit_username_setup({ username, content }) {
   if (!content) {
     zzz6f2_show_toast('Zzz11-M1 Username Setup: napis najprv spravu (CONTENT).');
     return false;
   }
-  const nowIso = new Date().toISOString();
   const payload = {
-    // trash_id sa NEPOSIELA - OVERENE auto-generated identity/PK (is_identity=YES, ALWAYS)
-    id: `username-setup-${Date.now()}`, // kazdy zaznam samostatny (nie upsert/prepis)
-    record_type: 'username_setup_message',
-    data_json: JSON.stringify({
-      username: username || null,
-      content,
-      category: 'username support' // VZDY pevne, viz komentar vyssie (interna hodnota, nemeneny format)
-    }),
-    created_at: nowIso,
-    updated_at: nowIso
-    // archived_at / archived_reason ZAMERNE nevyplnane (null v payloade) - viz komentar vyssie (archived_at
-    // sa aj tak automaticky vyplni cez DB default now())
+    username: username || null,
+    content,
+    category: 'username support', // VZDY pevne, viz komentar vyssie
+    created_at: new Date().toISOString()
   };
   try {
-    const writePromise = sb.from('verso_verification_trash').insert(payload);
+    const writePromise = sb.from('verso_username_setup').insert(payload);
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('Zzz11-M1 Username Setup insert timeout (4s)')), 4000)
     );
@@ -11442,7 +11440,7 @@ async function zzz11m1_submit_username_setup({ username, content }) {
     const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
     console.error(`Zzz11-M1:USERNAME-SETUP - zapis zlyhal. DOVOD: ${errDetail}`);
     zzz0r1_set_db_connection_state(false, errDetail, true);
-    zzz6f2_show_toast('Zzz11-M1 Username Setup: odoslanie zlyhalo, skus znova.');
+    zzz6f2_show_toast('Zzz11-M1 Username Setup: odoslanie zlyhalo (skontroluj, ci existuje tabulka verso_username_setup), skus znova.');
     return false;
   }
 }
