@@ -9256,18 +9256,237 @@ function zzz6f48_bind_dual_press(el) {
 })();
 // === [/Zzz6-F48:MINI-CL] ===
 
-// === [Zzz1-M3:PRESET] PRESET button - SYSTEM FUNCTION placeholder. Umiestneny v M3 (read line), presne nad
-// Zzz6-F48 MINI (M1, CL). Funkcnost (ukladanie preset hodnot CL do template tabov) je EST NEUJASNENA - kratky
-// klik zatial LEN informativny toast, ZIADNA dalsia logika (SPECIAL/INTERIM, cakame na upresnenie zadania
-// od Vrso) | Vrso -> Claude AI | 2026-09-03 ===
+// === [Zzz1-M3:PRESET] PRESET button - SYSTEM FUNCTION. Umiestneny v M3 (read line), presne nad Zzz6-F48 MINI
+// (M1, CL) - rovnaky stlpec (.mini-wrap), takze RL/CL su symetricke ako dvojica (rovnaky princip ako vsetky
+// ostatne R*/R*a pary - hard rule zachovana aj tu).
+//
+// Funkcnost (Vrso 2026-09-03): PRESET uklada SNAPSHOT aktualnych hodnot CELEJ CL (vsetky polia, napr. Project
+// Number, Project Name a pod.) ako novy "preset" do jedneho z 5 template tabov (Preset 1-5, localStorage).
+// - 1s podrzanie = ULOZI aktualny stav CL ako novy preset (do prveho volneho tabu, alebo ak su vsetky 5 plne,
+//   prepise najstarsi/tab 1 - FIFO) A OTVORI PRESET context window (dokovane, zdielane Zzz6-F41) so zoznamom
+//   vsetkych 5 tabov. Klik na NEPRAZDNY tab APLIKUJE jeho ulozene hodnoty spat do CL (write_to_entry pre kazde
+//   pole, DRY - rovnaky zapisovy mechanizmus ako vsade inde). Male X pri tabe ho vymaze.
+// - Kratky klik = TOGGLE "zafixovanie" RL/CL dvojice (Vrso: "stlacenim sa zafixuje read line/cl line") - zatial
+//   LEN vizualny/informativny flag (SPECIAL/INTERIM, symetria RL/CL je aj tak VZDY zarucena strukturalne cez
+//   zdielane wrap-triedy, toto je len potvrdzujuci UI signal pre Vrso).
+// - ZIADNA 3s akcia (na rozdiel od MINI) - Vrso: "3s moze ostat len v hornej liste" (3s zostava vyhradene inde,
+//   PRESET pouziva len kratky klik + 1s).
+// | Vrso -> Claude AI | 2026-09-03 ===
+const ZZZ1M3_PRESET_STORAGE_KEY = 'zzz1m3_presets';
+const ZZZ1M3_PRESET_SLOTS = 5;
+
+// VSETKY polia CRM (fixne AJ togglovatelne, na rozdiel od zzz6f48_get_crm_fields ktora vynecha fixne) - preset
+// uklada/aplikuje UPLNU CL, nielen togglovatelnu cast. Cita PRIAMO zo ziveho M3 DOM (rovnaky princip ako F48).
+function zzz1m3_get_all_crm_fields() {
+  const readLineRow = document.getElementById('versoCRMLabelsRow');
+  if (!readLineRow) return [];
+  const fields = [];
+  readLineRow.querySelectorAll(':scope > div[class$="-wrap"]').forEach(wrapDiv => {
+    const wrapClass = wrapDiv.className.split(' ')[0];
+    if (wrapClass === 'mini-wrap') return;
+    const btn = wrapDiv.querySelector('button[data-entry-id]');
+    if (!btn) return;
+    fields.push({
+      wrap: wrapClass,
+      entryId: btn.getAttribute('data-entry-id'),
+      label: btn.getAttribute('aria-label') || btn.textContent.trim(),
+    });
+  });
+  return fields;
+}
+
+function zzz1m3_get_presets() {
+  try {
+    const raw = localStorage.getItem(ZZZ1M3_PRESET_STORAGE_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    while (arr.length < ZZZ1M3_PRESET_SLOTS) arr.push(null); // vzdy presne 5 slotov (null = prazdny)
+    return arr.slice(0, ZZZ1M3_PRESET_SLOTS);
+  } catch (e) {
+    return new Array(ZZZ1M3_PRESET_SLOTS).fill(null);
+  }
+}
+
+function zzz1m3_save_presets(presets) {
+  try {
+    localStorage.setItem(ZZZ1M3_PRESET_STORAGE_KEY, JSON.stringify(presets));
+  } catch (e) {
+    console.error('Zzz1-M3 PRESET: ulozenie do localStorage zlyhalo:', e);
+  }
+}
+
+// Ulozi SNAPSHOT aktualnej CL (vsetky polia z zzz1m3_get_all_crm_fields) do prveho volneho slotu, alebo (ak su
+// vsetky plne) prepise slot 0 (najstarsi, FIFO). Vracia index slotu, do ktoreho sa ulozilo.
+function zzz1m3_save_current_as_preset() {
+  const fields = zzz1m3_get_all_crm_fields();
+  const values = {};
+  fields.forEach(f => { values[f.entryId] = entryData[f.entryId] || ''; });
+
+  const presets = zzz1m3_get_presets();
+  let slot = presets.findIndex(p => !p);
+  if (slot === -1) {
+    // vsetky sloty plne - FIFO, posun vsetko o 1 dolava a novy preset ide na koniec (slot 4)
+    presets.shift();
+    presets.push(null);
+    slot = ZZZ1M3_PRESET_SLOTS - 1;
+  }
+  presets[slot] = { values, savedAt: new Date().toISOString() };
+  zzz1m3_save_presets(presets);
+  return slot;
+}
+
+// Aplikuje ulozeny preset (values) SPAT do CL - write_to_entry pre kazde pole (DRY, rovnaky zapisovy
+// mechanizmus ako vsade inde - automaticky spusti aj render_entry_cell/sync pre specialne polia ako R12/R7).
+function zzz1m3_apply_preset(preset) {
+  if (!preset || !preset.values) return;
+  Object.keys(preset.values).forEach(entryId => {
+    write_to_entry(entryId, preset.values[entryId]);
+  });
+}
+
+function zzz1m3_preset_summary_text(preset) {
+  if (!preset || !preset.values) return '(prazdny)';
+  const fields = zzz1m3_get_all_crm_fields();
+  for (const f of fields) {
+    const val = (preset.values[f.entryId] || '').toString().trim();
+    if (val) return f.label + ': ' + val;
+  }
+  return '(vsetky polia prazdne)';
+}
+
+function zzz1m3_open_preset_modal() {
+  const { box, removeBox } = zzz6f41_create_context_window(); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] dokovane pod CL
+  const header = document.createElement('div');
+  header.className = 'zzz-context-header';
+  header.textContent = 'PRESET - Template Tabs (1-5)';
+  box.appendChild(header);
+
+  function closeModal() { removeBox(); }
+
+  function renderTabs() {
+    Array.from(box.querySelectorAll('.zzz6f48-mini-list')).forEach(el => el.remove());
+    const list = document.createElement('div');
+    list.className = 'zzz6f48-mini-list';
+
+    const presets = zzz1m3_get_presets();
+    presets.forEach((preset, idx) => {
+      const row = document.createElement('div');
+      row.className = 'zzz6f48-mini-row';
+      row.style.cursor = preset ? 'pointer' : 'default';
+
+      const textWrap = document.createElement('div');
+      textWrap.className = 'zzz6f48-mini-row-text';
+
+      const label = document.createElement('label');
+      label.className = 'zzz6f48-mini-row-label';
+      label.textContent = 'Preset ' + (idx + 1);
+      textWrap.appendChild(label);
+
+      const valueEl = document.createElement('div');
+      valueEl.className = 'zzz6f48-mini-row-value';
+      valueEl.textContent = zzz1m3_preset_summary_text(preset);
+      textWrap.appendChild(valueEl);
+
+      row.appendChild(textWrap);
+
+      if (preset) {
+        row.addEventListener('click', (e) => {
+          if (e.target.closest('.zzz1r17b-chip-close')) return;
+          zzz1m3_apply_preset(preset);
+          zzz6f2_show_toast('Preset ' + (idx + 1) + ' aplikovany do CL');
+          closeModal();
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'zzz1r17b-chip-close'; // zdielany maly "x" styl (rovnaky ako inde v subore, DRY)
+        delBtn.textContent = '×';
+        delBtn.setAttribute('aria-label', 'Vymazat preset ' + (idx + 1));
+        delBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const current = zzz1m3_get_presets();
+          current[idx] = null;
+          zzz1m3_save_presets(current);
+          renderTabs();
+        });
+        row.appendChild(delBtn);
+      }
+
+      list.appendChild(row);
+    });
+    box.insertBefore(list, box.querySelector('.entry-modal-actions'));
+  }
+
+  renderTabs();
+
+  const actions = document.createElement('div');
+  actions.className = 'entry-modal-actions';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'entry-modal-delete zzz6f48-mini-close'; // zdielany zlaty ohranicujuci styl (rovnaky ako MINI)
+  closeBtn.textContent = '✕';
+  closeBtn.setAttribute('aria-label', 'Zatvorit');
+  closeBtn.onclick = closeModal;
+  actions.appendChild(closeBtn);
+
+  box.appendChild(actions);
+  zzz6f41_bind_outside_click(box, closeModal);
+}
+
+// Kratky klik = TOGGLE "zafixovanie" RL/CL dvojice (Vrso: "stlacenim sa zafixuje read line/cl line") - LEN
+// vizualny/informativny flag, symetria RL/CL je strukturalne VZDY zarucena (zdielane wrap-triedy).
+let zzz1m3PresetFixed = false;
+function zzz1m3_toggle_fixed() {
+  zzz1m3PresetFixed = !zzz1m3PresetFixed;
+  const btn = document.getElementById('zzz1m3PresetButton');
+  if (btn) btn.classList.toggle('zzz1m3-active', zzz1m3PresetFixed);
+  zzz6f2_show_toast(zzz1m3PresetFixed ? 'Read Line / Command Line zafixovane' : 'Read Line / Command Line odfixovane');
+}
+
 (function bindZzz1M3Preset() {
   const btn = document.getElementById('zzz1m3PresetButton');
   if (!btn) return;
+
+  // 1s podrzanie = uloz aktualnu CL ako novy preset + otvor PRESET context window. Kratky klik (< 1s) = toggle
+  // fixed stav. ZIADNA 3s akcia (na rozdiel od Zzz6-F48 MINI).
+  let timer1s = null;
+  let suppressClick = false;
+
+  function start() {
+    suppressClick = false;
+    if (timer1s) clearTimeout(timer1s);
+    timer1s = setTimeout(() => {
+      zzz1m3_save_current_as_preset();
+      zzz1m3_open_preset_modal();
+      suppressClick = true;
+    }, 1000);
+  }
+  function cancel() {
+    if (timer1s) { clearTimeout(timer1s); timer1s = null; }
+  }
+
+  btn.addEventListener('touchstart', start, { passive: true });
+  btn.addEventListener('touchend', cancel);
+  btn.addEventListener('touchmove', cancel);
+  btn.addEventListener('touchcancel', cancel);
+  btn.addEventListener('mousedown', start);
+  btn.addEventListener('mouseup', cancel);
+  btn.addEventListener('mouseleave', cancel);
+
+  document.addEventListener('click', (e) => {
+    if (suppressClick && (e.target === btn || btn.contains(e.target))) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      suppressClick = false;
+    }
+  }, true);
+
   btn.addEventListener('click', () => {
-    zzz6f2_show_toast('PRESET - funkcia bude doplnena');
+    zzz1m3_toggle_fixed();
   });
 })();
 // === [/Zzz1-M3:PRESET] ===
+
 
 function zzz4_0_get_field_value(row, field) {
   if (field.get) return field.get(row) || '';
