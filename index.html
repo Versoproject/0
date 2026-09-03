@@ -794,6 +794,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     cursor: pointer !important;
     border: 2px solid #D4AF37 !important;
     box-sizing: border-box;
+    touch-action: none;
+    -webkit-touch-callout: none;
   }
   /* .numbers-row > div ma flex:1 1 0 (VSETKY stlpce rovnaka sirka) - "trochu sirsi" stlpec dosiahnuty vyssim
      flex-grow pomerom (rovnaky princip ako user-wrap/content-wrap "WIDEN" pravidlo nizsie v CSS). UPDATE
@@ -831,18 +833,26 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     height: 16px;
     flex-shrink: 0;
   }
-  /* Riadok checklistu - UPDATE (Vrso 2026-09-03, "dorob vedla nich aj prislusnu cl editovatelnu"): label +
-     EDITOVATELNY input s aktualnou hodnotou bunky (predtym LEN staticky text), pod sebou v .zzz6f48-mini-row-text */
+  /* UPDATE (Vrso 2026-09-05, "tie bunky editovatelne v mini okne daj vedla tych read line oznaceni... usetri
+     kopec miesta"): label a input teraz VEDLA SEBA (riadok), nie pod sebou (predtym 2 riadky na kazde pole,
+     zbytocne zaberalo vysku) - vysrazne usetri vertikalne miesto v MINI okne, obzvlast teraz ked pribudla
+     cela DEFINOVANE sekcia navyse. */
   .zzz6f48-mini-row-text {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
     flex: 1;
     min-width: 0;
-    gap: 3px;
+    gap: 8px;
   }
   .zzz6f48-mini-row-label {
     color: #fff;
-    font-size: 12px;
+    font-size: 11px;
+    flex-shrink: 0;
+    width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .zzz6f48-mini-row-value-input {
     background-color: #fff;
@@ -851,13 +861,26 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     border-radius: 4px;
     font-size: 11px;
     padding: 4px 6px;
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     box-sizing: border-box;
   }
   .zzz6f48-mini-empty {
     color: #999;
     font-size: 12px;
     padding: 6px 8px;
+  }
+  /* Sekcia-nadpis (DEFINOVANE / NEDEFINOVANE) v MINI okne - Vrso 2026-09-05 */
+  .zzz6f48-mini-section-label {
+    color: #D4AF37;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin: 10px 0 2px 2px;
+  }
+  .zzz6f48-mini-section-label:first-child {
+    margin-top: 0;
   }
   /* X (zavriet) button - zlate ohranicenie, rovnaky princip ako inde v subore (napr. .zzz6f36-login-title,
      2px solid #D4AF37) - Vrso ziadost 2026-09-03. SAVE button UPLNE ZRUSENY (checklist sa uklada auto) */
@@ -9137,6 +9160,35 @@ function zzz6f48_get_crm_fields() {
   return fields;
 }
 
+// UPDATE (Vrso 2026-09-05, "namiesto mini oznacenia radsej vloz definovane zvysne bunky danej cl... aby boli
+// tiez prepisovatelne"): DEFINOVANE (fixne, vzdy viditelne) polia CL - tieto sa NEZOBRAZUJU s checkboxom
+// (nedaju sa skryt), ale MINI okno ich teraz zobrazuje ako editovatelne riadky (rovnaky princip ako
+// nedefinovane, len bez checkboxu), aby sa dali upravit priamo z MINI okna bez zatvarania a klikania na
+// bunku v hlavnej CL. Rovnaky DOM-scan princip ako zzz6f48_get_crm_fields vyssie (zivy stav, DRY).
+function zzz6f48_get_fixed_crm_fields() {
+  const readLineRow = document.getElementById('versoCRMLabelsRow');
+  if (!readLineRow) return [];
+  const fields = [];
+  readLineRow.querySelectorAll(':scope > div[class$="-wrap"]').forEach(wrapDiv => {
+    const wrapClass = wrapDiv.className.split(' ')[0];
+    if (wrapClass === 'mini-wrap' || !ZZZ6F48_FIXED_WRAPS.includes(wrapClass)) return;
+    const btn = wrapDiv.querySelector('button[data-entry-id]');
+    if (!btn) return;
+    fields.push({
+      wrap: wrapClass,
+      entryId: btn.getAttribute('data-entry-id'),
+      label: btn.getAttribute('aria-label') || btn.textContent.trim(),
+    });
+  });
+  return fields;
+}
+
+// UPDATE (Vrso 2026-09-05, "entries podla opravnenia"): R1 (Entry Number) a R14 (Entry Date) su AUTOMATICKE/
+// needitovatelne bunky (data-readonly, priraduje ich VYLUCNE system - Zzz6-F2/Zzz1-F16) - VYNECHANE z tohto
+// editovatelneho zoznamu, aj ked su DEFINOVANE, presne z rovnakeho dovodu, preco sa nedaju editovat ani
+// priamo v hlavnej CL. Buduce jemnejsie opravnenia (per-user/per-role) caka na dalsie spracovanie.
+const ZZZ6F48_READONLY_ENTRY_IDS = ['1', '14'];
+
 // UPDATE (Vrso 2026-09-05, "checklist nastav trvalo ako odznacene, kedze ich zvacsa v cl netreba"): DEFAULT
 // stav (ked este NIC nie je ulozene v localStorage) uz nie je "vsetko viditelne" - je to "vsetko togglovatelne
 // SKRYTE", pokial ich pouzivatel v MINI okne vyslovne nezaskrtne. Prvy krat, ked hidden-wraps neexistuje,
@@ -9217,48 +9269,45 @@ function zzz6f48_open_mini_modal() {
   const { box, removeBox } = zzz6f41_create_context_window(); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] dokovane pod CL
   // Ziadny header text (Vrso 2026-09-03: "zrus ten napis v kontext okne")
 
-  const crmFields = zzz6f48_get_crm_fields(); // ZIVY DOM, vzdy synchronizovane s CL/RL modulom
-
   const list = document.createElement('div');
   list.className = 'zzz6f48-mini-list';
 
-  if (crmFields.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'zzz6f48-mini-empty';
-    empty.textContent = 'Ziadne togglovatelne polia (vsetky R* su fixne).';
-    list.appendChild(empty);
-  }
-
-  crmFields.forEach(field => {
+  // Spolocny stavitel jedneho riadku (label + editovatelny input) - POUZIVA sa pre DEFINOVANE (bez checkboxu,
+  // vzdy viditelne) aj NEDEFINOVANE (s checkboxom) polia, DRY (Vrso 2026-09-05, "namiesto mini oznacenia
+  // radsej vloz definovane zvysne bunky danej cl... aby boli tiez prepisovatelne").
+  function buildRow(field, withCheckbox) {
     const row = document.createElement('div');
     row.className = 'zzz6f48-mini-row';
 
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.id = 'zzz6f48-check-' + field.wrap;
-    const hiddenNow = zzz6f48_get_hidden_wraps();
-    checkbox.checked = !hiddenNow.includes(field.wrap); // zaskrtnute = viditelne
-    checkbox.addEventListener('change', () => {
-      const hidden = new Set(zzz6f48_get_hidden_wraps());
-      if (checkbox.checked) hidden.delete(field.wrap);
-      else hidden.add(field.wrap);
-      zzz6f48_save_hidden_wraps(Array.from(hidden));
-      localStorage.removeItem(ZZZ6F48_BACKUP_KEY); // manualna zmena = nova definicia stavu, stara 3s-zaloha uz neplati
-      zzz6f48_apply_mini_visibility(); // VZDY zive prejavi na hlavnom CRM module (M1+M3 naraz)
-    });
+    let checkbox = null;
+    if (withCheckbox) {
+      checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = 'zzz6f48-check-' + field.wrap;
+      const hiddenNow = zzz6f48_get_hidden_wraps();
+      checkbox.checked = !hiddenNow.includes(field.wrap); // zaskrtnute = viditelne
+      checkbox.addEventListener('change', () => {
+        const hidden = new Set(zzz6f48_get_hidden_wraps());
+        if (checkbox.checked) hidden.delete(field.wrap);
+        else hidden.add(field.wrap);
+        zzz6f48_save_hidden_wraps(Array.from(hidden));
+        localStorage.removeItem(ZZZ6F48_BACKUP_KEY); // manualna zmena = nova definicia stavu, stara 3s-zaloha uz neplati
+        zzz6f48_apply_mini_visibility(); // VZDY zive prejavi na hlavnom CRM module (M1+M3 naraz)
+      });
+      row.appendChild(checkbox);
+    }
 
     const textWrap = document.createElement('div');
     textWrap.className = 'zzz6f48-mini-row-text';
 
     const label = document.createElement('label');
     label.className = 'zzz6f48-mini-row-label';
-    label.setAttribute('for', checkbox.id);
+    if (checkbox) label.setAttribute('for', checkbox.id);
     label.textContent = field.label;
     textWrap.appendChild(label);
 
-    // Editovatelny input s aktualnou hodnotou CL bunky (Vrso 2026-09-03: "dorob vedla nich aj prislusnu cl
-    // editovatelnu") - zmena sa IHNED zapisuje cez write_to_entry (DRY, rovnaky mechanizmus ako priamy zapis
-    // do CL bunky, vratane render_entry_cell sync).
+    // Editovatelny input s aktualnou hodnotou CL bunky - zmena sa IHNED zapisuje cez write_to_entry (DRY,
+    // rovnaky mechanizmus ako priamy zapis do CL bunky, vratane render_entry_cell sync).
     const valueInput = document.createElement('input');
     valueInput.type = 'text';
     valueInput.className = 'zzz6f48-mini-row-value-input';
@@ -9269,10 +9318,36 @@ function zzz6f48_open_mini_modal() {
     });
     textWrap.appendChild(valueInput);
 
-    row.appendChild(checkbox);
     row.appendChild(textWrap);
-    list.appendChild(row);
-  });
+    return row;
+  }
+
+  // DEFINOVANE (fixne, vzdy viditelne) polia - bez checkboxu, len editovatelne. R1/R14 (automaticke/
+  // needitovatelne, viz ZZZ6F48_READONLY_ENTRY_IDS) su vynechane, presne ako v hlavnej CL.
+  const fixedFields = zzz6f48_get_fixed_crm_fields().filter(f => !ZZZ6F48_READONLY_ENTRY_IDS.includes(f.entryId));
+  if (fixedFields.length > 0) {
+    const fixedHeader = document.createElement('div');
+    fixedHeader.className = 'zzz6f48-mini-section-label';
+    fixedHeader.textContent = 'DEFINOVANE (vzdy v CL)';
+    list.appendChild(fixedHeader);
+    fixedFields.forEach(field => list.appendChild(buildRow(field, false)));
+  }
+
+  // NEDEFINOVANE (togglovatelne) polia - s checkboxom, zaskrtnute = viditelne v CL.
+  const crmFields = zzz6f48_get_crm_fields(); // ZIVY DOM, vzdy synchronizovane s CL/RL modulom
+  const togglableHeader = document.createElement('div');
+  togglableHeader.className = 'zzz6f48-mini-section-label';
+  togglableHeader.textContent = 'NEDEFINOVANE (checklist)';
+  list.appendChild(togglableHeader);
+
+  if (crmFields.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'zzz6f48-mini-empty';
+    empty.textContent = 'Ziadne nedefinovane polia (vsetky R* su definovane).';
+    list.appendChild(empty);
+  }
+
+  crmFields.forEach(field => list.appendChild(buildRow(field, true)));
   box.appendChild(list);
 
   const actions = document.createElement('div');
