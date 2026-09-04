@@ -11412,9 +11412,30 @@ function open_verification_workspace() {
 
 // diakritika+velkost-insenzitivny normalizator (username/email porovnanie) - "nezalezi na diakritike a
 // velkosti pismen" (Vrso ziadost)
+// UPDATE (Vrso 2026-09-03, "ako sa to riesi pri odlisnych arabskych jazykoch a pod?...idealne bez
+// akejkolvek [vynimky]"): PREDTYM `[\u0300-\u036f]` odstranovalo LEN kombinujuce diakritické znaky z
+// Unicode bloku "Combining Diacritical Marks" - TEN POKRYVA VYLUCNE latinku/cyriliku/gréčtinu (é, š, ñ,
+// atd.). Arabske diakritické znamienka (harakat/tashkeel - fatha, kasra, damma, sukun, shadda...) su v
+// UPLNE INOM Unicode bloku (U+064B-U+0652) - predtym sa VOBEC nestrhavali, takze "Ahmad" s harakatmi a bez
+// nich by sa povazovali za ROZNE username.
+// RIESENIE (univerzalne, ZIADNA vynimka/specialny pripad pre konkretny jazyk): `\p{M}` je Unicode
+// "property escape" (vyzaduje `u` flag), ktory oznacuje CELU kategoriu "Mark" - VSETKY kombinujuce znaky
+// naprac VSETKYMI pismami (latinka, cyrilika, arabcina, hebrejcina, devanagari, thajcina...), nie len
+// vymenovany rozsah pre jedno pismo. NFD -> NFKD (kompatibilna dekompozicia namiesto len kanonickej) -
+// NFKD navyse rozklada aj arabske "prezentacne formy" pismen (kontextove tvary na zaciatku/konci slova) na
+// ich zakladny tvar, a podobne zluci ligatury/fullwidth varianty. | Vrso -> Claude AI | 2026-09-03 ===
+//
+// POCTIVY LIMIT (Vrso: "casom sa dorieši", nie je to teraz kompletna riesenie vsetkeho):
+//   - CJK (cinstina/japoncina/korejcina) nema koncept "diakritiky" v tomto zmysle - problem tam je INY
+//     (zjednodusene vs tradicne cinske znaky, fullwidth vs halfwidth) - toto pravidlo to nerieši.
+//   - `.toLowerCase()` bez locale ma znamu vynimku (turecke "İ"/"I" - "dotless/dotted i" problem) - riesi sa
+//     az `.toLocaleLowerCase('tr')`, co vyzaduje VEDIET, ze ide o turecky kontext (appka to necituje).
+//   - Toto vsetko su okrajove pripady pre BUDUCU, hlbsiu pracu (Vrso spomina "zakladny prekladac
+//     terminologie...pripadne AI") - teraz zamerne LEN univerzalny, jednoduchy fix bez specialneho
+//     kodovania per-jazyk.
 function zzz10v1_normalize(str) {
   return (str || '')
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // odstranenie diakritiky
+    .normalize('NFKD').replace(/\p{M}/gu, '') // univerzalne odstranenie VSETKYCH kombinujucich znakov (marks) naprac vsetkymi Unicode pismami
     .trim().toLowerCase();
 }
 
@@ -11938,10 +11959,18 @@ function zzz10v1_build_send_activation_button(usernameBox) {
       // TERAZ sa AKAKOLVEK chyba TU navyse zobrazi aj ako VIDITELNY toast (druhy, kratky), aby sa dalo
       // diagnostikovat aj bez pristupu k Supabase Logs alebo prehliadacovej konzole. | Vrso -> Claude AI | 2026-09-02 ===
       try {
+        // === [Zzz10-V1:SEND-EMAIL] UPDATE (Vrso 2026-09-03, Resend logy: "You can only send testing
+        // emails to your own email address (the.verso.project@gmail.com)" napriek tomu, ze appka POSIELA
+        // presne tento email): najdena PRESNA pricina - Resend porovnava adresu s registrovanym uctom
+        // CASE-SENSITIVE (velke/male pismena zalezia PRE TOTO INTERNE porovnanie, na rozdiel od bezneho
+        // dorucenia emailu, kde na tom nezalezi). Appka posielala "email" TAK, AKO ho niekto napisal do
+        // formulara (napr. "The.verso.project@gmail.com" s velkym T) - Resend to odmietol, kedze ucet je
+        // registrovany ako "the.verso.project@gmail.com" (male t). TERAZ sa email VZDY posiela malymi
+        // pismenami do Resend (lowercase pred odoslanim), nezavisle od toho, ako ho niekto zapisal. | Vrso -> Claude AI | 2026-09-03 ===
         const emailFetchPromise = fetch(`${SUPABASE_URL}/functions/v1/verso-send-activation-email`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-          body: JSON.stringify({ email, code: activationCode, username })
+          body: JSON.stringify({ email: email.trim().toLowerCase(), code: activationCode, username })
         });
         const emailTimeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('timeout (5s) - request sa vobec nevratil, mozno ani nedosiel na Supabase')), 5000)
