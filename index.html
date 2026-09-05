@@ -807,6 +807,27 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz6f48-mini-button.zzz6f48-active {
     color: #D4AF37;
   }
+  /* OPRAVA (Vrso 2026-09-10, "mini attachment nefungovalo" - test odhalil pricinu): existujuci gold VIEW
+     button (.zzz1m5-cl-view-btn, 60px) je SIROKSI nez jeho vlastny uzky entry-number-wrap stlpec (~21px) a
+     centrovanim v nom PRETEKA aj DOLAVA, do susedneho mini-wrap stlpca - kym tam bol len neviditelny
+     placeholder, nevadilo to, ale TERAZ je tam SKUTOCNE klikatelne MINI tlacidlo, ktore tym prekrytim
+     prestalo dostavat kliky (view button, neskorsi v DOM poradi, malo prednost). Vlastna stacking context +
+     z-index dava MINI tlacidlu prednost v prekryvajucej sa oblasti. | Vrso -> Claude AI | 2026-09-10 === */
+  .mini-wrap .zzz6f48-mini-button {
+    position: relative;
+    z-index: 2;
+  }
+  /* OPRAVA (Vrso 2026-09-11, "velkost tejto bunky by mal ostat rovnaky ako je ked nie je minimalizovany"):
+     na niektorych zariadeniach (iny font-rendering ako v testovacom prostredi) sa dlhsi text "ATTACH" (6
+     znakov, oproti "MINI" so 4) zalamal na 2 riadky, co ZMENSILO vysku celeho attach riadku oproti hlavnemu
+     MINI riadku - uz to viac neboli symetricke. NOWRAP + mierne mensie pismo GARANTUJE jeden riadok textu
+     na VSETKYCH zariadeniach, takze vyska riadku ostava VZDY rovnaka ako pri hlavnom MINI. | Vrso -> Claude
+     AI | 2026-09-11 === */
+  #versoAttachmentList .zzz6f48-mini-button {
+    white-space: nowrap;
+    font-size: 6px !important;
+    overflow: hidden;
+  }
   .zzz6f48-mini-placeholder {
     width: 100%;
     height: 34px;
@@ -7335,7 +7356,23 @@ function zzz6f17_context_attachment_add_cl(fieldId, closeAfter) {
       source: 'cl',
       label: `CL${zzz6f17AttachClCounter}`,
       fields,
-      fieldId: fieldId || null // z ktoreho kontextoveho okna bolo pripnute - VIEW ho neskor znovu otvori
+      fieldId: fieldId || null, // z ktoreho kontextoveho okna bolo pripnute - VIEW ho neskor znovu otvori
+      // OPRAVA MOJHO PREDCHADZAJUCEHO OMYLU (Vrso 2026-09-10, "vsak si nezapracoval entry number!!!"): skusal
+      // som sem predtym vlozit entryData['1'] - ale podla explicitneho poznamky vyssie v subore (Zzz2-R29-FIX,
+      // 2026-08-20) je entryData["1"] VZDY prazdny retazec, KEDZE R1 je needitovatelne a hodnotu priraduje
+      // VYLUCNE server/DB az PRI SKUTOCNOM ulozeni (najvyssie doteraz priradene cislo + 1, Zzz6-F2). Kym CL
+      // este NEBOLA ulozena do Supabase, ZIADNE realne entry_id neexistuje - nie je co zobrazit, ani v hlavnej
+      // CRM bunke, ani v attachmente. entryNumber sa preto VEDOME NENASTAVUJE tu - ostava undefined, kym sa
+      // attachment nespaja s uz SKUTOCNE ulozenym riadkom (source:'el', kde row.entry_id uz realnu hodnotu
+      // ma). Toto NIE JE bug, je to dosledok architektury (klient nikdy sam necisluje zaznamy). | Vrso ->
+      // Claude AI | 2026-09-10 ===
+      // "SYMETRICKY" SEED (Vrso 2026-09-10, "symetricky attachuj podla crm modulu"): novy attachment ZDEDI
+      // presnu kopiu aktualneho hlavneho CRM checklistu (ktore stlpce su prave TERAZ v CRM viditelne/skryte)
+      // ako svoj VLASTNY, NEZAVISLY miniHidden stav - takze na moment pripnutia vyzera symetricky rovnako
+      // ako CRM, ale odvtedy uz je NEZAVISLY (zmena v CRM MINI uz spatne neovplyvnuje tento attachment, a
+      // naopak - viz aj OPRAVA v zzz6f48_apply_mini_visibility nizsie, ktora uz #versoAttachmentList
+      // NEPREPISUJE).
+      miniHidden: zzz6f48_get_hidden_wraps().filter(w => !ZZZ6F48_FIXED_WRAPS.includes(w)),
     };
     zzz6f17Attachments.push(item);
   }
@@ -7479,8 +7516,6 @@ ZZZ_CL_FIELDS.forEach(([entryKey, rKey]) => { ZZZ1R37_ENTRYKEY_TO_RKEY[entryKey]
 function zzz6f17_build_attached_cl_grid_row(item) {
   const rowEl = document.createElement('div');
   rowEl.className = 'numbers-row zzz1m5-cl-row';
-  const stack = document.getElementById('versoContextWindowStack');
-  const alreadyShown = stack && stack.querySelector(`[data-zzz6f17-attach-show="${item.id}"]`);
 
   // OPRAVA (Vrso 2026-09-05, "treba zosuladit cl/crm buniek... adaptivne prisposobovanie"): hlavny CRM riadok
   // (#versoCLNumbersRow) ma NAVYSE prvy .mini-wrap ovladaci stlpec (Zzz6-F48 MINI button), ktory attachnute
@@ -7490,41 +7525,39 @@ function zzz6f17_build_attached_cl_grid_row(item) {
   // rovnaky ako v #versoCRMLabelsRow) ako prvy stlpec KAZDEHO attachnuteho riadku - teraz maju VZDY presne
   // rovnaky pocet stlpcov ako hlavny CRM, takze sirky (aj po MINI skryti/zobrazeni stlpcov) VZDY sedia. |
   // Vrso -> Claude AI | 2026-09-05 ===
+  // UPDATE (Vrso 2026-09-10, "kazdy attachment je prakticky kopia 1-M1... uz v nich bude mat mini button,
+  // mozes si oznacit aj ako 'mini attachment'"): predtym NEVIDITELNY placeholder (len zarovnanie stlpcov) je
+  // TERAZ SKUTOCNY, FUNKCNY MINI button - kazdy attachment ma svoj VLASTNY, NEZAVISLY checklist:
+  // - Kratky klik = TOGGLE cela CL (definovane+vsetko) / restrikcia na definovane + tie oznacene v JEHO
+  //   VLASTNOM mini okne (zdiela zzz1r37_reset_mini_for_entry - rovnaky "zaloha+zobraz vsetko/obnov" princip).
+  // - 0.5s podrzanie = otvor JEHO VLASTNY mini checklist (zzz1r37_open_mini_for_entry).
+  // - 2s podrzanie = DEATTACH (natrvalo odstrani TENTO KONKRETNY attachment, zzz6f17_context_attachment_remove).
   const miniPlaceholder = document.createElement('div');
   miniPlaceholder.className = 'mini-wrap';
-  const placeholderInner = document.createElement('div');
-  placeholderInner.className = 'zzz6f48-mini-placeholder';
-  miniPlaceholder.appendChild(placeholderInner);
+  const miniBtn = document.createElement('button');
+  miniBtn.type = 'button';
+  miniBtn.className = 'entry-number-button zzz6f48-mini-button';
+  miniBtn.setAttribute('aria-label', 'Mini attachment');
+  miniBtn.textContent = 'ATTACH'; // Vrso 2026-09-11: "pod mini ten button nazvi attach"
+  miniPlaceholder.appendChild(miniBtn);
   rowEl.appendChild(miniPlaceholder);
+  zzz6f17_bind_mini_for_attachment(miniBtn, rowEl, item);
 
   ZZZ_FULL_DISPLAY_FIELDS.forEach(field => {
     const wrapEl = document.createElement('div');
     wrapEl.className = field.wrap;
 
     if (field.wrap === 'entry-number-wrap') {
-      const viewBtn = document.createElement('button');
-      viewBtn.type = 'button';
-      viewBtn.className = 'zzz1m5-cl-view-btn';
-      // Vrso 2026-09-01 (bod 1: "mala by sa tam zobrazovat aj entry number v pozadi") - ak ma attachment
-      // realne DB cislo (napr. buduci EL/Database attach), zobrazi sa jemne v pozadi bunky; draft CL (zatial
-      // bez DB cisla) ostava prazdna - rovnaky princip ako ostatne prazdne bunky.
-      if (item.entryNumber) {
-        const numSpan = document.createElement('span');
-        numSpan.className = 'zzz1m5-cl-view-btn-number';
-        numSpan.textContent = item.entryNumber;
-        viewBtn.appendChild(numSpan);
-      }
-      // Vrso 2026-09-01 (bod 6: "nahradi povodnu sedu needitovatelnu vypln priehladnou zlatou farbou...
-      // bez oznacenia VIEW") - ZIADNY textovy napis "VIEW"/"HIDE", vyzera ako bezna needitovatelna bunka
-      // (tvarom/rozmerom), len s priehladnym zlatym tonovanim. Funkcia (klik/3s podrzanie) ostava rovnaka,
-      // len bez viditelneho labelu - stav (otvorene/zatvorene) sa signalizuje LEN jemne cez aria-pressed + CSS.
-      if (alreadyShown) { viewBtn.classList.add('zzz1m5-cl-view-btn-active'); viewBtn.setAttribute('aria-pressed', 'true'); }
-      else { viewBtn.setAttribute('aria-pressed', 'false'); }
-      viewBtn.onclick = () => zzz6f17_context_attachment_toggle_view(item, viewBtn);
-      // Vrso 2026-09-01 (bod 3): 3s podrzanie na tomto istom tlacidle = DE-ATTACH (trvale odstranenie z
-      // pripnutych, nie len skrytie). Zdielana Zzz6-F27 long-press utilita (DRY).
-      zzz_bind_long_press(viewBtn, 3000, () => zzz6f17_context_attachment_remove(item.id));
-      wrapEl.appendChild(viewBtn);
+      // OPRAVA (Vrso 2026-09-11, "ten zvyrazneny zltou odstran a na volne miesto entry number, symetricky
+      // pod crm"): predchadzajuci 60px gold VIEW/HIDE button (siroksi nez jeho vlastny ~21px stlpec, preto
+      // vizualne PRETEKAL do susednych stlpcov aj po z-index oprave) je ODSTRANENY. ENTRY NUMBER teraz
+      // zobrazuje PLAIN needitovatelnu bunku (rovnaky vzhlad ako v hlavnej CRM - symetricke), s cislom ak uz
+      // existuje (ulozeny zaznam), inak prazdna. VIEW/DEATTACH funkcionalita uz aj tak nahradena novym MINI
+      // "ATTACH" buttonom v mini-wrap stlpci (toggle/checklist/2s-detach). | Vrso -> Claude AI | 2026-09-11 ===
+      const numberCell = document.createElement('div');
+      numberCell.className = 'entry-cell entry-cell-readonly';
+      if (item.entryNumber) numberCell.textContent = item.entryNumber;
+      wrapEl.appendChild(numberCell);
     } else if (ZZZ1M5_DOT_WRAPS[field.wrap]) {
       const dot = document.createElement('div');
       dot.className = ZZZ1M5_DOT_WRAPS[field.wrap];
@@ -7562,8 +7595,81 @@ function zzz6f17_build_attached_cl_grid_row(item) {
     rowEl.appendChild(wrapEl);
   });
 
+  // Aplikuj (per-attachment nezavisly) MINI stav HNED pri postaveni riadku - konzistentne s hlavnou CRM aj
+  // s PRESET klonmi, kde sa ulozeny checklist tiez aplikuje uz pri prvom vykresleni.
+  zzz1r37_apply_mini_visibility_for_clone(rowEl, item);
+
   return rowEl;
 }
+
+// UPDATE (Vrso 2026-09-10): Dvoj-prahova podrzanie utilita pre "mini attachment" (MINI button v KAZDOM
+// attachnutom riadku) - ZNOVUPOUZIVA rovnaku zdielanu per-entry MINI infrastrukturu ako PRESET klony
+// (zzz1r37_open_mini_for_entry / zzz1r37_reset_mini_for_entry / zzz1r37_apply_mini_visibility_for_clone), s
+// PRAZDNYM persistFn (attachmenty NEMAJU tab-perzistenciu - `item` je uz priama referencia v
+// zzz6f17Attachments poli, staci re-render). Mapovanie gest (odlisne od PRESET klonu!):
+// - Kratky klik = TOGGLE cela CL / restrikcia (nie attach - uz JE attachnuta).
+// - 0.5s = otvor vlastny checklist.
+// - 2s = DEATTACH (natrvalo odstran TENTO KONKRETNY attachment).
+function zzz6f17_bind_mini_for_attachment(btn, rowEl, item) {
+  const noopPersist = () => {};
+  let timerOpen = null, timer2s = null, openedByHold = false, suppressClick = false, actionFired = false;
+
+  function clearTimers() {
+    if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
+    if (timer2s) { clearTimeout(timer2s); timer2s = null; }
+  }
+
+  function start() {
+    openedByHold = false;
+    actionFired = false;
+    clearTimers();
+    timerOpen = setTimeout(() => {
+      actionFired = true;
+      if (zzz1r37MiniCurrentModalClose) {
+        zzz1r37_close_mini_modal_if_open();
+        openedByHold = false;
+      } else {
+        zzz1r37_open_mini_for_entry(rowEl, item, noopPersist);
+        openedByHold = true;
+      }
+      suppressClick = true;
+    }, 500);
+    timer2s = setTimeout(() => {
+      actionFired = true;
+      if (openedByHold) zzz1r37_close_mini_modal_if_open();
+      zzz6f17_context_attachment_remove(item.id);
+      suppressClick = true;
+    }, 2000);
+  }
+
+  function end() {
+    clearTimers();
+    if (!actionFired) {
+      // kratky klik (pustene pred 0.5s) -> TOGGLE cela CL / restrikcia (rovnaky "zaloha+zobraz vsetko/obnov"
+      // princip ako 2s na PRESET klone, len tu je to na KRATKOM kliku, kedze 2s uz je obsadene DEATTACH-om)
+      zzz1r37_reset_mini_for_entry(rowEl, item, noopPersist);
+    }
+  }
+
+  function cancel() { clearTimers(); }
+
+  btn.addEventListener('touchstart', start, { passive: true });
+  btn.addEventListener('touchend', end);
+  btn.addEventListener('touchmove', cancel);
+  btn.addEventListener('touchcancel', cancel);
+  btn.addEventListener('mousedown', start);
+  btn.addEventListener('mouseup', end);
+  btn.addEventListener('mouseleave', cancel);
+
+  document.addEventListener('click', (e) => {
+    if (suppressClick && (e.target === btn || btn.contains(e.target))) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      suppressClick = false;
+    }
+  }, true);
+}
+
 
 function zzz6f17_context_attachment_render() {
   const list = document.getElementById('versoAttachmentList');
@@ -9383,17 +9489,17 @@ function zzz6f48_save_hidden_wraps(hiddenWraps) {
 // Aplikuje aktualny checklist na OBA riadky M4 modulu naraz (M1 CL + M3 RL) - checklist JE priamo zdrojom
 // pravdy (ziadny samostatny aktivny/neaktivny prepinac). Vola sa pri nacitani stranky a po KAZDEJ zmene
 // checkboxu v okne (live, okamzite).
-// UPDATE (Vrso 2026-09-05, "treba zosuladit cl/el s hlavnym crm"): pridany aj #versoAttachmentList
-// (Zzz1-M5:ATTACHMENT-MODULE - attachnute CL/EL riadky POD hlavnym CRM) do rovnakeho query - predtym
-// attachnute riadky VZDY zobrazovali VSETKYCH 22 stlpcov bez ohladu na MINI stav hlavneho CRM, co ich vizualne
-// rozladilo (attachnuty riadok mal viac/menej stlpcov nez riadok nad nim). Teraz sa rovnaky MINI checklist
-// aplikuje AJ na attachnute riadky, takze zostavaju VZDY presne zarovnane so stlpcami hlavneho CRM nad nimi.
+// OPRAVA (Vrso 2026-09-10, "kazdy attachment... uz v nich bude mat mini button" + hlasenie "to nejako
+// blbne"): #versoAttachmentList je TERAZ ODSTRANENY z tohto query - kazdy attachment ma UZ SVOJ VLASTNY,
+// NEZAVISLY MINI stav (zzz1r37_apply_mini_visibility_for_clone, per attachment), takze vynucovanie
+// HLAVNEHO CRM checklistu na VSETKY attachmenty naraz (predchadzajuce spravanie) by ich vlastny stav
+// zakazdym PREPISALO/rozbilo presne to bolo "to nejako blbne" hlasenie.
 function zzz6f48_apply_mini_visibility() {
   const hiddenWraps = zzz6f48_get_hidden_wraps().filter(w => !ZZZ6F48_FIXED_WRAPS.includes(w));
   zzz6f48_get_crm_fields().forEach(field => {
     const isHidden = hiddenWraps.includes(field.wrap);
     document.querySelectorAll(
-      '#versoCLNumbersRow .' + field.wrap + ', #versoCRMLabelsRow .' + field.wrap + ', #versoAttachmentList .' + field.wrap
+      '#versoCLNumbersRow .' + field.wrap + ', #versoCRMLabelsRow .' + field.wrap
     ).forEach(el => {
       el.style.display = isHidden ? 'none' : '';
     });
@@ -9554,6 +9660,10 @@ function zzz6f48_open_mini_modal() {
 //   0.5s).
 // - 3s podrzanie = ODPOJ VSETKY pripnute command lines naraz (vycisti CELY zzz6f17Attachments zoznam, nie
 //   len tento jeden).
+// UPDATE (Vrso 2026-09-10, "2s podrzanim detach all... symetricky attachuj podla crm modulu"): 3s->2s
+// (zosuladenie casovania) a zzz6f17_context_attachment_add_cl teraz SEEDUJE novy attachment vlastnym
+// miniHidden = presna KOPIA aktualneho hlavneho CRM checklistu v momente pripnutia ("symetricky") - viz
+// zmena priamo v zzz6f17_context_attachment_add_cl.
 function zzz6f48_attach_main_cl() {
   zzz6f17_context_attachment_add_cl('zzz6f48-mini-main', null);
 }
@@ -9568,14 +9678,14 @@ function zzz6f48_detach_all_attachments() {
 
 function zzz6f48_bind_dual_press(el) {
   let timerOpen = null;
-  let timer3s = null;
+  let timer2s = null;
   let openedByHold = false;
   let actionFired = false;
   let suppressClick = false;
 
   function clearTimers() {
     if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
-    if (timer3s) { clearTimeout(timer3s); timer3s = null; }
+    if (timer2s) { clearTimeout(timer2s); timer2s = null; }
   }
 
   function start() {
@@ -9593,12 +9703,12 @@ function zzz6f48_bind_dual_press(el) {
       }
       suppressClick = true;
     }, 500);
-    timer3s = setTimeout(() => {
+    timer2s = setTimeout(() => {
       actionFired = true;
-      if (openedByHold) zzz6f48_close_mini_modal_if_open(); // 3s ma prednost pred 0.5s-otvorenym oknom
+      if (openedByHold) zzz6f48_close_mini_modal_if_open(); // 2s ma prednost pred 0.5s-otvorenym oknom
       zzz6f48_detach_all_attachments();
       suppressClick = true;
-    }, 3000);
+    }, 2000);
   }
 
   function end() {
@@ -9795,6 +9905,15 @@ function zzz1r37_build_editable_cl_row(entry) {
 // princip ako Zzz6-F48 (fixne polia vzdy viditelne, nedefinovane default odznacene, 1s=checklist/3s=reset),
 // ale stav sa uklada DO entry.miniHidden (nie do globalneho localStorage kluca) a aplikuje sa LEN v ramci
 // TOHTO JEDNEHO klonovaneho riadku (nie na cely dokument). | Vrso -> Claude AI | 2026-09-08 ===
+// UPDATE (Vrso 2026-09-10, "kazdy attachment... uz v nich bude mat mini button"): tieto funkcie boli PREDTYM
+// pevne zviazane s PRESET-tab perzistenciou (zzz1r37_save_tabs). TERAZ prijmaju VOLITELNY `persistFn`
+// parameter, aby sa DALI ZNOVUPOUZIT aj pre SKUTOCNE attachmenty (zzz6f17Attachments - jednoduche pole,
+// ziadna tab-perzistencia netreba, entry JE uz priama referencia v poli). Default (bez parametra) = povodne
+// spravanie pre PRESET tab entries.
+function zzz1r37_default_persist(entry) {
+  return () => zzz1r37_save_tabs(zzz1r37_get_tabs_with_entry_synced(entry));
+}
+
 function zzz1r37_get_entry_mini_hidden(entry) {
   if (Array.isArray(entry.miniHidden)) return entry.miniHidden;
   // default: vsetko nedefinovane odznacene/skryte (rovnaky princip ako hlavna MINI)
@@ -9817,7 +9936,8 @@ function zzz1r37_close_mini_modal_if_open() {
   if (zzz1r37MiniCurrentModalClose) { zzz1r37MiniCurrentModalClose(); zzz1r37MiniCurrentModalClose = null; }
 }
 
-function zzz1r37_open_mini_for_entry(rowEl, entry) {
+function zzz1r37_open_mini_for_entry(rowEl, entry, persistFn) {
+  persistFn = persistFn || zzz1r37_default_persist(entry);
   zzz1r37_close_mini_modal_if_open();
   const { box, removeBox } = zzz6f41_create_context_window(); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] dokovane pod CL
 
@@ -9837,8 +9957,8 @@ function zzz1r37_open_mini_for_entry(rowEl, entry) {
       const hidden = new Set(zzz1r37_get_entry_mini_hidden(entry));
       if (checkbox.checked) hidden.delete(field.wrap); else hidden.add(field.wrap);
       entry.miniHidden = Array.from(hidden);
-      delete entry._miniBackup; // manualna zmena = nova definicia, stara 3s-zaloha uz neplati
-      zzz1r37_save_tabs(zzz1r37_get_tabs_with_entry_synced(entry));
+      delete entry._miniBackup; // manualna zmena = nova definicia, stara zaloha uz neplati
+      persistFn();
       zzz1r37_apply_mini_visibility_for_clone(rowEl, entry);
     });
 
@@ -9870,17 +9990,10 @@ function zzz1r37_open_mini_for_entry(rowEl, entry) {
   zzz6f41_bind_outside_click(box, closeModal);
 }
 
-// 3s podrzanie na klonovanom MINI - TOGGLE RESET/OBNOV, rovnaky princip ako hlavna Zzz6-F48 (zaloha + zobraz
-// Odpojí (odstráni) VSETKY attachnute kopie, ktore povodne prisli z danej PRESET CL (podla sourceEntryId) -
-// pouziva 3s "detach" gesto na MINI buttone kazdeho klonu.
-// UPDATE (Vrso 2026-09-08, "nefunguju priradene funkcie mini buttonu, mali by byt rovnake ako uz zapracovane
-// na mini"): MINI v klone TERAZ PRESNE ZRKADLI hlavny Zzz6-F48 (rovnaky dvoj-prahovy vzor): 1s = TOGGLE
-// otvor/zavri VLASTNY checklist (rovnaky princip ako hlavny - ak je uz otvoreny, 1s ho zavrie namiesto
-// otvorenia noveho); 3s = TOGGLE RESET/OBNOV (zaloha + zobraz vsetko / obnov zo zalohy), presne ako hlavny
-// zzz6f48_reset_all, len PER-ENTRY (entry._miniBackup namiesto globalneho localStorage kluca). Kratky klik
-// zatial bez akcie (rovnako ako hlavny MINI - "zatial nic"). Priame ATTACH/DETACH cez tento button je
-// ODSTRANENE - o to sa uz stara tab-level checkbox + kratky klik na fyzickom PRESET buttone.
-function zzz1r37_reset_mini_for_entry(rowEl, entry) {
+// TOGGLE RESET/OBNOV - zaloha + zobraz vsetko / obnov zo zalohy, presne ako hlavny zzz6f48_reset_all, len
+// PER-ENTRY (entry._miniBackup) a s volitelnym persistFn (viz komentar vyssie).
+function zzz1r37_reset_mini_for_entry(rowEl, entry, persistFn) {
+  persistFn = persistFn || zzz1r37_default_persist(entry);
   if (Array.isArray(entry._miniBackup)) {
     entry.miniHidden = entry._miniBackup;
     delete entry._miniBackup;
@@ -9890,28 +10003,26 @@ function zzz1r37_reset_mini_for_entry(rowEl, entry) {
     entry.miniHidden = [];
     zzz6f2_show_toast('Cela Command Line zobrazena');
   }
-  zzz1r37_save_tabs(zzz1r37_get_tabs_with_entry_synced(entry));
+  persistFn();
   zzz1r37_apply_mini_visibility_for_clone(rowEl, entry);
 }
 
-// Dvoj-prahova podrzanie utilita per klon - rovnaky vzor ako zzz6f48_bind_dual_press (hlavny MINI), len
-// smerovany na per-entry funkcie (zzz1r37_open_mini_for_entry / zzz1r37_reset_mini_for_entry).
-// Dvoj-prahova podrzanie utilita per klon - rovnaky vzor ako zzz6f48_bind_dual_press (hlavny MINI: 1s=
-// toggle otvor/zavri checklist, 3s=toggle reset/obnov), DOPLNENE o kratky klik (Vrso 2026-09-09: "mini
-// button - stlacenim attach cl") - kratky klik (pustenie PRED 1s) teraz PRIPNE TENTO konkretny riadok pod CRM.
+// Dvoj-prahova podrzanie utilita per PRESET-tab klon: kratky klik = pripni TENTO riadok pod CRM; 0.5s = TOGGLE
+// otvor/zavri vlastny checklist; 2s = TOGGLE RESET/OBNOV. (Zosuladene casovanie 0.5s/2s naprieč celym
+// systemom - Vrso 2026-09-10: "skontroluj a z predoslych verzii dopln vsetky funkcie".)
 function zzz1r37_bind_mini_for_clone(btn, rowEl, entry) {
-  let timer1s = null, timer3s = null, openedByHold = false, suppressClick = false, actionFired = false;
+  let timerOpen = null, timer2s = null, openedByHold = false, suppressClick = false, actionFired = false;
 
   function clearTimers() {
-    if (timer1s) { clearTimeout(timer1s); timer1s = null; }
-    if (timer3s) { clearTimeout(timer3s); timer3s = null; }
+    if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
+    if (timer2s) { clearTimeout(timer2s); timer2s = null; }
   }
 
   function start() {
     openedByHold = false;
     actionFired = false;
     clearTimers();
-    timer1s = setTimeout(() => {
+    timerOpen = setTimeout(() => {
       actionFired = true;
       if (zzz1r37MiniCurrentModalClose) {
         zzz1r37_close_mini_modal_if_open();
@@ -9921,19 +10032,19 @@ function zzz1r37_bind_mini_for_clone(btn, rowEl, entry) {
         openedByHold = true;
       }
       suppressClick = true;
-    }, 1000);
-    timer3s = setTimeout(() => {
+    }, 500);
+    timer2s = setTimeout(() => {
       actionFired = true;
       if (openedByHold) zzz1r37_close_mini_modal_if_open();
       zzz1r37_reset_mini_for_entry(rowEl, entry);
       suppressClick = true;
-    }, 3000);
+    }, 2000);
   }
 
   function end() {
     clearTimers();
     if (!actionFired) {
-      // kratky klik (pustene pred 1s) -> pripni TENTO konkretny riadok pod CRM
+      // kratky klik (pustene pred 0.5s) -> pripni TENTO konkretny riadok pod CRM
       zzz1r37_attach_entry(entry);
       zzz6f17_context_attachment_render();
       zzz6f2_show_toast('CL pripnuta pod CRM.');
@@ -10209,6 +10320,10 @@ function zzz1r37_attach_entry(entry) {
     label: `PRESET${zzz6f17AttachClCounter}`,
     fields: { ...entry.fields },
     sourceEntryId: entry.id,
+    // "symetricky" seed (rovnaky princip ako pri hlavnom MINI, viz zzz6f17_context_attachment_add_cl) - novy
+    // attachment preberie presnu kopiu toho, co bolo prave viditelne/skryte v TEJTO KONKRETNEJ PRESET CL v
+    // momente pripnutia (nie hlavny CRM checklist, ked pochadza z PRESET tabu).
+    miniHidden: zzz1r37_get_entry_mini_hidden(entry).slice(),
   });
 }
 
@@ -10216,52 +10331,50 @@ function zzz1r37_attach_entry(entry) {
   const btn = document.getElementById('zzz1m3PresetButton');
   if (!btn) return;
 
-  // PIATY PREROB (Vrso 2026-09-09): kratky klik = ukaz CELU hlavnu Zzz1-M1 CL (definovane AJ nedefinovane
-  // stlpce) - vola zdielanu Zzz6-F48 reset funkciu na hlavnom CRM MINI buttone; 1s = OTVOR PRESET okno
-  // (nezmenene, "ako je" - Vrso vyslovne ziadal nemenit toto, aby sa nebilo s 3s funkciou); 3s = pripni
-  // VSETKY CL z OZNACENYCH tabov (checkbox na urovni tabu) - predtym to bolo na kratkom kliku, TERAZ na 3s
-  // (presny opak predchadzajuceho mapovania). Rovnaky princip touch-action:none + akcia na touchend/mouseup
-  // (nie nativny 'click'), aby fungovalo spolahlivo aj na mobile.
-  let timer1s = null;
-  let timer3s = null;
-  let fired1s = false;
-  let fired3s = false;
+  // SIESTY PREROB (Vrso 2026-09-10, "0.5s podrz preset okno... podrz 2s tak attachuj vsetky cl"): rovnaka
+  // logika ako predtym, len CASOVANIE zosuladene na 0.5s/2s naprieč celym systemom (predtym 1s/3s):
+  // kratky klik = ukaz CELU hlavnu Zzz1-M1 CL (definovane AJ nedefinovane); 0.5s = OTVOR PRESET okno; 2s =
+  // pripni VSETKY CL z OZNACENYCH tabov.
+  let timerOpen = null;
+  let timer2s = null;
+  let firedOpen = false;
+  let fired2s = false;
   let pressStart = 0;
 
   function clearTimers() {
-    if (timer1s) { clearTimeout(timer1s); timer1s = null; }
-    if (timer3s) { clearTimeout(timer3s); timer3s = null; }
+    if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
+    if (timer2s) { clearTimeout(timer2s); timer2s = null; }
   }
 
   function start() {
-    fired1s = false;
-    fired3s = false;
+    firedOpen = false;
+    fired2s = false;
     pressStart = Date.now();
     clearTimers();
-    // 1s timer LEN OZNACI fired1s=true, akciu ("otvor okno") vykonava az end() pri PUSTENI - inak by 3s+
-    // drzanie spustilo aj 1s akciu navyse (poucenie z predchadzajuceho buga).
-    timer1s = setTimeout(() => { fired1s = true; }, 1000);
-    timer3s = setTimeout(() => {
-      fired3s = true;
-      // 3s -> pripni vsetky CL z oznacenych tabov
+    // 0.5s timer LEN OZNACI firedOpen=true, akciu ("otvor okno") vykonava az end() pri PUSTENI - inak by 2s+
+    // drzanie spustilo aj 0.5s akciu navyse (poucenie z predchadzajuceho buga).
+    timerOpen = setTimeout(() => { firedOpen = true; }, 500);
+    timer2s = setTimeout(() => {
+      fired2s = true;
+      // 2s -> pripni vsetky CL z oznacenych tabov
       const entries = zzz1r37_get_entries_from_checked_tabs();
       if (entries.length === 0) { zzz6f2_show_toast('Ziadny oznaceny tab s CL na pripnutie.'); return; }
       entries.forEach(entry => zzz1r37_attach_entry(entry));
       zzz6f17_context_attachment_render();
       zzz6f2_show_toast(`Pripnutych ${entries.length} CL pod CRM.`);
-    }, 3000);
+    }, 2000);
   }
 
   function end() {
     clearTimers();
-    if (fired3s) return; // 3s uz vykonalo svoju akciu - nic dalej netreba
-    if (fired1s) {
-      // pustene medzi 1s-3s -> teraz (na pustenie) otvor PRESET okno
+    if (fired2s) return; // 2s uz vykonalo svoju akciu - nic dalej netreba
+    if (firedOpen) {
+      // pustene medzi 0.5s-2s -> teraz (na pustenie) otvor PRESET okno
       zzz1r37_open_preset_modal();
       return;
     }
     const elapsed = Date.now() - pressStart;
-    if (elapsed < 1000) {
+    if (elapsed < 500) {
       // kratky klik -> ukaz celu hlavnu CL (definovane aj nedefinovane)
       zzz6f48_reset_all();
     }
