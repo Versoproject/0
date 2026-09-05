@@ -9863,8 +9863,11 @@ function zzz1r37_reset_mini_for_entry(rowEl, entry) {
 
 // Dvoj-prahova podrzanie utilita per klon - rovnaky vzor ako zzz6f48_bind_dual_press (hlavny MINI), len
 // smerovany na per-entry funkcie (zzz1r37_open_mini_for_entry / zzz1r37_reset_mini_for_entry).
+// Dvoj-prahova podrzanie utilita per klon - rovnaky vzor ako zzz6f48_bind_dual_press (hlavny MINI: 1s=
+// toggle otvor/zavri checklist, 3s=toggle reset/obnov), DOPLNENE o kratky klik (Vrso 2026-09-09: "mini
+// button - stlacenim attach cl") - kratky klik (pustenie PRED 1s) teraz PRIPNE TENTO konkretny riadok pod CRM.
 function zzz1r37_bind_mini_for_clone(btn, rowEl, entry) {
-  let timer1s = null, timer3s = null, openedByHold = false, suppressClick = false;
+  let timer1s = null, timer3s = null, openedByHold = false, suppressClick = false, actionFired = false;
 
   function clearTimers() {
     if (timer1s) { clearTimeout(timer1s); timer1s = null; }
@@ -9873,8 +9876,10 @@ function zzz1r37_bind_mini_for_clone(btn, rowEl, entry) {
 
   function start() {
     openedByHold = false;
+    actionFired = false;
     clearTimers();
     timer1s = setTimeout(() => {
+      actionFired = true;
       if (zzz1r37MiniCurrentModalClose) {
         zzz1r37_close_mini_modal_if_open();
         openedByHold = false;
@@ -9885,20 +9890,31 @@ function zzz1r37_bind_mini_for_clone(btn, rowEl, entry) {
       suppressClick = true;
     }, 1000);
     timer3s = setTimeout(() => {
+      actionFired = true;
       if (openedByHold) zzz1r37_close_mini_modal_if_open();
       zzz1r37_reset_mini_for_entry(rowEl, entry);
       suppressClick = true;
     }, 3000);
   }
 
-  function cancel() { clearTimers(); }
+  function end() {
+    clearTimers();
+    if (!actionFired) {
+      // kratky klik (pustene pred 1s) -> pripni TENTO konkretny riadok pod CRM
+      zzz1r37_attach_entry(entry);
+      zzz6f17_context_attachment_render();
+      zzz6f2_show_toast('CL pripnuta pod CRM.');
+    }
+  }
+
+  function cancel() { clearTimers(); } // prerusenie gesta (odtiahnutie prsta a pod.) - ZIADNA akcia
 
   btn.addEventListener('touchstart', start, { passive: true });
-  btn.addEventListener('touchend', cancel);
+  btn.addEventListener('touchend', end);
   btn.addEventListener('touchmove', cancel);
   btn.addEventListener('touchcancel', cancel);
   btn.addEventListener('mousedown', start);
-  btn.addEventListener('mouseup', cancel);
+  btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
 
   document.addEventListener('click', (e) => {
