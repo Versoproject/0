@@ -9544,35 +9544,69 @@ function zzz6f48_open_mini_modal() {
 // RESET/OBNOV (ma prednost pred 1s, ak sa drzi dalej). Kratky klik (< 1s) = ziadna akcia (SPECIAL/INTERIM).
 // Rovnaky suppression-click princip ako Zzz6-F27 (capture-phase listener na document, stopImmediatePropagation),
 // aby sa po podrzani nespustil aj obycajny klik.
+// UPDATE (Vrso 2026-09-10, "mini button - stlacenim attachuj hlavnu 1-m1 cl, drzanim 0.5s mini okno, drzanim
+// 3s deattach all attached command lines"): kompletny prerob gest hlavneho MINI (Zzz6-F48):
+// - Kratky klik (pustenie PRED 0.5s) = pripni HLAVNU CL pod CRM (ZNOVUPOUZIVA existujucu
+//   zzz6f17_context_attachment_add_cl s pevnym fieldId 'zzz6f48-mini-main' - PRVY klik VYTVORI attachment,
+//   KAZDY dalsi klik uz LEN OSVIEZI/aktualizuje TEN ISTY attachment na najnovsi stav CL, nevytvara duplicity -
+//   presne "po prvom attachmente uz len zobrazi/aktualizuje celu attachnutu CL").
+// - 0.5s podrzanie = TOGGLE otvor/zavri MINI checklist (rovnaky princip ako predtym, LEN skratene z 1s na
+//   0.5s).
+// - 3s podrzanie = ODPOJ VSETKY pripnute command lines naraz (vycisti CELY zzz6f17Attachments zoznam, nie
+//   len tento jeden).
+function zzz6f48_attach_main_cl() {
+  zzz6f17_context_attachment_add_cl('zzz6f48-mini-main', null);
+}
+
+function zzz6f48_detach_all_attachments() {
+  const count = zzz6f17Attachments.length;
+  if (count === 0) { zzz6f2_show_toast('Ziadne pripnute command lines na odpojenie.'); return; }
+  zzz6f17Attachments = [];
+  zzz6f17_context_attachment_render();
+  zzz6f2_show_toast(`Odpojenych vsetkych ${count} pripnutych CL.`);
+}
+
 function zzz6f48_bind_dual_press(el) {
-  let timer1s = null;
+  let timerOpen = null;
   let timer3s = null;
   let openedByHold = false;
+  let actionFired = false;
   let suppressClick = false;
 
   function clearTimers() {
-    if (timer1s) { clearTimeout(timer1s); timer1s = null; }
+    if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
     if (timer3s) { clearTimeout(timer3s); timer3s = null; }
   }
 
   function start() {
     openedByHold = false;
+    actionFired = false;
     clearTimers();
-    timer1s = setTimeout(() => {
+    timerOpen = setTimeout(() => {
+      actionFired = true;
       if (zzz6f48CurrentModalClose) {
-        zzz6f48_close_mini_modal_if_open(); // okno uz otvorene -> 1s ho TOGGLE-om zavrie
+        zzz6f48_close_mini_modal_if_open(); // okno uz otvorene -> 0.5s ho TOGGLE-om zavrie
         openedByHold = false;
       } else {
         zzz6f48_open_mini_modal();
         openedByHold = true;
       }
       suppressClick = true;
-    }, 1000);
+    }, 500);
     timer3s = setTimeout(() => {
-      if (openedByHold) zzz6f48_close_mini_modal_if_open(); // 3s ma prednost pred 1s-otvorenym oknom
-      zzz6f48_reset_all();
+      actionFired = true;
+      if (openedByHold) zzz6f48_close_mini_modal_if_open(); // 3s ma prednost pred 0.5s-otvorenym oknom
+      zzz6f48_detach_all_attachments();
       suppressClick = true;
     }, 3000);
+  }
+
+  function end() {
+    clearTimers();
+    if (!actionFired) {
+      // kratky klik (pustene pred 0.5s) -> pripni hlavnu CL pod CRM
+      zzz6f48_attach_main_cl();
+    }
   }
 
   function cancel() {
@@ -9580,11 +9614,11 @@ function zzz6f48_bind_dual_press(el) {
   }
 
   el.addEventListener('touchstart', start, { passive: true });
-  el.addEventListener('touchend', cancel);
+  el.addEventListener('touchend', end);
   el.addEventListener('touchmove', cancel);
   el.addEventListener('touchcancel', cancel);
   el.addEventListener('mousedown', start);
-  el.addEventListener('mouseup', cancel);
+  el.addEventListener('mouseup', end);
   el.addEventListener('mouseleave', cancel);
 
   document.addEventListener('click', (e) => {
@@ -9600,7 +9634,6 @@ function zzz6f48_bind_dual_press(el) {
   const btn = document.getElementById('zzz6f48MiniButton');
   if (!btn) return;
   zzz6f48_bind_dual_press(btn);
-  // kratky klik zatial bez akcie (Vrso 2026-09-03: "zatial nic ale neskor zapracujeme cosi") - ZIADNY listener
   zzz6f48_apply_mini_visibility(); // aplikuje ulozeny checklist hned pri nacitani
 })();
 // === [/Zzz6-F48:MINI-CL] ===
