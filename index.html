@@ -7595,23 +7595,23 @@ function zzz6f17_build_attached_cl_grid_row(item) {
     rowEl.appendChild(wrapEl);
   });
 
-  // Aplikuj (per-attachment nezavisly) MINI stav HNED pri postaveni riadku - konzistentne s hlavnou CRM aj
-  // s PRESET klonmi, kde sa ulozeny checklist tiez aplikuje uz pri prvom vykresleni.
-  zzz1r37_apply_mini_visibility_for_clone(rowEl, item);
+  // OPRAVA (Vrso 2026-09-11): per-attachment nezavisly MINI stav ODSTRANENY (bol OMYL) - viditelnost sa
+  // TERAZ aplikuje JEDNOTNE cez zzz6f48_apply_mini_visibility() na konci zzz6f17_context_attachment_render(),
+  // rovnako pre hlavny CRM aj vsetky attachmenty naraz (JEDNA zdielana pravda).
 
   return rowEl;
 }
 
-// UPDATE (Vrso 2026-09-10): Dvoj-prahova podrzanie utilita pre "mini attachment" (MINI button v KAZDOM
-// attachnutom riadku) - ZNOVUPOUZIVA rovnaku zdielanu per-entry MINI infrastrukturu ako PRESET klony
-// (zzz1r37_open_mini_for_entry / zzz1r37_reset_mini_for_entry / zzz1r37_apply_mini_visibility_for_clone), s
-// PRAZDNYM persistFn (attachmenty NEMAJU tab-perzistenciu - `item` je uz priama referencia v
-// zzz6f17Attachments poli, staci re-render). Mapovanie gest (odlisne od PRESET klonu!):
-// - Kratky klik = TOGGLE cela CL / restrikcia (nie attach - uz JE attachnuta).
-// - 0.5s = otvor vlastny checklist.
-// - 2s = DEATTACH (natrvalo odstran TENTO KONKRETNY attachment).
+// FINALNE PRAVIDLO (Vrso 2026-09-11, "vsetky preset, mini, attach button... ak sa pouzije filtracia,
+// synchronizuj vsetky el/cl a samozrejme aj s hlavnou crm!!!"): predchadzajuci pokus s NEZAVISLYM per-
+// attachment stavom (zzz1r37_open_mini_for_entry/zzz1r37_reset_mini_for_entry, "synchronizuj len medzi
+// attachmentmi") bol OMYL. ATTACH button na kazdom pripnutom riadku TERAZ PRIAMO VOLA TIE ISTE ZDIELANE
+// GLOBALNE Zzz6-F48 funkcie ako hlavny MINI aj fyzicky PRESET button - JEDNA spolocna pravda pre VSETKY tri:
+// - Kratky klik = zzz6f48_reset_all() (presne ta ista TOGGLE funkcia ako na PRESET/MINI).
+// - 0.5s = zzz6f48_open_mini_modal() (ten ISTY zdielany checklist, nie samostatny per-entry).
+// - 2s = DEATTACH (natrvalo odstran TENTO KONKRETNY attachment) - JEDINA vec, co ostava per-attachment
+//   specificka (davat zmysel len pre tento jeden riadok).
 function zzz6f17_bind_mini_for_attachment(btn, rowEl, item) {
-  const noopPersist = () => {};
   let timerOpen = null, timer2s = null, openedByHold = false, suppressClick = false, actionFired = false;
 
   function clearTimers() {
@@ -7625,18 +7625,18 @@ function zzz6f17_bind_mini_for_attachment(btn, rowEl, item) {
     clearTimers();
     timerOpen = setTimeout(() => {
       actionFired = true;
-      if (zzz1r37MiniCurrentModalClose) {
-        zzz1r37_close_mini_modal_if_open();
+      if (zzz6f48CurrentModalClose) {
+        zzz6f48_close_mini_modal_if_open();
         openedByHold = false;
       } else {
-        zzz1r37_open_mini_for_entry(rowEl, item, noopPersist);
+        zzz6f48_open_mini_modal();
         openedByHold = true;
       }
       suppressClick = true;
     }, 500);
     timer2s = setTimeout(() => {
       actionFired = true;
-      if (openedByHold) zzz1r37_close_mini_modal_if_open();
+      if (openedByHold) zzz6f48_close_mini_modal_if_open();
       zzz6f17_context_attachment_remove(item.id);
       suppressClick = true;
     }, 2000);
@@ -7645,9 +7645,8 @@ function zzz6f17_bind_mini_for_attachment(btn, rowEl, item) {
   function end() {
     clearTimers();
     if (!actionFired) {
-      // kratky klik (pustene pred 0.5s) -> TOGGLE cela CL / restrikcia (rovnaky "zaloha+zobraz vsetko/obnov"
-      // princip ako 2s na PRESET klone, len tu je to na KRATKOM kliku, kedze 2s uz je obsadene DEATTACH-om)
-      zzz1r37_reset_mini_for_entry(rowEl, item, noopPersist);
+      // kratky klik (pustene pred 0.5s) -> rovnaka zdielana TOGGLE funkcia ako PRESET/MINI
+      zzz6f48_reset_all();
     }
   }
 
@@ -9486,26 +9485,30 @@ function zzz6f48_save_hidden_wraps(hiddenWraps) {
   }
 }
 
-// Aplikuje aktualny checklist na OBA riadky M4 modulu naraz (M1 CL + M3 RL) - checklist JE priamo zdrojom
-// pravdy (ziadny samostatny aktivny/neaktivny prepinac). Vola sa pri nacitani stranky a po KAZDEJ zmene
-// checkboxu v okne (live, okamzite).
-// OPRAVA (Vrso 2026-09-10, "kazdy attachment... uz v nich bude mat mini button" + hlasenie "to nejako
-// blbne"): #versoAttachmentList je TERAZ ODSTRANENY z tohto query - kazdy attachment ma UZ SVOJ VLASTNY,
-// NEZAVISLY MINI stav (zzz1r37_apply_mini_visibility_for_clone, per attachment), takze vynucovanie
-// HLAVNEHO CRM checklistu na VSETKY attachmenty naraz (predchadzajuce spravanie) by ich vlastny stav
-// zakazdym PREPISALO/rozbilo presne to bolo "to nejako blbne" hlasenie.
+// Aplikuje aktualny checklist na CELY M4 modul NARAZ (M1 CL + M3 RL) AJ na VSETKY pripnute CL/EL
+// (#versoAttachmentList) - checklist JE priamo zdrojom pravdy (ziadny samostatny aktivny/neaktivny
+// prepinac). Vola sa pri nacitani stranky a po KAZDEJ zmene checkboxu v okne (live, okamzite).
+// FINALNE PRAVIDLO (Vrso 2026-09-11, "vsetky preset, mini, attach button... ak sa pouzije filtracia pri
+// hociktorom z tychto buttonov, synchronizuj vsetky el/cl a samozrejme aj s hlavnou crm!!!"): JEDNA
+// ZDIELANA PRAVDA pre VSETKY tri - hlavny CRM (MINI/PRESET) aj VSETKY attachmenty (ATTACH button na kazdom
+// z nich) citaju/zapisuju TEN ISTY globalny checklist (zzz6f48_get_hidden_wraps/zzz6f48_save_hidden_wraps).
+// Predchadzajuci pokus s NEZAVISLYM per-attachment stavom (2026-09-10) bol OMYL - zrusene.
 function zzz6f48_apply_mini_visibility() {
   const hiddenWraps = zzz6f48_get_hidden_wraps().filter(w => !ZZZ6F48_FIXED_WRAPS.includes(w));
   zzz6f48_get_crm_fields().forEach(field => {
     const isHidden = hiddenWraps.includes(field.wrap);
     document.querySelectorAll(
-      '#versoCLNumbersRow .' + field.wrap + ', #versoCRMLabelsRow .' + field.wrap
+      '#versoCLNumbersRow .' + field.wrap + ', #versoCRMLabelsRow .' + field.wrap + ', #versoAttachmentList .' + field.wrap
     ).forEach(el => {
       el.style.display = isHidden ? 'none' : '';
     });
   });
   const btn = document.getElementById('zzz6f48MiniButton');
   if (btn) btn.classList.toggle('zzz6f48-active', hiddenWraps.length > 0);
+  // vsetky ATTACH buttony (jeden per attachment) zdielaju TU ISTU zlatu "aktivny" indikaciu ako hlavny MINI
+  document.querySelectorAll('#versoAttachmentList .zzz6f48-mini-button').forEach(b => {
+    b.classList.toggle('zzz6f48-active', hiddenWraps.length > 0);
+  });
 }
 
 // 3s podrzanie - TOGGLE RESET/OBNOV: prvy 3s stlacenim zaloha aktualny checklist a zobrazi celu CL naspat
