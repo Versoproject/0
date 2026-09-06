@@ -9526,7 +9526,17 @@ function zzz6f48_apply_mini_visibility() {
   document.querySelectorAll('#versoAttachmentList .zzz6f48-mini-button').forEach(b => {
     b.classList.toggle('zzz6f48-active', hiddenWraps.length > 0);
   });
+  // OPRAVA (Vrso 2026-09-13, "este lepsie synchronizuj v kontext okne vsetky cl s crm"): ak je PRESET okno
+  // prave otvorene, vsetky jeho CL riadky (T1*/T2* taby) sa TIEZ okamzite zosynchronizuju s tou istou
+  // globalnou pravdou - AJ ich ATTACH buttony zdielaju rovnaku zlatu "aktivny" indikaciu.
+  document.querySelectorAll('.zzz1r37-preset-box .zzz1m5-cl-row').forEach(row => {
+    zzz1r37_apply_global_mini_visibility_to_row(row);
+  });
+  document.querySelectorAll('.zzz1r37-preset-box .zzz6f48-mini-button').forEach(b => {
+    b.classList.toggle('zzz6f48-active', hiddenWraps.length > 0);
+  });
 }
+
 
 // 3s podrzanie - TOGGLE RESET/OBNOV: prvy 3s stlacenim zaloha aktualny checklist a zobrazi celu CL naspat
 // ("opatovnym stlacenim zobraz celu command line"). DRUHYM 3s stlacenim (Vrso 2026-09-05, "nech sa zase vrati
@@ -9921,11 +9931,25 @@ function zzz1r37_build_editable_cl_row(entry) {
     }
   });
 
-  // Aplikuj ulozeny per-entry MINI stav HNED (aj bez interakcie) - konzistentne s hlavnou CRM, kde sa ulozeny
-  // checklist tiez aplikuje uz pri nacitani.
-  zzz1r37_apply_mini_visibility_for_clone(rowEl, entry);
+  // OPRAVA (Vrso 2026-09-13, "este lepsie synchronizuj v kontext okne vsetky cl s crm"): namiesto
+  // per-entry MINI stavu sa TERAZ aplikuje TEN ISTY globalny CRM checklist (zzz6f48_get_hidden_wraps) - PRESET
+  // CL riadky su odteraz VZDY vizualne zosynchronizovane s hlavnou CRM (aj MINI aj ATTACH na attachmentoch).
+  zzz1r37_apply_global_mini_visibility_to_row(rowEl);
 
   return rowEl;
+}
+
+// Aplikuje AKTUALNY globalny CRM checklist (zzz6f48_get_hidden_wraps) na JEDEN konkretny riadok (PRESET
+// klon) - pouziva sa pri postaveni riadku AJ znovu vola sa cez zzz6f48_apply_mini_visibility() (viz tam),
+// aby PRESET CL ostali VZDY zosynchronizovane s hlavnou CRM aj po zmene checklistu odkialkolvek (MINI/PRESET/
+// ATTACH na attachmentoch).
+function zzz1r37_apply_global_mini_visibility_to_row(rowEl) {
+  const hiddenWraps = zzz6f48_get_hidden_wraps().filter(w => !ZZZ6F48_FIXED_WRAPS.includes(w));
+  ZZZ_FULL_DISPLAY_FIELDS.forEach(field => {
+    if (ZZZ6F48_FIXED_WRAPS.includes(field.wrap)) return;
+    const el = rowEl.querySelector(':scope > .' + field.wrap);
+    if (el) el.style.display = hiddenWraps.includes(field.wrap) ? 'none' : '';
+  });
 }
 
 // === [Zzz1-R37:CLONE-MINI] Per-entry MINI (Vrso 2026-09-08) - samostatny, PER-KLON checklist. Rovnaky
@@ -10051,19 +10075,27 @@ function zzz1r37_bind_mini_for_clone(btn, rowEl, entry) {
     clearTimers();
     timerOpen = setTimeout(() => {
       actionFired = true;
-      if (zzz1r37MiniCurrentModalClose) {
-        zzz1r37_close_mini_modal_if_open();
+      // UPDATE (Vrso 2026-09-13, "este lepsie synchronizuj v kontext okne vsetky cl s crm"): 0.5s TERAZ
+      // otvara TEN ISTY zdielany globalny checklist (zzz6f48_open_mini_modal) ako MINI/PRESET/ATTACH na
+      // realnych attachmentoch - nie samostatny per-entry checklist. Jedna zdielana pravda pre vsetko.
+      if (zzz6f48CurrentModalClose) {
+        zzz6f48_close_mini_modal_if_open();
         openedByHold = false;
       } else {
-        zzz1r37_open_mini_for_entry(rowEl, entry);
+        zzz6f48_open_mini_modal();
         openedByHold = true;
       }
       suppressClick = true;
     }, 500);
     timer2s = setTimeout(() => {
       actionFired = true;
-      if (openedByHold) zzz1r37_close_mini_modal_if_open();
-      zzz1r37_reset_mini_for_entry(rowEl, entry);
+      // OPRAVA (Vrso 2026-09-13, "attach button v kontext okne... 2-3s tak ho odstran iba! Z kontextoveho
+      // okna pod danym tabom"): 2s UZ NIE JE reset stlpcov - odstrani TUTO KONKRETNU CL Z JEJ TABU (natrvalo,
+      // len v ramci PRESET okna - NEDOTYKA sa nicoho, co uz je pripnute pod CRM cez #versoAttachmentList).
+      if (openedByHold) zzz6f48_close_mini_modal_if_open();
+      zzz1r37_remove_entry_from_tabs(entry.id);
+      zzz6f2_show_toast('CL odstranena z tabu.');
+      zzz1r37_open_preset_modal(); // refresh - zavrie a znovu otvori PRESET okno s aktualnym (ulozenym) stavom
       suppressClick = true;
     }, 2000);
   }
@@ -10095,6 +10127,22 @@ function zzz1r37_bind_mini_for_clone(btn, rowEl, entry) {
       suppressClick = false;
     }
   }, true);
+}
+
+// Odstrani danu entry (podla id) zo VSETKYCH PRESET tabov (obe skupiny) - pouziva 2s "odstran z tabu" gesto
+// na ATTACH buttone v PRESET kontextovom okne.
+function zzz1r37_remove_entry_from_tabs(entryId) {
+  const d = zzz1r37_get_tabs();
+  let found = false;
+  ['workspaces', 'userTemplates'].forEach(group => {
+    (d[group] || []).forEach(tab => {
+      const before = tab.entries.length;
+      tab.entries = tab.entries.filter(e => e.id !== entryId);
+      if (tab.entries.length !== before) found = true;
+    });
+  });
+  if (found) zzz1r37_save_tabs(d);
+  return found;
 }
 
 
