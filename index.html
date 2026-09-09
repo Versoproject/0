@@ -2481,6 +2481,17 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   }
   /* [COMPACT-TABS] Vrso: "zmensi tabs podla dalsiej foto ako ma preset oknom" - velkost/padding zosuladene
      s vyzorom PRESET pilulkoveho zoznamu (kompaktnejsie nez predtym, ale stale citatelne). */
+  /* [NO-NATIVE-SELECT] OPRAVA (Vrso 2026-09-01, "ukazuje vyznacenie tabu a nie podrzanim edit nazvu" -
+     bug: bez tohto prehliadac na dlhe podrzanie spusti VLASTNU nativnu selekciu textu + Kopirovat/Prelozit
+     bublinu namiesto nasho dlhy-stlak handleru (zzz_bind_long_press, viz JS cast). user-select:none +
+     -webkit-touch-callout:none potlaca nativny text-selection popup, touch-action:none potlaca
+     dvojity-tap-zoom aj scroll-hijacking pocas drzania. */
+  .zzz5t0-tab, .zzz5t0-tab-x, .zzz5t0-tab-add {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: none;
+  }
   .zzz5t0-tab {
     display: inline-flex;
     align-items: center;
@@ -2556,6 +2567,38 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz5t0-add-template-bar:hover {
     color: #D4AF37;
     border-color: #D4AF37;
+  }
+  /* [TAB-WINDOW] Vrso: "dopis do 'tab window' a kludne tak si ho aj oznac moznost vymazat dany tab" -
+     maly popup s 2 jasne oznacenymi volbami (PREMENOVAT TENTO TAB / ODSTRANIT TENTO TAB), otvara sa
+     dlhym stlacenim (3s, zdielana Zzz6-F27 utilita) na T3 tabe, zatvara sa klikom mimo. */
+  .zzz5t0-tab-window {
+    position: fixed;
+    z-index: 1100;
+    display: flex;
+    flex-direction: column;
+    min-width: 160px;
+    background-color: #171717;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 4px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  }
+  .zzz5t0-tab-window button {
+    padding: 9px 11px;
+    border-radius: 5px;
+    background-color: transparent;
+    border: none;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+  }
+  .zzz5t0-tab-window button:hover {
+    background-color: #262626;
+  }
+  .zzz5t0-tab-window button.zzz5t0-tab-window-danger {
+    color: #f87171;
   }
 </style>
 <!-- === [/Zzz5-T1:TABS] (CSS cast) === -->
@@ -3642,7 +3685,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz10-0 Settings Workspace - opravene: NEZOBRAZUJE sa uz pred prihlasenim (predtym stary obsah zostaval za Login modalom)</span>
   <span class="module-tag">Zzz10-M1:PRE-REGISTRATION-SETUP - nezabezpecena kontakt/support sprava PRED prihlasenim (mini-CL: USERNAME+CONTENT+ENTRY), databaza [Zzz13-D1] verso_pre_register_support, category vzdy "pre-registration"</span>
   <span class="module-tag">Zzz11-M1:USERNAME-SETUP - hore v Zzz10-V0 Verification Workspace, zapisuje do NOVEJ uzavretej tabulky verso_username_setup (nie verification_trash - ta ma verejny SELECT), category vzdy "username support"</span>
-  <span class="module-tag">Zzz5-T1 Tabs Module (Zzz2-R23, versoTemplatesButton) - toggle sekcia hned pod CRM/CL, ziadny overlay, close [x] v paneli. 3 moduly-rady: T1 "Workspace" (vsetky taby locked) + T2 "Functions" (vsetky taby locked) + T3 "Templates" (plne editovatelne, LINKED-COMBO k T1+T2, hold-gesta 1.5s=rename/5s=delete) + "ADD TEMPLATE" dashed tlacidlo (pridava do T3, uklada aktualne aktivny T1+T2)</span>
+  <span class="module-tag">Zzz5-T1 Tabs Module (Zzz2-R23, versoTemplatesButton) - toggle sekcia hned pod CRM/CL, ziadny overlay, close [x] v paneli. 3 moduly-rady: T1 "Workspace" (vsetky taby locked) + T2 "Functions" (vsetky taby locked) + T3 "Templates" (plne editovatelne, LINKED-COMBO k T1+T2, dlhy-stlak 3s otvori "tab window" popup PREMENOVAT/ODSTRANIT) + "ADD TEMPLATE" dashed tlacidlo (pridava do T3, uklada aktualne aktivny T1+T2)</span>
   <span class="module-tag">Zzz5-T1 Tabs (workspaces rada, prehliadacovy styl, prepisovatelne + pridavatelne, zlava doprava, quick-close "x" na tabe) - pomocne workspaces</span>
   <span class="module-tag">Zzz5-T2 Tabs (user templates rada, rovnaky princip ako Zzz5-T1 bez quick-close) - kazdy tab si neskor vyberie vlastnu Zzz5-T* sablonu z Templates, zatial vzdy T0</span>
   <span class="module-tag">Zzz5-T1/T2:LONGPRESS-MENU (3s podrzanie na tabe, zdielana Zzz6-F27 utilita) - PREMENOVAT/ODSTRANIT popup menu</span>
@@ -11378,12 +11421,13 @@ function zzz5t0_close_templates() {
 //     "nacita" si k sebe priradeny workspace+function podla toho, ktory bol otvoreny/zakliknuty PRAVE VTEDY,
 //     ked sa T3 tab vytvoril. (OPRAVA Vrso: "momentalne nespravne otvara len dalsi tab ale ma zobrazovat
 //     priradeny workspace k tym tabom pod T3* podla toho ktory je otvoreny/zakliknuty prave").
-//     [HOLD-GESTURES] (Vrso: "Iba!!! T3b,...po 1-2s podrzani sa budu dat premenovat a po 5s podrzani sa
-//     vymaze cely tab") - NAHRADENE za povodne dlhy-stlak-menu: teraz 1500ms podrzanie = PRIAMO rename
-//     (ziadne medzi-menu), 5000ms podrzanie = PRIAMO delete (bez potvrdenia - samotne 5s drzanie je
-//     zamerne "tazsie" gesto, ktore sluzi ako vlastna poistka). Tato akcia je LEN lokalny UI stav (Vrso:
-//     "zatial nemusi ist tato akcia/entries do databazy, lebo to nie je datova informacia") - ziadny
-//     zapis do DB. Quick-close "x" na T3 tabe ostava tiez (alternativna rychla cesta k zmazaniu).
+//     [TAB-WINDOW] (Vrso: "je problem otvorit aspon to okno...dopis do tab window a kludne tak si ho
+//     aj oznac moznost vymazat" - po dvoch neuspesnych pokusoch s vlastnym casovanym drzanim SPAT na
+//     OSVEDCENY princip: dlhy-stlak (3000ms, zdielana Zzz6-F27 zzz_bind_long_press utilita - rovnaka,
+//     ktora uz spolahlivo funguje inde v subore) otvori maly "tab window" popup s 2 jasne oznacenymi
+//     volbami: PREMENOVAT TENTO TAB / ODSTRANIT TENTO TAB (viz zzz5t0_open_tab_window). Tato akcia je LEN
+//     lokalny UI stav (Vrso: "zatial nemusi ist tato akcia/entries do databazy, lebo to nie je datova
+//     informacia") - ziadny zapis do DB. Quick-close "x" na T3 tabe ostava tiez (rychla alternativa).
 let zzz5t0TabsT1 = [{ id: 'zzz5t1-a', label: 'T1a - Workspace', template: null, locked: true }];
 let zzz5t0TabsT2 = [{ id: 'zzz5t2-a', label: 'T2a - Function', template: null, locked: true }];
 let zzz5t0TabsT3 = [{ id: 'zzz5t3-a', label: 'T3a - Template', template: 'T0', locked: false, linkedT1: 'zzz5t1-a', linkedT2: 'zzz5t2-a' }];
@@ -11417,61 +11461,49 @@ function zzz5t0_delete_tab(tabsArray, tabId, prefix) {
   zzz5t0_render_all_tabs();
 }
 
-// [HOLD-GESTURES] Vrso: "po 1-2s podrzani sa budu dat premenovat a po 5s podrzani sa vymaze cely tab" -
-// JEDEN prítlak (nie dve nezavisle zzz_bind_long_press volania - to by pri 5s drzani spustilo NAJPRV
-// rename v 1.5s a POTOM este aj delete v 5s, co by konfliktovalo najma preto, ze window.prompt() blokuje
-// hlavne vlakno a fyzicky "drzanie" pocas otvoreneho promptu nema zmysel). Namiesto toho: 5s casovac na
-// DELETE beh pocas drzania (spusti sa automaticky, aj bez pustenia); pri PUSTENI pred 5s sa vyhodnoti
-// celkovy cas drzania - ak bol >=1.5s, spusti sa RENAME. Kratky tap (<1.5s) necha normalny click prejst
-// (vyber tabu).
-function zzz5t0_bind_hold_gestures(el, onRename, onDelete) {
-  const RENAME_MS = 1500;
-  const DELETE_MS = 5000;
-  let startTime = 0;
-  let deleteTimer = null;
-  let suppressClick = false;
+// [TAB-WINDOW] Vrso: "je problem otvorit aspon to okno ze premenuj dany tab po jeho stlaceni? Ak je
+// problem tab drzanim editovat nazov alebo vymazat tak dopis do 'tab window' a kludne tak si ho aj oznac
+// moznost vymazat dany tab" - ZJEDNODUSENE: namiesto vlastneho dvoj-urovnoveho drzania (1.5s/5s), ktore
+// sa v mobilnom WebView ukazalo nespolahlive, teraz pouzivame OSVEDCENU zdielanu Zzz6-F27
+// zzz_bind_long_press utilitu (rovnaky princip, aky uz spolahlivo funguje inde v subore) - dlhe podrzanie
+// (3000ms) na T3 tabe otvori male "tab window" popup s DVOMA jasne oznacenymi volbami: PREMENOVAT a
+// ODSTRANIT TENTO TAB.
+function zzz5t0_open_tab_window(anchorEl, onRename, onDelete) {
+  document.querySelectorAll('.zzz5t0-tab-window').forEach(m => m.remove()); // len jedno okno naraz
+  const rect = anchorEl.getBoundingClientRect();
+  const win = document.createElement('div');
+  win.className = 'zzz5t0-tab-window';
 
-  const clearDeleteTimer = () => { if (deleteTimer) { clearTimeout(deleteTimer); deleteTimer = null; } };
+  const renameBtn = document.createElement('button');
+  renameBtn.type = 'button';
+  renameBtn.textContent = 'PREMENOVAT TENTO TAB';
+  renameBtn.addEventListener('click', () => { win.remove(); onRename(); });
+  win.appendChild(renameBtn);
 
-  const start = () => {
-    startTime = Date.now();
-    suppressClick = false;
-    clearDeleteTimer();
-    deleteTimer = setTimeout(() => {
-      suppressClick = true;
-      onDelete();
-    }, DELETE_MS);
-  };
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'zzz5t0-tab-window-danger';
+  deleteBtn.textContent = 'ODSTRANIT TENTO TAB';
+  deleteBtn.addEventListener('click', () => { win.remove(); onDelete(); });
+  win.appendChild(deleteBtn);
 
-  const end = () => {
-    clearDeleteTimer();
-    if (suppressClick) return; // delete uz prebehol pocas drzania
-    const held = Date.now() - startTime;
-    if (held >= RENAME_MS) {
-      suppressClick = true;
-      onRename();
+  document.body.appendChild(win);
+  // pozicia: pod tabom, alebo NAD nim ak by dole uz nebolo miesto do spodku obrazovky
+  const winHeight = win.offsetHeight;
+  const spaceBelow = window.innerHeight - rect.bottom;
+  win.style.top = (spaceBelow < winHeight + 12)
+    ? `${Math.max(6, rect.top - winHeight - 6)}px`
+    : `${rect.bottom + 6}px`;
+  const winWidth = win.offsetWidth;
+  win.style.left = `${Math.min(Math.max(6, rect.left), window.innerWidth - winWidth - 6)}px`;
+
+  const closeOnOutsideClick = (e) => {
+    if (!win.contains(e.target)) {
+      win.remove();
+      document.removeEventListener('click', closeOnOutsideClick, true);
     }
   };
-
-  const cancel = () => { clearDeleteTimer(); };
-
-  el.addEventListener('touchstart', start, { passive: true });
-  el.addEventListener('touchend', end);
-  el.addEventListener('touchmove', cancel);
-  el.addEventListener('touchcancel', cancel);
-  el.addEventListener('mousedown', start);
-  el.addEventListener('mouseup', end);
-  el.addEventListener('mouseleave', cancel);
-
-  // rovnaky princip potlacenia nasledujuceho click-u ako v Zzz6-F27 zzz_bind_long_press (skutocna
-  // capture faza na document + stopImmediatePropagation, viz komentar tam pre detaily bugu, ktoremu sa tym predchadza).
-  document.addEventListener('click', (e) => {
-    if (suppressClick && (e.target === el || el.contains(e.target))) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      suppressClick = false;
-    }
-  }, true);
+  setTimeout(() => document.addEventListener('click', closeOnOutsideClick, true), 0);
 }
 
 function zzz5t0_render_tabs_row(tabs, innerEl, activeId, prefix, onSelect, onRename, showQuickClose) {
@@ -11501,16 +11533,20 @@ function zzz5t0_render_tabs_row(tabs, innerEl, activeId, prefix, onSelect, onRen
 
     btn.addEventListener('click', () => onSelect(tab));
 
-    // LOCKED tab (cely T1/T2) nedostava ziadne hold-gesta - nie je co premenovat ani mazat.
+    // LOCKED tab (cely T1/T2) nedostava ziadny dlhy-stlak - nie je co premenovat ani mazat.
+    // OSTATNE (T3) dostavaju dlhy-stlak (3000ms, zdielana Zzz6-F27 utilita) -> "tab window" popup
+    // s PREMENOVAT/ODSTRANIT (viz zzz5t0_open_tab_window vyssie).
     if (!tab.locked) {
-      zzz5t0_bind_hold_gestures(
-        btn,
-        () => {
-          const next = window.prompt('Premenovat tab:', tab.label);
-          if (next && next.trim()) { tab.label = next.trim(); zzz5t0_render_all_tabs(); }
-        },
-        () => { zzz5t0_delete_tab(tabs, tab.id, prefix); }
-      );
+      zzz_bind_long_press(btn, 3000, () => {
+        zzz5t0_open_tab_window(
+          btn,
+          () => {
+            const next = window.prompt('Premenovat tab:', tab.label);
+            if (next && next.trim()) { tab.label = next.trim(); zzz5t0_render_all_tabs(); }
+          },
+          () => { zzz5t0_delete_tab(tabs, tab.id, prefix); }
+        );
+      });
     }
 
     innerEl.appendChild(btn);
@@ -11581,7 +11617,10 @@ function zzz5t0_add_tab(tabsArray, prefix, defaultTemplate, locked) {
 // [ADD-TEMPLATE-LINKED-COMBO] Vrso: "ked som v t1 tabe pridam add template...ma zobrazovat priradeny
 // workspace k tym tabom pod T3* podla toho ktory je otvoreny/zakliknuty prave" - novy T3 tab si ULOZI
 // PRAVE AKTIVNY T1 a T2 tab (snapshot v momente pridania), potom rovno ponukne premenovanie (T3b,... maju
-// byt editovatelne od zaciatku, viz komentar hore).
+// byt editovatelne od zaciatku, viz komentar hore). POZOR (Vrso: "ma byt aj pristupna po otvoreni t1 aj
+// t2 tabov ktore momentalne nemaju este workspacy ale budu mat coskoro") - funkcia NEKONTROLUJE ci vybrany
+// T1/T2 tab uz ma realny workspace/function obsah (ten este neexistuje, ceka sa na buduci project builder)
+// - proste vzdy zoberie akykolvek prave aktivny T1+T2 tab, bez ohladu na to, ci su "prazdne" preset sloty.
 function zzz5t0_add_template_tab() {
   const linkedT1 = zzz5t0ActiveTabIdT1;
   const linkedT2 = zzz5t0ActiveTabIdT2;
