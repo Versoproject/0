@@ -10355,25 +10355,112 @@ function zzz1m4a_build_cl_clone() {
   return rowEl;
 }
 
-// Zuzeny MINI binding pre M4a - LEN 0.5s zdielany checklist toggle (viz vysvetlenie vyssie), ziadny
-// short-click/2s dosah na realne zzz6f17Attachments/DB.
+// Zuzeny MINI binding pre M4a - 0.5s zdielany checklist toggle (nezmenene) + NOVE (Vrso 2026-09-11, "kratky
+// klik ma robit attach cl, 3s vymazat vsetky attachments... ale LEN lokalny/vizualny, nikdy do DB"):
+// kratky klik = pridaj SNAPSHOT aktualnej CL do zzz1m4aLocalAttachments (VLASTNE, IZOLOVANE pole - NIE
+// zzz6f17Attachments, ktore submit_entries_to_db() posiela do databazy pri ENTRY); 3s = vymaz VSETKY lokalne
+// pripnute. Ziadna z tychto akcii sa NIKDY nedotkne skutocneho zzz6f17Attachments/DB. | Vrso -> Claude AI | 2026-09-11 ===
+let zzz1m4aLocalAttachments = [];
+let zzz1m4aLocalAttachCounter = 0;
+
+function zzz1m4a_build_local_attach_row(item) {
+  const rowEl = document.createElement('div');
+  rowEl.className = 'numbers-row zzz1m5-cl-row';
+  const miniPlaceholder = document.createElement('div');
+  miniPlaceholder.className = 'mini-wrap';
+  const label = document.createElement('button');
+  label.type = 'button';
+  label.className = 'entry-number-button zzz6f48-mini-button';
+  label.disabled = true; // cisto vizualne oznacenie riadku, ziadny klik-handler (na rozdiel od realnych attachmentov)
+  label.textContent = 'ATTACH';
+  miniPlaceholder.appendChild(label);
+  rowEl.appendChild(miniPlaceholder);
+
+  ZZZ_FULL_DISPLAY_FIELDS.forEach(field => {
+    const wrapEl = document.createElement('div');
+    wrapEl.className = field.wrap;
+    if (field.wrap === 'entry-number-wrap') {
+      const numberCell = document.createElement('div');
+      numberCell.className = 'entry-cell entry-cell-readonly';
+      wrapEl.appendChild(numberCell);
+    } else if (ZZZ1M5_DOT_WRAPS[field.wrap]) {
+      const dot = document.createElement('div');
+      dot.className = ZZZ1M5_DOT_WRAPS[field.wrap];
+      const val = (item.fields && field.key && item.fields[field.key]) || '';
+      dot.setAttribute('aria-pressed', val ? 'true' : 'false');
+      if (val) dot.style.backgroundColor = '#171717';
+      wrapEl.appendChild(dot);
+    } else {
+      const cellEl = document.createElement('div');
+      const val = field.key ? ((item.fields && item.fields[field.key]) || '') : '';
+      cellEl.textContent = val || '-';
+      cellEl.className = 'entry-cell entry-cell-readonly'; // cisto vizualny snapshot, needitovatelny (ziadny klik)
+      wrapEl.appendChild(cellEl);
+    }
+    rowEl.appendChild(wrapEl);
+  });
+
+  // rovnaky checklist (skryte/zobrazene stlpce) ako aktualny M4a stav, bez volania zdielanej apply-funkcie
+  const hiddenWraps = zzz6f48_get_hidden_wraps().filter(w => !ZZZ6F48_FIXED_WRAPS.includes(w));
+  ZZZ_FULL_DISPLAY_FIELDS.forEach(field => {
+    if (ZZZ6F48_FIXED_WRAPS.includes(field.wrap)) return;
+    const el = rowEl.querySelector(':scope > .' + field.wrap);
+    if (el) el.style.display = hiddenWraps.includes(field.wrap) ? 'none' : '';
+  });
+  return rowEl;
+}
+
+function zzz1m4a_render_local_attachments() {
+  const list = document.getElementById('versoM4aLocalAttachList');
+  if (!list) return;
+  list.innerHTML = '';
+  zzz1m4aLocalAttachments.forEach(item => list.appendChild(zzz1m4a_build_local_attach_row(item)));
+}
+
+function zzz1m4a_attach_local_cl() {
+  zzz1m4aLocalAttachCounter++;
+  zzz1m4aLocalAttachments.push({ id: zzz1m4aLocalAttachCounter, fields: zzz1r37_snapshot_current_cl_fields() });
+  zzz1m4a_render_local_attachments();
+  zzz6f2_show_toast('CL pripnuta (LEN lokalne v M4a, nie do databazy).');
+}
+
+function zzz1m4a_clear_local_attachments() {
+  if (zzz1m4aLocalAttachments.length === 0) { zzz6f2_show_toast('Ziadne lokalne pripnute CL na vymazanie.'); return; }
+  zzz1m4aLocalAttachments = [];
+  zzz1m4a_render_local_attachments();
+  zzz6f2_show_toast('Vsetky lokalne pripnute CL vymazane (M4a).');
+}
+
 function zzz1m4a_bind_mini_checklist_only(btn) {
-  let timerOpen = null;
-  function clearTimer() { if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; } }
+  let timerOpen = null, timer3s = null, actionFired = false;
+  function clearTimers() {
+    if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
+    if (timer3s) { clearTimeout(timer3s); timer3s = null; }
+  }
   function start() {
-    clearTimer();
+    actionFired = false;
+    clearTimers();
     timerOpen = setTimeout(() => {
+      actionFired = true;
       if (zzz6f48CurrentModalClose) zzz6f48_close_mini_modal_if_open();
       else zzz6f48_open_mini_modal();
     }, 500);
+    timer3s = setTimeout(() => {
+      actionFired = true;
+      zzz1m4a_clear_local_attachments();
+    }, 3000);
   }
-  function cancel() { clearTimer(); }
+  function end() {
+    clearTimers();
+    if (!actionFired) zzz1m4a_attach_local_cl(); // kratky klik (pustene pred 0.5s)
+  }
+  function cancel() { clearTimers(); }
   btn.addEventListener('touchstart', start, { passive: true });
-  btn.addEventListener('touchend', cancel);
+  btn.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
   btn.addEventListener('touchmove', cancel);
   btn.addEventListener('touchcancel', cancel);
   btn.addEventListener('mousedown', start);
-  btn.addEventListener('mouseup', cancel);
+  btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
 }
 
@@ -10384,6 +10471,10 @@ function zzz1m4a_init() {
   const clClone = zzz1m4a_build_cl_clone();
   if (rlClone) stack.appendChild(rlClone);
   if (clClone) stack.appendChild(clClone);
+  const localAttachList = document.createElement('div');
+  localAttachList.id = 'versoM4aLocalAttachList';
+  localAttachList.className = 'zzz1m5-list';
+  stack.appendChild(localAttachList); // v tom istom kontajneri ako CL/RL - presunie sa spolu s nimi do T2c
   zzz6f48_apply_mini_visibility(); // aplikuje aktualny checklist AJ na cerstvo pridany M4a klon hned pri builde
   // [T2c:Zzz1-M4a] OPRAVA (Vrso 2026-09-10, "prenes tento M4a template do T2c tab"): M4a uz NIE JE VZDY
   // viditelny hned pod Zzz1-M4 (predoslý docasny stav) - default stav je SKRYTY (rovnaky princip ako
