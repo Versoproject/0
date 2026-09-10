@@ -9785,13 +9785,20 @@ function zzz6f48_apply_mini_visibility() {
   zzz6f48_get_crm_fields().forEach(field => {
     const isHidden = hiddenWraps.includes(field.wrap);
     document.querySelectorAll(
-      '#versoCLNumbersRow .' + field.wrap + ', #versoCRMLabelsRow .' + field.wrap + ', #versoAttachmentList .' + field.wrap
+      '#versoCLNumbersRow .' + field.wrap + ', #versoCRMLabelsRow .' + field.wrap + ', #versoAttachmentList .' + field.wrap +
+      // OPRAVA (Vrso 2026-09-10, Zzz1-M4a: "vyskusaj ty na 1-4 cr module a len to pouz aj pre template"): M4a je
+      // klon M4, ma teda TEN ISTY globalny checklist ako hlavna CRM (jedna zdielana pravda, ziadny vlastny stav) -
+      // pridane do TEJTO JEDNEJ existujucej funkcie namiesto vytvarania paralelnej kopie (DRY).
+      ', #versoM4aCLNumbersRow .' + field.wrap + ', #versoM4aCRMLabelsRow .' + field.wrap
     ).forEach(el => {
       el.style.display = isHidden ? 'none' : '';
     });
   });
   const btn = document.getElementById('zzz6f48MiniButton');
   if (btn) btn.classList.toggle('zzz6f48-active', hiddenWraps.length > 0);
+  document.querySelectorAll('#versoM4aCLNumbersRow .zzz6f48-mini-button').forEach(b => {
+    b.classList.toggle('zzz6f48-active', hiddenWraps.length > 0);
+  });
   // vsetky ATTACH buttony (jeden per attachment) zdielaju TU ISTU zlatu "aktivny" indikaciu ako hlavny MINI
   document.querySelectorAll('#versoAttachmentList .zzz6f48-mini-button').forEach(b => {
     b.classList.toggle('zzz6f48-active', hiddenWraps.length > 0);
@@ -10223,12 +10230,18 @@ function zzz1r37_apply_global_mini_visibility_to_row(rowEl) {
 }
 
 // === [Zzz1-M4a:BUILD] JS builder pre Zzz1-M4a CRM Template - klonuje #versoCRMLabelsRow + #versoCLNumbersRow
-// (rovnaky cloneNode princip ako Zzz1-R37:CLONE-MINI vyssie), takze vzhlad je 100% identicky s hlavnym M4.
-// Interaktivne bunky klonu pisu do vlastneho izolovaneho zzz1m4aFields (NIE do entryData) - preto z tohto
-// modulu NEJDE vytvorit skutocny entry (D1 DB-write funkcie citaju vylucne entryData) a logo button/jeho
-// nadvazne funkcie (versoEntryCell*/entryData) o tomto klone nikdy nevedia. | Vrso -> Claude AI | 2026-09-10 ===
-const zzz1m4aFields = {};
-
+// (rovnaky cloneNode princip ako Zzz1-R37:CLONE-MINI nizsie), takze vzhlad je 100% identicky s hlavnym M4.
+// OPRAVA (Vrso 2026-09-10, "toto skopiruj uplne rovnako!!! vyskusaj ty na 1-4 cr module a len to pouzi aj pre
+// template"): PREDOSLA verzia (izolovany zzz1m4aFields + vlastny zjednoduseny click/MINI) bola PRILIS OPATRNA -
+// bunky sa needitovatelnym contentEditable a otvorenie kontext okna vobec nefungovalo. TERAZ klon POUZIVA
+// PRIAMO tie iste real funkcie ako skutocny M4 (open_entry_modal, zzz1_f16_open_schedule_date_modal,
+// zzz6f17/18_open_context_select_modal, zzz6f21_open_tags_context_modal, zzz1_r7/12/26f1_toggle_*,
+// zzz6f29_open_readonly_viewer, zzz6f48_bind_dual_press, zzz1m3_bind_preset_button) - ZDIELA teda AJ entryData
+// (rovnaky princip ako zzz6f48_apply_mini_visibility uz teraz zahrna aj #versoM4aCLNumbersRow, viz uprava
+// vyssie v subore). Kedze klon nema logo/insert tlacidlo a logo funkcie (flash/3s copy) referencuju VYLUCNE
+// versoEntryCell*/entryData priamo (nie tento klon), a D1 DB-write sa vola VYLUCNE cez ENTRY/logo button (nikdy
+// z write_to_entry/open_entry_modal), tento klon STALE nema ziadnu cestu k databaze ani k logo funkciam - presne
+// tie dva rezy, ktore Vrso ziadal, zvysok je 1:1 realna funkcnost. | Vrso -> Claude AI | 2026-09-10 === //
 function zzz1m4a_strip_ids(rootEl) {
   if (rootEl.id) rootEl.removeAttribute('id');
   rootEl.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
@@ -10240,7 +10253,32 @@ function zzz1m4a_build_rl_clone() {
   const rowEl = source.cloneNode(true);
   zzz1m4a_strip_ids(rowEl);
   rowEl.id = 'versoM4aCRMLabelsRow';
+  // PRESET tlacidlo v RL riadku - rovnaka funkcnost ako realny PRESET (zzz1m3_bind_preset_button, refaktorovana
+  // vyssie z povodnej IIFE presne kvoli tomuto znovupouzitiu).
+  const presetBtn = rowEl.querySelector('.zzz1m3-preset-button');
+  if (presetBtn) zzz1m3_bind_preset_button(presetBtn);
   return rowEl;
+}
+
+// Dot-toggle bunky (R7/R12/R26) maju sync funkcie hardcoded na getElementById REALNEJ bunky (viz Zzz1-R7/R12/
+// R26:CELL vyssie) - preto po zavolani realnej toggle funkcie (ktora zapise entryData + sync-ne REALNU bunku)
+// tu navyse rucne sync-neme AJ vizual TOHTO klonovaneho dot-u, z tych istych entryData (jeden zdroj pravdy).
+function zzz1m4a_sync_dot_cell(cellEl, entryId) {
+  if (entryId === '12') {
+    const isActive = (entryData["12"] || "").trim().length > 0;
+    cellEl.classList.toggle('is-active', isActive);
+    cellEl.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  } else if (entryId === '7') {
+    const isActive = (entryData["7"] || "").trim().length > 0;
+    cellEl.classList.toggle('is-active', isActive);
+    cellEl.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    cellEl.classList.toggle('zzz6f45-locked', zzz1r5_is_final() || !zzz1_r7f1_can_edit_privacy());
+  } else if (entryId === '26') {
+    const val = (entryData["26"] || '').trim();
+    cellEl.classList.remove('zzz1r26-pending', 'zzz1r26-done', 'zzz1r26-final', 'zzz1r26-confirmed');
+    if (val) cellEl.classList.add('zzz1r26-' + val);
+    cellEl.setAttribute('aria-pressed', val ? 'true' : 'false');
+  }
 }
 
 function zzz1m4a_build_cl_clone() {
@@ -10250,136 +10288,65 @@ function zzz1m4a_build_cl_clone() {
   zzz1m4a_strip_ids(rowEl);
   rowEl.id = 'versoM4aCLNumbersRow';
 
-  // VSETKY R* bunky (.entry-cell aj *-dot-button) maju data-entry-id - rovnaky selektor a princip ako
-  // zzz1r37_build_editable_cl_row vyssie, len ciel zapisu je zzz1m4aFields namiesto entry.fields.
+  // R* bunky - PRESNE ROVNAKY dispatch ako [F1:CELL-LOGIC] generic binding vyssie v subore (data-readonly /
+  // data-date-picker / data-context-select / data-tags-context / data-toggle / obycajny open_entry_modal), len
+  // volany rucne tu (cloneNode NEPRENASA JS listenery) - triedy aj data-entry-id OSTAVAJU zachovane, takze
+  // render_entry_cell()/generic .entry-cell[data-entry-id] broadcast uz AUTOMATICKY sync-uje text bunky tohto
+  // klonu zakazdym, ked sa entryData zmeni odkialkolvek (ziadny navyse kod potrebny pre text polia).
   rowEl.querySelectorAll('[data-entry-id]').forEach(cellEl => {
-    const entryId = cellEl.getAttribute('data-entry-id');
-    if (cellEl.getAttribute('data-readonly') === 'true') return; // R1/R14/R22 - auto/odvodene, needitovatelne aj v hlavnej CL
-    if (cellEl.getAttribute('data-toggle') === 'true') {
-      const applyDotVisual = (val) => {
-        cellEl.setAttribute('aria-pressed', val ? 'true' : 'false');
-        cellEl.style.backgroundColor = val ? '#171717' : '';
-      };
-      applyDotVisual(zzz1m4aFields[entryId] || '');
+    const id = cellEl.getAttribute('data-entry-id');
+    if (cellEl.hasAttribute('data-readonly')) {
+      if (id === '22') return; // R22 - SPECIAL dedicated handler, mimo rozsahu tejto davky, ostava needitovatelna
       cellEl.addEventListener('click', () => {
-        const cur = zzz1m4aFields[entryId] || '';
-        const next = cur ? '' : '1';
-        zzz1m4aFields[entryId] = next;
-        applyDotVisual(next);
+        if (zzz6f29SelectMode) { zzz6f29_toggle_cl_cell(id, cellEl); return; }
+        zzz6f29_open_readonly_viewer(zzz_get_readonly_cell_label(id), entryData[id] || '');
       });
-    } else {
-      cellEl.textContent = zzz1m4aFields[entryId] || '';
-      cellEl.contentEditable = 'true';
-      cellEl.style.cursor = 'text';
-      cellEl.addEventListener('input', () => { zzz1m4aFields[entryId] = cellEl.textContent; });
+      return;
     }
+    if (cellEl.hasAttribute('data-date-picker')) {
+      cellEl.addEventListener('click', () => {
+        if (zzz6f29SelectMode) { zzz6f29_toggle_cl_cell(id, cellEl); return; }
+        zzz1_f16_open_schedule_date_modal();
+      });
+      return;
+    }
+    if (cellEl.hasAttribute('data-context-select')) {
+      cellEl.addEventListener('click', () => {
+        if (zzz6f29SelectMode) { zzz6f29_toggle_cl_cell(id, cellEl); return; }
+        if (id === '18') zzz6f18_open_context_select_modal(); else zzz6f17_open_context_select_modal();
+      });
+      return;
+    }
+    if (cellEl.hasAttribute('data-tags-context')) {
+      cellEl.addEventListener('click', () => {
+        if (zzz6f29SelectMode) { zzz6f29_toggle_cl_cell(id, cellEl); return; }
+        zzz6f21_open_tags_context_modal('21');
+      });
+      return;
+    }
+    if (cellEl.getAttribute('data-toggle') === 'true') {
+      cellEl.addEventListener('click', () => {
+        if (id === '12') zzz1_r12f1_toggle_priority();
+        else if (id === '7') zzz1_r7f1_toggle_privacy();
+        else if (id === '26') zzz1_r26f1_toggle_status();
+        zzz1m4a_sync_dot_cell(cellEl, id);
+      });
+      return;
+    }
+    cellEl.addEventListener('click', () => {
+      if (zzz6f29SelectMode) { zzz6f29_toggle_cl_cell(id, cellEl); return; }
+      if (zzz4r17SearchMode && zzz4r17_is_filterable_id(id)) { zzz4r17_open_filter_modal(id); return; }
+      open_entry_modal(id);
+    });
   });
 
-  // MINI button v klone - vizualne identicky, VLASTNY jednoduchy 1s checklist / 2s reset, BEZ akehokolvek
-  // zdielaneho stavu s Zzz6-R48 (SPECIAL/INTERIM, rovnaky princip ako zzz1r37 per-klon MINI).
+  // MINI button - PRIAMO real zzz6f48_bind_dual_press (rovnaky 0.5s otvor zdielany checklist / 2s detach
+  // attachmentov / kratky klik pripni hlavnu CL), takze checklist synchronizacia (viz uprava
+  // zzz6f48_apply_mini_visibility vyssie) je jedna zdielana pravda naprieč CRM aj M4a.
   const miniBtn = rowEl.querySelector('.zzz6f48-mini-button');
-  if (miniBtn) zzz1m4a_bind_mini_for_clone(miniBtn, rowEl);
+  if (miniBtn) zzz6f48_bind_dual_press(miniBtn);
 
   return rowEl;
-}
-
-let zzz1m4aMiniHidden = ZZZ_FULL_DISPLAY_FIELDS.filter(f => !ZZZ6F48_FIXED_WRAPS.includes(f.wrap)).map(f => f.wrap);
-let zzz1m4aMiniBackup = null;
-
-function zzz1m4a_apply_mini_visibility(rowEl) {
-  const hidden = zzz1m4aMiniHidden.filter(w => !ZZZ6F48_FIXED_WRAPS.includes(w));
-  ZZZ_FULL_DISPLAY_FIELDS.forEach(field => {
-    if (ZZZ6F48_FIXED_WRAPS.includes(field.wrap)) return;
-    const el = rowEl.querySelector(':scope > .' + field.wrap);
-    if (el) el.style.display = hidden.includes(field.wrap) ? 'none' : '';
-  });
-  const rlEl = document.getElementById('versoM4aCRMLabelsRow');
-  if (rlEl) {
-    ZZZ_FULL_DISPLAY_FIELDS.forEach(field => {
-      if (ZZZ6F48_FIXED_WRAPS.includes(field.wrap)) return;
-      const el = rlEl.querySelector(':scope > .' + field.wrap);
-      if (el) el.style.display = hidden.includes(field.wrap) ? 'none' : '';
-    });
-  }
-}
-
-// Docasny jednoduchy checklist modal pre M4a MINI (1s otvor/zavri, 2s reset/obnov) - vlastna kopia
-// zzz6f41_create_context_window layoutu, izolovana od Zzz6-R48 aj Zzz1-R37.
-function zzz1m4a_open_mini_modal(rowEl) {
-  const { box, removeBox } = zzz6f41_create_context_window();
-  const list = document.createElement('div');
-  list.className = 'zzz6f48-mini-list';
-  const togglable = ZZZ_FULL_DISPLAY_FIELDS.filter(f => !ZZZ6F48_FIXED_WRAPS.includes(f.wrap));
-  togglable.forEach(field => {
-    const row = document.createElement('div');
-    row.className = 'zzz6f48-mini-row';
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = !zzz1m4aMiniHidden.includes(field.wrap);
-    checkbox.addEventListener('change', () => {
-      const hidden = new Set(zzz1m4aMiniHidden);
-      if (checkbox.checked) hidden.delete(field.wrap); else hidden.add(field.wrap);
-      zzz1m4aMiniHidden = Array.from(hidden);
-      zzz1m4aMiniBackup = null;
-      zzz1m4a_apply_mini_visibility(rowEl);
-    });
-    const textWrap = document.createElement('div');
-    textWrap.className = 'zzz6f48-mini-row-text';
-    const label = document.createElement('label');
-    label.className = 'zzz6f48-mini-row-label';
-    label.textContent = field.label;
-    textWrap.appendChild(label);
-    row.appendChild(checkbox);
-    row.appendChild(textWrap);
-    list.appendChild(row);
-  });
-  box.appendChild(list);
-  const actions = document.createElement('div');
-  actions.className = 'entry-modal-actions';
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'entry-modal-delete zzz6f48-mini-close';
-  closeBtn.textContent = '\u2715';
-  closeBtn.setAttribute('aria-label', 'Zatvorit');
-  closeBtn.onclick = () => removeBox();
-  actions.appendChild(closeBtn);
-  box.appendChild(actions);
-  zzz6f41_bind_outside_click(box, () => removeBox());
-}
-
-function zzz1m4a_bind_mini_for_clone(btn, rowEl) {
-  let timerOpen = null, timer2s = null, actionFired = false;
-  function clearTimers() {
-    if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
-    if (timer2s) { clearTimeout(timer2s); timer2s = null; }
-  }
-  function start() {
-    actionFired = false;
-    clearTimers();
-    timerOpen = setTimeout(() => { actionFired = true; zzz1m4a_open_mini_modal(rowEl); }, 500);
-    timer2s = setTimeout(() => {
-      actionFired = true;
-      if (Array.isArray(zzz1m4aMiniBackup)) {
-        zzz1m4aMiniHidden = zzz1m4aMiniBackup;
-        zzz1m4aMiniBackup = null;
-        zzz6f2_show_toast('MINI (template) nastavenie obnovene');
-      } else {
-        zzz1m4aMiniBackup = zzz1m4aMiniHidden;
-        zzz1m4aMiniHidden = [];
-        zzz6f2_show_toast('Cela Command Line (template) zobrazena');
-      }
-      zzz1m4a_apply_mini_visibility(rowEl);
-    }, 2000);
-  }
-  function end() { clearTimers(); actionFired = false; }
-  function cancel() { clearTimers(); }
-  btn.addEventListener('touchstart', start, { passive: true });
-  btn.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
-  btn.addEventListener('touchmove', cancel);
-  btn.addEventListener('touchcancel', cancel);
-  btn.addEventListener('mousedown', start);
-  btn.addEventListener('mouseup', end);
-  btn.addEventListener('mouseleave', cancel);
 }
 
 function zzz1m4a_init() {
@@ -10389,8 +10356,10 @@ function zzz1m4a_init() {
   const clClone = zzz1m4a_build_cl_clone();
   if (rlClone) stack.appendChild(rlClone);
   if (clClone) stack.appendChild(clClone);
-  if (clClone) zzz1m4a_apply_mini_visibility(clClone);
+  zzz6f48_apply_mini_visibility(); // aplikuje aktualny checklist AJ na cerstvo pridany M4a klon hned pri builde
 }
+// === [/Zzz1-M4a:BUILD] ===
+
 
 // === [Zzz1-R37:CLONE-MINI] Per-entry MINI (Vrso 2026-09-08) - samostatny, PER-KLON checklist. Rovnaky
 // princip ako Zzz6-R48 (fixne polia vzdy viditelne, nedefinovane default odznacene, 1s=checklist/3s=reset),
@@ -10891,8 +10860,11 @@ function zzz1r37_attach_entry(entry) {
   });
 }
 
-(function bindZzz1R37Preset() {
-  const btn = document.getElementById('zzz1m3PresetButton');
+// OPRAVA (Vrso 2026-09-10, Zzz1-M4a): predtym IIFE hardcoded na 'zzz1m3PresetButton' - vytiahnute do
+// pomenovanej funkcie s `btn` parametrom, aby sa DALA ZNOVUPOUZIT aj pre Zzz1-M4a template PRESET klon
+// (rovnaky princip ako zzz6f48_bind_dual_press vyssie). Volanie s realnym buttonom je hned pod definiciou;
+// druhe volanie (M4a klon) je v zzz1m4a_init() nizsie v subore.
+function zzz1m3_bind_preset_button(btn) {
   if (!btn) return;
 
   // === [Zzz1-R37:PRESET-HIDE-ALL-ATTACHMENTS] (Vrso 2026-09-12, "stlacenim schovaj all attachments, znovu
@@ -10976,7 +10948,8 @@ function zzz1r37_attach_entry(entry) {
   btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
   btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); }); // vsetka logika uz je v touchend/mouseup vyssie
-})();
+}
+zzz1m3_bind_preset_button(document.getElementById('zzz1m3PresetButton'));
 // === [/Zzz1-R37:PRESET-WINDOW] ===
 
 
