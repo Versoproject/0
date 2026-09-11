@@ -658,12 +658,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .section-core .circle {
     width: 80px;
     height: 80px;
-    /* OPRAVA (Vrso 2026-09-11, "oprav to ako ai+, len uplne decentne kraje tej retaze zlatou, minimalisticky,
-       len trosku vidiet rozdiel"): predchadzajuce pokusy (plny filter na obrazok, potom mask-image trik) su
-       ODSTRANENE - kruh je teraz PLNE ROVNAKY ako .section-system .circle (ziadny filter/mask na obrazok
-       samotny). Jediny rozdiel: tenky, jemny zlaty okraj (1px, znizena opacity) len na vonkajsom obryse -
-       decentny, nie vyrazny prstenec. | Vrso -> Claude AI | 2026-09-11 === */
-    box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.55);
+    /* OPRAVA (Vrso 2026-09-11, "zrus tym tvojim zlatym kruhom... nic viac"): VSETKY predchadzajuce pokusy so
+       zlatou farbou (filter, mask-image, box-shadow okraj) su ODSTRANENE. Kruh je teraz UPLNE rovnaky ako
+       .section-system .circle - ziadna farebna uprava. | Vrso -> Claude AI | 2026-09-11 === */
   }
   .section-system .circle-layout {
     width: 180px;
@@ -768,6 +765,19 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     color: #fff;
     margin-bottom: 10px;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  }
+  /* [Zzz4-0:DELETE-ALL] Vrso 2026-09-11 - vyrazne cervene, ale male (nie omylom naklikatelne velke tlacidlo) */
+  .zzz4-0-delete-all-btn {
+    display: block;
+    margin: 0 0 10px 0;
+    padding: 4px 8px;
+    font-size: 9px;
+    font-weight: 700;
+    background-color: #171717;
+    color: #dc2626;
+    border: 1px solid #dc2626;
+    border-radius: 6px;
+    cursor: pointer;
   }
   .db-workspace-loading,
   .db-workspace-empty {
@@ -11831,6 +11841,88 @@ function zzz4_0_apply_mini_visibility_to_row(rowEl) {
 }
 // === [/Zzz4-0:MINI-SYNC] ===
 
+// === [Zzz4-0:DELETE-ALL] Vrso 2026-09-11 explicitna, dvakrat potvrdena ziadost ("naozaj vymazat vsetky
+// entries"): nevratna akcia na ZIVYCH datach, preto pozadovana OVEREVA VYSSIA nez pri beznom jednom-riadku
+// DELETE - osoba MUSI NAPISAT presnu frazu (nie len kliknut "ano"), tlacidlo potvrdenia je disabled, kym
+// text presne nesedi. | Vrso -> Claude AI | 2026-09-11 ===
+const ZZZ4_0_DELETE_ALL_PHRASE = 'VYMAZAT VSETKO';
+
+function zzz4_0_open_delete_all_confirm() {
+  const { box, removeBox } = zzz6f41_create_context_window();
+  const warn = document.createElement('div');
+  warn.className = 'zzz-context-header';
+  warn.textContent = 'POZOR: nevratne vymaze VSETKY zaznamy z databazy (verso_entries AJ verso_trash). Toto sa NEDA vratit spat.';
+  warn.style.color = '#dc2626';
+  box.appendChild(warn);
+
+  const instructions = document.createElement('div');
+  instructions.style.fontSize = '11px';
+  instructions.style.padding = '6px 2px';
+  instructions.textContent = `Pre potvrdenie napis presne: ${ZZZ4_0_DELETE_ALL_PHRASE}`;
+  box.appendChild(instructions);
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'zzz6f48-mini-row-value-input';
+  input.placeholder = ZZZ4_0_DELETE_ALL_PHRASE;
+  box.appendChild(input);
+
+  const actions = document.createElement('div');
+  actions.className = 'entry-modal-actions';
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.type = 'button';
+  confirmBtn.className = 'entry-modal-delete';
+  confirmBtn.textContent = 'VYMAZAT VSETKO NATRVALO';
+  confirmBtn.disabled = true;
+  confirmBtn.style.opacity = '0.4';
+  input.addEventListener('input', () => {
+    const matches = input.value.trim() === ZZZ4_0_DELETE_ALL_PHRASE;
+    confirmBtn.disabled = !matches;
+    confirmBtn.style.opacity = matches ? '1' : '0.4';
+  });
+  confirmBtn.onclick = async () => {
+    if (input.value.trim() !== ZZZ4_0_DELETE_ALL_PHRASE) return;
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Mazem...';
+    await zzz4_0_delete_all_entries();
+    removeBox();
+  };
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'entry-modal-close';
+  cancelBtn.textContent = 'ZRUSIT';
+  cancelBtn.onclick = () => removeBox();
+
+  actions.appendChild(confirmBtn);
+  actions.appendChild(cancelBtn);
+  box.appendChild(actions);
+  zzz6f41_bind_outside_click(box, () => removeBox());
+}
+
+async function zzz4_0_delete_all_entries() {
+  try {
+    // .neq('entry_id', 0) - Supabase vyzaduje WHERE podmienku aj pre "vsetko", entry_id je vzdy > 0.
+    const { error, count } = await sb.from('verso_entries').delete({ count: 'exact' }).neq('entry_id', 0);
+    if (error) throw error;
+    // OPRAVA (Vrso 2026-09-11, "aj z trash databazy!!!") - verso_trash sa maze SPOLU s verso_entries, v tom
+    // istom potvrdenom kroku (jedna fraza, jedna akcia, obe tabulky naraz).
+    const { error: trashError, count: trashCount } = await sb.from('verso_trash').delete({ count: 'exact' }).neq('entry_id', 0);
+    if (trashError) throw trashError;
+    zzz6f2_show_toast(`Vymazane: ${count !== null && count !== undefined ? count : '?'} entries + ${trashCount !== null && trashCount !== undefined ? trashCount : '?'} trash zaznamov.`);
+    zzz4_0_workspacePageCursor = null;
+    zzz4_0_workspaceLoadedRows = [];
+    zzz4_0_workspaceHasMore = false;
+    await open_database_workspace(false);
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    console.error('zzz4_0_delete_all_entries zlyhalo:', errDetail);
+    zzz6f2_show_toast(`Vymazanie zlyhalo: ${errDetail}`);
+  }
+}
+// === [/Zzz4-0:DELETE-ALL] ===
+
 async function open_database_workspace(loadMore = false) {
   const workspace = document.getElementById('versoWorkspaceSection');
   if (!workspace) return;
@@ -11937,6 +12029,16 @@ async function open_database_workspace(loadMore = false) {
       ? `DATABASE WORKSPACE (Zzz4-0) (${usedFulltextSearch ? 'fulltext hladanie - cela databaza' : 'filter (len nacitana stranka)'}: ${filterTerms.length} kriterii)`
       : 'DATABASE WORKSPACE (Zzz4-0)');
   wrap.appendChild(title);
+
+  // [Zzz4-0:DELETE-ALL] Vrso 2026-09-11 explicitna ziadost ("naozaj vymazat vsetky entries") - VYRAZNE
+  // oddelene tlacidlo, NIKDY jeden klik nestaci (viz zzz4_0_open_delete_all_confirm nizsie - musi sa
+  // NAPISAT presna fraza, nie len kliknut/potvrdit).
+  const deleteAllBtn = document.createElement('button');
+  deleteAllBtn.type = 'button';
+  deleteAllBtn.className = 'zzz4-0-delete-all-btn';
+  deleteAllBtn.textContent = 'VYMAZAT VSETKY ENTRIES';
+  deleteAllBtn.onclick = () => zzz4_0_open_delete_all_confirm();
+  wrap.appendChild(deleteAllBtn);
 
   // [Zzz6-F22-link:ENTRY-LINK] "ZRUSIT FILTER" - vidiet len ked je aktivny presny entry-number filter.
   if (entryIdFilterActive) {
