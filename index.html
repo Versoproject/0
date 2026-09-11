@@ -658,23 +658,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .section-core .circle {
     width: 80px;
     height: 80px;
-    /* OPRAVA (Vrso 2026-09-11, "nie zlaty kruh, iba samotnu retaz zlatou" - box-shadow prstenec bol zle
-       pochopenie): TERAZ sa filter aplikuje PRIAMO na obrazok retaze (verso-chain.jpg) cez ::before vrstvu
-       POD textom, takze retaz samotna je zlata, ale username text (ktory ostava priamym child-om .circle,
-       mimo tejto filtrovanej vrstvy) si drzi svoju vlastnu farbu nezmenenu (zlata/oranzova/cervena podla
-       stavu). position:relative aby ::before (absolute) spravne prekrylo presne cely kruh. | Vrso -> Claude
-       AI | 2026-09-11 === */
-    position: relative;
-    overflow: hidden;
-  }
-  .section-core .circle::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background-image: url("verso-chain.jpg");
-    background-size: cover;
-    background-position: center;
-    filter: sepia(1) saturate(3) hue-rotate(5deg) brightness(0.95);
+    /* OPRAVA (Vrso 2026-09-11, "oprav to ako ai+, len uplne decentne kraje tej retaze zlatou, minimalisticky,
+       len trosku vidiet rozdiel"): predchadzajuce pokusy (plny filter na obrazok, potom mask-image trik) su
+       ODSTRANENE - kruh je teraz PLNE ROVNAKY ako .section-system .circle (ziadny filter/mask na obrazok
+       samotny). Jediny rozdiel: tenky, jemny zlaty okraj (1px, znizena opacity) len na vonkajsom obryse -
+       decentny, nie vyrazny prstenec. | Vrso -> Claude AI | 2026-09-11 === */
+    box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.55);
   }
   .section-system .circle-layout {
     width: 180px;
@@ -9925,7 +9914,12 @@ function zzz6f48_apply_mini_visibility() {
       // zozname - stlpce sa im nastavili LEN raz pri vytvoreni (zzz1m4a_build_local_attach_row), takze pri
       // dalsej zmene checklistu uz nesedeli s hlavnym M4a riadkom. TERAZ su VZDY v jednej zdielanej pravde
       // s M4/M4a CRM aj RL. | Vrso -> Claude AI | 2026-09-11 ===
-      ', #versoM4aLocalAttachList .' + field.wrap
+      ', #versoM4aLocalAttachList .' + field.wrap +
+      // OPRAVA (Vrso 2026-09-11, "4-0 databaza a trash databaza je nesynchronizovana s 1-M4 CR modulom, vzdy
+      // musi byt!!!"): Database Workspace aj Trash Workspace (zdielaju zzz4_0_build_entry_row, trieda
+      // .db-workspace-entry-row) su TERAZ TIEZ v tejto jednej zdielanej pravde - live zmena checklistu v CRM
+      // sa okamzite prejavi aj na uz vykreslenych riadkoch v oboch workspace-och. | Vrso -> Claude AI | 2026-09-11 ===
+      ', .db-workspace-entry-row .' + field.wrap
     ).forEach(el => {
       el.style.display = isHidden ? 'none' : '';
     });
@@ -11812,9 +11806,30 @@ function zzz4_0_build_entry_row(row) {
     zzz_flash_elements(Array.from(rowEl.querySelectorAll('.entry-cell, .priority-dot-button, .privacy-dot-button, .status-dot-button')), 1500);
     zzz_copy_text_to_clipboard_silent(zzz_build_cl_display_from_row(row));
   }, (e) => !e.target.closest('.entry-cell.zzz6f6-el-cell-copyable'));
+  // OPRAVA (Vrso 2026-09-11, "4-0 databaza a trash databaza je nesynchronizovana s 1-M4 CR modulom, vzdy musi
+  // byt!!!"): predtym tento riadok VZDY zobrazil VSETKY stlpce, bez ohladu na MINI checklist stav v CRM (na
+  // rozdiel od attachmentov/M4a/PRESET tabov, ktore uz tuto synchronizaciu maju). Kedze Trash Workspace
+  // zdiela TU ISTU funkciu (zzz4_0_build_entry_row), toto pravidlo teraz plati PRE OBIDVE naraz. rowEl uz ma
+  // data-entry-id (nastavene vyssie), takze zzz4_0_apply_mini_visibility_to_row moze cielit jeho stlpce
+  // rovnako, ako to uz robia ine synchronizovane riadky v systeme. | Vrso -> Claude AI | 2026-09-11 ===
+  zzz4_0_apply_mini_visibility_to_row(rowEl);
   return rowEl;
 }
 // === [/Zzz4-0:GRID-COPY] ===
+
+// [Zzz4-0:MINI-SYNC] Vrso 2026-09-11 - Database Workspace aj Trash Workspace (zdiela zzz4_0_build_entry_row)
+// riadky su TERAZ VZDY zosynchronizovane s MINI checklistom hlavneho 1-M4 CR modulu (rovnaky princip ako
+// zzz1r37_apply_global_mini_visibility_to_row pre PRESET tab riadky vyssie v subore) - ziadny vlastny stav,
+// jedna zdielana pravda (zzz6f48_get_hidden_wraps()).
+function zzz4_0_apply_mini_visibility_to_row(rowEl) {
+  const hiddenWraps = zzz6f48_get_hidden_wraps().filter(w => !ZZZ6F48_FIXED_WRAPS.includes(w));
+  ZZZ_FULL_DISPLAY_FIELDS.forEach(field => {
+    if (ZZZ6F48_FIXED_WRAPS.includes(field.wrap)) return;
+    const el = rowEl.querySelector(':scope > .' + field.wrap);
+    if (el) el.style.display = hiddenWraps.includes(field.wrap) ? 'none' : '';
+  });
+}
+// === [/Zzz4-0:MINI-SYNC] ===
 
 async function open_database_workspace(loadMore = false) {
   const workspace = document.getElementById('versoWorkspaceSection');
