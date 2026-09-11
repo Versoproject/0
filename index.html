@@ -766,6 +766,18 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     margin-bottom: 10px;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
   }
+  .zzz4-0-delete-all-btn {
+    display: block;
+    margin: 0 0 10px 0;
+    padding: 4px 8px;
+    font-size: 9px;
+    font-weight: 700;
+    background-color: #171717;
+    color: #dc2626;
+    border: 1px solid #dc2626;
+    border-radius: 6px;
+    cursor: pointer;
+  }
   .db-workspace-loading,
   .db-workspace-empty {
     font-size: 9px;
@@ -11829,6 +11841,99 @@ function zzz4_0_apply_mini_visibility_to_row(rowEl) {
 // === [/Zzz4-0:MINI-SYNC] ===
 
 
+// === [Zzz4-0:DELETE-ALL] Vrso 2026-09-11 explicitna, dvakrat potvrdena ziadost ("naozaj vymazat vsetky
+// entries"): nevratna akcia na ZIVYCH datach, preto pozadovana OVEREVA VYSSIA nez pri beznom jednom-riadku
+// DELETE - osoba MUSI NAPISAT presnu frazu (nie len kliknut "ano"), tlacidlo potvrdenia je disabled, kym
+// text presne nesedi.
+// OPRAVA (Vrso 2026-09-11, "nejde to stlacit/vymazat"): PRVY pokus zlyhaval velmi pravdepodobne kvoli
+// mobilnej klavesnici - autocapitalize/autocorrect menili napisany text (napr. prve pismeno velke), takze
+// presne (case-sensitive) porovnanie nikdy nesedelo, aj ked osoba napisala spravnu frazu. TERAZ: input ma
+// autocapitalize="off" autocorrect="off" spellcheck="false" (zabrani interferencii klavesnice) A porovnanie
+// je navyse case-insensitive + trim (dvojita poistka). | Vrso -> Claude AI | 2026-09-11 ===
+const ZZZ4_0_DELETE_ALL_PHRASE = 'VYMAZAT VSETKO';
+
+function zzz4_0_open_delete_all_confirm() {
+  const { box, removeBox } = zzz6f41_create_context_window();
+  const warn = document.createElement('div');
+  warn.className = 'zzz-context-header';
+  warn.textContent = 'POZOR: nevratne vymaze VSETKY zaznamy z databazy (verso_entries AJ verso_trash). Toto sa NEDA vratit spat.';
+  warn.style.color = '#dc2626';
+  box.appendChild(warn);
+
+  const instructions = document.createElement('div');
+  instructions.style.fontSize = '11px';
+  instructions.style.padding = '6px 2px';
+  instructions.textContent = `Pre potvrdenie napis presne: ${ZZZ4_0_DELETE_ALL_PHRASE}`;
+  box.appendChild(instructions);
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'zzz6f48-mini-row-value-input';
+  input.placeholder = ZZZ4_0_DELETE_ALL_PHRASE;
+  input.autocapitalize = 'off';
+  input.autocomplete = 'off';
+  input.setAttribute('autocorrect', 'off');
+  input.setAttribute('spellcheck', 'false');
+  box.appendChild(input);
+
+  const actions = document.createElement('div');
+  actions.className = 'entry-modal-actions';
+
+  function checkMatch() {
+    return input.value.trim().toUpperCase() === ZZZ4_0_DELETE_ALL_PHRASE;
+  }
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.type = 'button';
+  confirmBtn.className = 'entry-modal-delete';
+  confirmBtn.textContent = 'VYMAZAT VSETKO NATRVALO';
+  confirmBtn.disabled = true;
+  confirmBtn.style.opacity = '0.4';
+  input.addEventListener('input', () => {
+    const matches = checkMatch();
+    confirmBtn.disabled = !matches;
+    confirmBtn.style.opacity = matches ? '1' : '0.4';
+  });
+  confirmBtn.onclick = async () => {
+    if (!checkMatch()) return; // dvojita poistka, aj keby disabled atribut zlyhal
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Mazem...';
+    await zzz4_0_delete_all_entries();
+    removeBox();
+  };
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'entry-modal-close';
+  cancelBtn.textContent = 'ZRUSIT';
+  cancelBtn.onclick = () => removeBox();
+
+  actions.appendChild(confirmBtn);
+  actions.appendChild(cancelBtn);
+  box.appendChild(actions);
+  zzz6f41_bind_outside_click(box, () => removeBox());
+}
+
+async function zzz4_0_delete_all_entries() {
+  try {
+    // .neq('entry_id', 0) - Supabase vyzaduje WHERE podmienku aj pre "vsetko", entry_id je vzdy > 0.
+    const { error, count } = await sb.from('verso_entries').delete({ count: 'exact' }).neq('entry_id', 0);
+    if (error) throw error;
+    const { error: trashError, count: trashCount } = await sb.from('verso_trash').delete({ count: 'exact' }).neq('entry_id', 0);
+    if (trashError) throw trashError;
+    zzz6f2_show_toast(`Vymazane: ${count !== null && count !== undefined ? count : '?'} entries + ${trashCount !== null && trashCount !== undefined ? trashCount : '?'} trash zaznamov.`);
+    zzz4_0_workspacePageCursor = null;
+    zzz4_0_workspaceLoadedRows = [];
+    zzz4_0_workspaceHasMore = false;
+    await open_database_workspace(false);
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    console.error('zzz4_0_delete_all_entries zlyhalo:', errDetail);
+    zzz6f2_show_toast(`Vymazanie zlyhalo: ${errDetail}`);
+  }
+}
+// === [/Zzz4-0:DELETE-ALL] ===
+
 async function open_database_workspace(loadMore = false) {
   const workspace = document.getElementById('versoWorkspaceSection');
   if (!workspace) return;
@@ -11935,6 +12040,13 @@ async function open_database_workspace(loadMore = false) {
       ? `DATABASE WORKSPACE (Zzz4-0) (${usedFulltextSearch ? 'fulltext hladanie - cela databaza' : 'filter (len nacitana stranka)'}: ${filterTerms.length} kriterii)`
       : 'DATABASE WORKSPACE (Zzz4-0)');
   wrap.appendChild(title);
+
+  const deleteAllBtn = document.createElement('button');
+  deleteAllBtn.type = 'button';
+  deleteAllBtn.className = 'zzz4-0-delete-all-btn';
+  deleteAllBtn.textContent = 'VYMAZAT VSETKY ENTRIES';
+  deleteAllBtn.onclick = () => zzz4_0_open_delete_all_confirm();
+  wrap.appendChild(deleteAllBtn);
 
   // [Zzz6-F22-link:ENTRY-LINK] "ZRUSIT FILTER" - vidiet len ked je aktivny presny entry-number filter.
   if (entryIdFilterActive) {
