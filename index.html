@@ -4641,6 +4641,10 @@ function render_entry_cell(id) {
   // (#versoLoginUserCell / #versoLoginContentCell, viz Zzz6-F36 nizsie) - OBE (CRM aj Login) musia
   // vzdy ukazovat ten isty obsah, nech sa upravi z ktorehokolvek miesta.
   document.querySelectorAll(`.entry-cell[data-entry-id="${id}"]`).forEach(cell => {
+    // Zzz1-M4a ma VLASTNY izolovany store (zzz1m4aFields) - jeho bunky sa NESMU synchronizovat z realneho
+    // entryData (presne ten leak, ktory Vrso nahlasil - "M4 a M4a su prepojene aj v obsahu buniek"). | Vrso
+    // -> Claude AI | 2026-09-11 ===
+    if (cell.closest('#versoM4aCLNumbersRow')) return;
     // === [Zzz10-M2:MASKED-CONTENT] vynimka - zamaskovana Login Setup CONTENT bunka (.zzz10m2-masked-cell)
     // NIKDY nedostane skutocnu hodnotu z tohto zdieleneho renderu - ostava "*****" VZDY, bez vynimky.
     // UPDATE (Vrso 2026-09-02, "sa nemoze po prihlaseni zobrazit heslo v content!!!! Ani nikde inde!!!"):
@@ -10230,21 +10234,34 @@ function zzz1r37_apply_global_mini_visibility_to_row(rowEl) {
 }
 
 // === [Zzz1-M4a:BUILD] JS builder pre Zzz1-M4a CRM Template - klonuje #versoCRMLabelsRow + #versoCLNumbersRow
-// (rovnaky cloneNode princip ako Zzz1-R37:CLONE-MINI nizsie), takze vzhlad je 100% identicky s hlavnym M4.
-// OPRAVA (Vrso 2026-09-10, "toto skopiruj uplne rovnako!!! vyskusaj ty na 1-4 cr module a len to pouzi aj pre
-// template"): PREDOSLA verzia (izolovany zzz1m4aFields + vlastny zjednoduseny click/MINI) bola PRILIS OPATRNA -
-// bunky sa needitovatelnym contentEditable a otvorenie kontext okna vobec nefungovalo. TERAZ klon POUZIVA
-// PRIAMO tie iste real funkcie ako skutocny M4 (open_entry_modal, zzz1_f16_open_schedule_date_modal,
-// zzz6f17/18_open_context_select_modal, zzz6f21_open_tags_context_modal, zzz1_r7/12/26f1_toggle_*,
-// zzz6f29_open_readonly_viewer, zzz6f48_bind_dual_press, zzz1m3_bind_preset_button) - ZDIELA teda AJ entryData
-// (rovnaky princip ako zzz6f48_apply_mini_visibility uz teraz zahrna aj #versoM4aCLNumbersRow, viz uprava
-// vyssie v subore). Kedze klon nema logo/insert tlacidlo a logo funkcie (flash/3s copy) referencuju VYLUCNE
-// versoEntryCell*/entryData priamo (nie tento klon), a D1 DB-write sa vola VYLUCNE cez ENTRY/logo button (nikdy
-// z write_to_entry/open_entry_modal), tento klon STALE nema ziadnu cestu k databaze ani k logo funkciam - presne
-// tie dva rezy, ktore Vrso ziadal, zvysok je 1:1 realna funkcnost. | Vrso -> Claude AI | 2026-09-10 === //
+// (cloneNode, rovnaky princip ako Zzz1-R37:CLONE-MINI nizsie), takze VZHLAD je 100% identicky s hlavnym M4.
+// OPRAVA (Vrso 2026-09-11, "m4 a m4a moduly su prepojene aj v ramci obsahu cl buniek, cl teda prejde do
+// databazy cez entry (spolocnu)... M4a nech ma AJ VLASTNY 1-M1 command line module"): PREDOSLA verzia zdielala
+// PRIAMO entryData s realnym M4 (open_entry_modal(id)/zzz1_r*f1_toggle_* pisu do entryData) - takze co bolo
+// napisane do M4a sa OBJAVILO aj v realnej CL a teda sa REALNE odoslalo do databazy pri ENTRY (nie preto, ze
+// by M4a samo malo insert cestu, ale preto, ze zdielalo TEN ISTY zdroj dat ako modul, ktory insert cestu MA).
+// TERAZ: Zzz1-M4a ma VLASTNY, PLNE IZOLOVANY dátový store (zzz1m4aFields - "vlastny 1-M1 Command Line modul",
+// viz Vrso ziadost) - ZIADNA bunka v M4a uz nezapisuje do entryData, takze cokolvek sa do M4a napise, NIKDY sa
+// nedostane do skutocnej CL/databazy, bez ohladu na to, co sa stlaci na realnom M4 alebo logu.
+// SPECIAL/INTERIM zjednodusenie (rovnaky princip, aky uz Vrso schvalil pri zzz1r37_build_editable_cl_row pre
+// PRESET klony): R16 (Schedule)/R17 (User)/R18 (Communication)/R21 (Tag) NEMAJU vlastnu specializovanu UI
+// (date-picker/context-chip okno) - v M4a sa otvaraju rovnakym jednoduchym textovym oknom ako ostatne polia
+// (zzz1m4a_open_local_entry_modal), plne izolovane, len bez specializovaneho vstupu. R7/R12/R26 (dot-toggle)
+// maju VLASTNU zjednodusenu toggle logiku (bez realnych gate-podmienok ako Final-lock/multi-user consent, tie
+// davaju zmysel len voci realnemu R5/R17 v entryData, ktore M4a uz nema). | Vrso -> Claude AI | 2026-09-11 === //
 function zzz1m4a_strip_ids(rootEl) {
   if (rootEl.id) rootEl.removeAttribute('id');
   rootEl.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+}
+
+// Zzz1-M4a VLASTNY "1-M1 Command Line" store - kompletne izolovany od entryData (viz vysvetlenie vyssie).
+const zzz1m4aFields = {};
+
+function zzz1m4a_write_field(id, text) {
+  zzz1m4aFields[id] = text;
+  document.querySelectorAll(`#versoM4aCLNumbersRow .entry-cell[data-entry-id="${id}"]`).forEach(cell => {
+    cell.textContent = text || '';
+  });
 }
 
 function zzz1m4a_build_rl_clone() {
@@ -10253,31 +10270,98 @@ function zzz1m4a_build_rl_clone() {
   const rowEl = source.cloneNode(true);
   zzz1m4a_strip_ids(rowEl);
   rowEl.id = 'versoM4aCRMLabelsRow';
-  // PRESET tlacidlo v RL riadku - rovnaka funkcnost ako realny PRESET (zzz1m3_bind_preset_button, refaktorovana
-  // vyssie z povodnej IIFE presne kvoli tomuto znovupouzitiu).
+  // PRESET tlacidlo v RL riadku - OPRAVA (Vrso 2026-09-11, "vseobecne pravidlo... po otvoreni preset okna z
+  // M4a sa pridany preset attachuje na M4 crm a nie pod M4a"): predtym volalo zzz1m3_bind_preset_button(btn)
+  // bez druheho parametra, cim PRESET okno pouzivalo SVOJ default (normalny attach = REALNY zzz6f17Attachments
+  // pod M4). TERAZ posiela zzz1m4a_pick_preset_entry ako pickCallback - kazdy CL riadok v PRESET okne dostane
+  // "+ PRIDAT SEM" tlacidlo, ktore routuje VYLUCNE do zzz1m4aLocalAttachments (izolovane, viz nizsie). | Vrso
+  // -> Claude AI | 2026-09-11 ===
   const presetBtn = rowEl.querySelector('.zzz1m3-preset-button');
-  if (presetBtn) zzz1m3_bind_preset_button(presetBtn);
+  if (presetBtn) zzz1m3_bind_preset_button(presetBtn, zzz1m4a_pick_preset_entry);
   return rowEl;
 }
 
-// Dot-toggle bunky (R7/R12/R26) maju sync funkcie hardcoded na getElementById REALNEJ bunky (viz Zzz1-R7/R12/
-// R26:CELL vyssie) - preto po zavolani realnej toggle funkcie (ktora zapise entryData + sync-ne REALNU bunku)
-// tu navyse rucne sync-neme AJ vizual TOHTO klonovaneho dot-u, z tych istych entryData (jeden zdroj pravdy).
-function zzz1m4a_sync_dot_cell(cellEl, entryId) {
-  if (entryId === '12') {
-    const isActive = (entryData["12"] || "").trim().length > 0;
-    cellEl.classList.toggle('is-active', isActive);
-    cellEl.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-  } else if (entryId === '7') {
-    const isActive = (entryData["7"] || "").trim().length > 0;
-    cellEl.classList.toggle('is-active', isActive);
-    cellEl.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-    cellEl.classList.toggle('zzz6f45-locked', zzz1r5_is_final() || !zzz1_r7f1_can_edit_privacy());
-  } else if (entryId === '26') {
-    const val = (entryData["26"] || '').trim();
+// Pick-callback pre M4a PRESET okno (viz vyssie) - "entry" prichadza priamo z PRESET tab systemu (entry.fields
+// uz je v tom istom rKey formate ako pouziva zzz1m4a_build_local_attach_row/item.fields).
+function zzz1m4a_pick_preset_entry(entry) {
+  zzz1m4aLocalAttachCounter++;
+  zzz1m4aLocalAttachments.push({ id: zzz1m4aLocalAttachCounter, fields: Object.assign({}, entry.fields || {}) });
+  zzz1m4a_render_local_attachments();
+  zzz6f2_show_toast('Preset pripnuty (LEN lokalne pod M4a, nie do databazy).');
+}
+
+// Vlastna (izolovana) verzia open_entry_modal - rovnaky vizual/UI (header, textarea, suggest chipy, quickchipy,
+// DELETE/ATTACH/ZATVORIT), ale VSETKO cita/zapisuje VYLUCNE do zzz1m4aFields (nikdy entryData/write_to_entry).
+// ATTACH tu vola zzz1m4a_attach_local_cl (uz existujuci izolovany lokalny-attach mechanizmus, viz nizsie v
+// subore) namiesto realneho zzz6f17_context_attachment_add_cl. COPY tlacidlo (Copy Cell z Database Workspace
+// EL do realnej CL) tu nema zmysel (M4a nema EL/Database vazbu) - VYNECHANE.
+function zzz1m4a_open_local_entry_modal(id) {
+  const { box, removeBox } = zzz6f41_create_context_window();
+  if (id === '10') box.classList.add('zzz6f17-maximized');
+  box.appendChild(zzz_build_context_header(id));
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'entry-modal-textarea';
+  textarea.value = zzz1m4aFields[id] || '';
+  textarea.addEventListener('input', () => zzz1m4a_write_field(id, textarea.value));
+
+  box.appendChild(zzz_build_suggest_row(id, textarea, null)); // liveSaveId=null - chip klik NEZAPISUJE do entryData
+  box.appendChild(zzz1_build_quickchips_row(
+    () => textarea.value,
+    (val) => { textarea.value = val; zzz1m4a_write_field(id, val); }
+  ));
+
+  const actions = document.createElement('div');
+  actions.className = 'entry-modal-actions';
+  function closeModal() { zzz1m4a_write_field(id, textarea.value); stopAutosize(); removeBox(); }
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'entry-modal-delete';
+  deleteBtn.textContent = 'DELETE';
+  deleteBtn.onclick = () => { zzz1m4a_write_field(id, ''); stopAutosize(); removeBox(); };
+
+  const attachBtn = document.createElement('button');
+  attachBtn.className = 'zzz1m5-attach-btn';
+  attachBtn.textContent = 'ATTACH';
+  attachBtn.onclick = () => {
+    zzz1m4a_write_field(id, textarea.value);
+    zzz1m4a_attach_local_cl(); // izolovany lokalny attach, NIE zzz6f17Attachments/DB
+    if (box.parentNode) box.parentNode.removeChild(box);
+  };
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'entry-modal-close';
+  closeBtn.textContent = 'ZATVORIT';
+  closeBtn.onclick = closeModal;
+
+  actions.appendChild(deleteBtn);
+  actions.appendChild(attachBtn);
+  actions.appendChild(closeBtn);
+  box.appendChild(textarea);
+  box.appendChild(actions);
+  zzz6f41_bind_outside_click(box, closeModal);
+  textarea.focus();
+  const stopAutosize = verso_autosize_modal_textarea(textarea);
+}
+
+// Zjednodusena (izolovana) toggle logika pre R7/R12/R26 - ziadne realne gate-podmienky (Final-lock/multi-user
+// consent), tie su viazane na entryData["5"]/["17"], ktore M4a uz nema. Cistý ON/OFF pre R7/R12, jednoduchy
+// cyklus biela->pending->done->final->biela pre R26 (bez CONFIRMED stavu, ten vyzaduje realny multi-user R17).
+function zzz1m4a_toggle_dot(cellEl, id) {
+  if (id === '12' || id === '7') {
+    const isActive = (zzz1m4aFields[id] || '').trim().length > 0;
+    const next = isActive ? '' : (id === '12' ? 'PRIORITY' : 'ano');
+    zzz1m4aFields[id] = next;
+    cellEl.classList.toggle('is-active', !!next);
+    cellEl.setAttribute('aria-pressed', next ? 'true' : 'false');
+  } else if (id === '26') {
+    const cur = (zzz1m4aFields['26'] || '').trim();
+    const order = ['', 'pending', 'done', 'final'];
+    const next = order[(order.indexOf(cur) + 1) % order.length];
+    zzz1m4aFields['26'] = next;
     cellEl.classList.remove('zzz1r26-pending', 'zzz1r26-done', 'zzz1r26-final', 'zzz1r26-confirmed');
-    if (val) cellEl.classList.add('zzz1r26-' + val);
-    cellEl.setAttribute('aria-pressed', val ? 'true' : 'false');
+    if (next) cellEl.classList.add('zzz1r26-' + next);
+    cellEl.setAttribute('aria-pressed', next ? 'true' : 'false');
   }
 }
 
@@ -10288,67 +10372,31 @@ function zzz1m4a_build_cl_clone() {
   zzz1m4a_strip_ids(rowEl);
   rowEl.id = 'versoM4aCLNumbersRow';
 
-  // R* bunky - PRESNE ROVNAKY dispatch ako [F1:CELL-LOGIC] generic binding vyssie v subore (data-readonly /
-  // data-date-picker / data-context-select / data-tags-context / data-toggle / obycajny open_entry_modal), len
-  // volany rucne tu (cloneNode NEPRENASA JS listenery) - triedy aj data-entry-id OSTAVAJU zachovane, takze
-  // render_entry_cell()/generic .entry-cell[data-entry-id] broadcast uz AUTOMATICKY sync-uje text bunky tohto
-  // klonu zakazdym, ked sa entryData zmeni odkialkolvek (ziadny navyse kod potrebny pre text polia).
   rowEl.querySelectorAll('[data-entry-id]').forEach(cellEl => {
     const id = cellEl.getAttribute('data-entry-id');
     if (cellEl.hasAttribute('data-readonly')) {
-      if (id === '22') return; // R22 - SPECIAL dedicated handler, mimo rozsahu tejto davky, ostava needitovatelna
+      if (id === '22') return; // R22 - SPECIAL, mimo rozsahu, ostava needitovatelna/prazdna
       cellEl.addEventListener('click', () => {
-        if (zzz6f29SelectMode) { zzz6f29_toggle_cl_cell(id, cellEl); return; }
-        zzz6f29_open_readonly_viewer(zzz_get_readonly_cell_label(id), entryData[id] || '');
+        zzz6f29_open_readonly_viewer(zzz_get_readonly_cell_label(id), zzz1m4aFields[id] || '');
       });
       return;
     }
-    if (cellEl.hasAttribute('data-date-picker')) {
-      cellEl.addEventListener('click', () => {
-        if (zzz6f29SelectMode) { zzz6f29_toggle_cl_cell(id, cellEl); return; }
-        zzz1_f16_open_schedule_date_modal();
-      });
-      return;
-    }
-    if (cellEl.hasAttribute('data-context-select')) {
-      cellEl.addEventListener('click', () => {
-        if (zzz6f29SelectMode) { zzz6f29_toggle_cl_cell(id, cellEl); return; }
-        if (id === '18') zzz6f18_open_context_select_modal(); else zzz6f17_open_context_select_modal();
-      });
-      return;
-    }
-    if (cellEl.hasAttribute('data-tags-context')) {
-      cellEl.addEventListener('click', () => {
-        if (zzz6f29SelectMode) { zzz6f29_toggle_cl_cell(id, cellEl); return; }
-        zzz6f21_open_tags_context_modal('21');
-      });
+    // R16/R17/R18/R21 - SPECIAL/INTERIM zjednodusenie (viz vysvetlenie hore v subore) - vsetky idu cez rovnaky
+    // izolovany textovy modal ako ostatne polia, ziadna specializovana UI.
+    if (cellEl.hasAttribute('data-date-picker') || cellEl.hasAttribute('data-context-select') || cellEl.hasAttribute('data-tags-context')) {
+      cellEl.addEventListener('click', () => zzz1m4a_open_local_entry_modal(id));
       return;
     }
     if (cellEl.getAttribute('data-toggle') === 'true') {
-      cellEl.addEventListener('click', () => {
-        if (id === '12') zzz1_r12f1_toggle_priority();
-        else if (id === '7') zzz1_r7f1_toggle_privacy();
-        else if (id === '26') zzz1_r26f1_toggle_status();
-        zzz1m4a_sync_dot_cell(cellEl, id);
-      });
+      cellEl.addEventListener('click', () => zzz1m4a_toggle_dot(cellEl, id));
       return;
     }
-    cellEl.addEventListener('click', () => {
-      if (zzz6f29SelectMode) { zzz6f29_toggle_cl_cell(id, cellEl); return; }
-      if (zzz4r17SearchMode && zzz4r17_is_filterable_id(id)) { zzz4r17_open_filter_modal(id); return; }
-      open_entry_modal(id);
-    });
+    cellEl.addEventListener('click', () => zzz1m4a_open_local_entry_modal(id));
   });
 
-  // MINI button - OPRAVA (Vrso 2026-09-10, "toto co si urobil je uz M4, ja chcem M4a template... zrus aby sa
-  // template daval do databazy cez entry a nebude mat navaznost na logo button"): predtym sa tu pouzival PRIAMO
-  // zzz6f48_bind_dual_press(miniBtn) - jeho KRATKY KLIK vola zzz6f48_attach_main_cl(), co PUSHNE REALNY
-  // attachment do zdielaneho zzz6f17Attachments (ten iste zoznam, ktory submit_entries_to_db() posiela do DB
-  // pri stlaceni ENTRY/logo) - presne TATO cesta spravila z template realny zdroj DB zapisov (viditelne na
-  // Vrso screenshote - 4 realne ATTACH riadky + Entry #43). Rovnako 2s = zzz6f48_detach_all_attachments()
-  // mazalo REALNE pripnute attachmenty. TERAZ: M4a MINI ma VLASTNY, zuzeny binding - PONECHANA je LEN 0.5s
-  // (otvor/zavri ten isty zdielany checklist - cisto vizualny toggle stlpcov, ZIADNA DB/attachment akcia),
-  // kratky klik aj 2s su ZRUSENE (ziadna akcia) - presne ten rez, ktory Vrso ziadal. | Vrso -> Claude AI | 2026-09-10 ===
+  // MINI button - zuzeny binding (0.5s zdielany checklist toggle - cisto vizualny, ziadne CL dáta; kratky
+  // klik/3s = lokalny izolovany attach/clear, viz zzz1m4a_attach_local_cl/zzz1m4a_clear_local_attachments
+  // nizsie v subore) - bezo zmeny, uz bola spravna.
   const miniBtn = rowEl.querySelector('.zzz6f48-mini-button');
   if (miniBtn) zzz1m4a_bind_mini_checklist_only(miniBtn);
 
@@ -10371,10 +10419,16 @@ function zzz1m4a_build_local_attach_row(item) {
   const label = document.createElement('button');
   label.type = 'button';
   label.className = 'entry-number-button zzz6f48-mini-button';
-  label.disabled = true; // cisto vizualne oznacenie riadku, ziadny klik-handler (na rozdiel od realnych attachmentov)
   label.textContent = 'ATTACH';
   miniPlaceholder.appendChild(label);
   rowEl.appendChild(miniPlaceholder);
+  // OPRAVA (Vrso 2026-09-11, "attach buttonu po pripnuti nema funkcie svoje - stlac=zobraz na vsetkych, podrz
+  // 1-2s=otvor mini okno, podrz 3s=vymaze dany attachment"): predtym label.disabled=true, ZIADNY handler.
+  // TERAZ ma rovnake tri gesta ako REALNY per-attachment ATTACH button (zzz6f17_bind_mini_for_attachment) -
+  // krátky klik = zdielany zzz6f48_reset_all() (ukaz vsetky/definovane stlpce, cisto vizualne); 0.5s = zdielany
+  // zzz6f48_open_mini_modal() (checklist); 3s = odstran LEN TENTO konkretny riadok z zzz1m4aLocalAttachments
+  // (izolovane, nikdy sa netyka realnych zzz6f17Attachments). | Vrso -> Claude AI | 2026-09-11 ===
+  zzz1m4a_bind_local_attach_button(label, item);
 
   ZZZ_FULL_DISPLAY_FIELDS.forEach(field => {
     const wrapEl = document.createElement('div');
@@ -10410,6 +10464,45 @@ function zzz1m4a_build_local_attach_row(item) {
   return rowEl;
 }
 
+function zzz1m4a_detach_local(itemId) {
+  zzz1m4aLocalAttachments = zzz1m4aLocalAttachments.filter(it => it.id !== itemId);
+  zzz1m4a_render_local_attachments();
+  zzz6f2_show_toast('Lokalny attachment odstraneny (M4a).');
+}
+
+function zzz1m4a_bind_local_attach_button(btn, item) {
+  let timerOpen = null, timer3s = null, actionFired = false;
+  function clearTimers() {
+    if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
+    if (timer3s) { clearTimeout(timer3s); timer3s = null; }
+  }
+  function start() {
+    actionFired = false;
+    clearTimers();
+    timerOpen = setTimeout(() => {
+      actionFired = true;
+      if (zzz6f48CurrentModalClose) zzz6f48_close_mini_modal_if_open();
+      else zzz6f48_open_mini_modal();
+    }, 500);
+    timer3s = setTimeout(() => {
+      actionFired = true;
+      zzz1m4a_detach_local(item.id);
+    }, 3000);
+  }
+  function end() {
+    clearTimers();
+    if (!actionFired) zzz6f48_reset_all(); // kratky klik - zdielany toggle ukaz vsetky/definovane stlpce
+  }
+  function cancel() { clearTimers(); }
+  btn.addEventListener('touchstart', start, { passive: true });
+  btn.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
+  btn.addEventListener('touchmove', cancel);
+  btn.addEventListener('touchcancel', cancel);
+  btn.addEventListener('mousedown', start);
+  btn.addEventListener('mouseup', end);
+  btn.addEventListener('mouseleave', cancel);
+}
+
 function zzz1m4a_render_local_attachments() {
   const list = document.getElementById('versoM4aLocalAttachList');
   if (!list) return;
@@ -10417,9 +10510,18 @@ function zzz1m4a_render_local_attachments() {
   zzz1m4aLocalAttachments.forEach(item => list.appendChild(zzz1m4a_build_local_attach_row(item)));
 }
 
+// Snapshot VLASTNYCH (izolovanych) M4a poli - rovnaky princip ako zzz1r37_snapshot_current_cl_fields, ale
+// cita z zzz1m4aFields namiesto realneho entryData (OPRAVA Vrso 2026-09-11 - predtym tu omylom zostalo
+// volanie na entryData, co by bolo dalsim leak-om po izolacii vyssie).
+function zzz1m4a_snapshot_local_fields() {
+  const fields = {};
+  ZZZ_CL_FIELDS.forEach(([entryKey, rKey]) => { fields[rKey] = zzz1m4aFields[entryKey] || ''; });
+  return fields;
+}
+
 function zzz1m4a_attach_local_cl() {
   zzz1m4aLocalAttachCounter++;
-  zzz1m4aLocalAttachments.push({ id: zzz1m4aLocalAttachCounter, fields: zzz1r37_snapshot_current_cl_fields() });
+  zzz1m4aLocalAttachments.push({ id: zzz1m4aLocalAttachCounter, fields: zzz1m4a_snapshot_local_fields() });
   zzz1m4a_render_local_attachments();
   zzz6f2_show_toast('CL pripnuta (LEN lokalne v M4a, nie do databazy).');
 }
@@ -10988,7 +11090,7 @@ function zzz1r37_attach_entry(entry) {
 // pomenovanej funkcie s `btn` parametrom, aby sa DALA ZNOVUPOUZIT aj pre Zzz1-M4a template PRESET klon
 // (rovnaky princip ako zzz6f48_bind_dual_press vyssie). Volanie s realnym buttonom je hned pod definiciou;
 // druhe volanie (M4a klon) je v zzz1m4a_init() nizsie v subore.
-function zzz1m3_bind_preset_button(btn) {
+function zzz1m3_bind_preset_button(btn, pickCallback = null) {
   if (!btn) return;
 
   // === [Zzz1-R37:PRESET-HIDE-ALL-ATTACHMENTS] (Vrso 2026-09-12, "stlacenim schovaj all attachments, znovu
@@ -11050,7 +11152,14 @@ function zzz1m3_bind_preset_button(btn) {
     if (fired2s) return; // 2s uz vykonalo svoju akciu - nic dalej netreba
     if (firedOpen) {
       // pustene medzi 0.5s-2s -> teraz (na pustenie) otvor PRESET okno
-      zzz1r37_open_preset_modal();
+      // OPRAVA (Vrso 2026-09-11, "vseobecne pravidlo: attachovane cl sa attachuju pod prislusny ukotveny crm
+      // modul, podla ktoreho islo attach... po otvoreni preset okna z M4a sa pridany preset attachuje na M4
+      // crm a nie pod M4a"): pickCallback (ak zadany - M4a PRESET, viz zzz1m4a_build_rl_clone nizsie) sa
+      // odovzdava PRIAMO do zzz1r37_open_preset_modal - kazdy CL riadok v okne dostane "+ PRIDAT SEM" tlacidlo,
+      // ktore smeruje VYLUCNE do zzz1m4aLocalAttachments (nikdy do zzz6f17Attachments/DB). Realne M4 PRESET
+      // (pickCallback=null) ostava presne take, ake bolo - normalny attach do zzz6f17Attachments. | Vrso ->
+      // Claude AI | 2026-09-11 ===
+      zzz1r37_open_preset_modal(pickCallback);
       return;
     }
     const elapsed = Date.now() - pressStart;
