@@ -319,6 +319,25 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     border-color: #8a8a8a !important;
     color: #171717 !important;
   }
+  /* [Zzz1-M4a:SILVER-PRESET] Vrso 2026-09-11: "preset button ma byt ohraniceny striebornou farbou" - trvaly
+     (nie len 1s flash) strieborny okraj na M4a PRESET tlacidle, rovnaky odtien ako strieborne bliknutie
+     vyssie - jednoznacny vizualny marker, ze toto je M4a (nie realne M4) PRESET. */
+  #versoM4aCRMLabelsRow .zzz1m3-preset-button {
+    border: 2px solid #c0c0c0 !important;
+  }
+  /* [Zzz6-F48:WINDOW-OPEN-MARK] Vrso 2026-09-11, "ak bude otvorene nejake window mini alebo attach tak aj ich
+     button vyznac zlatou (text zlatymi pismenami)" - plati pre M4 aj M4a rovnako (zdielana trieda/mechanizmus,
+     viz zzz6f48_open_mini_modal/zzz6f48_close_mini_modal_if_open). */
+  .entry-number-button.zzz6f48-window-open {
+    color: #FFD700 !important;
+  }
+  /* [Zzz1-R37:PRESET-HIDDEN-MARK] Vrso 2026-09-11, "ak preset button schoval nejake attachmenty/pripnutia tak
+     vnutro button bude cely striebornou a preset text zlatou" - plati pre M4 aj M4a (zdielana trieda, viz
+     zzz1r37_toggle_all_attachments_visibility). */
+  .zzz1m3-preset-button.zzz1r37-hidden-active {
+    background-color: #c0c0c0 !important;
+    color: #FFD700 !important;
+  }
 </style>
 
 <!-- === [Zzz4-0:STATUS-COLOR] (SYSTEM FUNCTION) - Vrso 2026-08-28: "akekolvek docasne entry number vyznac
@@ -1275,6 +1294,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .context-window-stack:empty {
     display: none;
     padding-bottom: 0;
+  }
+  /* [Zzz1-R37:PRESET-MAGNETIZE] Vrso 2026-09-11, "preset windows sa musia vzdy prilepit k sebe" - PRESET okna
+     (ktore sa jedine daju otvarat viacere naraz, "prilepene pod seba") strácajú medzeru MEDZI SEBOU (zaporny
+     margin presne o velkost .context-window-stack gap), takze susedne PRESET okna sa VIZUALNE dotykaju/
+     "magnetizuju" - medzera k inym typom okien (MINI/bunkovy modal) ostava nezmenena. */
+  .zzz1r37-preset-box + .zzz1r37-preset-box {
+    margin-top: -10px;
   }
   /* === Zzz1-M5:ATTACHMENT-MODULE (Vrso 2026-09-01, restart specifikacie: "hide bude po celej dlzke
      kontextoveho okna... ako keby oddeleny stlpec", VLAVO od okna) - wrapper obali {hideCol, box} do
@@ -4714,11 +4740,16 @@ function write_to_entry(id, text) {
 // spravanie pri roznych sposoboch zatvorenia (DELETE vs. klik mimo vs. ULOZIT).
 // Zaroven tu VZDY zapoji 2x-klik responsive-size toggle (viz zzz6f17_responsive_size_toggle nizsie) - plati
 // AUTOMATICKY pre kazde okno vytvorene cez tuto funkciu (DRY, netreba opakovat v kazdej z volajucich funkcii).
-function zzz6f41_create_context_window(targetId = 'versoContextWindowStack') {
+function zzz6f41_create_context_window(targetId = 'versoContextWindowStack', prepend = false) {
   const stack = document.getElementById(targetId);
   const box = document.createElement('div');
   box.className = 'entry-modal-box';
-  stack.appendChild(box);
+  // OPRAVA (Vrso 2026-09-11, "mini window by sa malo tiez otvorit/prilepit rovnako, resp. byt nadradene inym
+  // prilepenym oknam"): predtym VZDY appendChild (na koniec, teda VIZUALNE naspodok pri viacerych otvorenych
+  // oknach). `prepend` (pouziva zzz6f48_open_mini_modal nizsie) vlozi MINI okno VZDY ako PRVE/navrchu, bez
+  // ohladu na to, kolko PRESET okien uz je otvorenych. | Vrso -> Claude AI | 2026-09-11 ===
+  if (prepend && stack.firstChild) stack.insertBefore(box, stack.firstChild);
+  else stack.appendChild(box);
   function removeBox() {
     if (box.parentNode) box.parentNode.removeChild(box);
   }
@@ -7950,7 +7981,7 @@ function zzz6f17_bind_mini_for_attachment(btn, rowEl, item) {
         zzz6f48_close_mini_modal_if_open();
         openedByHold = false;
       } else {
-        zzz6f48_open_mini_modal('versoAttachModal_' + item.id); // OPRAVA (Vrso 2026-09-11) - pod TOUTO konkretnou attachmentou
+        zzz6f48_open_mini_modal('versoAttachModal_' + item.id, btn); // OPRAVA (Vrso 2026-09-11) - pod TOUTO konkretnou attachmentou + zlaty text na btn
         openedByHold = true;
       }
       suppressClick = true;
@@ -9894,11 +9925,19 @@ function zzz6f48_reset_all() {
 // Drzi referenciu na PRAVE OTVORENE MINI kontextove okno (ak existuje), aby ho 3s reset mohol zavriet, ak
 // bolo omylom otvorene 1s timerom pocas dlhsieho (3s+) drzania (3s ma prednost pred 1s).
 let zzz6f48CurrentModalClose = null;
+// [Zzz6-F48:WINDOW-OPEN-MARK] Vrso 2026-09-11, "ak bude otvorene nejake window mini alebo attach tak aj ich
+// button vyznac zlatou (text zlatymi pismenami)" - tlacidlo, ktoreho okno je PRAVE otvorene, drzi sa tu, aby
+// sa mu dala pridat/odobrat .zzz6f48-window-open trieda (zlaty text) presne pri otvoreni/zatvoreni.
+let zzz6f48CurrentModalButton = null;
 
 function zzz6f48_close_mini_modal_if_open() {
   if (zzz6f48CurrentModalClose) {
     zzz6f48CurrentModalClose();
     zzz6f48CurrentModalClose = null;
+  }
+  if (zzz6f48CurrentModalButton) {
+    zzz6f48CurrentModalButton.classList.remove('zzz6f48-window-open');
+    zzz6f48CurrentModalButton = null;
   }
 }
 
@@ -9909,7 +9948,9 @@ function zzz6f48_close_mini_modal_if_open() {
 // - M4a (viz zzz1m4a_bind_mini_checklist_only/zzz1m4a_bind_local_attach_button nizsie) posiela
 // 'versoM4aContextWindowStack' (vlastny kontajner, hned pod M4a CL, viz zzz1m4a_init), realne M4 (bez
 // parametra) ostava bezo zmeny. | Vrso -> Claude AI | 2026-09-11 ===
-function zzz6f48_open_mini_modal(targetId = 'versoContextWindowStack') {
+// [Zzz6-F48:WINDOW-OPEN-MARK] triggerBtn (volitelny) - button, ktoreho okno sa prave otvara, dostane
+// .zzz6f48-window-open (zlaty text) na celu dobu, kym je okno otvorene.
+function zzz6f48_open_mini_modal(targetId = 'versoContextWindowStack', triggerBtn = null) {
   zzz6f48_close_mini_modal_if_open(); // defenzivne - najviac jedno MINI okno naraz
   // OPRAVA (Vrso 2026-09-11, "M4a by sa mali dat editovat cl bunky... samozrejme bez moznosti entry do
   // databazy"): tento checklist ma VLASTNE editovatelne inputy (buildRow nizsie), predtym VZDY natvrdo cez
@@ -9918,7 +9959,7 @@ function zzz6f48_open_mini_modal(targetId = 'versoContextWindowStack') {
   // cita/zapisuje. | Vrso -> Claude AI | 2026-09-11 ===
   const zzz1m4aMode = targetId.indexOf('versoM4a') === 0;
 
-  const { box, removeBox } = zzz6f41_create_context_window(targetId); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] dokovane pod CL
+  const { box, removeBox } = zzz6f41_create_context_window(targetId, true); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] dokovane pod CL, prepend=true - MINI je vzdy navrchu (OPRAVA 2026-09-11)
   // Ziadny header text (Vrso 2026-09-03: "zrus ten napis v kontext okne")
 
   const list = document.createElement('div');
@@ -10007,8 +10048,14 @@ function zzz6f48_open_mini_modal(targetId = 'versoContextWindowStack') {
   function closeModal() {
     removeBox();
     zzz6f48CurrentModalClose = null;
+    if (triggerBtn) triggerBtn.classList.remove('zzz6f48-window-open');
+    if (zzz6f48CurrentModalButton === triggerBtn) zzz6f48CurrentModalButton = null;
   }
   zzz6f48CurrentModalClose = closeModal;
+  if (triggerBtn) {
+    triggerBtn.classList.add('zzz6f48-window-open');
+    zzz6f48CurrentModalButton = triggerBtn;
+  }
 
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
@@ -10076,7 +10123,7 @@ function zzz6f48_bind_dual_press(el) {
         zzz6f48_close_mini_modal_if_open(); // okno uz otvorene -> 0.5s ho TOGGLE-om zavrie
         openedByHold = false;
       } else {
-        zzz6f48_open_mini_modal();
+        zzz6f48_open_mini_modal('versoContextWindowStack', el);
         openedByHold = true;
       }
       suppressClick = true;
@@ -10502,6 +10549,52 @@ function zzz1m4a_build_cl_clone() {
 let zzz1m4aLocalAttachments = [];
 let zzz1m4aLocalAttachCounter = 0;
 
+// Editacia JEDNOTLIVEHO pola konkretnej lokalnej M4a attachmenty (Vrso 2026-09-11, "attached cl bunky sa maju
+// dat editovat rovnako ako M4 crm") - rovnaky vizual/UI ako zzz1m4a_open_local_entry_modal, ale cita/zapisuje
+// PRIAMO do item.fields[rKey] TEJTO KONKRETNEJ attachmenty (nie hlavnej M4a CL, nie entryData) - kazdy
+// attachment je teda svoj vlastny nezavisly editovatelny zaznam, izolovany aj od ostatnych attachmentov.
+function zzz1m4a_open_attach_field_modal(item, rKey, entryKey) {
+  const { box, removeBox } = zzz6f41_create_context_window('versoM4aAttachModal_' + item.id);
+  box.appendChild(zzz_build_context_header(entryKey));
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'entry-modal-textarea';
+  textarea.value = item.fields[rKey] || '';
+
+  const actions = document.createElement('div');
+  actions.className = 'entry-modal-actions';
+  function commit() {
+    item.fields[rKey] = textarea.value;
+    zzz1m4a_render_local_attachments();
+  }
+  function closeModal() { commit(); stopAutosize(); removeBox(); }
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'entry-modal-delete';
+  deleteBtn.textContent = 'DELETE';
+  deleteBtn.onclick = () => { textarea.value = ''; commit(); stopAutosize(); removeBox(); };
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'entry-modal-close';
+  closeBtn.textContent = 'ZATVORIT';
+  closeBtn.onclick = closeModal;
+
+  actions.appendChild(deleteBtn);
+  actions.appendChild(closeBtn);
+  box.appendChild(textarea);
+  box.appendChild(actions);
+  zzz6f41_bind_outside_click(box, closeModal);
+  textarea.focus();
+  const stopAutosize = verso_autosize_modal_textarea(textarea);
+}
+
+function zzz1m4a_toggle_attach_dot(item, cellEl, rKey) {
+  const isActive = (item.fields[rKey] || '').trim().length > 0;
+  item.fields[rKey] = isActive ? '' : '1';
+  cellEl.setAttribute('aria-pressed', isActive ? 'false' : 'true');
+  cellEl.style.backgroundColor = isActive ? '' : '#171717';
+}
+
 function zzz1m4a_build_local_attach_row(item) {
   const rowEl = document.createElement('div');
   rowEl.className = 'numbers-row zzz1m5-cl-row';
@@ -10534,12 +10627,29 @@ function zzz1m4a_build_local_attach_row(item) {
       const val = (item.fields && field.key && item.fields[field.key]) || '';
       dot.setAttribute('aria-pressed', val ? 'true' : 'false');
       if (val) dot.style.backgroundColor = '#171717';
+      // OPRAVA (Vrso 2026-09-11, "attached cl bunky sa maju dat editovat rovnako ako M4 crm"): dot bunky su
+      // teraz toggle-ovatelne, editacia zapisuje PRIAMO do item.fields (izolovane per-attachment).
+      if (field.key) {
+        dot.addEventListener('click', () => { zzz1m4a_toggle_attach_dot(item, dot, field.key); });
+      }
       wrapEl.appendChild(dot);
     } else {
       const cellEl = document.createElement('div');
       const val = field.key ? ((item.fields && item.fields[field.key]) || '') : '';
       cellEl.textContent = val || '-';
-      cellEl.className = 'entry-cell entry-cell-readonly'; // cisto vizualny snapshot, needitovatelny (ziadny klik)
+      // OPRAVA (Vrso 2026-09-11, "attached cl bunky sa maju dat editovat rovnako ako M4 crm"): predtym VZDY
+      // entry-cell-readonly, ziadny klik. Teraz, ak pole ma zodpovedajuci entryKey (ZZZ1M5_RKEY_TO_ENTRYKEY),
+      // je klikatelne - otvara zzz1m4a_open_attach_field_modal, ktory edituje PRIAMO item.fields (izolovane od
+      // hlavnej M4a CL aj od entryData/DB), rovnaky princip ako 'cl' zdroj v realnom
+      // zzz6f17_build_attached_cl_grid_row. Polia bez entryKey (ENTRY DATE/ACKNOWLEDGEMENT - auto-generovane)
+      // ostavaju needitovatelne, rovnako ako v realnom M4.
+      const entryKey = field.key ? ZZZ1M5_RKEY_TO_ENTRYKEY[field.key] : null;
+      if (entryKey) {
+        cellEl.className = 'entry-cell zzz6f6-el-cell-copyable';
+        cellEl.addEventListener('click', () => zzz1m4a_open_attach_field_modal(item, field.key, entryKey));
+      } else {
+        cellEl.className = 'entry-cell entry-cell-readonly';
+      }
       wrapEl.appendChild(cellEl);
     }
     rowEl.appendChild(wrapEl);
@@ -10589,7 +10699,7 @@ function zzz1m4a_bind_local_attach_button(btn, item) {
     timerOpen = setTimeout(() => {
       actionFired = true;
       if (zzz6f48CurrentModalClose) zzz6f48_close_mini_modal_if_open();
-      else zzz6f48_open_mini_modal('versoM4aAttachModal_' + item.id); // OPRAVA 2026-09-11 - pod TOUTO konkretnou attachmentou
+      else zzz6f48_open_mini_modal('versoM4aAttachModal_' + item.id, btn); // OPRAVA 2026-09-11 - pod TOUTO konkretnou attachmentou + zlaty text na btn
     }, 500);
     timer3s = setTimeout(() => {
       actionFired = true;
@@ -10688,7 +10798,7 @@ function zzz1m4a_bind_mini_checklist_only(btn) {
     timerOpen = setTimeout(() => {
       actionFired = true;
       if (zzz6f48CurrentModalClose) zzz6f48_close_mini_modal_if_open();
-      else zzz6f48_open_mini_modal('versoM4aContextWindowStack'); // OPRAVA 2026-09-11
+      else zzz6f48_open_mini_modal('versoM4aContextWindowStack', btn); // OPRAVA 2026-09-11 + zlaty text na btn
     }, 500);
     timer3s = setTimeout(() => {
       actionFired = true;
@@ -10877,7 +10987,7 @@ function zzz1r37_bind_mini_for_clone(btn, rowEl, entry, onRemoved) {
         zzz6f48_close_mini_modal_if_open();
         openedByHold = false;
       } else {
-        zzz6f48_open_mini_modal();
+        zzz6f48_open_mini_modal('versoContextWindowStack', btn);
         openedByHold = true;
       }
       suppressClick = true;
@@ -11302,6 +11412,10 @@ function zzz1m3_bind_preset_button(btn, pickCallback = null, targetListId = 'ver
     document.querySelectorAll('.entry-modal-box').forEach(box => {
       box.style.display = zzz1r37AttachmentsHidden ? 'none' : '';
     });
+    // OPRAVA (Vrso 2026-09-11, "ak preset button schoval nejake attachmenty/pripnutia tak vnutro button bude
+    // cely striebornou a preset text zlatou"): trvaly vizualny stav na SAMOTNOM PRESET tlacidle, kym su
+    // attachmenty skryte. | Vrso -> Claude AI | 2026-09-11 ===
+    btn.classList.toggle('zzz1r37-hidden-active', zzz1r37AttachmentsHidden);
     zzz6f2_show_toast(zzz1r37AttachmentsHidden ? 'Vsetky pripnute CL/EL skryte' : 'Vsetky pripnute CL/EL zobrazene');
   }
   // === [/Zzz1-R37:PRESET-HIDE-ALL-ATTACHMENTS] ===
