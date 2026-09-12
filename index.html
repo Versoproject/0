@@ -6826,8 +6826,6 @@ function zzz1_context_get_consent_map(consentKey) {
 }
 
 // spatna kompatibilita - stare nazvy (R17-specificke), teraz len tenke obalky nad zovseobecnenymi funkciami
-function zzz1r17b_can_edit() { return zzz1_context_can_edit(ZZZ1_R17_CONSENT_KEY); }
-function zzz1r17b_get_consent_map() { return zzz1_context_get_consent_map(ZZZ1_R17_CONSENT_KEY); }
 
 // === [Zzz1-CONTEXT-CHAT-WINDOW] (Vrso 2026-08-25, "vytvor rovnake nastavenie aj pre 1-R*communication
 // button a chat windows riesenie so vsetkym"): ZOVSEOBECNENA verzia predtym R17-specifickeho
@@ -7454,18 +7452,6 @@ function zzz6f22_ensure_original_author(entryId) {
 // === [Zzz6-F22-copy:COPY-FUNCTION] (SPECIAL) - kredity zdedene z inej CL (retazenie, viz komentar vyssie
 // pri hlavicke Zzz6-F22 bloku) - PREBERA VSETKO zo zdroja vratane jeho entryId, aby link vzdy viedol na
 // PRESNY povodny zaznam, nie na entry do ktorej bol (opakovane) skopirovany.
-function zzz6f22_copy_credits_to_entry(sourceCreditsRaw) {
-  const current = zzz6f22_parse_credits(entryData[ZZZ6_F22_ENTRY_ID]);
-  const incoming = zzz6f22_parse_credits(sourceCreditsRaw);
-
-  incoming.forEach(src => {
-    const inherited = { owner: src.owner, cl: src.cl, entryId: (src.entryId !== undefined && src.entryId !== null) ? src.entryId : null, own: false, status: src.status === 'pending' ? 'pending' : 'verified' };
-    const exists = current.some(r => r.owner === inherited.owner && r.cl === inherited.cl);
-    if (!exists) current.push(inherited);
-  });
-
-  write_to_entry(ZZZ6_F22_ENTRY_ID, JSON.stringify(current));
-}
 // === [/Zzz6-F22-copy:COPY-FUNCTION] ===
 
 // === MEMO (nezapracovane, cakaju na "Web Line" mechanizmus) - Zzz6-F22-external:EXTERNAL-SOURCE-AUTHOR
@@ -8100,6 +8086,13 @@ function zzz6f17_bind_mini_for_attachment(btn, rowEl, item) {
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
+  // OPRAVA (Vrso 2026-09-12, "1s a 3s podrz vobec nerobi co ma... zas to iste robis, kopirovanie
+  // som nezadaval"): touch-action:none NESTACILO na vsetkych prehliadacoch (napr. Edge) - natívne
+  // kontextove menu ("Kopirovat / Spytat sa Copilota") sa aj tak spustilo a PREVZALO cely gest-
+  // sekvenciu namiesto nasich casovacov (preto 1-2s/3s vobec nereagovali - menu ich prerusilo skor,
+  // nez stihli dobehnut). Explicitne blokovanie 'contextmenu' udalosti je oddelene od touchstart/
+  // touch-action, takze NEMA vplyv na odozvu drzania. | Vrso -> Claude AI | 2026-09-12 ===
+  btn.addEventListener('contextmenu', (e) => e.preventDefault());
   btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
 }
 
@@ -8690,17 +8683,6 @@ function zzz6f14_update_entry_date_button(dateStr) {
 // Prvy realny use-case: Zzz1-R1 (Entry Number) - zasedeny/needitovatelny rovnako ako Zzz1-R14.
 // Vrso -> Claude AI | 2026-08-18 (povodne Zzz6-F5) / preznacene 2026-08-23
 // ============================================================
-function zzz1m3_set_readonly(id) {
-  const cell = document.querySelector(`.entry-cell[data-entry-id="${id}"]`);
-  if (cell) {
-    cell.classList.add('entry-cell-readonly');
-    cell.setAttribute('data-readonly', 'true');
-  }
-  const btn = document.querySelector(`.entry-number-button[data-entry-id="${id}"]`);
-  if (btn) {
-    btn.disabled = true;
-  }
-}
 // === [/Zzz1-M3:READONLY] ===
 
 // >>> Zzz0-R1 START
@@ -8710,16 +8692,6 @@ function zzz1m3_set_readonly(id) {
 // len priprava/memo - nie je uvolnena na bezne pouzitie. V buducnosti mozno viazane na
 // prihlasenie a suhlas viacerych project owners.
 // PONECHANE ako historicka referencia (uz sa nevola - nahradene Zzz6-F7:LOGIN-STATE nizsie, viz Vrso 2026-08-23).
-function zzz6f7_toggle_login_highlight() {
-  const label = document.getElementById('zzz6f7UsernameLabel');
-  if (!label) return;
-  const hasContent = label.textContent.trim().length > 0;
-  if (hasContent) {
-    label.classList.toggle('zzz6-f7-active');
-  } else {
-    label.classList.remove('zzz6-f7-active');
-  }
-}
 
 // === [Zzz6-F3:USERNAME-STATIC] SYSTEM FUNCTION - POZOR: na vyslovnu ziadost Vrsa (2026-08-23) je username
 // napis v logu CISTO STATICKY - ZIADNA interaktivita (klik/hover/cursor) na nom nesmie ovplyvnit funkcnost
@@ -9928,29 +9900,11 @@ function zzz6f48_get_crm_fields() {
 // (nedaju sa skryt), ale MINI okno ich teraz zobrazuje ako editovatelne riadky (rovnaky princip ako
 // nedefinovane, len bez checkboxu), aby sa dali upravit priamo z MINI okna bez zatvarania a klikania na
 // bunku v hlavnej CL. Rovnaky DOM-scan princip ako zzz6f48_get_crm_fields vyssie (zivy stav, DRY).
-function zzz6f48_get_fixed_crm_fields() {
-  const readLineRow = document.getElementById('versoCRMLabelsRow');
-  if (!readLineRow) return [];
-  const fields = [];
-  readLineRow.querySelectorAll(':scope > div[class$="-wrap"]').forEach(wrapDiv => {
-    const wrapClass = wrapDiv.className.split(' ')[0];
-    if (wrapClass === 'mini-wrap' || !ZZZ6F48_FIXED_WRAPS.includes(wrapClass)) return;
-    const btn = wrapDiv.querySelector('button[data-entry-id]');
-    if (!btn) return;
-    fields.push({
-      wrap: wrapClass,
-      entryId: btn.getAttribute('data-entry-id'),
-      label: btn.getAttribute('aria-label') || btn.textContent.trim(),
-    });
-  });
-  return fields;
-}
 
 // UPDATE (Vrso 2026-09-05, "entries podla opravnenia"): R1 (Entry Number) a R14 (Entry Date) su AUTOMATICKE/
 // needitovatelne bunky (data-readonly, priraduje ich VYLUCNE system - Zzz6-F2/Zzz1-F16) - VYNECHANE z tohto
 // editovatelneho zoznamu, aj ked su DEFINOVANE, presne z rovnakeho dovodu, preco sa nedaju editovat ani
 // priamo v hlavnej CL. Buduce jemnejsie opravnenia (per-user/per-role) caka na dalsie spracovanie.
-const ZZZ6F48_READONLY_ENTRY_IDS = ['1', '14'];
 
 // UPDATE (Vrso 2026-09-05, "checklist nastav trvalo ako odznacene, kedze ich zvacsa v cl netreba"): DEFAULT
 // stav (ked este NIC nie je ulozene v localStorage) uz nie je "vsetko viditelne" - je to "vsetko togglovatelne
@@ -10349,6 +10303,13 @@ function zzz6f48_bind_dual_press(el) {
   el.addEventListener('mousedown', start);
   el.addEventListener('mouseup', end);
   el.addEventListener('mouseleave', cancel);
+  // OPRAVA (Vrso 2026-09-12, "1s a 3s podrz vobec nerobi co ma... zas to iste robis, kopirovanie
+  // som nezadaval"): touch-action:none NESTACILO na vsetkych prehliadacoch (napr. Edge) - natívne
+  // kontextove menu ("Kopirovat / Spytat sa Copilota") sa aj tak spustilo a PREVZALO cely gest-
+  // sekvenciu namiesto nasich casovacov (preto 1-2s/3s vobec nereagovali - menu ich prerusilo skor,
+  // nez stihli dobehnut). Explicitne blokovanie 'contextmenu' udalosti je oddelene od touchstart/
+  // touch-action, takze NEMA vplyv na odozvu drzania. | Vrso -> Claude AI | 2026-09-12 ===
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
   el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); }); // vsetka logika uz je v touchend/mouseup vyssie
 }
 
@@ -10385,8 +10346,6 @@ function zzz6f48_bind_dual_press(el) {
 //   fyzicky button pripni vsetky naraz") - nahradene 1s/3s gestami na fyzickom buttone (viz vyssie).
 // | Vrso -> Claude AI | 2026-09-06 ===
 const ZZZ1R37_TABS_KEY = 'zzz1r37_preset_tabs';
-let zzz1r37ActiveGroup = 'workspaces'; // 'workspaces' | 'userTemplates' - runtime, netreba perzistovat
-let zzz1r37ActiveTabId = null;
 let zzz1r37EntryIdCounter = 0;
 
 function zzz1r37_default_tabs() {
@@ -10424,10 +10383,6 @@ function zzz1r37_snapshot_current_cl_fields() {
   return fields;
 }
 
-function zzz1r37_entry_is_empty(entry) {
-  if (!entry || !entry.fields) return true;
-  return Object.keys(entry.fields).every(k => !entry.fields[k] || !entry.fields[k].toString().trim());
-}
 
 // Editovatelny CL riadok (PLNA sirka/zarovnanie ako hlavna CL - rovnaky .mini-wrap placeholder trik ako
 // Zzz1-M5 attachment riadky). onFirstFill(entry) sa zavola PRESNE RAZ, ked doteraz prazdny (ghost) slot
@@ -10903,6 +10858,13 @@ function zzz1m4a_bind_local_attach_button(btn, item) {
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
+  // OPRAVA (Vrso 2026-09-12, "1s a 3s podrz vobec nerobi co ma... zas to iste robis, kopirovanie
+  // som nezadaval"): touch-action:none NESTACILO na vsetkych prehliadacoch (napr. Edge) - natívne
+  // kontextove menu ("Kopirovat / Spytat sa Copilota") sa aj tak spustilo a PREVZALO cely gest-
+  // sekvenciu namiesto nasich casovacov (preto 1-2s/3s vobec nereagovali - menu ich prerusilo skor,
+  // nez stihli dobehnut). Explicitne blokovanie 'contextmenu' udalosti je oddelene od touchstart/
+  // touch-action, takze NEMA vplyv na odozvu drzania. | Vrso -> Claude AI | 2026-09-12 ===
+  btn.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
 function zzz1m4a_render_local_attachments() {
@@ -11011,6 +10973,13 @@ function zzz1m4a_bind_mini_checklist_only(btn) {
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
+  // OPRAVA (Vrso 2026-09-12, "1s a 3s podrz vobec nerobi co ma... zas to iste robis, kopirovanie
+  // som nezadaval"): touch-action:none NESTACILO na vsetkych prehliadacoch (napr. Edge) - natívne
+  // kontextove menu ("Kopirovat / Spytat sa Copilota") sa aj tak spustilo a PREVZALO cely gest-
+  // sekvenciu namiesto nasich casovacov (preto 1-2s/3s vobec nereagovali - menu ich prerusilo skor,
+  // nez stihli dobehnut). Explicitne blokovanie 'contextmenu' udalosti je oddelene od touchstart/
+  // touch-action, takze NEMA vplyv na odozvu drzania. | Vrso -> Claude AI | 2026-09-12 ===
+  btn.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
 function zzz1m4a_init() {
@@ -11219,6 +11188,13 @@ function zzz1r37_bind_mini_for_clone(btn, rowEl, entry, onRemoved) {
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
+  // OPRAVA (Vrso 2026-09-12, "1s a 3s podrz vobec nerobi co ma... zas to iste robis, kopirovanie
+  // som nezadaval"): touch-action:none NESTACILO na vsetkych prehliadacoch (napr. Edge) - natívne
+  // kontextove menu ("Kopirovat / Spytat sa Copilota") sa aj tak spustilo a PREVZALO cely gest-
+  // sekvenciu namiesto nasich casovacov (preto 1-2s/3s vobec nereagovali - menu ich prerusilo skor,
+  // nez stihli dobehnut). Explicitne blokovanie 'contextmenu' udalosti je oddelene od touchstart/
+  // touch-action, takze NEMA vplyv na odozvu drzania. | Vrso -> Claude AI | 2026-09-12 ===
+  btn.addEventListener('contextmenu', (e) => e.preventDefault());
   btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
 }
 
@@ -11489,10 +11465,6 @@ function zzz1r37_open_preset_modal(pickCallback = null, targetId = 'versoContext
 }
 
 
-let zzz1r37CurrentModalClose = null;
-function zzz1r37_close_preset_modal_if_open() {
-  if (zzz1r37CurrentModalClose) { zzz1r37CurrentModalClose(); zzz1r37CurrentModalClose = null; }
-}
 
 // Najde POSLEDNU ZASKRTNUTU CL naprieč VSETKYMI tabmi/skupinami (podla checkedAt casovej peciatky) - pouziva
 // 1s gesto na fyzickom PRESET buttone.
@@ -11507,11 +11479,6 @@ function zzz1r37_get_checked_tabs() {
   return result;
 }
 
-function zzz1r37_get_entries_from_checked_tabs() {
-  const result = [];
-  zzz1r37_get_checked_tabs().forEach(tab => (tab.entries || []).forEach(e => result.push(e)));
-  return result;
-}
 
 // Pripne dany preset entry pod CRM - ZNOVUPOUZIVA Zzz1-M5 attachment infrastrukturu (zzz6f17Attachments +
 // zzz6f17_context_attachment_render, DRY), source:'preset'.
@@ -11835,6 +11802,13 @@ function zzz4_0_bind_entry_button(btn, row, isAttachedFn, updateVisualFn, applyO
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
+  // OPRAVA (Vrso 2026-09-12, "1s a 3s podrz vobec nerobi co ma... zas to iste robis, kopirovanie
+  // som nezadaval"): touch-action:none NESTACILO na vsetkych prehliadacoch (napr. Edge) - natívne
+  // kontextove menu ("Kopirovat / Spytat sa Copilota") sa aj tak spustilo a PREVZALO cely gest-
+  // sekvenciu namiesto nasich casovacov (preto 1-2s/3s vobec nereagovali - menu ich prerusilo skor,
+  // nez stihli dobehnut). Explicitne blokovanie 'contextmenu' udalosti je oddelene od touchstart/
+  // touch-action, takze NEMA vplyv na odozvu drzania. | Vrso -> Claude AI | 2026-09-12 ===
+  btn.addEventListener('contextmenu', (e) => e.preventDefault());
   btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
 }
 
@@ -15362,9 +15336,6 @@ function zzz10r1_register_login_wrong_password() {
   }
 }
 
-function zzz10r1_reset_multiverification_counter() {
-  zzz10r1MultiverificationFailCount = 0;
-}
 
 function zzz10r1_trigger_multiverification() {
   const btn = document.getElementById('versoMultiverificationButton');
