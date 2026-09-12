@@ -11721,7 +11721,9 @@ function zzz6f6_open_el_cell_context_modal(field, val, row) {
 function zzz4_0_bind_entry_button(btn, row, isAttachedFn, updateVisualFn, applyOwnSavedFieldsFn) {
   let timerOpen = null, timer3s = null, actionFired = false;
   let startX = 0, startY = 0;
+  let modalOpened = false; // OPRAVA (Vrso 2026-09-12, "entry window sa mi zobrazil a potom nic") - viz vysvetlenie nizsie
   const MOVE_TOLERANCE = 12;
+  const entryModalId = 'versoDbEntryModal_' + (row && row.entry_id !== undefined ? row.entry_id : '');
   function clearTimers() {
     if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
     if (timer3s) { clearTimeout(timer3s); timer3s = null; }
@@ -11732,11 +11734,13 @@ function zzz4_0_bind_entry_button(btn, row, isAttachedFn, updateVisualFn, applyO
     startX = point ? point.clientX : 0;
     startY = point ? point.clientY : 0;
     actionFired = false;
+    modalOpened = false;
     clearTimers();
     timerOpen = setTimeout(() => {
       actionFired = true;
+      modalOpened = true;
       if (zzz6f48CurrentModalClose) zzz6f48_close_mini_modal_if_open();
-      else zzz6f48_open_mini_modal('versoContextWindowStack', btn);
+      else zzz6f48_open_mini_modal(entryModalId, btn); // OPRAVA 2026-09-12 - vlastny kontajner, prilepi pod TENTO riadok
     }, 500);
     timer3s = setTimeout(() => {
       actionFired = true;
@@ -11757,13 +11761,20 @@ function zzz4_0_bind_entry_button(btn, row, isAttachedFn, updateVisualFn, applyO
       updateVisualFn();
     }
   }
+  // OPRAVA (Vrso 2026-09-12, "entry window sa mi zobrazil a potom pri drzani sa nic nestalo"): otvorenie okna na
+  // 0.5s VLOZI novy element do DOM presne pod prstom, co na mobile casto sposobi, ze prehliadac vyhodnoti dotyk
+  // ako "posunuty"/zruseny (touchcancel/touchmove nad novym prvkom) - 3s casovac sa tak predtym zrusil skor, nez
+  // stihol dobehnut, aj ked prst realne stale drzal. TERAZ: po otvoreni okna (modalOpened=true) sa
+  // touchmove/touchcancel uz IGNORUJU (3s casovac dobehne bez ohladu na tento vedlajsi efekt) - jedina cesta, ako
+  // 3s akciu zrusit, je skutocne zdvihnut prst (touchend), co uz aj tak vola end()/clearTimers().
   function moveCheck(e) {
+    if (modalOpened) return;
     const point = (e && e.touches && e.touches[0]) ? e.touches[0] : e;
     if (!point) { clearTimers(); return; }
     const dx = point.clientX - startX, dy = point.clientY - startY;
     if (Math.sqrt(dx * dx + dy * dy) > MOVE_TOLERANCE) clearTimers();
   }
-  function cancel() { clearTimers(); }
+  function cancel() { if (!modalOpened) clearTimers(); }
   btn.addEventListener('touchstart', start, { passive: false });
   btn.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
   btn.addEventListener('touchmove', moveCheck);
@@ -12280,6 +12291,13 @@ async function open_database_workspace(loadMore = false) {
       }
 
       rowsWrap.appendChild(gridRow);
+      // OPRAVA (Vrso 2026-09-12, "entry window pripni vzdy pod danu entry line, nech je to prehladne"): rovnaky
+      // princip ako uz M4a a realne CRM attachmenty - kazdy Database riadok dostava VLASTNY dedikovany modal
+      // kontajner, hned za nim v DOM, takze jeho 0.5s okno sa vzdy prilepi presne pod TENTO konkretny riadok.
+      const dbModalStack = document.createElement('div');
+      dbModalStack.className = 'context-window-stack';
+      dbModalStack.id = 'versoDbEntryModal_' + (row && row.entry_id !== undefined ? row.entry_id : '');
+      rowsWrap.appendChild(dbModalStack);
     });
 
     wrap.appendChild(rowsWrap);
@@ -12637,6 +12655,13 @@ async function open_trash_workspace() {
 
       const gridRow = zzz4_0_build_entry_row(row); // rovnaky renderer ako Database Workspace (Vrso ziadost)
       rowsWrap.appendChild(gridRow);
+      // OPRAVA (Vrso 2026-09-12, "entry window pripni vzdy pod danu entry line, nech je to prehladne"): rovnaky
+      // princip ako uz M4a a realne CRM attachmenty - kazdy Database riadok dostava VLASTNY dedikovany modal
+      // kontajner, hned za nim v DOM, takze jeho 0.5s okno sa vzdy prilepi presne pod TENTO konkretny riadok.
+      const dbModalStack = document.createElement('div');
+      dbModalStack.className = 'context-window-stack';
+      dbModalStack.id = 'versoDbEntryModal_' + (row && row.entry_id !== undefined ? row.entry_id : '');
+      rowsWrap.appendChild(dbModalStack);
     });
     wrap.appendChild(rowsWrap);
   }
