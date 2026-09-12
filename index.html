@@ -343,17 +343,16 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     background-color: #FFD700 !important;
     color: #171717 !important;
   }
-  /* [Zzz4-0:ENTRY-BUTTON] Vrso 2026-09-12, "mini button z CL by sa v databaze mal volat Entry, ohranicena
-     bunka zelenou farbou so zlatym okrajom v texte... pri attachovani vyplnit zelenou s textom vnutri
-     ciernou": default = zeleny okraj + zlaty text (odlisenie od realneho MINI/ATTACH). Attachnute pod CL =
-     plna zelena vypln + cierny text. */
+  /* [Zzz4-0:ENTRY-BUTTON] Vrso 2026-09-12, "mini button z CL by sa v databaze mal volat Entry... oznac zelenym
+     textom v bunke": default = zeleny okraj + ZELENY text. Attachnute pod CL = plna zelena vypln + ZLATY text
+     (OPRAVA - predtym cierny, Vrso zmenil na zlaty "spravne oznaceny vnutri"). */
   .zzz4-0-entry-btn {
     border: 2px solid #16a34a !important;
-    color: #D4AF37 !important;
+    color: #16a34a !important;
   }
   .zzz4-0-entry-btn.zzz4-0-entry-attached {
     background-color: #16a34a !important;
-    color: #171717 !important;
+    color: #D4AF37 !important;
   }
   /* [Zzz1-R37:PRESET-HIDDEN-MARK] Vrso 2026-09-11, "ak preset button schoval nejake attachmenty/pripnutia tak
      vnutro button bude cely striebornou a preset text zlatou" - plati pre M4 aj M4a (zdielana trieda, viz
@@ -801,6 +800,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     display: flex;
     flex-direction: column;
     gap: 6px;
+    /* OPRAVA (Vrso 2026-09-12, "vlozenim cl vznika el tak nerozumiem preco ma inu velkost"): rodicovsky
+       .db-workspace ma padding:14px na VSETKYCH stranach - realny CRM kontajner (#versoM1M4Stack) NEMA ZIADNY
+       padding, takze riadky tam mali VZDY viac dostupnej sirky nez tu, aj pri ROVNAKOM pocte viditelnych
+       stlpcov (kazda bunka preto vychadzala uzsia). Zaporny margin tu zrusi PRESNE ten padding LEN pre
+       samotne riadky (title/tlacidla nad nimi si padding zachovaju) - riadky tak dostanu ROVNAKU sirku ako
+       realna CL. | Vrso -> Claude AI | 2026-09-12 === */
+    margin: 0 -14px;
   }
   /* === [Zzz10-SCALE] "NACITAT STARSIE" tlacidlo - Vrso 2026-08-28 === */
   .zzz10-scale-load-more-btn {
@@ -8020,62 +8026,62 @@ function zzz6f17_build_attached_cl_grid_row(item) {
 // - 0.5s = zzz6f48_open_mini_modal() (ten ISTY zdielany checklist, nie samostatny per-entry).
 // - 2s = DEATTACH (natrvalo odstran TENTO KONKRETNY attachment) - JEDINA vec, co ostava per-attachment
 //   specificka (davat zmysel len pre tento jeden riadok).
+// PREROBENE PODLA PRESET VZORU (Vrso 2026-09-12) - viz vysvetlenie pri zzz6f48_bind_dual_press vyssie v subore.
+// 0.5s timer uz NEOTVARA modal priamo (to sposobovalo layout shift pod prstom pocas drzania) - len oznaci
+// priznak, samotne otvorenie/zatvorenie okna sa vykona az pri pusteni (touchend/end()).
 function zzz6f17_bind_mini_for_attachment(btn, rowEl, item) {
-  let timerOpen = null, timer2s = null, openedByHold = false, suppressClick = false, actionFired = false;
+  let timerOpen = null, timer2s = null, firedOpen = false, fired2s = false, pressStart = 0;
 
   function clearTimers() {
     if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
     if (timer2s) { clearTimeout(timer2s); timer2s = null; }
   }
 
-  function start() {
-    openedByHold = false;
-    actionFired = false;
+  function start(e) {
+    if (e && e.cancelable) e.preventDefault();
+    firedOpen = false;
+    fired2s = false;
+    pressStart = Date.now();
     clearTimers();
-    timerOpen = setTimeout(() => {
-      actionFired = true;
-      if (zzz6f48CurrentModalClose) {
-        zzz6f48_close_mini_modal_if_open();
-        openedByHold = false;
-      } else {
-        zzz6f48_open_mini_modal('versoAttachModal_' + item.id, btn); // OPRAVA (Vrso 2026-09-11) - pod TOUTO konkretnou attachmentou + zlaty text na btn
-        openedByHold = true;
-      }
-      suppressClick = true;
-    }, 500);
+    timerOpen = setTimeout(() => { firedOpen = true; }, 500);
     timer2s = setTimeout(() => {
-      actionFired = true;
-      if (openedByHold) zzz6f48_close_mini_modal_if_open();
+      fired2s = true;
       zzz6f17_context_attachment_remove(item.id);
-      suppressClick = true;
     }, 2000);
   }
 
   function end() {
     clearTimers();
-    if (!actionFired) {
-      // kratky klik (pustene pred 0.5s) -> rovnaka zdielana TOGGLE funkcia ako PRESET/MINI
+    if (fired2s) return;
+    if (firedOpen) {
+      // OPRAVA (Vrso 2026-09-12, "nech sa povodne okno plynulo zavrie a nove otvori"): ak je otvorene
+      // okno INEHO tlacidla, zavri ho a rovno otvor toto nove (plynuly prechod). Ak je otvorene
+      // PRESNE toto okno (ten isty button), sprava sa to ako TOGGLE (len zavrie).
+      if (zzz6f48CurrentModalButton === btn) {
+        zzz6f48_close_mini_modal_if_open();
+      } else {
+        zzz6f48_close_mini_modal_if_open();
+        zzz6f48_open_mini_modal('versoAttachModal_' + item.id, btn); // OPRAVA (Vrso 2026-09-11) - pod TOUTO konkretnou attachmentou + zlaty text na btn
+      }
+      return;
+    }
+    const elapsed = Date.now() - pressStart;
+    if (elapsed < 500) {
+      // kratky klik -> rovnaka zdielana TOGGLE funkcia ako PRESET/MINI
       zzz6f48_reset_all();
     }
   }
 
   function cancel() { clearTimers(); }
 
-  btn.addEventListener('touchstart', start, { passive: true });
-  btn.addEventListener('touchend', (e) => { e.preventDefault(); end(); }); // OPRAVA (Vrso 2026-09-14, rovnaky bug ako predtym na PRESET - dvojity toggle): bez preventDefault tu prehliadac na dotykovom zariadeni po touchend este vyslal synteticke mousedown/mouseup, cim sa end() spustilo DRUHYKRAT (podla CRM -> hned znovu podla MINI okna) - obe hlasky sa zobrazili naraz.
+  btn.addEventListener('touchstart', start, { passive: false });
+  btn.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
   btn.addEventListener('touchmove', cancel);
   btn.addEventListener('touchcancel', cancel);
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
-
-  document.addEventListener('click', (e) => {
-    if (suppressClick && (e.target === btn || btn.contains(e.target))) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      suppressClick = false;
-    }
-  }, true);
+  btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
 }
 
 
@@ -8773,12 +8779,23 @@ let zzz0r1_lastKnownConnectionState = null;
 // suppressToast (2026-08-23, Vrso hlasenie "dva prekryvajuce sa toasty naraz"): niektore volajuce funkcie
 // (napr. Zzz6-F34 Move) uz zobrazuju VLASTNY presnejsi toast pre tu istu chybu - suppressToast=true potom
 // zabrani DUPLICITNEMU vseobecnemu "DB chyba: ..." toastu (vizualny border-stav sa aj tak vzdy aktualizuje).
+// OPRAVA (Vrso 2026-09-12, "tieto fetch errory... idealne nech sa ani error neobjavuje, v console messages
+// nech ostane"): "Supabase fetch timeout" chyby (bezny, ocakavany stav pri pomalsom pripojeni, nie skutocna
+// poucha) uz NEZOBRAZUJU vizualny toast vobec - LEN sa naďalej zapisuju do console.warn/error (nic sa
+// nestraca pre debugging). Ine typy DB chyb (nie timeout) toast stale dostavaju, ako predtym. | Vrso ->
+// Claude AI | 2026-09-12 ===
 function zzz0r1_set_db_connection_state(isConnected, errorDetail, suppressToast = false) {
   const label = document.getElementById('zzz6f7UsernameLabel');
   if (label) label.classList.toggle('zzz0r1-db-disconnected', !isConnected);
+  // OPRAVA (Vrso 2026-09-12, "aj tieto pripadne ine messages ktore nie su nutne minimalizuj/schovaj"):
+  // rozsirene aj o DataCloneError/postMessage (Headers object could not be cloned) - ZNAMY, uz zdokumentovany
+  // environment-quirk Supabase JS klienta (viz [DataCloneError-FIX] komentar nizsie v subore), potvrdene ze
+  // na realne nasadenom Verceli nevadi. | Vrso -> Claude AI | 2026-09-12 ===
+  const isTimeoutError = !!(errorDetail && /fetch timeout|DataCloneError|postMessage|Headers object could not be cloned/i.test(errorDetail));
+  if (isTimeoutError) console.warn('Zzz0-R1: DB fetch timeout (toast potlaceny, viz Vrso 2026-09-12):', errorDetail);
   // zzz0r1-DIAG (Vrso 2026-08-23 hlasenie: "chybu nevidiem" na mobile bez konzoly) - ak zlyhanie,
   // presny dovod (errorDetail) sa teraz zobrazi AJ ako toast na obrazovke, nie len do console.error.
-  if (!isConnected && errorDetail && !suppressToast) {
+  if (!isConnected && errorDetail && !suppressToast && !isTimeoutError) {
     const now = Date.now();
     if (now - zzz0r1_lastDbErrorToastAt > 4000) {
       zzz0r1_lastDbErrorToastAt = now;
@@ -8945,7 +8962,9 @@ function zzz1r_flash_all_cells_success() {
   if (m4aCells.length > 0) {
     m4aCells.forEach(cell => cell.classList.add('zzz1m4a-silver-flash'));
     setTimeout(() => m4aCells.forEach(cell => cell.classList.remove('zzz1m4a-silver-flash')), 1000);
-    zzz6f2_show_toast('Template entry (M4a) - nezapisane do databazy.');
+    // OPRAVA (Vrso 2026-09-12, "aj tieto pripadne ine messages ktore nie su nutne minimalizuj/schovaj"): toast
+    // ODSTRANENY - strieborne bliknutie samo osebe uz jasne komunikuje "toto je M4a template", netreba navyse
+    // aj popup pri kazdom uspesnom ENTRY. | Vrso -> Claude AI | 2026-09-12 ===
   }
 }
 // === [/Zzz2-R14:SUCCESS-FLASH-CL] ===
@@ -10199,45 +10218,59 @@ function zzz6f48_detach_all_attachments() {
   zzz6f2_show_toast(`Odpojenych vsetkych ${count} pripnutych CL.`);
 }
 
+// === [Zzz6-R48:MINI-GESTURES] PREROBENE PODLA PRESET VZORU (Vrso 2026-09-12, "podrzanim 1-2s sa otvoria mini,
+// attach, entry windows ktore narusaju/hybu obrazovkou... preset button v M4 crm funguje skvele, pouzi to ako
+// vzor"): najdeny presny rozdiel - PRESET (zzz1m3_bind_preset_button) NIKDY nevklada modal do DOM POCAS
+// DRZANIA - 0.5s timer len OZNACI priznak (firedOpen=true), samotne OTVORENIE okna sa vykona AZ pri PUSTENI
+// (touchend/end()). MINI/ATTACH/ENTRY predtym otvarali modal PRIAMO v 0.5s timeri, teda EST POCAS toho, co
+// prst este stale drzal button - to sposobovalo layout shift priamo pod prstom, co mobilny prehliadac casto
+// vyhodnoti ako touchcancel/posun ("hybe sa obrazovka"). TERAZ rovnaky odlozeny-az-do-pustenia vzor ako
+// PRESET. | Vrso -> Claude AI | 2026-09-12 ===
 function zzz6f48_bind_dual_press(el) {
   let timerOpen = null;
   let timer2s = null;
-  let openedByHold = false;
-  let actionFired = false;
-  let suppressClick = false;
+  let firedOpen = false;
+  let fired2s = false;
+  let pressStart = 0;
 
   function clearTimers() {
     if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
     if (timer2s) { clearTimeout(timer2s); timer2s = null; }
   }
 
-  function start() {
-    openedByHold = false;
-    actionFired = false;
+  function start(e) {
+    if (e && e.cancelable) e.preventDefault();
+    firedOpen = false;
+    fired2s = false;
+    pressStart = Date.now();
     clearTimers();
-    timerOpen = setTimeout(() => {
-      actionFired = true;
-      if (zzz6f48CurrentModalClose) {
-        zzz6f48_close_mini_modal_if_open(); // okno uz otvorene -> 0.5s ho TOGGLE-om zavrie
-        openedByHold = false;
-      } else {
-        zzz6f48_open_mini_modal('versoContextWindowStack', el);
-        openedByHold = true;
-      }
-      suppressClick = true;
-    }, 500);
+    // 0.5s LEN oznaci priznak - samotne otvorenie/zatvorenie okna sa vykona az pri pusteni (end()).
+    timerOpen = setTimeout(() => { firedOpen = true; }, 500);
     timer2s = setTimeout(() => {
-      actionFired = true;
-      if (openedByHold) zzz6f48_close_mini_modal_if_open(); // 2s ma prednost pred 0.5s-otvorenym oknom
-      zzz6f48_detach_all_attachments();
-      suppressClick = true;
+      fired2s = true;
+      zzz6f48_detach_all_attachments(); // 2s - cisto stavova akcia (ziadny novy DOM/modal), bezpecne hned
     }, 2000);
   }
 
   function end() {
     clearTimers();
-    if (!actionFired) {
-      // kratky klik (pustene pred 0.5s) -> pripni hlavnu CL pod CRM
+    if (fired2s) return; // 2s uz vykonalo svoju akciu - nic dalej netreba
+    if (firedOpen) {
+      // pustene medzi 0.5s-2s -> teraz (na pustenie) otvor/zavri MINI okno
+      // OPRAVA (Vrso 2026-09-12, "nech sa povodne okno plynulo zavrie a nove otvori"): ak je otvorene
+      // okno INEHO tlacidla, zavri ho a rovno otvor toto nove (plynuly prechod). Ak je otvorene
+      // PRESNE toto okno (ten isty button), sprava sa to ako TOGGLE (len zavrie).
+      if (zzz6f48CurrentModalButton === el) {
+        zzz6f48_close_mini_modal_if_open();
+      } else {
+        zzz6f48_close_mini_modal_if_open();
+        zzz6f48_open_mini_modal('versoContextWindowStack', el);
+      }
+      return;
+    }
+    const elapsed = Date.now() - pressStart;
+    if (elapsed < 500) {
+      // kratky klik -> pripni hlavnu CL pod CRM
       zzz6f48_attach_main_cl();
     }
   }
@@ -10246,21 +10279,14 @@ function zzz6f48_bind_dual_press(el) {
     clearTimers();
   }
 
-  el.addEventListener('touchstart', start, { passive: true });
-  el.addEventListener('touchend', end);
+  el.addEventListener('touchstart', start, { passive: false });
+  el.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
   el.addEventListener('touchmove', cancel);
   el.addEventListener('touchcancel', cancel);
   el.addEventListener('mousedown', start);
   el.addEventListener('mouseup', end);
   el.addEventListener('mouseleave', cancel);
-
-  document.addEventListener('click', (e) => {
-    if (suppressClick && (e.target === el || el.contains(e.target))) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      suppressClick = false;
-    }
-  }, true);
+  el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); }); // vsetka logika uz je v touchend/mouseup vyssie
 }
 
 (function bindZzz6F48Mini() {
@@ -10769,55 +10795,48 @@ function zzz1m4a_detach_local(itemId) {
   zzz6f2_show_toast('Lokalny attachment odstraneny (M4a).');
 }
 
+// PREROBENE PODLA PRESET VZORU (Vrso 2026-09-12) - viz plne vysvetlenie pri zzz6f48_bind_dual_press vyssie v
+// subore. 0.5s uz neotvara modal priamo pocas drzania (layout shift pod prstom) - az pri pusteni.
 function zzz1m4a_bind_local_attach_button(btn, item) {
-  let timerOpen = null, timer3s = null, actionFired = false;
-  let startX = 0, startY = 0;
-  // OPRAVA (Vrso 2026-09-11, "podrzanie 3s by malo vymazat dany attachment" - nefungovalo spolahlivo): 'touchmove'
-  // predtym RUSILO cele gesto pri AKOMKOLVEK, aj najmensom pohybe prsta - realna 3-sekundova drzka na dotykovej
-  // obrazovke skoro VZDY obsahuje mikro-pohyb (tras ruky), takze sa 3s casovac takmer nikdy nedostal do konca.
-  // TERAZ sa gesto zrusi LEN pri pohybe nad ~12px od zaciatku drzania (tolerancia na prirodzeny tras). | Vrso ->
-  // Claude AI | 2026-09-11 ===
-  const MOVE_TOLERANCE = 12;
+  let timerOpen = null, timer3s = null, firedOpen = false, fired3s = false, pressStart = 0;
   function clearTimers() {
     if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
     if (timer3s) { clearTimeout(timer3s); timer3s = null; }
   }
   function start(e) {
-    // OPRAVA (Vrso 2026-09-11, "ked podrzim tak sa posunie cely attach button resp. aj m4a crm modul"):
-    // touchstart bolo { passive: true } - prehliadac tak mohol pocas drzania spustit vlastny scroll/vyber
-    // textu/native callout (typicke mobilne spravanie pri dlhom podrzani bez preventDefault), co vyzeralo ako
-    // "posun" celeho modulu. TERAZ e.preventDefault() hned na zaciatku drzania (listener uz nie je passive),
-    // co tomuto zabrani. | Vrso -> Claude AI | 2026-09-11 ===
     if (e && e.cancelable) e.preventDefault();
-    const point = (e && e.touches && e.touches[0]) ? e.touches[0] : e;
-    startX = point ? point.clientX : 0;
-    startY = point ? point.clientY : 0;
-    actionFired = false;
+    firedOpen = false;
+    fired3s = false;
+    pressStart = Date.now();
     clearTimers();
-    timerOpen = setTimeout(() => {
-      actionFired = true;
-      if (zzz6f48CurrentModalClose) zzz6f48_close_mini_modal_if_open();
-      else zzz6f48_open_mini_modal('versoM4aAttachModal_' + item.id, btn); // OPRAVA 2026-09-11 - pod TOUTO konkretnou attachmentou + zlaty text na btn
-    }, 500);
+    timerOpen = setTimeout(() => { firedOpen = true; }, 500);
     timer3s = setTimeout(() => {
-      actionFired = true;
+      fired3s = true;
       zzz1m4a_detach_local(item.id);
     }, 3000);
   }
   function end() {
     clearTimers();
-    if (!actionFired) zzz6f48_reset_all(); // kratky klik - zdielany toggle ukaz vsetky/definovane stlpce
-  }
-  function moveCheck(e) {
-    const point = (e && e.touches && e.touches[0]) ? e.touches[0] : e;
-    if (!point) { clearTimers(); return; }
-    const dx = point.clientX - startX, dy = point.clientY - startY;
-    if (Math.sqrt(dx * dx + dy * dy) > MOVE_TOLERANCE) clearTimers();
+    if (fired3s) return;
+    if (firedOpen) {
+      // OPRAVA (Vrso 2026-09-12, "nech sa povodne okno plynulo zavrie a nove otvori"): ak je otvorene
+      // okno INEHO tlacidla, zavri ho a rovno otvor toto nove (plynuly prechod). Ak je otvorene
+      // PRESNE toto okno (ten isty button), sprava sa to ako TOGGLE (len zavrie).
+      if (zzz6f48CurrentModalButton === btn) {
+        zzz6f48_close_mini_modal_if_open();
+      } else {
+        zzz6f48_close_mini_modal_if_open();
+        zzz6f48_open_mini_modal('versoM4aAttachModal_' + item.id, btn);
+      }
+      return;
+    }
+    const elapsed = Date.now() - pressStart;
+    if (elapsed < 500) zzz6f48_reset_all(); // kratky klik - zdielany toggle ukaz vsetky/definovane stlpce
   }
   function cancel() { clearTimers(); }
   btn.addEventListener('touchstart', start, { passive: false });
   btn.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
-  btn.addEventListener('touchmove', moveCheck);
+  btn.addEventListener('touchmove', cancel);
   btn.addEventListener('touchcancel', cancel);
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
@@ -10885,47 +10904,48 @@ function zzz1m4a_clear_local_attachments() {
   zzz6f2_show_toast('Vsetky lokalne pripnute CL vymazane (M4a).');
 }
 
+// PREROBENE PODLA PRESET VZORU (Vrso 2026-09-12) - viz plne vysvetlenie pri zzz6f48_bind_dual_press vyssie v
+// subore. 0.5s uz neotvara modal priamo pocas drzania (layout shift pod prstom) - az pri pusteni.
 function zzz1m4a_bind_mini_checklist_only(btn) {
-  let timerOpen = null, timer3s = null, actionFired = false;
-  let startX = 0, startY = 0;
-  const MOVE_TOLERANCE = 12; // OPRAVA (Vrso 2026-09-11) - rovnaka tolerancia na mikro-pohyb ako ATTACH tlacidlo
+  let timerOpen = null, timer3s = null, firedOpen = false, fired3s = false, pressStart = 0;
   function clearTimers() {
     if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
     if (timer3s) { clearTimeout(timer3s); timer3s = null; }
   }
   function start(e) {
-    // OPRAVA (Vrso 2026-09-11, rovnaky "posun pri drzani" bug ako na ATTACH tlacidle vyssie - viz vysvetlenie
-    // tam) - preventDefault na zaciatku drzania, listener uz nie je passive.
     if (e && e.cancelable) e.preventDefault();
-    const point = (e && e.touches && e.touches[0]) ? e.touches[0] : e;
-    startX = point ? point.clientX : 0;
-    startY = point ? point.clientY : 0;
-    actionFired = false;
+    firedOpen = false;
+    fired3s = false;
+    pressStart = Date.now();
     clearTimers();
-    timerOpen = setTimeout(() => {
-      actionFired = true;
-      if (zzz6f48CurrentModalClose) zzz6f48_close_mini_modal_if_open();
-      else zzz6f48_open_mini_modal('versoM4aContextWindowStack', btn); // OPRAVA 2026-09-11 + zlaty text na btn
-    }, 500);
+    timerOpen = setTimeout(() => { firedOpen = true; }, 500);
     timer3s = setTimeout(() => {
-      actionFired = true;
+      fired3s = true;
       zzz1m4a_clear_local_attachments();
     }, 3000);
   }
   function end() {
     clearTimers();
-    if (!actionFired) zzz1m4a_attach_local_cl(); // kratky klik (pustene pred 0.5s)
-  }
-  function moveCheck(e) {
-    const point = (e && e.touches && e.touches[0]) ? e.touches[0] : e;
-    if (!point) { clearTimers(); return; }
-    const dx = point.clientX - startX, dy = point.clientY - startY;
-    if (Math.sqrt(dx * dx + dy * dy) > MOVE_TOLERANCE) clearTimers();
+    if (fired3s) return;
+    if (firedOpen) {
+      // OPRAVA (Vrso 2026-09-12, "nech sa povodne okno plynulo zavrie a nove otvori"): ak je otvorene
+      // okno INEHO tlacidla, zavri ho a rovno otvor toto nove (plynuly prechod). Ak je otvorene
+      // PRESNE toto okno (ten isty button), sprava sa to ako TOGGLE (len zavrie).
+      if (zzz6f48CurrentModalButton === btn) {
+        zzz6f48_close_mini_modal_if_open();
+      } else {
+        zzz6f48_close_mini_modal_if_open();
+        zzz6f48_open_mini_modal('versoM4aContextWindowStack', btn);
+      }
+      return;
+    }
+    const elapsed = Date.now() - pressStart;
+    if (elapsed < 500) zzz1m4a_attach_local_cl(); // kratky klik
   }
   function cancel() { clearTimers(); }
   btn.addEventListener('touchstart', start, { passive: false });
   btn.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
-  btn.addEventListener('touchmove', moveCheck);
+  btn.addEventListener('touchmove', cancel);
   btn.addEventListener('touchcancel', cancel);
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
@@ -11073,63 +11093,57 @@ function zzz1r37_reset_mini_for_entry(rowEl, entry, persistFn) {
 // Dvoj-prahova podrzanie utilita per PRESET-tab klon: kratky klik = pripni TENTO riadok pod CRM; 0.5s = TOGGLE
 // otvor/zavri vlastny checklist; 2s = TOGGLE RESET/OBNOV. (Zosuladene casovanie 0.5s/2s naprieč celym
 // systemom - Vrso 2026-09-10: "skontroluj a z predoslych verzii dopln vsetky funkcie".)
+// PREROBENE PODLA PRESET VZORU (Vrso 2026-09-12) - viz plne vysvetlenie pri zzz6f48_bind_dual_press vyssie v
+// subore. 0.5s uz neotvara modal priamo pocas drzania (layout shift pod prstom) - az pri pusteni.
 function zzz1r37_bind_mini_for_clone(btn, rowEl, entry, onRemoved) {
-  let timerOpen = null, timer2s = null, openedByHold = false, suppressClick = false, actionFired = false;
+  let timerOpen = null, timer2s = null, firedOpen = false, fired2s = false, pressStart = 0;
 
   function clearTimers() {
     if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
     if (timer2s) { clearTimeout(timer2s); timer2s = null; }
   }
 
-  function start() {
-    openedByHold = false;
-    actionFired = false;
+  function start(e) {
+    if (e && e.cancelable) e.preventDefault();
+    firedOpen = false;
+    fired2s = false;
+    pressStart = Date.now();
     clearTimers();
-    timerOpen = setTimeout(() => {
-      actionFired = true;
-      // UPDATE (Vrso 2026-09-13, "este lepsie synchronizuj v kontext okne vsetky cl s crm"): 0.5s TERAZ
-      // otvara TEN ISTY zdielany globalny checklist (zzz6f48_open_mini_modal) ako MINI/PRESET/ATTACH na
-      // realnych attachmentoch - nie samostatny per-entry checklist. Jedna zdielana pravda pre vsetko.
-      if (zzz6f48CurrentModalClose) {
-        zzz6f48_close_mini_modal_if_open();
-        openedByHold = false;
-      } else {
-        zzz6f48_open_mini_modal('versoContextWindowStack', btn);
-        openedByHold = true;
-      }
-      suppressClick = true;
-    }, 500);
+    timerOpen = setTimeout(() => { firedOpen = true; }, 500);
     timer2s = setTimeout(() => {
-      actionFired = true;
+      fired2s = true;
       // OPRAVA (Vrso 2026-09-13, "attach button v kontext okne... 2-3s tak ho odstran iba! Z kontextoveho
       // okna pod danym tabom"): 2s UZ NIE JE reset stlpcov - odstrani TUTO KONKRETNU CL Z JEJ TABU (natrvalo,
       // len v ramci PRESET okna - NEDOTYKA sa nicoho, co uz je pripnute pod CRM cez #versoAttachmentList).
-      if (openedByHold) zzz6f48_close_mini_modal_if_open();
       zzz1r37_remove_entry_from_tabs(entry.id);
       zzz6f2_show_toast('CL odstranena z tabu.');
-      // OPRAVA (Vrso 2026-09-15, "zmizne az po opatovnom otvoreni preset okna, mala by zmiznut hned po
-      // dlhsom podrzani"): predtym sa zzz1r37_open_preset_modal() (refresh - zavrie+znovu otvori) volalo
-      // PRIAMO tu, TEDA POCAS AKTIVNEHO stlacenia (prst/kurzor este NEBOL pusteny) - prekreslenie okna
-      // POSUNULO layout POD prstom (odstranena CL uvolnila miesto, dalsie prvky sa posunuli hore), takze
-      // nasledny touchend/mouseup mohol zasiahnut UPLNE INY prvok na tej istej obrazovkovej pozicii (napr.
-      // "+" tlacidlo, ktore sa posunulo presne tam, kde bol predtym ATTACH button) - vizualne to vyzeralo,
-      // akoby sa CL neodstranila hned. TERAZ sa refresh ODLOZI na setTimeout(...,0), teda AZ PO tom, co
-      // prehliadac plne dokonci SPRACOVANIE aktualnej touch/mouse udalosti (vratane bublania) - layout sa
-      // teda uz nemeni "pod prstom" pocas gesta.
-      // OPRAVA (Vrso 2026-09-15, viacero sucasne otvorenych PRESET okien): predtym sa tu volalo VZDY
-      // zzz1r37_open_preset_modal() (globalne, otvorilo by NOVE okno navyse, kedze uz nezatvara predchadzajuce
-      // - viz zmena tam). TERAZ sa vola onRemoved() - LOKALNY renderAll() TOHTO KONKRETNEHO okna (odovzdany
-      // az z renderAll() cez zzz1r37_build_editable_cl_row), takze obnovi SPRAVNE okno, nie vytvori nove. |
-      // Vrso -> Claude AI | 2026-09-15 ===
+      // OPRAVA (Vrso 2026-09-15): refresh odlozeny na setTimeout(...,0) - az PO tom, co prehliadac plne
+      // dokonci spracovanie aktualnej udalosti, aby sa layout nemenil "pod prstom" pocas gesta.
       setTimeout(() => { if (onRemoved) onRemoved(); }, 0);
-      suppressClick = true;
     }, 2000);
   }
 
   function end() {
     clearTimers();
-    if (!actionFired) {
-      // kratky klik (pustene pred 0.5s) -> pripni TENTO konkretny riadok pod CRM
+    if (fired2s) return;
+    if (firedOpen) {
+      // UPDATE (Vrso 2026-09-13, "este lepsie synchronizuj v kontext okne vsetky cl s crm"): otvara TEN ISTY
+      // zdielany globalny checklist (zzz6f48_open_mini_modal) ako MINI/PRESET/ATTACH na realnych
+      // attachmentoch - nie samostatny per-entry checklist. Jedna zdielana pravda pre vsetko.
+      // OPRAVA (Vrso 2026-09-12, "nech sa povodne okno plynulo zavrie a nove otvori"): ak je otvorene
+      // okno INEHO tlacidla, zavri ho a rovno otvor toto nove (plynuly prechod). Ak je otvorene
+      // PRESNE toto okno (ten isty button), sprava sa to ako TOGGLE (len zavrie).
+      if (zzz6f48CurrentModalButton === btn) {
+        zzz6f48_close_mini_modal_if_open();
+      } else {
+        zzz6f48_close_mini_modal_if_open();
+        zzz6f48_open_mini_modal('versoContextWindowStack', btn);
+      }
+      return;
+    }
+    const elapsed = Date.now() - pressStart;
+    if (elapsed < 500) {
+      // kratky klik -> pripni TENTO konkretny riadok pod CRM
       zzz1r37_attach_entry(entry);
       zzz6f17_context_attachment_render();
       zzz6f2_show_toast('CL pripnuta pod CRM.');
@@ -11138,21 +11152,14 @@ function zzz1r37_bind_mini_for_clone(btn, rowEl, entry, onRemoved) {
 
   function cancel() { clearTimers(); } // prerusenie gesta (odtiahnutie prsta a pod.) - ZIADNA akcia
 
-  btn.addEventListener('touchstart', start, { passive: true });
-  btn.addEventListener('touchend', end);
+  btn.addEventListener('touchstart', start, { passive: false });
+  btn.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
   btn.addEventListener('touchmove', cancel);
   btn.addEventListener('touchcancel', cancel);
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
-
-  document.addEventListener('click', (e) => {
-    if (suppressClick && (e.target === btn || btn.contains(e.target))) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      suppressClick = false;
-    }
-  }, true);
+  btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
 }
 
 // Odstrani danu entry (podla id) zo VSETKYCH PRESET tabov (obe skupiny) - pouziva 2s "odstran z tabu" gesto
@@ -11713,16 +11720,20 @@ function zzz6f6_open_el_cell_context_modal(field, val, row) {
 // - kratky klik (pustene pred 0.5s) = pripni tuto entry ako EL attachment pod zivu CL
 //   (zzz6f17_context_attachment_add_el, rovnaky mechanizmus ako uz existujuci per-bunkovy EL attach).
 // - 0.5-1s drzanie = otvor "entry okno" (zdielany checklist, rovnaky ako realne MINI/ATTACH tlacidla).
-// - 3s drzanie = ak je JUZ attachovana, ODPOJ ju (zzz6f17_context_attachment_remove); ak NIE JE attachovana,
-//   uprav bunky podla VLASTNEHO ulozeneho stavu tejto entry (definovane + zaciarknute polia z momentu
-//   ENTRY - viz zzz4_0_apply_own_saved_fields). | Vrso -> Claude AI | 2026-09-12 ===
+// - 3s drzanie = VZDY zobraz celu EL/definovane bunky (reveal all) - bez ohladu na attach stav.
+// OPRAVA (Vrso 2026-09-12, "entry podrz 3s deattachuje el ale to uz robi attach button danej el... podrzanie
+// by malo iba vyznacit celu el/definovane bunky"): detach cez 3s na TOMTO tlacidle ODSTRANENY - detach uz
+// zabezpecuje SAMOTNY realny ATTACH button (jeho vlastne 2s podrzanie, zzz6f17_bind_mini_for_attachment).
+// Duplicitna cesta na to iste by len matala. | Vrso -> Claude AI | 2026-09-12 ===
 // Rovnaka move-tolerance (~12px) a preventDefault-na-touchstart oprava ako pri M4a tlacidlach vyssie v subore
 // (predchadza "posun pri drzani" bug na mobile).
+// PREROBENE PODLA PRESET VZORU (Vrso 2026-09-12, "podrzanim 1-2s sa otvoria mini, attach, entry windows ktore
+// narusaju/hybu obrazovkou... preset button funguje skvele, pouzi to ako vzor") - viz plne vysvetlenie pri
+// zzz6f48_bind_dual_press vyssie v subore. 0.5s uz NEOTVARA modal priamo (layout shift pod prstom) - len
+// oznaci priznak, otvorenie sa vykona az pri pusteni. move-tolerance uz netreba (nic sa nemeni v DOM pocas
+// drzania, takze ziadny umely touchcancel/touchmove od layout shiftu nehrozi).
 function zzz4_0_bind_entry_button(btn, row, isAttachedFn, updateVisualFn, applyOwnSavedFieldsFn) {
-  let timerOpen = null, timer3s = null, actionFired = false;
-  let startX = 0, startY = 0;
-  let modalOpened = false; // OPRAVA (Vrso 2026-09-12, "entry window sa mi zobrazil a potom nic") - viz vysvetlenie nizsie
-  const MOVE_TOLERANCE = 12;
+  let timerOpen = null, timer3s = null, firedOpen = false, fired3s = false, pressStart = 0;
   const entryModalId = 'versoDbEntryModal_' + (row && row.entry_id !== undefined ? row.entry_id : '');
   function clearTimers() {
     if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
@@ -11730,58 +11741,47 @@ function zzz4_0_bind_entry_button(btn, row, isAttachedFn, updateVisualFn, applyO
   }
   function start(e) {
     if (e && e.cancelable) e.preventDefault();
-    const point = (e && e.touches && e.touches[0]) ? e.touches[0] : e;
-    startX = point ? point.clientX : 0;
-    startY = point ? point.clientY : 0;
-    actionFired = false;
-    modalOpened = false;
+    firedOpen = false;
+    fired3s = false;
+    pressStart = Date.now();
     clearTimers();
-    timerOpen = setTimeout(() => {
-      actionFired = true;
-      modalOpened = true;
-      if (zzz6f48CurrentModalClose) zzz6f48_close_mini_modal_if_open();
-      else zzz6f48_open_mini_modal(entryModalId, btn); // OPRAVA 2026-09-12 - vlastny kontajner, prilepi pod TENTO riadok
-    }, 500);
+    timerOpen = setTimeout(() => { firedOpen = true; }, 500);
     timer3s = setTimeout(() => {
-      actionFired = true;
-      if (isAttachedFn()) {
-        const entryNumber = row && row.entry_id !== undefined && row.entry_id !== null ? String(row.entry_id) : '';
-        const item = entryNumber ? zzz6f17Attachments.find(a => a.source === 'el' && a.entryNumber === entryNumber) : null;
-        if (item) zzz6f17_context_attachment_remove(item.id);
-      } else {
-        applyOwnSavedFieldsFn();
-      }
+      fired3s = true;
+      applyOwnSavedFieldsFn(); // reveal all - cisto stavova akcia, ziadny novy DOM, bezpecne hned
       updateVisualFn();
     }, 3000);
   }
   function end() {
     clearTimers();
-    if (!actionFired) {
+    if (fired3s) return;
+    if (firedOpen) {
+      // OPRAVA (Vrso 2026-09-12, "nech sa povodne okno plynulo zavrie a nove otvori"): ak je otvorene
+      // okno INEHO tlacidla, zavri ho a rovno otvor toto nove (plynuly prechod). Ak je otvorene
+      // PRESNE toto okno (ten isty button), sprava sa to ako TOGGLE (len zavrie).
+      if (zzz6f48CurrentModalButton === btn) {
+        zzz6f48_close_mini_modal_if_open();
+      } else {
+        zzz6f48_close_mini_modal_if_open();
+        zzz6f48_open_mini_modal(entryModalId, btn); // vlastny kontajner, prilepi pod TENTO riadok
+      }
+      return;
+    }
+    const elapsed = Date.now() - pressStart;
+    if (elapsed < 500) {
       zzz6f17_context_attachment_add_el({ key: null }, row, null);
       updateVisualFn();
     }
   }
-  // OPRAVA (Vrso 2026-09-12, "entry window sa mi zobrazil a potom pri drzani sa nic nestalo"): otvorenie okna na
-  // 0.5s VLOZI novy element do DOM presne pod prstom, co na mobile casto sposobi, ze prehliadac vyhodnoti dotyk
-  // ako "posunuty"/zruseny (touchcancel/touchmove nad novym prvkom) - 3s casovac sa tak predtym zrusil skor, nez
-  // stihol dobehnut, aj ked prst realne stale drzal. TERAZ: po otvoreni okna (modalOpened=true) sa
-  // touchmove/touchcancel uz IGNORUJU (3s casovac dobehne bez ohladu na tento vedlajsi efekt) - jedina cesta, ako
-  // 3s akciu zrusit, je skutocne zdvihnut prst (touchend), co uz aj tak vola end()/clearTimers().
-  function moveCheck(e) {
-    if (modalOpened) return;
-    const point = (e && e.touches && e.touches[0]) ? e.touches[0] : e;
-    if (!point) { clearTimers(); return; }
-    const dx = point.clientX - startX, dy = point.clientY - startY;
-    if (Math.sqrt(dx * dx + dy * dy) > MOVE_TOLERANCE) clearTimers();
-  }
-  function cancel() { if (!modalOpened) clearTimers(); }
+  function cancel() { clearTimers(); }
   btn.addEventListener('touchstart', start, { passive: false });
   btn.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
-  btn.addEventListener('touchmove', moveCheck);
+  btn.addEventListener('touchmove', cancel);
   btn.addEventListener('touchcancel', cancel);
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
+  btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
 }
 
 // [Zzz4-0:ENTRY-SYNC] Vrso 2026-09-12 - globalna obojsmerna synchronizacia: kedykolvek sa zoznam attachmentov
@@ -11798,6 +11798,39 @@ function zzz4_0_sync_entry_buttons() {
   });
 }
 
+// === [Zzz1-M1/M2:SYNC-MASTER] Vrso 2026-09-12 - konsolidovana mapa VSETKEHO, co drzi Zzz1-M1 (Command Line,
+// realny #versoCLNumbersRow/#versoCRMLabelsRow) a Zzz1-M2 (Entry Line = kazdy ulozeny/zobrazeny zaznam v
+// Database aj Trash Workspace) zosuladene. Jeden zoznam na jednom mieste, aby sa dalo rychlo overit/rozsirit:
+//
+// 1) POLIA/PORADIE STLPCOV: JEDNA zdielana definicia, ZIADNA duplicita.
+//    -> const ZZZ_FULL_DISPLAY_FIELDS (vyssie v subore) - pouzivaju ju VSETKY: realna CL, RL, Database Workspace
+//       (zzz4_0_build_entry_row nizsie), Trash Workspace (zdiela tu istu funkciu), Zzz1-M5 attachmenty,
+//       Zzz1-M4a template, Zzz1-R37 PRESET tab klony. Zmena poradia/pridanie pola na JEDNOM mieste sa prejavi
+//       VSADE automaticky.
+//
+// 2) MINI CHECKLIST (ktore stlpce su prave skryte) - zdielany zdroj pravdy:
+//    -> zzz6f48_get_hidden_wraps()/zzz6f48_save_hidden_wraps() (localStorage, synchronne, ziadny race).
+//    -> zzz6f48_apply_mini_visibility() - aplikuje na REALNU CL/RL + vsetky pripnute CL/EL (#versoAttachmentList)
+//       + M4a (#versoM4aCLNumbersRow/#versoM4aCRMLabelsRow/#versoM4aLocalAttachList) + VSETKY
+//       .db-workspace-entry-row naraz (Database AJ Trash Workspace, viz OPRAVA 2026-09-11 nizsie v tejto funkcii).
+//    -> zzz4_0_apply_mini_visibility_to_row(rowEl) - to iste pre JEDEN konkretny Database/Trash riadok
+//       (vola sa pri build aj cez zzz4_0_row_entry_number/'live' rezim v ENTRY tlacidle).
+//
+// 3) VLASTNY (per-entry) CHECKLIST STAV - ULOZENY pri ENTRY, NEZAVISLY od live CRM:
+//    -> zzz4_0_build_fields_json_from_entrydata() zapisuje r_mini_hidden do KAZDEJ entry pri stlaceni ENTER.
+//    -> citane v zzz4_0_build_entry_row nizsie (rowSavedHidden) - momentalne pouzite len ako budouci zdroj,
+//       aktualne gesto (3s na ENTRY tlacidle) robi "zobraz vsetko", nie aplikaciu tohto ulozeneho stavu (Vrso
+//       2026-09-12 zmenil ziadost spat na "cely entry line").
+//
+// 4) ENTRY BUTTON (bod 4a) A ATTACH PREPOJENIE (bod 4b):
+//    a) zzz4_0_bind_entry_button - kratky klik = EL attach pod zivu CL, 0.5s = otvor vlastne dedikovane okno
+//       (versoDbEntryModal_<id>, prilepene pod TENTO riadok), 3s = detach (ak attachovana) / reveal all (ak nie).
+//    b) zzz4_0_sync_entry_buttons() - GLOBALNA obojsmerna synchronizacia vzhladu (zelene orámovanie <-> plna
+//       zelena vypln) medzi Database ENTRY tlacidlom a zodpovedajucim realnym ATTACH tlacidlom v CRM - vola sa
+//       pri KAZDEJ zmene zoznamu attachmentov (zzz6f17_context_attachment_render), odkialkolvek prisla.
+//
+// Toto je zamerne JEDEN blok na JEDNOM mieste - buduce zmeny v CL/Entry Line synchronizacii by sa mali
+// zaznamenat/rozsirit tu, aby sa dal cely mechanizmus overit na jednom pohlad. | Vrso -> Claude AI | 2026-09-12 ===
 function zzz4_0_build_entry_row(row) {
   const rowEl = document.createElement('div');
   rowEl.className = 'numbers-row db-workspace-entry-row';
@@ -11839,20 +11872,18 @@ function zzz4_0_build_entry_row(row) {
   function zzz4_0_update_entry_btn_visual() {
     miniBtn.classList.toggle('zzz4-0-entry-attached', zzz4_0_row_is_attached());
   }
-  // OPRAVA (Vrso 2026-09-12, "entry button podrzanim 3s by mal upravit entry line bunky podla definovanych a
-  // zaciarknutych v danej entry"): predtym 3s (ked NIE je attachovana) robilo "reveal all" (ukaz VSETKO). TERAZ
-  // aplikuje VLASTNY ulozeny checklist stav TEJTO KONKRETNEJ entry (r_mini_hidden z momentu ENTRY) - teda
-  // presne tie polia, ktore boli definovane + oznacene/viditelne v checkliste vtedy, ked sa entry ulozila -
-  // nie proste vsetko. | Vrso -> Claude AI | 2026-09-12 ===
-  function zzz4_0_apply_own_saved_fields() {
-    const hidden = rowSavedHidden.filter(w => !ZZZ6F48_FIXED_WRAPS.includes(w));
+  // OPRAVA (Vrso 2026-09-12, "po podrzani 3s entry button by mal zobrazit cely entry line (vsetky bunky)"):
+  // predoslá verzia (aplikuj VLASTNY ulozeny checklist stav) je NAHRADENA spat na jednoduche "ukaz VSETKY
+  // bunky" (reveal all), presne podla najnovsej ziadosti - Vrso zmenil nazor voci predchadzajucej verzii z
+  // toho isteho dna. | Vrso -> Claude AI | 2026-09-12 ===
+  function zzz4_0_reveal_all_fields() {
     ZZZ_FULL_DISPLAY_FIELDS.forEach(field => {
       if (ZZZ6F48_FIXED_WRAPS.includes(field.wrap)) return;
       const el = rowEl.querySelector(':scope > .' + field.wrap);
-      if (el) el.style.display = hidden.includes(field.wrap) ? 'none' : '';
+      if (el) el.style.display = '';
     });
   }
-  zzz4_0_bind_entry_button(miniBtn, row, zzz4_0_row_is_attached, zzz4_0_update_entry_btn_visual, zzz4_0_apply_own_saved_fields);
+  zzz4_0_bind_entry_button(miniBtn, row, zzz4_0_row_is_attached, zzz4_0_update_entry_btn_visual, zzz4_0_reveal_all_fields);
   zzz4_0_update_entry_btn_visual();
 
   // === [Zzz4-0:STATUS-COLOR] (SYSTEM FUNCTION) - Vrso 2026-08-28: "akekolvek docasne entry number vyznac
