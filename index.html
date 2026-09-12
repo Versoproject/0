@@ -1236,10 +1236,19 @@ body{margin:0;color:#fff;font-family:sans-serif;}
      2) user-select/-webkit-touch-callout: none - zabranuje oznacenie textu na buttone a nativnemu "Kopirovat"
         kontextovemu menu pri dlhom podrzani (dlzsi dotyk na mobile), presne princip spomenuty uz vyssie pri
         Zzz0-R1 (vid komentar tam z 2026-08-19), teraz realne zapracovany aj sem | Vrso -> Claude AI | 2026-08-19 === */
+  /* [NO-NATIVE-SELECT] OPRAVA (Vrso 2026-09-12, "zas si tam dala podrz 3s funkciu kopirovania"): rovnaky bug
+     ako uz vyriesene na Zzz5-T0 taboch (2026-09-01) - user-select:none + -webkit-touch-callout:none SAMY
+     OSEBE NESTACIA na niektorych Android prehliadacoch, chybal touch-action:none (potlaca aj
+     scroll-hijacking/native gesto-spravanie pocas drzania, nie len text-selection). TOTO uz nema ziadny
+     dopad na odozvu drzania (na rozdiel od JS e.preventDefault() na touchstart, ktory sposoboval zlu
+     reakciu) - je to cisto CSS, vybavene skor, nez sa JS gesto vobec zacne spracovavat. Plati automaticky
+     pre VSETKYCH 6 zdielanych tlacidiel (realne MINI/ATTACH, M4a MINI/ATTACH, PRESET, Database ENTRY), kedze
+     vsetky zdielaju tuto zakladnu triedu. | Vrso -> Claude AI | 2026-09-12 ===
   .entry-number-button {
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
+    touch-action: none;
   }
   /* === [/Zzz6-F1:HIDE] === */
   /* === [R1a:BUTTON] Entry Number button - len oznacenie, priradene k R1 (data-entry-id) === */
@@ -10236,6 +10245,51 @@ function zzz6f48_detach_all_attachments() {
 // prst este stale drzal button - to sposobovalo layout shift priamo pod prstom, co mobilny prehliadac casto
 // vyhodnoti ako touchcancel/posun ("hybe sa obrazovka"). TERAZ rovnaky odlozeny-az-do-pustenia vzor ako
 // PRESET. | Vrso -> Claude AI | 2026-09-12 ===
+// === [Zzz-GESTURE:MASTER] Vrso 2026-09-12, "skontroluj cely mechanizmus... oznac a urob si poznamky ako to
+// teraz funguje": KONSOLIDOVANY, presny popis aktualneho (funkcneho, otestovaneho) stavu VSETKYCH 6
+// zdielanych drz-tlacidiel v systeme. Kazda buduca zmena TOHTO mechanizmu by mala ZACAT tu - a po zmene by
+// TENTO blok mal byt aktualizovany, aby ostal pravdivy.
+//
+// KTORE FUNKCIE (vsetkych 6, ten isty vzor):
+//   1. zzz6f48_bind_dual_press        - realny MINI button (CL v CRM)
+//   2. zzz6f17_bind_mini_for_attachment - realny ATTACH button (kazda pripnuta CL/EL pod CRM)
+//   3. zzz1m4a_bind_mini_checklist_only - M4a MINI button
+//   4. zzz1m4a_bind_local_attach_button - M4a lokalny ATTACH button
+//   5. zzz1r37_bind_mini_for_clone     - PRESET-tab riadkove MINI tlacidlo
+//   6. zzz4_0_bind_entry_button        - Database/Trash Workspace ENTRY button
+//   (PRESET samotne tlacidlo, zzz1m3_bind_preset_button, ma VLASTNY, MIERNE INY mechanizmus - viz nizsie.)
+//
+// SPOLOCNY VZOR (1-6, vsetky identicke, len ine cielove akcie):
+//   - touchstart: { passive: true }, ZIADNY e.preventDefault() tu - "start()" NEMA parameter e.
+//     (OPRAVA 2026-09-12: predtym mal Database ENTRY button vynimku - preventDefault na touchstart kvoli
+//     nativnemu "oznac a skopiruj" bugu - TOTO SPOSOBOVALO ZLU ODOZVU na drzanie. Bug proti nativnemu
+//     copy/select sa RIESI VYLUCNE cez CSS (.entry-number-button { touch-action: none; ... }) - viz
+//     [NO-NATIVE-SELECT] komentar pri CSS triede. NIKDY nepridavat preventDefault na touchstart znova ako
+//     "opravu" tohto bugu - je to CSS problem, nie JS.)
+//   - 0.5s timer: LEN nastavi priznak (firedOpen=true) + zzz_haptic_pulse(15). ZIADNA DOM-menaca akcia tu
+//     (ziadne vkladanie modalu do DOM POCAS drzania) - presne to sposobovalo layout-shift/touchcancel bug
+//     ("hybe sa obrazovka") pred touto opravou.
+//   - 2s/3s timer (podla funkcie): vykona SVOJU cielovu akciu HNED (detach/reveal-all/atd.) + zzz_haptic_pulse(30).
+//     Toto SMIE byt okamzite, lebo su to cisto stavove akcie (CSS display toggle) alebo jednorazove DB
+//     akcie bez modalu - nespôsobujú layout-shift pod prstom.
+//   - touchend/end(): AK uz vykonala 2s/3s akciu -> nic dalej. INAK ak firedOpen (0.5-2s/3s) -> AZ TERAZ (pri
+//     PUSTENÍ) otvor/zavri modal - ak uz bolo otvorene PRESNE toto tlacidlo (zzz6f48CurrentModalButton===btn)
+//     -> TOGGLE zavrie; ak bolo otvorene INE tlacidlo -> zavri ho a HNED plynulo otvor toto nove. INAK
+//     (kratky klik, pustene pred 0.5s) -> kratky-klik akcia (attach/toggle-vsetko/atd).
+//   - touchmove/touchcancel: VZDY cancel() (zrusi vsetky casovace, ziadna move-tolerance, presne ako PRESET).
+//   - click listener: e.preventDefault()+e.stopPropagation() - cela logika je uz v touchend/mouseup, click
+//     by len duplicitne spustil akciu.
+//
+// PRESET (zzz1m3_bind_preset_button) - ODLISNOSTI oproti vzoru vyssie (NEMENIT bez vyslovnej ziadosti,
+// funguje ako referencny vzor pre cely tento mechanizmus):
+//   - 2s akcia (zzz6f48_reset_all) je tiez okamzita, ziadny modal.
+//   - Krátky klik toggluje vsetky PRESET okna naraz (nie len jedno). Ma vlastny "hidden-active" stav
+//     (strieborna vypln + zlaty text), nezavisly od zzz6f48CurrentModalButton systemu ostatnych 6.
+//
+// PRIDANE 2026-09-12 (haptika): zzz_haptic_pulse(ms) - centralna pomocna funkcia, bezpecne no-op na iOS
+// Safari (navigator.vibrate neexistuje), 15ms pri 0.5s prahu, 30ms pri 2s/3s prahu. | Vrso -> Claude AI |
+// 2026-09-12 ===
+
 function zzz6f48_bind_dual_press(el) {
   let timerOpen = null;
   let timer2s = null;
