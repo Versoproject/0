@@ -1250,6 +1250,37 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     -webkit-touch-callout: none;
     touch-action: none;
   }
+  /* [NO-NATIVE-SELECT-V2] OPRAVA (Vrso 2026-09-12, "zas je vyber textu v buttonoch!!!"): CSS user-select +
+     touch-action + JS contextmenu blokovanie STALE nestacili na niektorych zariadeniach - nativne
+     selection-handles (modre ucha) sa objavovali priamo na PRESET/MINI popiskoch, opakovane. preventDefault()
+     na touchstart TOTO odstranilo, ale zaroven zlomilo samotne drzanie (viz [Zzz-GESTURE:MASTER] historia) -
+     nepouzitelny kompromis. TOTO JE ARCHITEKTONICKY ODLISNE riesenie, nedotyka sa ziadnej touch/JS gesto-
+     logiky vobec: viditelny text PRESET a MINI (staticke, nemenne tlacidla v HTML) je teraz CSS
+     ::before{content:...} namiesto skutocneho DOM textu. Prehliadac NEMOZE vytvorit textovu selekciu v
+     generovanom CSS obsahu - fyzicky tam ziadny selectovatelny text node nie je. Nulove riziko pre gesta,
+     kedze sa vobec netyka JS/touch vrstvy. Aplikovane zatial LEN na tieto 2 staticke tlacidla (vzdy rovnaky
+     text) - ATTACH/ENTRY su dynamicky generovane na viacerych miestach v JS, rovnaku upravu by bolo treba
+     spravit na kazdom mieste zvlast (vyssie riziko, zatial neurobene). | Vrso -> Claude AI | 2026-09-12 ===
+  #zzz1m3PresetButton::before {
+    content: "PRESET";
+    display: inline-block; /* OPRAVA - <button> elementy niekedy nevykreslia ::before bez explicitneho display */
+  }
+  #zzz6f48MiniButton::before {
+    content: "MINI";
+    display: inline-block;
+  }
+  /* OPRAVA (Vrso 2026-09-12, "zapracuj aj do attach aj entry, len dodrz ich funkcie"): rovnaka CSS-content
+     technika rozsirena aj na dynamicky generovane ATTACH a ENTRY tlacidla (viacero miest v JS, preto trieda
+     namiesto ID - viz zzz-css-label-attach/entry v JS casti). Ziadna zmena funkcnosti/gest, len ako sa
+     zobrazuje text. | Vrso -> Claude AI | 2026-09-12 === */
+  .zzz-css-label-attach::before {
+    content: "ATTACH";
+    display: inline-block;
+  }
+  .zzz-css-label-entry::before {
+    content: "ENTRY";
+    display: inline-block;
+  }
   /* === [/Zzz6-F1:HIDE] === */
   /* === [R1a:BUTTON] Entry Number button - len oznacenie, priradene k R1 (data-entry-id) === */
   .entry-number-button {
@@ -4145,7 +4176,7 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
              preset hodnot CL do template tabov) EST NEUJASNENA/nepotvrdena. UPDATE (Vrso 2026-09-03, "aby sa
              dal aj lahko stlacit"): UZ NIE disabled - kratky klik zatial LEN toast (SPECIAL/INTERIM, cakame
              na upresnenie zadania) | Vrso -> Claude AI | 2026-09-03 === -->
-        <button type="button" class="entry-number-button zzz1m3-preset-button" id="zzz1m3PresetButton" aria-label="Preset">PRESET</button>
+        <button type="button" class="entry-number-button zzz1m3-preset-button" id="zzz1m3PresetButton" aria-label="Preset"></button>
         <!-- === [/Zzz1-M3:PRESET] === -->
     </div>
     <div class="entry-number-wrap">
@@ -4282,7 +4313,7 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
              (checklist). 3s podrzanie = TOGGLE: minimalizuje CL (skryje neoznacene stlpce) / opatovnym 3s
              stlacenim zobrazi cely CL riadok naspat. Kratky klik zatial bez akcie (SPECIAL/INTERIM - Vrso:
              "neskor zapracujeme cosi") | Vrso -> Claude AI | 2026-09-03 === -->
-        <button type="button" class="entry-number-button zzz6f48-mini-button" id="zzz6f48MiniButton" aria-label="Mini - minimalizovat Command Line">MINI</button>
+        <button type="button" class="entry-number-button zzz6f48-mini-button" id="zzz6f48MiniButton" aria-label="Mini - minimalizovat Command Line"></button>
         <!-- === [/Zzz6-R48:MINI-CL] === -->
     </div>
     <div class="entry-number-wrap">
@@ -7952,7 +7983,7 @@ function zzz6f17_build_attached_cl_grid_row(item) {
   miniBtn.type = 'button';
   miniBtn.className = 'entry-number-button zzz6f48-mini-button';
   miniBtn.setAttribute('aria-label', 'Mini attachment');
-  miniBtn.textContent = 'ATTACH'; // Vrso 2026-09-11: "pod mini ten button nazvi attach"
+  miniBtn.classList.add('zzz-css-label-attach'); // Vrso 2026-09-11: "pod mini ten button nazvi attach" (OPRAVA 2026-09-12: CSS ::before namiesto textContent, viz [NO-NATIVE-SELECT-V2])
   // OPRAVA (Vrso 2026-09-12, "po attach entry sa aj attach button ma rozsvietit na zelenu, ked sa dettachuje
   // tak entry button uz bude mat iba zelene ohranicenie"): kazdy attachment SO ZDROJOM v ulozenej DB entry
   // (source: 'el') dostava rovnaku zelenu vypln ako attachnute Zzz4-0 ENTRY tlacidlo - vizualne prepojenie
@@ -8036,28 +8067,28 @@ function zzz6f17_build_attached_cl_grid_row(item) {
 // 0.5s timer uz NEOTVARA modal priamo (to sposobovalo layout shift pod prstom pocas drzania) - len oznaci
 // priznak, samotne otvorenie/zatvorenie okna sa vykona az pri pusteni (touchend/end()).
 function zzz6f17_bind_mini_for_attachment(btn, rowEl, item) {
-  let timerOpen = null, timer2s = null, firedOpen = false, fired2s = false, pressStart = 0;
+  let timerOpen = null, timer3s = null, firedOpen = false, fired3s = false, pressStart = 0;
 
   function clearTimers() {
     if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
-    if (timer2s) { clearTimeout(timer2s); timer2s = null; }
+    if (timer3s) { clearTimeout(timer3s); timer3s = null; }
   }
 
   function start() {
     firedOpen = false;
-    fired2s = false;
+    fired3s = false;
     pressStart = Date.now();
     clearTimers();
     timerOpen = setTimeout(() => { firedOpen = true; zzz_haptic_pulse(15); }, 500);
-    timer2s = setTimeout(() => {
-      fired2s = true; zzz_haptic_pulse(30);
+    timer3s = setTimeout(() => {
+      fired3s = true; zzz_haptic_pulse(30);
       zzz6f17_context_attachment_remove(item.id);
-    }, 2000);
+    }, 3000);
   }
 
   function end() {
     clearTimers();
-    if (fired2s) return;
+    if (fired3s) return;
     if (firedOpen) {
       // OPRAVA (Vrso 2026-09-12, "nech sa povodne okno plynulo zavrie a nove otvori"): ak je otvorene
       // okno INEHO tlacidla, zavri ho a rovno otvor toto nove (plynuly prechod). Ak je otvorene
@@ -10211,19 +10242,26 @@ function zzz6f48_detach_all_attachments() {
 //   4. zzz1m4a_bind_local_attach_button - M4a lokalny ATTACH button
 //   5. zzz1r37_bind_mini_for_clone     - PRESET-tab riadkove MINI tlacidlo
 //   6. zzz4_0_bind_entry_button        - Database/Trash Workspace ENTRY button
-//   (PRESET samotne tlacidlo, zzz1m3_bind_preset_button, ma VLASTNY, MIERNE INY mechanizmus - viz nizsie.)
+//   7. zzz1m3_bind_preset_button       - PRESET tlacidlo (vlastny "hide-all" kratky klik navyse, inak ten isty vzor)
 //
-// SPOLOCNY VZOR (1-6, vsetky identicke, len ine cielove akcie):
+// SPOLOCNY VZOR (vsetkych 7, identicke, len ine cielove akcie):
 //   - touchstart: { passive: true }, ZIADNY e.preventDefault() tu - "start()" NEMA parameter e.
-//     (OPRAVA 2026-09-12: predtym mal Database ENTRY button vynimku - preventDefault na touchstart kvoli
-//     nativnemu "oznac a skopiruj" bugu - TOTO SPOSOBOVALO ZLU ODOZVU na drzanie. Bug proti nativnemu
-//     copy/select sa RIESI VYLUCNE cez CSS (.entry-number-button { touch-action: none; ... }) - viz
-//     [NO-NATIVE-SELECT] komentar pri CSS triede. NIKDY nepridavat preventDefault na touchstart znova ako
-//     "opravu" tohto bugu - je to CSS problem, nie JS.)
+//     (HISTORIA 2026-09-12, poucenie z troch pokusov: (a) preventDefault len na ENTRY - zla odozva, odstranene.
+//     (b) LEN CSS (touch-action:none) + contextmenu preventDefault na vsetkych 7, BEZ preventDefault na
+//     touchstart - NESTACILO, na niektorych zariadeniach sa aj tak zobrazili natívne selection-handles
+//     (modre ucha na oznacenie textu). (c) DOPLNENE preventDefault aj na touchstart (vsetkych 7) - TOTO
+//     ZASE POLAMALO SAMOTNE DRZANIE (1-2s gesta prestali reagovat UPLNE, na vsetkych tlacidlach). VRATENE
+//     SPAT na (b) - CSS + contextmenu, bez touchstart preventDefault. Native selection-handles teda OSTAVAJU
+//     ZNAMY, NEVYRIESENY zvysny problem na niektorych zariadeniach - kompromis v prospech funkcnosti drzania,
+//     kedze to je dolezitejsie. Bug proti nativnemu copy/select sa dalej RIESI cez CSS (.entry-number-button
+//     { touch-action: none; ... }) + contextmenu listener - viz [NO-NATIVE-SELECT] komentar pri CSS triede.
+//     NEPRIDAVAT preventDefault na touchstart znova bez dokladneho otestovania na realnom zariadeni najprv -
+//     riziko opakovania bodu (c).)
 //   - 0.5s timer: LEN nastavi priznak (firedOpen=true) + zzz_haptic_pulse(15). ZIADNA DOM-menaca akcia tu
 //     (ziadne vkladanie modalu do DOM POCAS drzania) - presne to sposobovalo layout-shift/touchcancel bug
 //     ("hybe sa obrazovka") pred touto opravou.
-//   - 2s/3s timer (podla funkcie): vykona SVOJU cielovu akciu HNED (detach/reveal-all/atd.) + zzz_haptic_pulse(30).
+//   - 3s timer (STANDARDIZOVANE 2026-09-12, predtym niektore tlacidla mali 2s, iné 3s - zjednotene na 3s
+//     vsade pre konzistenciu): vykona SVOJU cielovu akciu HNED (detach/reveal-all/atd.) + zzz_haptic_pulse(30).
 //     Toto SMIE byt okamzite, lebo su to cisto stavove akcie (CSS display toggle) alebo jednorazove DB
 //     akcie bez modalu - nespôsobujú layout-shift pod prstom.
 //   - touchend/end(): AK uz vykonala 2s/3s akciu -> nic dalej. INAK ak firedOpen (0.5-2s/3s) -> AZ TERAZ (pri
@@ -10246,32 +10284,32 @@ function zzz6f48_detach_all_attachments() {
 
 function zzz6f48_bind_dual_press(el) {
   let timerOpen = null;
-  let timer2s = null;
+  let timer3s = null;
   let firedOpen = false;
-  let fired2s = false;
+  let fired3s = false;
   let pressStart = 0;
 
   function clearTimers() {
     if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
-    if (timer2s) { clearTimeout(timer2s); timer2s = null; }
+    if (timer3s) { clearTimeout(timer3s); timer3s = null; }
   }
 
   function start() {
     firedOpen = false;
-    fired2s = false;
+    fired3s = false;
     pressStart = Date.now();
     clearTimers();
     // 0.5s LEN oznaci priznak - samotne otvorenie/zatvorenie okna sa vykona az pri pusteni (end()).
     timerOpen = setTimeout(() => { firedOpen = true; zzz_haptic_pulse(15); }, 500);
-    timer2s = setTimeout(() => {
-      fired2s = true; zzz_haptic_pulse(30);
+    timer3s = setTimeout(() => {
+      fired3s = true; zzz_haptic_pulse(30);
       zzz6f48_detach_all_attachments(); // 2s - cisto stavova akcia (ziadny novy DOM/modal), bezpecne hned
-    }, 2000);
+    }, 3000);
   }
 
   function end() {
     clearTimers();
-    if (fired2s) return; // 2s uz vykonalo svoju akciu - nic dalej netreba
+    if (fired3s) return; // 3s uz vykonalo svoju akciu - nic dalej netreba
     if (firedOpen) {
       // pustene medzi 0.5s-2s -> teraz (na pustenie) otvor/zavri MINI okno
       // OPRAVA (Vrso 2026-09-12, "nech sa povodne okno plynulo zavrie a nove otvori"): ak je otvorene
@@ -10423,7 +10461,7 @@ function zzz1r37_build_editable_cl_row(entry, onRemoved) {
     // funkcie (kratky klik/0.5s/2s cez zzz1r37_bind_mini_for_clone) ostavaju BEZO ZMENY. Scoped LEN sem
     // (PRESET-clone), NIE na skutocny hlavny MINI button ani na uz existujuce ATTACH buttony v pripnutych
     // riadkoch (tie uz "ATTACH" maju). | Vrso -> Claude AI | 2026-09-13 ===
-    miniBtn.textContent = 'ATTACH';
+    miniBtn.classList.add('zzz-css-label-attach'); // OPRAVA 2026-09-12: CSS ::before namiesto textContent, viz [NO-NATIVE-SELECT-V2]
     zzz1r37_bind_mini_for_clone(miniBtn, rowEl, entry, onRemoved);
   }
 
@@ -10745,7 +10783,7 @@ function zzz1m4a_build_local_attach_row(item) {
   const label = document.createElement('button');
   label.type = 'button';
   label.className = 'entry-number-button zzz6f48-mini-button';
-  label.textContent = 'ATTACH';
+  label.classList.add('zzz-css-label-attach'); // OPRAVA 2026-09-12: CSS ::before namiesto textContent, viz [NO-NATIVE-SELECT-V2]
   miniPlaceholder.appendChild(label);
   rowEl.appendChild(miniPlaceholder);
   // OPRAVA (Vrso 2026-09-11, "attach buttonu po pripnuti nema funkcie svoje - stlac=zobraz na vsetkych, podrz
@@ -10865,6 +10903,7 @@ function zzz1m4a_bind_local_attach_button(btn, item) {
   // nez stihli dobehnut). Explicitne blokovanie 'contextmenu' udalosti je oddelene od touchstart/
   // touch-action, takze NEMA vplyv na odozvu drzania. | Vrso -> Claude AI | 2026-09-12 ===
   btn.addEventListener('contextmenu', (e) => e.preventDefault());
+  btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
 }
 
 function zzz1m4a_render_local_attachments() {
@@ -10980,6 +11019,7 @@ function zzz1m4a_bind_mini_checklist_only(btn) {
   // nez stihli dobehnut). Explicitne blokovanie 'contextmenu' udalosti je oddelene od touchstart/
   // touch-action, takze NEMA vplyv na odozvu drzania. | Vrso -> Claude AI | 2026-09-12 ===
   btn.addEventListener('contextmenu', (e) => e.preventDefault());
+  btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
 }
 
 function zzz1m4a_init() {
@@ -11126,21 +11166,21 @@ function zzz1r37_reset_mini_for_entry(rowEl, entry, persistFn) {
 // PREROBENE PODLA PRESET VZORU (Vrso 2026-09-12) - viz plne vysvetlenie pri zzz6f48_bind_dual_press vyssie v
 // subore. 0.5s uz neotvara modal priamo pocas drzania (layout shift pod prstom) - az pri pusteni.
 function zzz1r37_bind_mini_for_clone(btn, rowEl, entry, onRemoved) {
-  let timerOpen = null, timer2s = null, firedOpen = false, fired2s = false, pressStart = 0;
+  let timerOpen = null, timer3s = null, firedOpen = false, fired3s = false, pressStart = 0;
 
   function clearTimers() {
     if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
-    if (timer2s) { clearTimeout(timer2s); timer2s = null; }
+    if (timer3s) { clearTimeout(timer3s); timer3s = null; }
   }
 
   function start() {
     firedOpen = false;
-    fired2s = false;
+    fired3s = false;
     pressStart = Date.now();
     clearTimers();
     timerOpen = setTimeout(() => { firedOpen = true; zzz_haptic_pulse(15); }, 500);
-    timer2s = setTimeout(() => {
-      fired2s = true; zzz_haptic_pulse(30);
+    timer3s = setTimeout(() => {
+      fired3s = true; zzz_haptic_pulse(30);
       // OPRAVA (Vrso 2026-09-13, "attach button v kontext okne... 2-3s tak ho odstran iba! Z kontextoveho
       // okna pod danym tabom"): 2s UZ NIE JE reset stlpcov - odstrani TUTO KONKRETNU CL Z JEJ TABU (natrvalo,
       // len v ramci PRESET okna - NEDOTYKA sa nicoho, co uz je pripnute pod CRM cez #versoAttachmentList).
@@ -11149,12 +11189,12 @@ function zzz1r37_bind_mini_for_clone(btn, rowEl, entry, onRemoved) {
       // OPRAVA (Vrso 2026-09-15): refresh odlozeny na setTimeout(...,0) - az PO tom, co prehliadac plne
       // dokonci spracovanie aktualnej udalosti, aby sa layout nemenil "pod prstom" pocas gesta.
       setTimeout(() => { if (onRemoved) onRemoved(); }, 0);
-    }, 2000);
+    }, 3000);
   }
 
   function end() {
     clearTimers();
-    if (fired2s) return;
+    if (fired3s) return;
     if (firedOpen) {
       // UPDATE (Vrso 2026-09-13, "este lepsie synchronizuj v kontext okne vsetky cl s crm"): otvara TEN ISTY
       // zdielany globalny checklist (zzz6f48_open_mini_modal) ako MINI/PRESET/ATTACH na realnych
@@ -11568,36 +11608,36 @@ function zzz1m3_bind_preset_button(btn, pickCallback = null, targetListId = 'ver
   // kratky klik = TOGGLE schovaj/zobraz VSETKY attachmenty (viz vyssie); 0.5s = OTVOR PRESET okno; 2s = TOGGLE
   // ukaz vsetky bunky (def+nedef) / vrat len definovane.
   let timerOpen = null;
-  let timer2s = null;
+  let timer3s = null;
   let firedOpen = false;
-  let fired2s = false;
+  let fired3s = false;
   let pressStart = 0;
 
   function clearTimers() {
     if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
-    if (timer2s) { clearTimeout(timer2s); timer2s = null; }
+    if (timer3s) { clearTimeout(timer3s); timer3s = null; }
   }
 
   function start() {
     firedOpen = false;
-    fired2s = false;
+    fired3s = false;
     pressStart = Date.now();
     clearTimers();
     // 0.5s timer LEN OZNACI firedOpen=true, akciu ("otvor okno") vykonava az end() pri PUSTENI - inak by 2s+
     // drzanie spustilo aj 0.5s akciu navyse (poucenie z predchadzajuceho buga).
     timerOpen = setTimeout(() => { firedOpen = true; zzz_haptic_pulse(15); }, 500);
-    timer2s = setTimeout(() => {
-      fired2s = true; zzz_haptic_pulse(30);
-      // 2s -> TOGGLE ukaz vsetky bunky (definovane aj nedefinovane) / vrat len definovane - zdielana funkcia
+    timer3s = setTimeout(() => {
+      fired3s = true; zzz_haptic_pulse(30);
+      // 3s -> TOGGLE ukaz vsetky bunky (definovane aj nedefinovane) / vrat len definovane - zdielana funkcia
       zzz6f48_reset_all();
-    }, 2000);
+    }, 3000);
   }
 
   function end() {
     clearTimers();
-    if (fired2s) return; // 2s uz vykonalo svoju akciu - nic dalej netreba
+    if (fired3s) return; // 3s uz vykonalo svoju akciu - nic dalej netreba
     if (firedOpen) {
-      // pustene medzi 0.5s-2s -> teraz (na pustenie) otvor PRESET okno
+      // pustene medzi 0.5s-3s -> teraz (na pustenie) otvor PRESET okno
       // OPRAVA (Vrso 2026-09-11, "vseobecne pravidlo: attachovane cl sa attachuju pod prislusny ukotveny crm
       // modul, podla ktoreho islo attach... po otvoreni preset okna z M4a sa pridany preset attachuje na M4
       // crm a nie pod M4a"): pickCallback (ak zadany - M4a PRESET, viz zzz1m4a_build_rl_clone nizsie) sa
@@ -11626,6 +11666,12 @@ function zzz1m3_bind_preset_button(btn, pickCallback = null, targetListId = 'ver
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
+  // OPRAVA (Vrso 2026-09-12, "PRESET ATTACH MINI ani ENTRY sa nemaju takto oznacovat, bije sa to s gesture
+  // funkciami podrz"): PRESET bolo jedine zo 7 drz-tlacidiel, co este NEMALO explicitne kontextmenu blokovanie
+  // (predtym som ho zamerne nechavala nedotknute, ale ukazalo sa, ze aj ono potrebuje rovnaku ochranu). Presne
+  // ten isty vzor ako ostatnych 6 - viz [Zzz-GESTURE:MASTER] komentar vyssie v subore. | Vrso -> Claude AI |
+  // 2026-09-12 ===
+  btn.addEventListener('contextmenu', (e) => e.preventDefault());
   btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); }); // vsetka logika uz je v touchend/mouseup vyssie
 }
 zzz1m3_bind_preset_button(document.getElementById('zzz1m3PresetButton'));
@@ -11876,7 +11922,7 @@ function zzz4_0_build_entry_row(row) {
   const miniBtn = document.createElement('button');
   miniBtn.type = 'button';
   miniBtn.className = 'entry-number-button zzz6f48-mini-button zzz4-0-entry-btn';
-  miniBtn.textContent = 'ENTRY';
+  miniBtn.classList.add('zzz-css-label-entry'); // OPRAVA 2026-09-12: CSS ::before namiesto textContent, viz [NO-NATIVE-SELECT-V2]
   miniWrap.appendChild(miniBtn);
   rowEl.appendChild(miniWrap);
 
