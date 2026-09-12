@@ -1250,6 +1250,23 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     -webkit-touch-callout: none;
     touch-action: none;
   }
+  /* OPRAVA (Vrso 2026-09-12, "index176 je nejaky problem, pouzi 171 a len dopis oznacit PRESET a MINI"):
+     ::before technika pre PRESET/MINI ODSTRANENA - tieto 2 tlacidla teraz maju spat obycajny DOM text
+     ("PRESET"/"MINI" priamo v HTML), rovnako ako uz predtym fungujuce ATTACH/ENTRY (classList technika
+     nizsie). ::before by teraz DUPLIKOVALO text (CSS obsah + realny text naraz). | Vrso -> Claude AI |
+     2026-09-12 === */
+  /* OPRAVA (Vrso 2026-09-12, "zapracuj aj do attach aj entry, len dodrz ich funkcie"): rovnaka CSS-content
+     technika rozsirena aj na dynamicky generovane ATTACH a ENTRY tlacidla (viacero miest v JS, preto trieda
+     namiesto ID - viz zzz-css-label-attach/entry v JS casti). Ziadna zmena funkcnosti/gest, len ako sa
+     zobrazuje text. | Vrso -> Claude AI | 2026-09-12 === */
+  .zzz-css-label-attach::before {
+    content: "ATTACH";
+    display: inline-block;
+  }
+  .zzz-css-label-entry::before {
+    content: "ENTRY";
+    display: inline-block;
+  }
   /* === [/Zzz6-F1:HIDE] === */
   /* === [R1a:BUTTON] Entry Number button - len oznacenie, priradene k R1 (data-entry-id) === */
   .entry-number-button {
@@ -7952,7 +7969,7 @@ function zzz6f17_build_attached_cl_grid_row(item) {
   miniBtn.type = 'button';
   miniBtn.className = 'entry-number-button zzz6f48-mini-button';
   miniBtn.setAttribute('aria-label', 'Mini attachment');
-  miniBtn.textContent = 'ATTACH'; // Vrso 2026-09-11: "pod mini ten button nazvi attach"
+  miniBtn.classList.add('zzz-css-label-attach'); // Vrso 2026-09-11: "pod mini ten button nazvi attach" (OPRAVA 2026-09-12: CSS ::before namiesto textContent, viz [NO-NATIVE-SELECT-V2])
   // OPRAVA (Vrso 2026-09-12, "po attach entry sa aj attach button ma rozsvietit na zelenu, ked sa dettachuje
   // tak entry button uz bude mat iba zelene ohranicenie"): kazdy attachment SO ZDROJOM v ulozenej DB entry
   // (source: 'el') dostava rovnaku zelenu vypln ako attachnute Zzz4-0 ENTRY tlacidlo - vizualne prepojenie
@@ -8043,8 +8060,7 @@ function zzz6f17_bind_mini_for_attachment(btn, rowEl, item) {
     if (timer3s) { clearTimeout(timer3s); timer3s = null; }
   }
 
-  function start(e) {
-    if (e && e.cancelable) e.preventDefault();
+  function start() {
     firedOpen = false;
     fired3s = false;
     pressStart = Date.now();
@@ -8080,13 +8096,20 @@ function zzz6f17_bind_mini_for_attachment(btn, rowEl, item) {
 
   function cancel() { clearTimers(); }
 
-  btn.addEventListener('touchstart', start, { passive: false }); // OPRAVA (Vrso 2026-09-12) - jediny sposob, ktory spolahlivo odstranuje nativny vyber textu
+  btn.addEventListener('touchstart', start, { passive: true });
   btn.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
   btn.addEventListener('touchmove', cancel);
   btn.addEventListener('touchcancel', cancel);
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
+  // OPRAVA (Vrso 2026-09-12, "1s a 3s podrz vobec nerobi co ma... zas to iste robis, kopirovanie
+  // som nezadaval"): touch-action:none NESTACILO na vsetkych prehliadacoch (napr. Edge) - natívne
+  // kontextove menu ("Kopirovat / Spytat sa Copilota") sa aj tak spustilo a PREVZALO cely gest-
+  // sekvenciu namiesto nasich casovacov (preto 1-2s/3s vobec nereagovali - menu ich prerusilo skor,
+  // nez stihli dobehnut). Explicitne blokovanie 'contextmenu' udalosti je oddelene od touchstart/
+  // touch-action, takze NEMA vplyv na odozvu drzania. | Vrso -> Claude AI | 2026-09-12 ===
+  btn.addEventListener('contextmenu', (e) => e.preventDefault());
   btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
 }
 
@@ -10208,15 +10231,18 @@ function zzz6f48_detach_all_attachments() {
 //   7. zzz1m3_bind_preset_button       - PRESET tlacidlo (vlastny "hide-all" kratky klik navyse, inak ten isty vzor)
 //
 // SPOLOCNY VZOR (vsetkych 7, identicke, len ine cielove akcie):
-//   - touchstart: { passive: false } + e.preventDefault() (start(e) MA parameter e).
-//     DOLEZITE ZISTENIE (2026-09-12): tento bug (nativny vyber textu/kontextove menu na popiskoch tlacidiel)
-//     BOL PRITOMNY UZ V PLNE PODNOM STAVE (index159/160, este pred akoukolvek upravou gesto-mechanizmu) - NIE
-//     JE to regresia sposobena zmenami v tomto subore. Zakladne user-select:none (v .entry-number-button uz
-//     odjakziva) NESTACI na niektorych mobilnych prehliadacoch (potvrdene Android) pre <button> elementy -
-//     znamy prehliadacovy nedostatok. preventDefault() na touchstart je JEDINY sposob, ktory sa preukazal ako
-//     spolahlivo funkcny proti tomuto - CSS-only pokusy (touch-action, ::before content, <span>+user-select)
-//     ANI contextmenu-only blokovanie NESTACILI. Predchadzajuce obavy o "zlu odozvu drzania" pri tomto pristupe
-//     sa pri opatovnom, starostlivom otestovani nepotvrdili ako sposobene priamo TYMTO riadkom - PONECHAT.
+//   - touchstart: { passive: true }, ZIADNY e.preventDefault() tu - "start()" NEMA parameter e.
+//     (HISTORIA 2026-09-12, poucenie z troch pokusov: (a) preventDefault len na ENTRY - zla odozva, odstranene.
+//     (b) LEN CSS (touch-action:none) + contextmenu preventDefault na vsetkych 7, BEZ preventDefault na
+//     touchstart - NESTACILO, na niektorych zariadeniach sa aj tak zobrazili natívne selection-handles
+//     (modre ucha na oznacenie textu). (c) DOPLNENE preventDefault aj na touchstart (vsetkych 7) - TOTO
+//     ZASE POLAMALO SAMOTNE DRZANIE (1-2s gesta prestali reagovat UPLNE, na vsetkych tlacidlach). VRATENE
+//     SPAT na (b) - CSS + contextmenu, bez touchstart preventDefault. Native selection-handles teda OSTAVAJU
+//     ZNAMY, NEVYRIESENY zvysny problem na niektorych zariadeniach - kompromis v prospech funkcnosti drzania,
+//     kedze to je dolezitejsie. Bug proti nativnemu copy/select sa dalej RIESI cez CSS (.entry-number-button
+//     { touch-action: none; ... }) + contextmenu listener - viz [NO-NATIVE-SELECT] komentar pri CSS triede.
+//     NEPRIDAVAT preventDefault na touchstart znova bez dokladneho otestovania na realnom zariadeni najprv -
+//     riziko opakovania bodu (c).)
 //   - 0.5s timer: LEN nastavi priznak (firedOpen=true) + zzz_haptic_pulse(15). ZIADNA DOM-menaca akcia tu
 //     (ziadne vkladanie modalu do DOM POCAS drzania) - presne to sposobovalo layout-shift/touchcancel bug
 //     ("hybe sa obrazovka") pred touto opravou.
@@ -10254,8 +10280,7 @@ function zzz6f48_bind_dual_press(el) {
     if (timer3s) { clearTimeout(timer3s); timer3s = null; }
   }
 
-  function start(e) {
-    if (e && e.cancelable) e.preventDefault();
+  function start() {
     firedOpen = false;
     fired3s = false;
     pressStart = Date.now();
@@ -10295,13 +10320,20 @@ function zzz6f48_bind_dual_press(el) {
     clearTimers();
   }
 
-  el.addEventListener('touchstart', start, { passive: false }); // OPRAVA (Vrso 2026-09-12) - jediny sposob, ktory spolahlivo odstranuje nativny vyber textu
+  el.addEventListener('touchstart', start, { passive: true });
   el.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
   el.addEventListener('touchmove', cancel);
   el.addEventListener('touchcancel', cancel);
   el.addEventListener('mousedown', start);
   el.addEventListener('mouseup', end);
   el.addEventListener('mouseleave', cancel);
+  // OPRAVA (Vrso 2026-09-12, "1s a 3s podrz vobec nerobi co ma... zas to iste robis, kopirovanie
+  // som nezadaval"): touch-action:none NESTACILO na vsetkych prehliadacoch (napr. Edge) - natívne
+  // kontextove menu ("Kopirovat / Spytat sa Copilota") sa aj tak spustilo a PREVZALO cely gest-
+  // sekvenciu namiesto nasich casovacov (preto 1-2s/3s vobec nereagovali - menu ich prerusilo skor,
+  // nez stihli dobehnut). Explicitne blokovanie 'contextmenu' udalosti je oddelene od touchstart/
+  // touch-action, takze NEMA vplyv na odozvu drzania. | Vrso -> Claude AI | 2026-09-12 ===
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
   el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); }); // vsetka logika uz je v touchend/mouseup vyssie
 }
 
@@ -10415,7 +10447,7 @@ function zzz1r37_build_editable_cl_row(entry, onRemoved) {
     // funkcie (kratky klik/0.5s/2s cez zzz1r37_bind_mini_for_clone) ostavaju BEZO ZMENY. Scoped LEN sem
     // (PRESET-clone), NIE na skutocny hlavny MINI button ani na uz existujuce ATTACH buttony v pripnutych
     // riadkoch (tie uz "ATTACH" maju). | Vrso -> Claude AI | 2026-09-13 ===
-    miniBtn.textContent = 'ATTACH';
+    miniBtn.classList.add('zzz-css-label-attach'); // OPRAVA 2026-09-12: CSS ::before namiesto textContent, viz [NO-NATIVE-SELECT-V2]
     zzz1r37_bind_mini_for_clone(miniBtn, rowEl, entry, onRemoved);
   }
 
@@ -10737,7 +10769,7 @@ function zzz1m4a_build_local_attach_row(item) {
   const label = document.createElement('button');
   label.type = 'button';
   label.className = 'entry-number-button zzz6f48-mini-button';
-  label.textContent = 'ATTACH';
+  label.classList.add('zzz-css-label-attach'); // OPRAVA 2026-09-12: CSS ::before namiesto textContent, viz [NO-NATIVE-SELECT-V2]
   miniPlaceholder.appendChild(label);
   rowEl.appendChild(miniPlaceholder);
   // OPRAVA (Vrso 2026-09-11, "attach buttonu po pripnuti nema funkcie svoje - stlac=zobraz na vsetkych, podrz
@@ -10813,8 +10845,7 @@ function zzz1m4a_bind_local_attach_button(btn, item) {
     if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
     if (timer3s) { clearTimeout(timer3s); timer3s = null; }
   }
-  function start(e) {
-    if (e && e.cancelable) e.preventDefault();
+  function start() {
     firedOpen = false;
     fired3s = false;
     pressStart = Date.now();
@@ -10844,13 +10875,20 @@ function zzz1m4a_bind_local_attach_button(btn, item) {
     if (elapsed < 500) zzz6f48_reset_all(); // kratky klik - zdielany toggle ukaz vsetky/definovane stlpce
   }
   function cancel() { clearTimers(); }
-  btn.addEventListener('touchstart', start, { passive: false }); // OPRAVA (Vrso 2026-09-12) - jediny sposob, ktory spolahlivo odstranuje nativny vyber textu
+  btn.addEventListener('touchstart', start, { passive: true });
   btn.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
   btn.addEventListener('touchmove', cancel);
   btn.addEventListener('touchcancel', cancel);
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
+  // OPRAVA (Vrso 2026-09-12, "1s a 3s podrz vobec nerobi co ma... zas to iste robis, kopirovanie
+  // som nezadaval"): touch-action:none NESTACILO na vsetkych prehliadacoch (napr. Edge) - natívne
+  // kontextove menu ("Kopirovat / Spytat sa Copilota") sa aj tak spustilo a PREVZALO cely gest-
+  // sekvenciu namiesto nasich casovacov (preto 1-2s/3s vobec nereagovali - menu ich prerusilo skor,
+  // nez stihli dobehnut). Explicitne blokovanie 'contextmenu' udalosti je oddelene od touchstart/
+  // touch-action, takze NEMA vplyv na odozvu drzania. | Vrso -> Claude AI | 2026-09-12 ===
+  btn.addEventListener('contextmenu', (e) => e.preventDefault());
   btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
 }
 
@@ -10923,8 +10961,7 @@ function zzz1m4a_bind_mini_checklist_only(btn) {
     if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
     if (timer3s) { clearTimeout(timer3s); timer3s = null; }
   }
-  function start(e) {
-    if (e && e.cancelable) e.preventDefault();
+  function start() {
     firedOpen = false;
     fired3s = false;
     pressStart = Date.now();
@@ -10954,13 +10991,20 @@ function zzz1m4a_bind_mini_checklist_only(btn) {
     if (elapsed < 500) zzz1m4a_attach_local_cl(); // kratky klik
   }
   function cancel() { clearTimers(); }
-  btn.addEventListener('touchstart', start, { passive: false }); // OPRAVA (Vrso 2026-09-12) - jediny sposob, ktory spolahlivo odstranuje nativny vyber textu
+  btn.addEventListener('touchstart', start, { passive: true });
   btn.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
   btn.addEventListener('touchmove', cancel);
   btn.addEventListener('touchcancel', cancel);
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
+  // OPRAVA (Vrso 2026-09-12, "1s a 3s podrz vobec nerobi co ma... zas to iste robis, kopirovanie
+  // som nezadaval"): touch-action:none NESTACILO na vsetkych prehliadacoch (napr. Edge) - natívne
+  // kontextove menu ("Kopirovat / Spytat sa Copilota") sa aj tak spustilo a PREVZALO cely gest-
+  // sekvenciu namiesto nasich casovacov (preto 1-2s/3s vobec nereagovali - menu ich prerusilo skor,
+  // nez stihli dobehnut). Explicitne blokovanie 'contextmenu' udalosti je oddelene od touchstart/
+  // touch-action, takze NEMA vplyv na odozvu drzania. | Vrso -> Claude AI | 2026-09-12 ===
+  btn.addEventListener('contextmenu', (e) => e.preventDefault());
   btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
 }
 
@@ -11115,8 +11159,7 @@ function zzz1r37_bind_mini_for_clone(btn, rowEl, entry, onRemoved) {
     if (timer3s) { clearTimeout(timer3s); timer3s = null; }
   }
 
-  function start(e) {
-    if (e && e.cancelable) e.preventDefault();
+  function start() {
     firedOpen = false;
     fired3s = false;
     pressStart = Date.now();
@@ -11164,13 +11207,20 @@ function zzz1r37_bind_mini_for_clone(btn, rowEl, entry, onRemoved) {
 
   function cancel() { clearTimers(); } // prerusenie gesta (odtiahnutie prsta a pod.) - ZIADNA akcia
 
-  btn.addEventListener('touchstart', start, { passive: false }); // OPRAVA (Vrso 2026-09-12) - jediny sposob, ktory spolahlivo odstranuje nativny vyber textu
+  btn.addEventListener('touchstart', start, { passive: true });
   btn.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
   btn.addEventListener('touchmove', cancel);
   btn.addEventListener('touchcancel', cancel);
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
+  // OPRAVA (Vrso 2026-09-12, "1s a 3s podrz vobec nerobi co ma... zas to iste robis, kopirovanie
+  // som nezadaval"): touch-action:none NESTACILO na vsetkych prehliadacoch (napr. Edge) - natívne
+  // kontextove menu ("Kopirovat / Spytat sa Copilota") sa aj tak spustilo a PREVZALO cely gest-
+  // sekvenciu namiesto nasich casovacov (preto 1-2s/3s vobec nereagovali - menu ich prerusilo skor,
+  // nez stihli dobehnut). Explicitne blokovanie 'contextmenu' udalosti je oddelene od touchstart/
+  // touch-action, takze NEMA vplyv na odozvu drzania. | Vrso -> Claude AI | 2026-09-12 ===
+  btn.addEventListener('contextmenu', (e) => e.preventDefault());
   btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
 }
 
@@ -11554,8 +11604,7 @@ function zzz1m3_bind_preset_button(btn, pickCallback = null, targetListId = 'ver
     if (timer3s) { clearTimeout(timer3s); timer3s = null; }
   }
 
-  function start(e) {
-    if (e && e.cancelable) e.preventDefault();
+  function start() {
     firedOpen = false;
     fired3s = false;
     pressStart = Date.now();
@@ -11596,13 +11645,19 @@ function zzz1m3_bind_preset_button(btn, pickCallback = null, targetListId = 'ver
     clearTimers();
   }
 
-  btn.addEventListener('touchstart', start, { passive: false }); // OPRAVA (Vrso 2026-09-12) - jediny sposob, ktory spolahlivo odstranuje nativny vyber textu
+  btn.addEventListener('touchstart', start, { passive: true });
   btn.addEventListener('touchend', (e) => { e.preventDefault(); end(); }); // OPRAVA (Vrso 2026-09-12, "daco cudne pise stlacenim preset" - dvojity toggle): bez preventDefault tu prehliadac na dotykovom zariadeni PO touchend este vyslal synteticke mousedown/mouseup, cim sa end() spustilo DRUHYKRAT (skry hned znovu zobrazi) - obe hlasky sa zobrazili naraz a vysledok vyzeral, akoby sa nic nestalo.
   btn.addEventListener('touchmove', cancel);
   btn.addEventListener('touchcancel', cancel);
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
+  // OPRAVA (Vrso 2026-09-12, "PRESET ATTACH MINI ani ENTRY sa nemaju takto oznacovat, bije sa to s gesture
+  // funkciami podrz"): PRESET bolo jedine zo 7 drz-tlacidiel, co este NEMALO explicitne kontextmenu blokovanie
+  // (predtym som ho zamerne nechavala nedotknute, ale ukazalo sa, ze aj ono potrebuje rovnaku ochranu). Presne
+  // ten isty vzor ako ostatnych 6 - viz [Zzz-GESTURE:MASTER] komentar vyssie v subore. | Vrso -> Claude AI |
+  // 2026-09-12 ===
+  btn.addEventListener('contextmenu', (e) => e.preventDefault());
   btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); }); // vsetka logika uz je v touchend/mouseup vyssie
 }
 zzz1m3_bind_preset_button(document.getElementById('zzz1m3PresetButton'));
@@ -11738,8 +11793,7 @@ function zzz4_0_bind_entry_button(btn, row, isAttachedFn, updateVisualFn, applyO
     if (timerOpen) { clearTimeout(timerOpen); timerOpen = null; }
     if (timer3s) { clearTimeout(timer3s); timer3s = null; }
   }
-  function start(e) {
-    if (e && e.cancelable) e.preventDefault();
+  function start() {
     firedOpen = false;
     fired3s = false;
     pressStart = Date.now();
@@ -11773,13 +11827,20 @@ function zzz4_0_bind_entry_button(btn, row, isAttachedFn, updateVisualFn, applyO
     }
   }
   function cancel() { clearTimers(); }
-  btn.addEventListener('touchstart', start, { passive: false }); // OPRAVA (Vrso 2026-09-12) - jediny sposob, ktory spolahlivo odstranuje nativny vyber textu
+  btn.addEventListener('touchstart', start, { passive: true });
   btn.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
   btn.addEventListener('touchmove', cancel);
   btn.addEventListener('touchcancel', cancel);
   btn.addEventListener('mousedown', start);
   btn.addEventListener('mouseup', end);
   btn.addEventListener('mouseleave', cancel);
+  // OPRAVA (Vrso 2026-09-12, "1s a 3s podrz vobec nerobi co ma... zas to iste robis, kopirovanie
+  // som nezadaval"): touch-action:none NESTACILO na vsetkych prehliadacoch (napr. Edge) - natívne
+  // kontextove menu ("Kopirovat / Spytat sa Copilota") sa aj tak spustilo a PREVZALO cely gest-
+  // sekvenciu namiesto nasich casovacov (preto 1-2s/3s vobec nereagovali - menu ich prerusilo skor,
+  // nez stihli dobehnut). Explicitne blokovanie 'contextmenu' udalosti je oddelene od touchstart/
+  // touch-action, takze NEMA vplyv na odozvu drzania. | Vrso -> Claude AI | 2026-09-12 ===
+  btn.addEventListener('contextmenu', (e) => e.preventDefault());
   btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
 }
 
@@ -11847,7 +11908,7 @@ function zzz4_0_build_entry_row(row) {
   const miniBtn = document.createElement('button');
   miniBtn.type = 'button';
   miniBtn.className = 'entry-number-button zzz6f48-mini-button zzz4-0-entry-btn';
-  miniBtn.textContent = 'ENTRY';
+  miniBtn.classList.add('zzz-css-label-entry'); // OPRAVA 2026-09-12: CSS ::before namiesto textContent, viz [NO-NATIVE-SELECT-V2]
   miniWrap.appendChild(miniBtn);
   rowEl.appendChild(miniWrap);
 
