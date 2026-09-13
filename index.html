@@ -5513,135 +5513,55 @@ async function zzz6f34_move_row_to_trash(row, silent = false) {
     zzz6f2_show_toast('Final entry sa neda presunut do Trash (needitovatelna/nezmazatelna).');
     return false;
   }
-  // === [Zzz10-V1:REGISTER-LOCK] (SYSTEM FUNCTION) - Vrso 2026-08-28: "user id moze skoncit v trash? ...
-  // verifikacne databazy musia byt uplne oddelene od databaz kvoli max citlivym datam". Registracne zaznamy
-  // (fields_json.r3 === 'Register' - obsahuju username, aktivacny kod R34, user ID R36) NIKDY nesmu skoncit
-  // v Trash: Trash ma podla RLS SELECT pristup pre "anon" (siroko citatelne) a je NAVRHNUTA ako TRVALA/
-  // needitovatelna (ziadna DELETE/UPDATE politika) - citlive registracne udaje by tak boli navzdy uzamknute
-  // v mieste, kam vobec nepatria. Docasna/rychla poistka (Option A) - definitivne riesenie (Option B, plne
-  // oddelenie registracie do verso_verification) caka na dalsie spracovanie. | Vrso -> Claude AI | 2026-08-28 ===
+  // === [Zzz10-V1:REGISTER-LOCK] (SYSTEM FUNCTION) - Vrso 2026-08-28: registracne zaznamy nikdy nesmu
+  // skoncit v Trash. | Vrso -> Claude AI | 2026-08-28 ===
   if (zzz4_0_get_field_value(row, { key: 'r3' }) === 'Register') {
     zzz6f2_show_toast('Registracny zaznam sa neda presunut do Trash (citlive udaje - Zzz10-V1:REGISTER-LOCK).');
     return false;
   }
-  const currentUsername = zzz0r1_get_current_username();
-  const trashPayload = {
-    entry_id: row.entry_id,
-    r1: row.r1 || '',
-    // ZzzF:FIELDS-JSON-PARSE (2026-08-29): verso_entries.fields_json je teraz jsonb (objekt), ale
-    // verso_trash.fields_json zostava text - preto sa tu MUSI explicitne restringifikovat, inak by sa do
-    // text stlpca poslal surovy objekt (chyba/nekonzistentne ulozenie).
-    fields_json: (row.fields_json && typeof row.fields_json === 'object') ? JSON.stringify(row.fields_json) : (row.fields_json || ''),
-    entry_date: row.entry_date || '',
-    username: row.username || '',
-    updated_at: row.updated_at || new Date().toISOString(),
-    trashed_at: new Date().toISOString(),
-    trashed_by: currentUsername,
-    source_table: 'verso_entries'
-  };
 
-  // OPRAVA (2026-08-23, Vrso hlasenie "2 EL sa vymazali ale trash prazdny"): lokalna cache sa predtym
-  // mazala TU, HNED na zaciatku, PRED akymkolvek pokusom o Supabase zapis. Ak insert do verso_trash
-  // zlyhal (napr. timeout), funkcia spravne vratila false a DELETE z verso_entries sa NESPUSTIL (data na
-  // serveri OSTALI v bezpeci) - ALE lokalna cache uz bola vycistena, takze Database Workspace (ked padne
-  // do lokalneho fallbacku pri Supabase vypadku) zaznam prestal zobrazovat, hoci realne stale existoval
-  // len v Zzz4-0 a NIKDY sa nedostal do Trash. Vyzeralo to ako strata zaznamu. Cache sa TERAZ maze AZ
-  // NA KONCI, VYLUCNE po realne uspesnom insert+delete (viz dole pred finalnym toastom). | Vrso -> Claude AI | 2026-08-23
-
-  // OPRAVA (2026-08-23, Vrso hlasenie "delete funguje ale duplicitne, presun nepresiel, dva prekryvajuce
-  // sa toasty naraz"): KROK 1 (insert) a KROK 2 (delete) su teraz v ODDELENYCH try/catch blokoch - predtym
-  // spolocny try/catch nevedel rozlisit, KTORY z dvoch krokov presne zlyhal, co robilo diagnostiku tazkou.
-  // Zaroven zzz0r1_set_db_connection_state uz NEZOBRAZUJE vlastny "DB chyba:" toast pri volaniach odtialto
-  // (suppressToast=true) - predtym sa zobrazovali DVA prekryvajuce sa toasty naraz (vseobecny DB chyba
-  // + konkretny "Presun zlyhal"), presne to, co bolo vidiet na screenshotoch. | Vrso -> Claude AI | 2026-08-23
-
-  // KROK 1: insert do verso_trash (Zzz4-2) - ak zlyha, DELETE z verso_entries sa VOBEC nespusti
-  // (zaznam ostava BEZPECNE len v Zzz4-0, ziadne riziko straty dat).
-  // OPRAVA (2026-08-23, Vrso hlasenie opakovaneho DataCloneError aj po vypnuti auth): tato chyba vyzera
-  // byt PRECHODNA (raz sa objavi, raz nie) - pravdepodobne sposobena niecim MIMO tejto appky (napr. sietovy
-  // monitoring/webview vrstva na urovni telefonu/prehliadaca, nie Supabase klient samotny). Preto: 1 AUTOMATICKY
-  // opakovany pokus (po 500ms) PRED tym, nez sa to nahlasi ako zlyhanie - ak bola chyba naozaj len prechodna,
-  // pouzivatel sa o nej vobec nedozvie. | Vrso -> Claude AI | 2026-08-23
-  let insertOk = false;
-  let lastInsertErrDetail = '';
-  for (let attempt = 1; attempt <= 2 && !insertOk; attempt++) {
+  // === [Zzz1-D2:SOFT-DELETE] PREROBENE (Vrso 2026-09-13, "flag + obmedzeny DELETE + trigger do samostatnej
+  // _trash tabulky"): presun do trash je odteraz JEDEN ATOMICKY UPDATE (is_trashed=true) namiesto
+  // predchadzajuceho dvojkrokoveho INSERT-do-verso_trash + DELETE-z-verso_entries. Cela predoslá trieda
+  // chyb ("insert uspel, delete zlyhal - zaznam v oboch tabulkach naraz") uz STRUKTURALNE NEMOZE nastat -
+  // UPDATE bud uspeje cely, alebo vobec. verso_trash tabulka sa teraz pouziva LEN ako archiv pre skutocne
+  // FYZICKE DELETE (spustane DB triggerom verso_entries_before_delete_backup, napr. pri "vyprazdni trash"),
+  // nie pri kazdom bezneom presune do trash. | Vrso -> Claude AI | 2026-09-13 ===
+  let updateOk = false;
+  let lastErrDetail = '';
+  for (let attempt = 1; attempt <= 2 && !updateOk; attempt++) {
     try {
-      const { error: insertError } = await sb.from('verso_trash').insert(trashPayload);
-      if (!insertError) { insertOk = true; break; }
-      lastInsertErrDetail = (insertError && (insertError.message || insertError.details || insertError.hint)) || String(insertError);
+      const { data: updateData, error: updateError } = await sb
+        .from('verso_entries')
+        .update({ is_trashed: true, updated_at: new Date().toISOString() })
+        .eq('entry_id', row.entry_id)
+        .select();
+      if (!updateError && updateData && updateData.length > 0) { updateOk = true; break; }
+      lastErrDetail = updateError
+        ? ((updateError.message || updateError.details || updateError.hint) || String(updateError))
+        : 'update vratil 0 riadkov (skontroluj UPDATE RLS policy na verso_entries)';
     } catch (err) {
-      lastInsertErrDetail = (err && (err.message || err.details || err.hint)) || String(err);
+      lastErrDetail = (err && (err.message || err.details || err.hint)) || String(err);
     }
-    if (!insertOk && attempt === 1) {
-      console.warn(`Zzz6-F34 Move KROK 1 (insert do verso_trash) pokus 1 zlyhal, skusam znova o 500ms. DOVOD: ${lastInsertErrDetail}`);
+    if (!updateOk && attempt === 1) {
+      console.warn(`Zzz6-F34 Move (UPDATE is_trashed=true) pokus 1 zlyhal, skusam znova o 500ms. DOVOD: ${lastErrDetail}`);
       await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
-  if (!insertOk) {
-    console.error(`Zzz6-F34 Move KROK 1 (insert do verso_trash) zlyhal AJ po 2. pokuse - presun PRERUSENY, riadok NEBOL zmazany z verso_entries. Over ci tabulka "verso_trash" existuje v Supabase so spravnymi stlpcami. DOVOD: ${lastInsertErrDetail}`);
-    zzz0r1_set_db_connection_state(false, lastInsertErrDetail, true);
-    // Zzz6-F34:RETRY-SYNC (Vrso 2026-08-28, "vsetko vzdy") - PREDTYM sa tu len nahlasila chyba a NIC dalej;
-    // presun bolo treba spustit rucne znova. Teraz sa cely presun (KROK 1 nikdy neuspel, teda bezpecne
-    // opakovatelny) zaradi do fronty a automaticky sa skusi znova pri obnoveni spojenia.
+  if (!updateOk) {
+    console.error(`Zzz6-F34 Move (UPDATE is_trashed=true) zlyhal AJ po 2. pokuse (#${row.entry_id}). DOVOD: ${lastErrDetail}`);
+    zzz0r1_set_db_connection_state(false, lastErrDetail, true);
     zzz6f34_pendingMoves[row.entry_id] = row;
     zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_MOVES_KEY, zzz6f34_pendingMoves);
-    if (!silent) zzz6f2_show_toast(`Presun do Trash zlyhal - insert (#${row.entry_id}), skusi sa automaticky znova`);
+    if (!silent) zzz6f2_show_toast(`Presun do Trash zlyhal (#${row.entry_id}), skusi sa automaticky znova`);
     return false;
   }
 
-  // KROK 2: delete z verso_entries (Zzz4-0) - LEN ak KROK 1 uspesny (viz return false vyssie).
-  // .select() na konci: bez neho Supabase pri 0 skutocne zmazanych riadkoch (typicky chybajuca RLS
-  // DELETE policy) NEVRATI ziadnu chybu - vyzera to ako uspech, ale zaznam v skutocnosti ostane v
-  // Zzz4-0 (presne "duplicitny" stav, ktory Vrso hlasi). S .select() vieme kolko riadkov sa NAOZAJ zmazalo.
-  try {
-    const { data: deleteData, error: deleteError } = await sb
-      .from('verso_entries')
-      .delete()
-      .eq('entry_id', row.entry_id)
-      .select();
-    if (deleteError) {
-      const errDetail = (deleteError && (deleteError.message || deleteError.details || deleteError.hint)) || String(deleteError);
-      console.error(`Zzz6-F34 Move KROK 2 (delete z verso_entries) zlyhal - zaznam JE v Trash, ale ostal AJ v Zzz4-0. DOVOD: ${errDetail}`);
-      zzz0r1_set_db_connection_state(false, errDetail, true);
-      // Zzz6-F34:RETRY-SYNC (Vrso 2026-08-28) - toto je NEBEZPECNEJSI stav (duplicita v oboch tabulkach),
-      // PREDTYM zostal navzdy bez automatickej opravy. Teraz sa entry_id zaradi do fronty na delete-only
-      // retry (BEZ opatovneho insertu do Trash, ten uz uspesne prebehol).
-      zzz6f34_pendingDeletes[row.entry_id] = true;
-      zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_DELETES_KEY, zzz6f34_pendingDeletes);
-      if (!silent) zzz6f2_show_toast(`Zaznam #${row.entry_id} v Trash, ale zostal aj v Zzz4-0 (automaticky sa opravi)`);
-      refresh_database_workspace_if_open();
-      return false;
-    }
-    if (!deleteData || deleteData.length === 0) {
-      // ZIADNA JS/Supabase chyba, ale 0 riadkov skutocne zmazanych - typicky chybajuca RLS DELETE
-      // policy na verso_entries (INSERT policy uz existuje, kedze zapis funguje, ale DELETE nie).
-      console.error(`Zzz6-F34 Move KROK 2: delete vratil 0 riadkov BEZ chyby (#${row.entry_id}) - PODOZRENIE: chybajuca Supabase RLS DELETE policy na tabulke "verso_entries". Zaznam JE v Trash, ale ostal AJ v Zzz4-0.`);
-      // Zzz6-F34:RETRY-SYNC - aj tento pripad sa zaradi do fronty (ak je to skutocne chybajuca RLS policy,
-      // retry to nevyriesi, ale ak islo o docasny problem, dalsi pokus uspeje bez zasahu usera).
-      zzz6f34_pendingDeletes[row.entry_id] = true;
-      zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_DELETES_KEY, zzz6f34_pendingDeletes);
-      if (!silent) zzz6f2_show_toast(`Zaznam #${row.entry_id} v Trash, ale zostal aj v Zzz4-0 (over RLS DELETE policy)`);
-      refresh_database_workspace_if_open();
-      return false;
-    }
-  } catch (err) {
-    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
-    console.error(`Zzz6-F34 Move KROK 2 (delete z verso_entries) neocakavana chyba - zaznam JE v Trash, ale ostal AJ v Zzz4-0. DOVOD: ${errDetail}`);
-    zzz0r1_set_db_connection_state(false, errDetail, true);
-    zzz6f34_pendingDeletes[row.entry_id] = true;
-    zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_DELETES_KEY, zzz6f34_pendingDeletes);
-    if (!silent) zzz6f2_show_toast(`Zaznam #${row.entry_id} v Trash, ale zostal aj v Zzz4-0 (automaticky sa opravi)`);
-    refresh_database_workspace_if_open();
-    return false;
-  }
-
-  // lokalne cache TERAZ, AZ PO realne uspesnom insert (KROK 1) aj delete (KROK 2) - viz vysvetlenie vyssie.
   delete submittedEntriesCache[row.entry_id];
   delete submittedEntriesOwnerCache[row.entry_id];
   delete submittedEntriesFullCache[row.entry_id];
-  // Zzz6-F34:RETRY-SYNC - pre istotu vycisti frontu aj tu (napr. ak uspel manualny pokus mimo auto-sync)
   delete zzz6f34_pendingMoves[row.entry_id];
-  delete zzz6f34_pendingDeletes[row.entry_id];
+  delete zzz6f34_pendingDeletes[row.entry_id]; // stary kluc, uz nepouzivany touto funkciou, cistime pre istotu
   zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_MOVES_KEY, zzz6f34_pendingMoves);
   zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_DELETES_KEY, zzz6f34_pendingDeletes);
 
@@ -5652,6 +5572,7 @@ async function zzz6f34_move_row_to_trash(row, silent = false) {
   return true;
 }
 // === [/Zzz6-F34:MOVE] ===
+
 
 // === [Zzz6-F33:DELETE] DELETE tlacidlo (Zzz1-R25, versoDeleteButton) - viz [Zzz6-F33:DELETE] CSS cast
 // vyssie pre nazvovu kolizni poznamku (F25 uz existuje ako DELETE-CELL). CISLA F31/F32 su ZAMERNE
@@ -5908,7 +5829,11 @@ async function zzz6f39_redo() {
       // Vrati zaznam SPAT do verso_entries s rovnakym payloadom/entry_id. Zodpovedajuci Trash zaznam
       // (append-only, ziadny DELETE) NAMERNE OSTAVA - je to permanentna audit stopa "toto tu bolo presunute".
       try {
-        const { error } = await sb.from('verso_entries').upsert(action.payload, { onConflict: 'entry_id' });
+        // OPRAVA (Vrso 2026-09-13, Zzz1-D2:SOFT-DELETE): explicitne is_trashed:false pri obnove - action.payload
+        // moze obsahovat is_trashed:true (stav v momente presunu do trash), co by inak obnovu okamzite
+        // "zneplatnilo" spat na trashnuty stav. Explicitny override tu je bezpecny bez ohladu na to, co presne
+        // payload obsahuje.
+        const { error } = await sb.from('verso_entries').upsert({ ...action.payload, is_trashed: false }, { onConflict: 'entry_id' });
         if (error) {
           const errDetail = (error && (error.message || error.details || error.hint)) || String(error);
           console.error(`Zzz6-F39 Forward (obnova z Trash) zlyhala. DOVOD: ${errDetail}`);
@@ -12356,12 +12281,17 @@ function zzz4_0_open_delete_all_confirm() {
 
 async function zzz4_0_delete_all_entries() {
   try {
+    // OPRAVA (Vrso 2026-09-13, Zzz1-D2:SOFT-DELETE): po Kroku 2 (obmedzena DELETE politika) DELETE na
+    // verso_entries prejde LEN na is_trashed=true riadkoch. Preto sa VSETKO najprv oznaci ako trashnute
+    // (UPDATE), az POTOM sa maze (DELETE teraz uspeje na vsetkom, kedze uz je vsetko is_trashed=true).
+    const { error: updateError } = await sb.from('verso_entries').update({ is_trashed: true }).eq('is_trashed', false);
+    if (updateError) throw updateError;
     // .neq('entry_id', 0) - Supabase vyzaduje WHERE podmienku aj pre "vsetko", entry_id je vzdy > 0.
     const { error, count } = await sb.from('verso_entries').delete({ count: 'exact' }).neq('entry_id', 0);
     if (error) throw error;
     const { error: trashError, count: trashCount } = await sb.from('verso_trash').delete({ count: 'exact' }).neq('entry_id', 0);
     if (trashError) throw trashError;
-    zzz6f2_show_toast(`Vymazane: ${count !== null && count !== undefined ? count : '?'} entries + ${trashCount !== null && trashCount !== undefined ? trashCount : '?'} trash zaznamov.`);
+    zzz6f2_show_toast(`Vymazane: ${count !== null && count !== undefined ? count : '?'} entries + ${trashCount !== null && trashCount !== undefined ? trashCount : '?'} archiv zaznamov.`);
     zzz4_0_workspacePageCursor = null;
     zzz4_0_workspaceLoadedRows = [];
     zzz4_0_workspaceHasMore = false;
@@ -12426,7 +12356,8 @@ async function open_database_workspace(loadMore = false) {
       }
     } else {
       const beforeId = zzz4_0_workspacePageCursor; // null = od zaciatku (najnovsie), inak keyset pokracovanie
-      let query = sb.from('verso_entries').select('*').order('entry_id', { ascending: false }).limit(ZZZ4_0_WORKSPACE_PAGE_SIZE);
+      // OPRAVA (Vrso 2026-09-13, Zzz1-D2:SOFT-DELETE) - Database Workspace ukazuje LEN netrashnute zaznamy.
+      let query = sb.from('verso_entries').select('*').eq('is_trashed', false).order('entry_id', { ascending: false }).limit(ZZZ4_0_WORKSPACE_PAGE_SIZE);
       if (beforeId !== null) query = query.lt('entry_id', beforeId);
       const fetchPromise = query;
       const timeoutPromise = new Promise((_, reject) =>
@@ -12867,7 +12798,10 @@ async function open_trash_workspace() {
 
   let rows = [];
   try {
-    const fetchPromise = sb.from('verso_trash').select('*').order('trashed_at', { ascending: false });
+    // OPRAVA (Vrso 2026-09-13, Zzz1-D2:SOFT-DELETE) - Trash Workspace cita PRIAMO z verso_entries (rovnaka
+    // tabulka ako Database Workspace), filtrovane na is_trashed=true, namiesto samostatnej verso_trash
+    // tabulky. verso_trash ostava len ako archiv pre skutocne FYZICKE zmazanie (DB trigger).
+    const fetchPromise = sb.from('verso_entries').select('*').eq('is_trashed', true).order('updated_at', { ascending: false });
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('Zzz6-F35 Supabase fetch timeout (4s)')), 4000)
     );
@@ -12901,8 +12835,12 @@ async function open_trash_workspace() {
     rows.forEach(row => {
       const meta = document.createElement('div');
       meta.style.cssText = 'font-size:8px;font-weight:700;color:#991b1b;padding:2px 4px;';
-      const trashedAt = row.trashed_at ? new Date(row.trashed_at).toLocaleString() : '?';
-      meta.textContent = `#${row.entry_id} - zmazal(a): ${row.trashed_by || '?'} - ${trashedAt}`;
+      // OPRAVA (Vrso 2026-09-13, Zzz1-D2:SOFT-DELETE): verso_entries nema vlastny trashed_at/trashed_by
+      // stlpec (na rozdiel od povodnej samostatnej verso_trash) - updated_at je teraz najlepsia dostupna
+      // aproximacia "kedy bolo trashnute" (nastavuje sa presne pri UPDATE is_trashed=true). Kto presne
+      // trashol zaznam sa momentalne nesleduje - moze sa doplnit neskor ako samostatny stlpec, ak treba.
+      const trashedAt = row.updated_at ? new Date(row.updated_at).toLocaleString() : '?';
+      meta.textContent = `#${row.entry_id} - trashnute: ${trashedAt}`;
       rowsWrap.appendChild(meta);
 
       const gridRow = zzz4_0_build_entry_row(row); // rovnaky renderer ako Database Workspace (Vrso ziadost)
