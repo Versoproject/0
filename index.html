@@ -3982,6 +3982,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz10-DEV:QUICK-LOGIN - jednoklikove prihlasenie ako Verso v Login module (vyvojova pomocka, ODSTRANIT pred verejnym spustenim)</span>
   <span class="module-tag">Zzz10-R7:PASSWORD-HASH - PREDCHADZAJUCA client-side verzia, SUPERSEDED Zzz0Auth-Gate (2026-09-02), utility funkcie ponechane bez pouzitia v realnej ceste</span>
   <span class="module-tag">Zzz0Auth-Gate (SYSTEM FUNCTION, variant B - vsetci useri) - server-side Supabase Edge Function "verso-auth-gate" hashuje/overuje heslo, viz edge-function/index.ts + setup.sql</span>
+  <span class="module-tag">Zzz-SESSION:SINGLE-ACTIVE - 1 username = 1 aktivne zariadenie, STANDBY pri prevzati inym zariadenim, OFFLINE ochranny rezim (zablokovane zapisy) pri vypadku spojenia so serverom</span>
+  <span class="module-tag">Zzz-SESSION:FRESHNESS-GATE - server-side (RLS) vynutenie 1-hodinoveho offline limitu, zapisy po vyprsani odmietnute (nie zahodene, cakaju na re-login), viz verso-session-freshness-gate.sql</span>
   <span class="module-tag">Zzz10-V1:SEND-EMAIL - nahradene "bright-responder" novou Edge Function "verso-send-activation-email" (rovnaky Resend vzor ako Zzz0GitHub-Notify)</span>
   <span class="module-tag">Zzz6-F36 Login modal - pridany viditelny titulok "LOG IN" (predtym len maly gold button v riadku)</span>
   <span class="module-tag">Zzz10-0 Settings Workspace - opravene: NEZOBRAZUJE sa uz pred prihlasenim (predtym stary obsah zostaval za Login modalom)</span>
@@ -4554,6 +4556,59 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
     -webkit-user-select: none;
     -webkit-touch-callout: none;
   }
+
+  /* === [Zzz-SESSION:STANDBY-UI] (CSS cast) - vizualne oznacenie STANDBY stavu (viz JS cast
+     [Zzz-SESSION:SINGLE-ACTIVE] pre plne vysvetlenie) + tlmenie zapisovych akcii. Zamerne VSETKO-alebo-NIC
+     pre prve kolo (jemnejsie odstupnovanie je buduca dolaadovacia praca). | Vrso -> Claude AI | 2026-09-XX === */
+  body.zzz-standby-mode::before {
+    content: "STANDBY - iné zariadenie prevzalo toto prihlásenie (len na čítanie)";
+    display: block;
+    position: sticky;
+    top: 0;
+    z-index: 9999;
+    background-color: #dc2626;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    padding: 6px;
+  }
+  /* Zapisove akcie stlmene (nie skryte - "standby, nie logout", data ostavaju viditelne) */
+  body.zzz-standby-mode .entry-cell,
+  body.zzz-standby-mode .zzz4-0-entry-btn,
+  body.zzz-standby-mode .zzz6f36-login-entry-button,
+  body.zzz-standby-mode .zzz-support-entry-button,
+  body.zzz-standby-mode .zzz10v1-search-button,
+  body.zzz-standby-mode #versoRegisterEntryButton,
+  body.zzz-offline-mode .entry-cell,
+  body.zzz-offline-mode .zzz4-0-entry-btn,
+  body.zzz-offline-mode .zzz6f36-login-entry-button,
+  body.zzz-offline-mode .zzz-support-entry-button,
+  body.zzz-offline-mode .zzz10v1-search-button,
+  body.zzz-offline-mode #versoRegisterEntryButton {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+  /* === [/Zzz-SESSION:STANDBY-UI] (CSS cast) === */
+
+  /* === [Zzz-SESSION:OFFLINE-UI] (CSS cast) - vizualne oznacenie OFFLINE ochranneho stavu (vid JS cast
+     [Zzz-SESSION:OFFLINE-UI] pre plne vysvetlenie) - ODLISNY (oranzovy, nie cerveny) pasik od STANDBY, aby
+     bolo jasne rozlisitelne "niekto iny ma prevzal" (STANDBY) vs "neviem overit spojenie" (OFFLINE) -
+     tlmenie zapisovych tlacidiel je zdielane (viz spolocny selektor vyssie). | Vrso -> Claude AI | 2026-09-XX === */
+  body.zzz-offline-mode:not(.zzz-standby-mode)::before {
+    content: "OFFLINE - spojenie so serverom sa nepodarilo overiť, zápisy sú dočasne zablokované";
+    display: block;
+    position: sticky;
+    top: 0;
+    z-index: 9999;
+    background-color: #ea580c;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    padding: 6px;
+  }
+  /* === [/Zzz-SESSION:OFFLINE-UI] (CSS cast) === */
 </style>
 <!-- === [/Zzz1-M1:ANCHOR] (CSS cast) === -->
 
@@ -4728,13 +4783,29 @@ function zzz_haptic_pulse(ms = 15) {
   } catch (e) { /* nepodporovane zariadenie - ticho ignoruj */ }
 }
 
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+let sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: false,
     autoRefreshToken: false,
     detectSessionInUrl: false
   }
 });
+// === [Zzz-SESSION:FRESHNESS-GATE] "sb" je TERAZ "let" (nie "const") - musi sa dat PREVYTVORIT po logine/
+// odhlaseni, aby VSETKY zapisy cez tento klient automaticky niesli x-verso-username/x-verso-session-id
+// headers (viz zzz_session_apply_headers_to_client nizsie v subore) - bez tohto by server-side RLS
+// freshness kontrola (verso-session-freshness-gate.sql) nemala co citat a VSETKO by odmietla. | Vrso -> Claude AI | 2026-09-XX ===
+function zzz_session_apply_headers_to_client(username, sessionId) {
+  const headers = {};
+  if (username && sessionId) {
+    headers['x-verso-username'] = username;
+    headers['x-verso-session-id'] = sessionId;
+  }
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: { headers }
+  });
+}
+// === [/Zzz-SESSION:FRESHNESS-GATE] ===
 
 // === [Zzz1-M1:COMMAND-LINE] Modul Command Line (CL) - JS cast (F1-D1). VSETKY funkcie od tohto bodu az po
 // [/Zzz1-D1:DB-WRITE] nizsie patria do zakladneho modulu Zzz1-M1 (obsluhuju R1-R22 z numbers-row): F1:CELL-LOGIC,
@@ -9260,6 +9331,20 @@ async function submit_entries_to_db(options = {}) {
       const errDetail = (error && (error.message || error.details || error.hint)) || String(error);
       console.error(`Zzz1-D1 Supabase error (zapis do vzdialenej DB zlyhal, lokalne je ale ulozene). DOVOD: ${errDetail}`);
       zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
+      // === [Zzz-SESSION:FRESHNESS-GATE] Vrso poziadavka: "po casovom limite offline...online Verso bude
+      // iba blokovat entry to database". Rozpoznanie SPECIFICKY tejto RLS chyby (Postgres kod "42501" =
+      // insufficient_privilege, typicky pre RLS WITH CHECK zamietnutie, viz verso-session-freshness-gate.sql)
+      // - ODLISENE od beznych network/docasnych chyb nizsie (Zzz1-D1:RETRY-SYNC): toto NIE JE "skus znova
+      // automaticky", je to VYSLOVNE zamietnutie kvoli zastaralej session. Zaznam OSTAVA lokalne (nestrati
+      // sa - "nemusi sa zadavat nove heslo...staci ze online Verso bude iba blokovat", Vrso explicitne
+      // NECHCEL zahadzovat data) a Zzz1-D1:RETRY-SYNC ho aj tak skusi znova neskor - AK sa medzitym user
+      // znova prihlasi (novy session_id sa automaticky nastavi na "sb" klienta, viz
+      // zzz_session_apply_headers_to_client), buduci retry uspeje sam od seba, bez dalsej akcie. | Vrso -> Claude AI | 2026-09-XX ===
+      if (error.code === '42501') {
+        zzz_enter_offline_mode(); // rovnaky vizual ako "neviem overit spojenie" - z pohladu usera je vysledok rovnaky (zapis zablokovany)
+        zzz6f2_show_toast(`Zzz-SESSION: zápis #${payload.entry_id} zablokovaný (session vypršala po limite offline) - zostáva uložený lokálne, prihlás sa znova pre synchronizáciu.`);
+      }
+      // === [/Zzz-SESSION:FRESHNESS-GATE] ===
       // === [Zzz1-D1:RETRY-SYNC] (Vrso 2026-08-28, "je online system ale nepodari sa zaznam?"): tento zapis
       // ZLYHAL z INEHO dovodu nez duplicita (network, RLS, docasny Supabase vypadok...) - PREDTYM sa to
       // jednoducho zalogovalo a NIC viac. Teraz sa entry_id oznaci ako "unsynced" a AUTOMATICKY sa skusi
@@ -15627,6 +15712,7 @@ function zzz10r2_logout(reason = 'manual') {
   }
   zzz6f7_set_login_state(false); // Zzz6-F7:LOGIN-STATE - odstrani zlate pozadie
   zzz0auth_sessionToken = null; // Zzz0Auth-Gate:SESSION-TOKEN - vycistit pri odhlaseni | Vrso -> Claude AI | 2026-09-02
+  zzz_session_stop(); // Zzz-SESSION:SINGLE-ACTIVE - zastavi heartbeat slucku pri odhlaseni | Vrso -> Claude AI | 2026-09-XX
   zzz6f38_undoStack = []; // Zzz6-F38:CL-UNDO (2026-08-30) - session-only, vyprazdni sa pri odhlaseni
   zzz6f39_redoStack = []; // Zzz6-F39:CL-REDO (2026-08-30)
   if (zzz6f38_pendingEditTimer) { clearTimeout(zzz6f38_pendingEditTimer); zzz6f38_pendingEditTimer = null; }
@@ -15683,6 +15769,131 @@ function zzz10r2_logout(reason = 'manual') {
 // anon-key zapisy zostavaju rovnako otvorene ako pred timto krokom, kym RLS-enforcement fazu nedokoncime. | Vrso -> Claude AI | 2026-09-02 ===
 let zzz0auth_sessionToken = null; // Zzz0Auth-Gate:SESSION-TOKEN - LEN v pamati, zatial nikym nevyzadovany (viz UPDATE komentar vyssie)
 
+// === [Zzz-SESSION:SINGLE-ACTIVE] Vrso poziadavka, doslovne (2 kola): "Potrebujem zapracovat single active
+// session mechanizmus...standby system je fajn" + OPRAVA (Vrso, druhe kolo): "Ide o to ze ma ist o online
+// OS...Co ak vypadne alebo budem musiet pracovat offline? O to ide aby v tom pripade prislo v online OS k
+// zablokovaniu entries alebo nejakej ochrane."
+// KRITICKA OPRAVA smeru oproti prvej verzii: PRVA VERZIA (nespravne pochopenie) pri vypadku siete NEROBILA
+// NIC (appka mala pokracovat ako obvykle, aby ju vypadok nevyhodil). Vrso ale chce PRESNY OPAK - "Verso"
+// je navrhnute ako SIEOVO-ZAVISLY "online OS", takze KED appka NEVIE overit spojenie so serverom, MA sa
+// PREVENTIVNE ZABLOKOVAT zapis (fail-safe, nie fail-open) - kedze bez spojenia appka nevie s istotou
+// povedat, ci je stale "aktivne" zariadenie, ani synchronizovat zmeny.
+// DVA ODDELENE STAVY (rozne dovody, rozne hlasky, ale rovnaky vizualny/funkcny dopad - zablokovane zapisy):
+//   1) STANDBY (zzz-standby-mode) - appka JE online, server VYSLOVNE potvrdil "niekto iny ta prevzal".
+//   2) OFFLINE (zzz-offline-mode) - appka NEVIE spojenie overit (vypadok siete/server nedostupny) - toto
+//      je TERAZ ZAMERNE tiez blokujuci stav (na rozdiel od prvej verzie), presne podla Vrsovej poziadavky.
+// Detekcia OFFLINE: kombinacia (a) browser-native navigator.onLine + online/offline eventy (okamzita
+// reakcia, nie len caka na dalsi heartbeat tik) a (b) zlyhanie samotneho heartbeat fetch volania (pokryje
+// aj situacie, kde navigator.onLine hlasi "online", ale server v skutocnosti nedostupny - napr. Supabase
+// vypadok, nie lokalny network problem). | Vrso -> Claude AI | 2026-09-XX ===
+let zzz_sessionId = null; // dostane sa pri uspesnom logine, posiela sa pri kazdom heartbeat volani
+let zzz_sessionUsername = null; // pre koho tento heartbeat interval bezi (potrebne pri odhlaseni/zmene usera)
+let zzz_sessionHeartbeatInterval = null;
+let zzz_isInStandby = false; // TRUE po EXPLICITNEJ {active:false} odpovedi zo servera (niekto iny prevzal)
+let zzz_isOffline = false; // TRUE ked appka NEVIE overit spojenie so serverom (vypadok siete/server nedostupny)
+const ZZZ_SESSION_HEARTBEAT_MS = 35000; // ~35s - dostatocne caste, aby prevzatie/vypadok neboli citelne pomale, ale nie prilis zatazujuce
+
+async function zzz_session_heartbeat_tick() {
+  if (!zzz_sessionId || !zzz_sessionUsername) return;
+  try {
+    const fetchPromise = fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ action: 'heartbeat', username: zzz_sessionUsername, sessionId: zzz_sessionId })
+    });
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('heartbeat timeout (10s)')), 10000)
+    );
+    const resp = await Promise.race([fetchPromise, timeoutPromise]);
+    const result = await resp.json();
+
+    zzz_exit_offline_mode(); // spojenie uspesne prebehlo - urcite nie sme offline (aj ked mozno v standby, viz nizsie)
+
+    if (result.active === false) {
+      zzz_enter_standby_mode(); // VYSLOVNA odpoved servera "niekto iny prevzal"
+    } else if (result.active === true && zzz_isInStandby) {
+      zzz_exit_standby_mode(); // okrajovy pripad (napr. znova prihlasenie na TOMTO zariadeni)
+    }
+    // result.active === null (server-side chyba pri hladani, nie network chyba) -> ponechat aktualny stav,
+    // skusit znova pri dalsom tiku (nie je to jednoznacne "offline", server predsa len odpovedal)
+  } catch (err) {
+    // Network/timeout chyba - appka NEVIE overit svoj stav -> OFFLINE ochranny rezim (Vrso poziadavka,
+    // viz komentar vyssie). NEMENI standby stav (ten sa nemeni len z network chyby), ale PRIDAVA offline
+    // blokovanie navyse.
+    console.warn(`Zzz-SESSION heartbeat zlyhal - prechod do OFFLINE ochranneho rezimu. DOVOD: ${(err && err.message) || String(err)}`);
+    zzz_enter_offline_mode();
+  }
+}
+
+function zzz_session_start(username, sessionId) {
+  zzz_sessionUsername = username;
+  zzz_sessionId = sessionId;
+  zzz_isInStandby = false;
+  zzz_isOffline = false;
+  document.body.classList.remove('zzz-standby-mode', 'zzz-offline-mode');
+  zzz_session_apply_headers_to_client(username, sessionId); // Zzz-SESSION:FRESHNESS-GATE - odteraz VSETKY zapisy cez "sb" niesu tieto headers
+  if (zzz_sessionHeartbeatInterval) clearInterval(zzz_sessionHeartbeatInterval);
+  if (sessionId) { // ak server session_id nevratil (napr. upsert zlyhal), heartbeat nema zmysel spustat
+    zzz_sessionHeartbeatInterval = setInterval(zzz_session_heartbeat_tick, ZZZ_SESSION_HEARTBEAT_MS);
+  }
+}
+
+function zzz_session_stop() {
+  zzz_sessionUsername = null;
+  zzz_sessionId = null;
+  zzz_isInStandby = false;
+  zzz_isOffline = false;
+  if (zzz_sessionHeartbeatInterval) { clearInterval(zzz_sessionHeartbeatInterval); zzz_sessionHeartbeatInterval = null; }
+  document.body.classList.remove('zzz-standby-mode', 'zzz-offline-mode');
+  zzz_session_apply_headers_to_client(null, null); // Zzz-SESSION:FRESHNESS-GATE - vrat "sb" spat na plain anon klienta bez session headers
+}
+
+// === [Zzz-SESSION:STANDBY-UI] "STANDBY nie LOGOUT" (povodny navrh z verso-bezpecnost-podklad.md, bod 7) -
+// pouzivatel OSTAVA prihlaseny/vidi svoje data, len sa TLMIA zápisové akcie (nie plny lockout). Zatial
+// jednoduche riesenie: CSS trieda na <body>, ktora vizualne oznaci stav a (cez CSS pravidlo nizsie v
+// subore) zablokuje zapisove tlacidla - jemnejsie odstupnovanie (ktore presne akcie tlmit) je buduca
+// dolaadovacia praca, teraz je to zamerne VSETKO-alebo-NIC pre jednoduchost prveho kola. | Vrso -> Claude AI | 2026-09-XX ===
+function zzz_enter_standby_mode() {
+  if (zzz_isInStandby) return;
+  zzz_isInStandby = true;
+  document.body.classList.add('zzz-standby-mode');
+  zzz6f2_show_toast('Zzz-SESSION: iné zariadenie prevzalo toto prihlásenie - si v STANDBY režime (len na čítanie), kým sa znova neprihlásiš.');
+}
+
+function zzz_exit_standby_mode() {
+  zzz_isInStandby = false;
+  document.body.classList.remove('zzz-standby-mode');
+}
+// === [/Zzz-SESSION:STANDBY-UI] ===
+
+// === [Zzz-SESSION:OFFLINE-UI] Vrso poziadavka (druhe kolo, oprava smeru): "aby v tom pripade prislo v
+// online OS k zablokovaniu entries alebo nejakej ochrane" - KED appka NEVIE overit spojenie so serverom,
+// PREVENTIVNE zablokuje zapis (rovnaky vizualny mechanizmus ako STANDBY - zdielana CSS logika pre tlmenie
+// tlacidiel - ale ODDELENY stav/hlaska, kedze dovod je iny: "neviem overit spojenie", nie "niekto iny ma
+// prevzal"). Reaguje AJ na browser-native online/offline eventy (okamzite, nie len pri dalsom heartbeat
+// tiku o az 35s) AJ na zlyhanie samotneho heartbeat fetch volania (pokryje aj pripad, kde device HLASI
+// "online", ale Supabase server samotny je nedostupny). | Vrso -> Claude AI | 2026-09-XX ===
+function zzz_enter_offline_mode() {
+  if (zzz_isOffline) return;
+  zzz_isOffline = true;
+  document.body.classList.add('zzz-offline-mode');
+  zzz6f2_show_toast('Zzz-SESSION: spojenie so serverom sa nepodarilo overiť - zápisy sú dočasne zablokované (ochranný OFFLINE režim), kým sa spojenie neobnoví.');
+}
+
+function zzz_exit_offline_mode() {
+  if (!zzz_isOffline) return;
+  zzz_isOffline = false;
+  document.body.classList.remove('zzz-offline-mode');
+  zzz6f2_show_toast('Zzz-SESSION: spojenie obnovené - zápisy sú znova povolené.');
+}
+
+// Okamzita reakcia na browser-native network eventy (nemusi cakat na dalsi heartbeat tik, viz komentar
+// vyssie) - LEN ak je aktivna session (inak by to bezvyznamne pridavalo/odoberalo triedu aj pred loginom).
+window.addEventListener('offline', () => { if (zzz_sessionId) zzz_enter_offline_mode(); });
+window.addEventListener('online', () => { if (zzz_sessionId) zzz_session_heartbeat_tick(); }); // rovno over aj standby stav, nielen offline
+// === [/Zzz-SESSION:OFFLINE-UI] ===
+// === [/Zzz-SESSION:SINGLE-ACTIVE] (pokracovanie nizsie pri zzz10r8_verify_login_password a zzz6f36_submit_login) ===
+
 async function zzz10r8_verify_login_password(username, enteredPassword) {
   try {
     const fetchPromise = fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
@@ -15701,6 +15912,7 @@ async function zzz10r8_verify_login_password(username, enteredPassword) {
     zzz0r1_set_db_connection_state(true);
     if (result.verified) {
       zzz0auth_sessionToken = result.token || null; // moze byt null, ak VERSO_SESSION_SECRET este nie je nastaveny na serveri
+      zzz_session_start(zzz10v1_normalize(username), result.sessionId || null); // Zzz-SESSION:SINGLE-ACTIVE - spusti heartbeat slucku
     }
     return { verified: result.verified, reason: result.reason || undefined };
   } catch (err) {
