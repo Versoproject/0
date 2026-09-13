@@ -6638,6 +6638,7 @@ async function zzz1_get_quickchips_entry() {
     let data = null;
     try {
       const fetchPromise = sb.from('verso_entries').select('*')
+        .eq('is_trashed', false)
         .filter('fields_json->>r5', 'eq', 'QuickChips')
         .filter('fields_json->>r4', 'eq', current);
       const timeoutPromise = new Promise((_, reject) =>
@@ -6648,7 +6649,7 @@ async function zzz1_get_quickchips_entry() {
       data = result.data;
     } catch (jsonFilterErr) {
       console.warn('Zzz10-SCALE - JSON filter na fields_json zlyhal (pravdepodobne stlpec nie je jsonb), fallback na plny fetch:', jsonFilterErr);
-      const fetchPromise = sb.from('verso_entries').select('*');
+      const fetchPromise = sb.from('verso_entries').select('*').eq('is_trashed', false);
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Zzz1-QUICKCHIPS fetch timeout (4s)')), 4000)
       );
@@ -8851,6 +8852,35 @@ function zzz0r1_set_db_connection_state(isConnected, errorDetail, suppressToast 
 // === [/Zzz6-F3:USERNAME-STATIC] ===
 // <<< Zzz0-R1 END
 
+// === [Zzz0-R1:FUTURE-SECURITY-PLANS] (POZNAMKA, ZIADNA FUNKCNOST ESTE NEIMPLEMENTOVANA) Vrso 2026-09-13 -
+// zaznamenane pre buducu pracu, kym budu presnejsie specifikovane:
+//
+// 1) BIOMETRICKE PRIHLASENIE (odtlacok/Face ID cez WebAuthn API) - appka nikdy nevidi biometricke data,
+//    zariadenie appke len potvrdi ano/nie. Zapadne do buducej credential_type='biometric' struktury.
+//
+// 2) "SLEEP" REZIM prihlasenia - myslienka: pocas obdobia, kedy clovek nemoze aktivne dohliadat (spanok),
+//    by mal system vediet prepnut do stavu, kde vykonava LEN vopred definovane automatizovane ulohy, nie
+//    citlive/nove akcie. NEDOSTATOCNE SPECIFIKOVANE zatial (ako presne sa aktivuje/deaktivuje, kto/co ho
+//    smie spustit, co presne "automatizovane ulohy" zahrna) - NEIMPLEMENTOVAT bez presnejsej specifikacie,
+//    riziko zle navrhnuteho bezpecnostneho mechanizmu.
+//
+// 3) CASOVO OBMEDZENY AUTOCONNECT (neznamej zariadenie) - namiesto trvaleho "obid vsetko" tokenu ulozeneho
+//    navzdy na zariadeni, autoconnect token/kluc by mal mat EXPLICITNU platnost (napr. X hodin/dni) a byt
+//    KEDYKOLVEK odvolatelny. "Logout" v appke = manualny reset danej login session (uz odsuhlasene, jasne).
+//
+// 4) TAJNY DIALKOVY "LOG OUT" (navrh na zvazenie, NEIMPLEMENTOVANE): osobitny, skryty mechanizmus, ktorym
+//    by vedel POUZIVATEL SAM (nie utocnik) na diaľku zneplatnit AKTIVNU login session z INEHO zariadenia
+//    (napr. ak zabudol odhlasit sa na cudzom PC). Realisticky vyzaduje REALNU Supabase Auth session (token
+//    v DB, ktory sa da invalidovat na server-side) - "good faith" system (momentalny stav) toto nevie
+//    ponuknut spolahlivo, kedze nema ziadny centralny "aktivny token" zaznam, ktory by sa dal zrusit.
+//
+// 5) MOMENTALNY STAV (Vrso 2026-09-13, overene v kode): appka NEMA ziadny mechanizmus na zabranenie
+//    viacerych sucasnych prihlaseni pod tym istym username naprieč zariadeniami - "good faith" system nema
+//    session/token koncept vobec. Zzz0-R1 status indikator (#zzz6f7UsernameLabel, .zzz0r1-db-disconnected)
+//    momentalne ukazuje LEN pripojenie k databaze, NIE "je tento username prihlaseny inde". Toto bude mozne
+//    az s realnou Supabase Auth (Zzz6-F36 nahradenie, uz existujuci pending bod). | Vrso -> Claude AI |
+//    2026-09-13 ===
+
 // === [Zzz0-R1:OWNERSHIP] kazdy zaznam je viazany na username z Zzz0-R1 bunky (zzz6f7UsernameLabel) | Vrso -> Claude AI | 2026-08-18 ===
 // Zatial ZIADNA realna identifikacia/prihlasenie (podla requestu) - "username" je proste aktualny text
 // v Zzz0-R1 bunke (logo). Kazdy novy zaznam sa pri zapise oznaci timto textom ako vlastnik (owner).
@@ -9799,6 +9829,7 @@ async function zzz6f4_fulltext_search_remote(terms) {
   const query = terms.join(' '); // websearch_to_tsquery: viacero slov oddelenych medzerou = AND
   try {
     const fetchPromise = sb.from('verso_entries').select('*')
+      .eq('is_trashed', false)
       .textSearch('search_vector', query, { type: 'websearch', config: 'simple' })
       .order('entry_id', { ascending: false })
       .limit(200); // rozumny strop na jedno vyhladavanie (nie neobmedzene, ale oveľa sirsie nez 1 stranka)
@@ -12336,7 +12367,7 @@ async function open_database_workspace(loadMore = false) {
 
   try {
     if (entryIdFilterActive) {
-      const fetchPromise = sb.from('verso_entries').select('*').eq('entry_id', zzz6f22EntryIdFilter);
+      const fetchPromise = sb.from('verso_entries').select('*').eq('is_trashed', false).eq('entry_id', zzz6f22EntryIdFilter);
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('zzz2-R29 Supabase fetch timeout (4s)')), 4000)
       );
