@@ -3984,6 +3984,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz0Auth-Gate (SYSTEM FUNCTION, variant B - vsetci useri) - server-side Supabase Edge Function "verso-auth-gate" hashuje/overuje heslo, viz edge-function/index.ts + setup.sql</span>
   <span class="module-tag">Zzz-SESSION:SINGLE-ACTIVE - 1 username = 1 aktivne zariadenie, STANDBY pri prevzati inym zariadenim, OFFLINE ochranny rezim (zablokovane zapisy) pri vypadku spojenia so serverom</span>
   <span class="module-tag">Zzz-SESSION:FRESHNESS-GATE - server-side (RLS) vynutenie 1-hodinoveho offline limitu, zapisy po vyprsani odmietnute (nie zahodene, cakaju na re-login), viz verso-session-freshness-gate.sql</span>
+  <span class="module-tag">Zzz-LOGO-STATUS - farebny prstenec na kruhovom logu (versoEntryButton): zelena=prihlaseny, oranzova=offline/DB nedostupna, cervena=standby/konflikt</span>
+  <span class="module-tag">Zzz-RECOVERY:REMOTE-OVERRIDE (SYSTEM FUNCTION) - nudzove prevzatie uctu cez email token (zmena hesla + vynutene zrusenie vsetkych aktivnych session), viz verso-recovery-setup.sql</span>
   <span class="module-tag">Zzz10-V1:SEND-EMAIL - nahradene "bright-responder" novou Edge Function "verso-send-activation-email" (rovnaky Resend vzor ako Zzz0GitHub-Notify)</span>
   <span class="module-tag">Zzz6-F36 Login modal - pridany viditelny titulok "LOG IN" (predtym len maly gold button v riadku)</span>
   <span class="module-tag">Zzz10-0 Settings Workspace - opravene: NEZOBRAZUJE sa uz pred prihlasenim (predtym stary obsah zostaval za Login modalom)</span>
@@ -15294,6 +15296,7 @@ function zzz6f36_open_login_modal(prefillUsername) {
   }
 
   zzz10m1_render_pre_registration_setup(box); // Zzz10-M1:PRE-REGISTRATION-SETUP, viz JS cast nizsie v subore
+  zzz_render_account_recovery(box); // Zzz-RECOVERY:REMOTE-OVERRIDE, viz JS cast nizsie v subore
 
   overlay.appendChild(box);
   document.body.appendChild(overlay);
@@ -15484,6 +15487,153 @@ function zzz10m1_render_pre_registration_setup(box) {
   box.appendChild(built.element);
 }
 // === [/Zzz10-M1:PRE-REGISTRATION-SETUP] ===
+
+// === [Zzz-RECOVERY:REMOTE-OVERRIDE] Vrso poziadavka: "chcem vytvorit mechanizmus dialkoveho prihlasenia
+// alebo logoutu! Napr. ak by niekomu sa nahodou podarilo prihlasit neopravnene tak v emaile budem mat
+// token, ktorym 'prebijem' login a napr si zmenim heslo, logoutujem". Dvojkrokovy formular vnutri Login
+// modalu (funguje aj BEZ prihlasenia - presne preto, ze je urceny pre pripad, ked pravy majitel heslo
+// NEPOZNA/uz nema/bolo kompromitovane):
+//   KROK 1 - zadaj username -> "POSLAT RECOVERY TOKEN" -> Edge Function posle email (ak username/email
+//     existuje - odpoved je VZDY rovnaka, viz server-side komentar, aby sa nedalo zistit, ci username
+//     existuje len podla odpovede).
+//   KROK 2 - zadaj token (z emailu) + NOVE heslo -> "POUZIT TOKEN" -> heslo sa zmeni A KAZDA aktivna
+//     session (na hocijakom zariadeni) sa NASILU zrusi (Zzz-SESSION:SINGLE-ACTIVE, dalsi heartbeat
+//     ktoregokolvek zariadenia najde "ziadna session" a prejde do standby) - presne "logoutujem" z
+//     poziadavky, bez potreby oddelenej akcie.
+// Rovnaky lokalny <input> princip ako zvysok Login modulu - NIC z tohto NIKDY nesiaha do entryData/hlavnej
+// CRM CL. | Vrso -> Claude AI | 2026-09-XX ===
+function zzz_render_account_recovery(box) {
+  const wrap = document.createElement('div');
+  wrap.className = '';
+
+  const title = document.createElement('div');
+  title.className = 'zzz-support-title';
+  title.textContent = 'NÚDZOVÉ PREVZATIE ÚČTU';
+  wrap.appendChild(title);
+
+  const warning = document.createElement('div');
+  warning.className = 'zzz-support-warning';
+  warning.textContent = 'Použi len ak nepoznáš heslo alebo podozrievaš neoprávnený prístup.';
+  wrap.appendChild(warning);
+
+  const row = document.createElement('div');
+  row.className = 'zzz-support-cl-row';
+
+  // USERNAME pole (zdielane oboma krokmi)
+  const userWrap = document.createElement('div');
+  userWrap.className = 'zzz-support-field-wrap zzz-support-username-wrap';
+  const userLabel = document.createElement('div');
+  userLabel.className = 'zzz-support-field-label';
+  userLabel.textContent = 'USERNAME';
+  userWrap.appendChild(userLabel);
+  const userInput = document.createElement('input');
+  userInput.type = 'text';
+  userInput.className = 'entry-cell zzz-support-username-input';
+  userInput.id = 'versoRecoveryUsernameInput';
+  userWrap.appendChild(userInput);
+  row.appendChild(userWrap);
+
+  const requestBtn = document.createElement('button');
+  requestBtn.type = 'button';
+  requestBtn.className = 'zzz-support-entry-button';
+  requestBtn.textContent = 'POSLAŤ TOKEN';
+  requestBtn.addEventListener('click', async () => {
+    const username = userInput.value.trim();
+    if (!username) { zzz6f2_show_toast('Zzz-RECOVERY: vyplň USERNAME.'); return; }
+    requestBtn.disabled = true;
+    try {
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+        body: JSON.stringify({ action: 'request_override', username })
+      });
+      await resp.json();
+      zzz6f2_show_toast('Zzz-RECOVERY: ak účet a email existujú, token bol odoslaný (skontroluj aj spam). Platný 15 minút.');
+    } catch (err) {
+      zzz6f2_show_toast(`Zzz-RECOVERY: odoslanie zlyhalo. DÔVOD: ${(err && err.message) || String(err)}`);
+    } finally {
+      requestBtn.disabled = false;
+    }
+  });
+  row.appendChild(requestBtn);
+  wrap.appendChild(row);
+
+  // KROK 2 - token + nove heslo
+  const row2 = document.createElement('div');
+  row2.className = 'zzz-support-cl-row';
+
+  const tokenWrap = document.createElement('div');
+  tokenWrap.className = 'zzz-support-field-wrap zzz-support-content-wrap';
+  const tokenLabel = document.createElement('div');
+  tokenLabel.className = 'zzz-support-field-label';
+  tokenLabel.textContent = 'TOKEN (Z EMAILU)';
+  tokenWrap.appendChild(tokenLabel);
+  const tokenInput = document.createElement('input');
+  tokenInput.type = 'text';
+  tokenInput.className = 'entry-cell zzz6f36-login-local-input';
+  tokenInput.id = 'versoRecoveryTokenInput';
+  tokenInput.autocomplete = 'off';
+  tokenWrap.appendChild(tokenInput);
+  row2.appendChild(tokenWrap);
+
+  const newPassWrap = document.createElement('div');
+  newPassWrap.className = 'zzz-support-field-wrap zzz-support-content-wrap';
+  const newPassLabel = document.createElement('div');
+  newPassLabel.className = 'zzz-support-field-label';
+  newPassLabel.textContent = 'NOVÉ HESLO';
+  newPassWrap.appendChild(newPassLabel);
+  const newPassInput = document.createElement('input');
+  newPassInput.type = 'password';
+  newPassInput.className = 'entry-cell zzz6f36-login-local-input';
+  newPassInput.id = 'versoRecoveryNewPasswordInput';
+  newPassInput.autocomplete = 'off';
+  newPassWrap.appendChild(newPassInput);
+  row2.appendChild(newPassWrap);
+
+  const useBtn = document.createElement('button');
+  useBtn.type = 'button';
+  useBtn.className = 'zzz-support-entry-button';
+  useBtn.textContent = 'POUŽIŤ TOKEN';
+  useBtn.addEventListener('click', async () => {
+    const username = userInput.value.trim();
+    const token = tokenInput.value.trim();
+    const newPassword = newPassInput.value.trim();
+    if (!username || !token || !newPassword) {
+      zzz6f2_show_toast('Zzz-RECOVERY: vyplň USERNAME, TOKEN aj NOVÉ HESLO.');
+      return;
+    }
+    useBtn.disabled = true;
+    try {
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+        body: JSON.stringify({ action: 'use_override_token', username, token, newPassword })
+      });
+      const result = await resp.json();
+      if (result.success) {
+        tokenInput.value = '';
+        newPassInput.value = '';
+        zzz6f2_show_toast('Zzz-RECOVERY: heslo zmenené, všetky aktívne prihlásenia zrušené. Prihlás sa novým heslom.');
+      } else {
+        const reasonText = {
+          invalid_token: 'neplatný token',
+          token_expired: 'token vypršal (platnosť 15 min) - vyžiadaj nový',
+          token_and_new_password_required: 'vyplň token aj nové heslo'
+        }[result.reason] || result.reason || 'neznámy dôvod';
+        zzz6f2_show_toast(`Zzz-RECOVERY: zlyhalo - ${reasonText}.`);
+      }
+    } catch (err) {
+      zzz6f2_show_toast(`Zzz-RECOVERY: volanie zlyhalo. DÔVOD: ${(err && err.message) || String(err)}`);
+    } finally {
+      useBtn.disabled = false;
+    }
+  });
+  row2.appendChild(useBtn);
+  wrap.appendChild(row2);
+
+  box.appendChild(wrap);
+}
+// === [/Zzz-RECOVERY:REMOTE-OVERRIDE] ===
 
 // === [Zzz11-M1:USERNAME-SETUP] Podpora/kontakt HORE v Zzz10-V0 Verification Workspace | Vrso -> Claude AI | 2026-09-02,
 // PREMENOVANE 2026-09-02 ("Oznac teda tie 2 command lines takto... Zzz10-M1 username setup" - v kontexte
