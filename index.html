@@ -3674,6 +3674,15 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .section-system {
     order: 3;
   }
+  /* === [Zzz2-LAYOUT:NO-NATIVE-CALLOUT] (CSS cast) - explicitna istota navyse (JS contextmenu preventDefault
+     je hlavny mechanizmus, viz JS cast) - rovnaky princip ako uz existuje globalne na body, len explicitne
+     zopakovane priamo tu pre prehladnost. | Vrso -> Claude AI | 2026-09-14 === */
+  .section-core, .section-data, .section-system {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  /* === [/Zzz2-LAYOUT:NO-NATIVE-CALLOUT] (CSS cast) === */
   .section-core .circle-layout,
   .section-system .circle-layout {
     zoom: 0.72;
@@ -12960,15 +12969,49 @@ function zzz6f6_copy_button_dispatch() {
 //   3) ACKNOWLEDGEMENT: kazdy PASTE cez tento mechanizmus sa POVAZUJE za externy vklad (rovnaky duch ako
 //      existujuci Zzz6-F22-paste-credit pre Ctrl+V) - ZNOVUPOUZITA existujuca zzz6f22_record_paste_credit()
 //      funkcia (DRY, ziadna nova acknowledgement logika). | Vrso -> Claude AI | 2026-09-14 ===
+// === [Zzz2-R6/R7:FOCUS-TRACKING] Vrso oprava 2026-09-14 ("v 2-layout nejde podrzat copy...ked sa otvori
+// kontextove okno napr username tak nejde"): PREDTYM sa citalo document.activeElement AZ V MOMENTE dlheho
+// podrzania/kliku COPY/PASTE tlacidla - ale kym prst cestuje z povodneho pola (napr. USER v Login okne) K
+// vzdialenemu COPY tlacidlu, povodne pole STRATI FOKUS uz pri prvom dotyku inde (blur), takze
+// document.activeElement uz NIE JE to pole, co chcel user skopirovat. OPRAVA: sleduje sa POSLEDNE
+// fokusovane textove pole PRIEBEZNE (focusin listener na CELOM document, VZDY aktualny), nie az na konci -
+// takto je jedno, ze fokus medzicasom stratil, posledna referencia ostava spravna. | Vrso -> Claude AI | 2026-09-14 ===
+let zzz2r6_lastFocusedInput = null;
+document.addEventListener('focusin', (e) => {
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) {
+    zzz2r6_lastFocusedInput = t;
+  }
+});
+// === [/Zzz2-R6/R7:FOCUS-TRACKING] ===
+
+// === [Zzz2-LAYOUT:NO-NATIVE-CALLOUT] Vrso ziadost 2026-09-14 ("na jednej z foto problem ze sa copy button
+// tiez po podrzani vyznaci ako vybrany text...navrhujem celu 2-layout (3 sekcie vsetky) zapracovat ako sme
+// robili M4 CRM modul"): body uz MA globalne user-select:none (viz CSS na zaciatku suboru), ALE to samo
+// osebe NEZASTAVI natívny Android/WebKit dlhy-podrzania "callout" popup (Kopírovať/Zdielať a pod.) - na to
+// treba AJ contextmenu preventDefault (rovnaky vzor uz pouzity na desiatkach inych tlacidiel v subore,
+// napr. logoBtn vyssie). Namiesto pridavania na KAZDE tlacidlo osobitne (M4-modul pristup), TU sa robi
+// JEDNYM delegovanym listenerom na vsetky 3 "2-layout" sekcie naraz (section-core, section-data,
+// section-system) - DRY, pokryje aj buduce tlacidla pridane do tychto sekcii bez dalsej upravy. | Vrso -> Claude AI | 2026-09-14 ===
+['section-core', 'section-data', 'section-system'].forEach(cls => {
+  document.querySelectorAll(`.${cls}`).forEach(section => {
+    section.addEventListener('contextmenu', (e) => e.preventDefault());
+  });
+});
+// === [/Zzz2-LAYOUT:NO-NATIVE-CALLOUT] ===
+
 let zzz2r6_internalClipboard = null; // { value: string } alebo null
 
-function zzz2r6_get_focused_cl_input() {
-  const active = document.activeElement;
-  if (!active) return null;
-  // CL bunka (data-entry-id) ALEBO textarea/input vo vseobecnom entry-modali (ma zvycajne .entry-modal-box predka)
-  if (active.hasAttribute && active.hasAttribute('data-entry-id')) return active;
-  if (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT') return active;
-  return null;
+// Vrso ziadost: "ak sa kopiruje iba cast textu" - ak ma pole AKTIVNY vyber (selectionStart!==selectionEnd),
+// pouzije sa LEN oznacena cast, inak cela hodnota pola. selectionStart/End su bezne DOM vlastnosti - ostavaju
+// zachovane na elemente aj po strate fokusu (blur), takze funguju aj s zzz2r6_lastFocusedInput referenciou. | Vrso -> Claude AI | 2026-09-14
+function zzz2r6_get_value_or_selection(input) {
+  try {
+    if (typeof input.selectionStart === 'number' && typeof input.selectionEnd === 'number' && input.selectionStart !== input.selectionEnd) {
+      return input.value.substring(input.selectionStart, input.selectionEnd);
+    }
+  } catch (e) { /* niektore input typy (napr. number) nepodporuju selectionStart - ticho spadni na celu hodnotu */ }
+  return input.value;
 }
 
 function zzz2r6_find_cl_field_label(entryKey) {
@@ -12980,12 +13023,12 @@ function zzz2r6_find_cl_field_label(entryKey) {
   const btn = document.getElementById('versoCopyButton');
   if (!btn) return;
   zzz_bind_long_press(btn, 600, () => {
-    const input = zzz2r6_get_focused_cl_input();
+    const input = zzz2r6_lastFocusedInput;
     if (!input || !input.value) {
-      zzz6f2_show_toast('Zzz2-R6: najprv klikni do poľa, ktoré chceš skopírovať (musí byť aktívne/fokusované), potom podrž COPY.');
+      zzz6f2_show_toast('Zzz2-R6: najprv klikni do poľa, ktoré chceš skopírovať, potom podrž COPY.');
       return;
     }
-    zzz2r6_internalClipboard = { value: input.value };
+    zzz2r6_internalClipboard = { value: zzz2r6_get_value_or_selection(input) };
     zzz6f6_flash_button(btn);
     zzz6f2_show_toast('Zzz2-R6: obsah skopírovaný do Verso schránky. Klikni do cieľového poľa a stlač PASTE.');
   });
@@ -13001,9 +13044,9 @@ function zzz2r6_find_cl_field_label(entryKey) {
       zzz6f2_show_toast('Zzz2-R7: Verso schránka je prázdna - najprv podrž COPY (Zzz2-R6) nad poľom, ktoré chceš skopírovať.');
       return;
     }
-    const input = zzz2r6_get_focused_cl_input();
+    const input = zzz2r6_lastFocusedInput;
     if (!input) {
-      zzz6f2_show_toast('Zzz2-R7: klikni do cieľového CL poľa (musí byť aktívne/fokusované), potom stlač PASTE.');
+      zzz6f2_show_toast('Zzz2-R7: klikni do cieľového poľa, potom stlač PASTE.');
       return;
     }
     const entryKey = input.getAttribute && input.getAttribute('data-entry-id');
@@ -13022,6 +13065,16 @@ function zzz2r6_find_cl_field_label(entryKey) {
   });
 })();
 // === [/Zzz2-R6/R7:GENERIC-CLIPBOARD-COPY-PASTE] ===
+
+// === [Zzz2-R6/R7:FUTURE-DEPENDENCY] Vrso poznamka 2026-09-14 ("niektore entries (podla opravnenia) sa budu
+// dat prepisovat a preto paste...musi byt v danej entry zapisane tiez"): OVERENE V KODE (2026-09-14) - PRIAME
+// EDITOVANIE UZ ULOZENYCH verso_entries ZATIAL VOBEC NEEXISTUJE (jediny .update() na tuto tabulku je
+// is_trashed soft-delete, ziadny mechanizmus na prepis obsahu ulozeneho zaznamu). Preto zzz6f22_record_paste_credit
+// vyssie SPRAVNE zapisuje LEN do R22 aktualnej live CL (ZZZ6_F22_ENTRY_ID) - nie je (zatial) kam inam zapisat.
+// AZ KED bude postaveny system na priame permission-based editovanie ulozenych entries, TREBA SEM DOPLNIT:
+// detekciu "cieľove pole patri ulozenej entry #X, nie live CL" (asi cez data-entry-number alebo podobny
+// atribut na tom poli) a v tom pripade zapisat acknowledgement PRIAMO do R22 danej entry #X (samostatny
+// update-into-database volanie), NIE do ZZZ6_F22_ENTRY_ID. | Vrso -> Claude AI | 2026-09-14 ===
 
 // === [Zzz6-F28:SELECT-CL] "Zzz6-F27 copy CL" NAHRADENE (Vrso ziadost 2026-08-22: "zrus tvoje predosle
 // postupy") - namiesto 3s podrzania + okamziteho copy je teraz KLIK na ENTRY NUMBER bunku (R1, needitovatelna,
