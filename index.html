@@ -4031,6 +4031,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-X:VERSO-DEV-LOGIN-SECRET - jednoklikove prihlasenie ako Verso v Login module (vyvojova pomocka, ODSTRANIT pred verejnym spustenim)</span>
   <span class="module-tag">Zzz6-X:HIDE-VERSO-DEV-LOGIN - tlacidlo viditelne LEN na zariadeniach s historiou skutocneho prihlasenia (nechrani heslo samotne, len znizuje nahodne objavenie)</span>
   <span class="module-tag">Zzz2-R6/R7:GENERIC-CLIPBOARD-COPY-PASTE - dlhe podrzanie COPY = skopiruje fokusovane pole do internej Verso schranky, PASTE (predtym EDIT) = vlozi ho + zaznamena acknowledgement (Zzz6-F22-paste-credit)</span>
+  <span class="module-tag">Zzz6-R:COPY-PASTE-EXCEPTIONS - centralny katalog vynimiek pre Zzz2-R6/R7 (aktualne: type=password polia zakazane pre COPY aj PASTE, bezpecnost)</span>
   <span class="module-tag">Zzz10-R7:PASSWORD-HASH - PREDCHADZAJUCA client-side verzia, SUPERSEDED Zzz0Auth-Gate (2026-09-02), utility funkcie ponechane bez pouzitia v realnej ceste</span>
   <span class="module-tag">Zzz0Auth-Gate (SYSTEM FUNCTION, variant B - vsetci useri) - server-side Supabase Edge Function "verso-auth-gate" hashuje/overuje heslo, viz edge-function/index.ts + setup.sql</span>
   <span class="module-tag">Zzz-SESSION:SINGLE-ACTIVE - 1 username = 1 aktivne zariadenie, STANDBY pri prevzati inym zariadenim, OFFLINE ochranny rezim (zablokovane zapisy) pri vypadku spojenia so serverom</span>
@@ -13007,6 +13008,27 @@ document.addEventListener('focusin', (e) => {
 
 let zzz2r6_internalClipboard = null; // { value: string } alebo null
 
+// === [Zzz6-R:COPY-PASTE-EXCEPTIONS] Vrso poziadavka 2026-09-14: "ako to oznacit/zadat aj do funkcie
+// Zzz6-R* exceptions acknowledgment, ze toto budu vynimky". CENTRALNY, DOHLADATELNY zoznam vynimiek pre
+// Zzz2-R6/R7 (Verso schranka COPY/PASTE) + Zzz6-F22 acknowledgement - namiesto roztrusenych ad-hoc
+// podmienok priamo v kazdom tlacidle, VSETKY buduce vynimky sa pridavaju SEM, na jedno miesto, jednoducho
+// dohladatelne podla tejto znacky. Kazda vynimka MA svoj vlastny dovod v komentari.
+//
+// AKTUALNE VYNIMKY (2026-09-14):
+//   1) type="password" polia - COPY z nich je zakazane (viz dovod nizsie vo funkcii). Pokryva VSETKY
+//      heslo-podobne polia (Login, Register, Change Password, buduca Multiverifikacia) automaticky, podla
+//      TYPU pola, nie podla toho, ktore okno/mod je prave otvorene (krehkejsie, muselo by sa rucne
+//      udrziavat pri kazdom novom okne).
+//
+// (dalsie vynimky sa pridaju sem, ako pribudnu - napr. specificke polia v Multiverifikacii, ak niekedy
+// nebudu type=password ale bude ich treba tiez vynimit) | Vrso -> Claude AI | 2026-09-14 ===
+function zzz6r_is_copy_paste_exception(input) {
+  if (!input) return false;
+  if (input.type === 'password') return true; // Vynimka #1 - heslo-podobne polia (viz katalog vyssie)
+  return false;
+}
+// === [/Zzz6-R:COPY-PASTE-EXCEPTIONS] ===
+
 // Vrso ziadost: "ak sa kopiruje iba cast textu" - ak ma pole AKTIVNY vyber (selectionStart!==selectionEnd),
 // pouzije sa LEN oznacena cast, inak cela hodnota pola. selectionStart/End su bezne DOM vlastnosti - ostavaju
 // zachovane na elemente aj po strate fokusu (blur), takze funguju aj s zzz2r6_lastFocusedInput referenciou. | Vrso -> Claude AI | 2026-09-14
@@ -13042,15 +13064,9 @@ function zzz2r6_find_cl_field_label(entryKey) {
       zzz6f2_show_toast('Zzz2-R6: najprv klikni do poľa, ktoré chceš skopírovať, potom podrž COPY.');
       return;
     }
-    // === [Zzz2-R6:PASSWORD-GUARD] Vrso poziadavka 2026-09-14: "ako to osetrit aby sa to nerobilo pri
-    // login/multiverifikacii a pod." - RIESENIE: namiesto blokovania podla TOHO, KTORE OKNO je otvorene
-    // (krehke, zavisle na mode), blokuje sa PRIAMO podla type="password" na samotnom poli - pokryje VSETKY
-    // heslo-podobne polia vsade v appke (Login CONTENT, Register PASSWORD, Change Password, buduce
-    // Multiverifikacia tajny kod ak bude tiez type=password), nezavisle od kontextu/okna. DOVOD: bez tohto
-    // by sa dalo heslo skopirovat cez Verso schranku a POTOM PRILEPIT do CL bunky, ktora sa realne UKLADA
-    // do databazy (aj s R22 acknowledgement) - REALNY unik hesla do ulozenych dat. | Vrso -> Claude AI | 2026-09-14 ===
-    if (input.type === 'password') {
-      zzz6f2_show_toast('Zzz2-R6: kopírovanie z poľa typu heslo je zablokované (bezpečnosť).');
+    // Zzz6-R:COPY-PASTE-EXCEPTIONS - viz katalog vyssie v subore pre plny zoznam a dovody
+    if (zzz6r_is_copy_paste_exception(input)) {
+      zzz6f2_show_toast('Zzz2-R6: kopírovanie z tohto poľa je zablokované (Zzz6-R:COPY-PASTE-EXCEPTIONS, bezpečnosť).');
       return;
     }
     zzz2r6_internalClipboard = { value: zzz2r6_get_value_or_selection(input) };
@@ -13072,6 +13088,11 @@ function zzz2r6_find_cl_field_label(entryKey) {
     const input = zzz2r6_lastFocusedInput;
     if (!input) {
       zzz6f2_show_toast('Zzz2-R7: klikni do cieľového poľa, potom stlač PASTE.');
+      return;
+    }
+    // Zzz6-R:COPY-PASTE-EXCEPTIONS - symetricka ochrana aj na PASTE strane (nie len COPY) - viz katalog vyssie v subore
+    if (zzz6r_is_copy_paste_exception(input)) {
+      zzz6f2_show_toast('Zzz2-R7: vloženie do tohto poľa je zablokované (Zzz6-R:COPY-PASTE-EXCEPTIONS, bezpečnosť).');
       return;
     }
     const entryKey = input.getAttribute && input.getAttribute('data-entry-id');
@@ -14741,11 +14762,23 @@ function zzz10v1_build_send_activation_button(usernameBox) {
       } catch (err) {
         const errDetail = (err && err.message) || String(err);
         console.warn(`Zzz10-V1:SEND-EMAIL - best-effort email zlyhal (nekriticke). DOVOD: ${errDetail}`);
-        zzz6f2_show_toast(`Zzz10-V1:SEND-EMAIL - email sa nepodarilo odoslat (kod je aj tak vidiet vyssie). DOVOD: ${errDetail}`);
+        // === [Zzz10-V1:NO-PLAINTEXT-CODE] Vrso 2026-09-14 ("toto treba odstranit...a ani nahodou aby sa
+        // nikdy nezobrazilo"): PREDTYM sa toast odvolaval na "kod je aj tak vidiet vyssie" - kedze ten
+        // "vyssie" toast (aktivacny kod v plaintexte) je TERAZ NATRVALO ODSTRANENY (viz dalsi komentar
+        // nizsie), tento text uz nedava zmysel a bol by zavadzajuci - user by hladal kod, ktory sa uz nikde
+        // nezobrazi. Upravene na jasne info bez akehokolvek odkazu na viditelny kod. | Vrso -> Claude AI | 2026-09-14 ===
+        zzz6f2_show_toast(`Zzz10-V1:SEND-EMAIL - email sa nepodarilo odoslat. DOVOD: ${errDetail}`);
       }
       // === [/Zzz10-V1:SEND-EMAIL] ===
 
-      zzz6f2_show_toast(`Zzz10-V1: aktivacny kod pre "${username}": ${activationCode} (rezervovane na 24 hodin, zadaj kod nizsie a stlac REGISTER ENTRY).`);
+      // === [Zzz10-V1:NO-PLAINTEXT-CODE] Vrso poziadavka 2026-09-14 ("toto treba odstranit!!! a ani nahodou
+      // aby sa nikdy nezobrazilo!!!!"): PREDOSLY toast VYPISOVAL aktivacny kod PRIAMO V PLAINTEXTE v appke
+      // (povodne zamerany ako docasny fallback pocas Resend sandbox obmedzenia, kym nebola overena vlastna
+      // domena) - TOTO JE BEZPECNOSTNY PROBLEM (kod viditelny komukolvek, kto sa pozrie na obrazovku/
+      // screenshot, dokonca zachyteny aj v tejto konverzacii na screenshote) a Vrso ho VYSLOVNE a
+      // DOSLEDNE ziada odstranit NATRVALO, nie len docasne skryt. Nahradene VSEOBECNOU spravou bez kodu -
+      // user musi kod ziskat VYLUCNE z emailu. | Vrso -> Claude AI | 2026-09-14 ===
+      zzz6f2_show_toast(`Zzz10-V1: aktivačný kód odoslaný na "${email}" - skontroluj si email (aj spam) a zadaj kód nižšie.`);
     } finally {
       zzz10v1_update_send_button_state(btn, entryData['17'] || '', zzz10v1CachedRegistrations.usernames); // Zzz10-V1:BTN-AVAILABILITY-COLOR - namiesto natvrdo "false", respektuje disabled-kym-taken pravidlo
     }
