@@ -160,6 +160,22 @@ body{margin:0;color:#fff;font-family:sans-serif;}
 .circle#versoEntryButton.zzz6f40-fix-flash {
   animation: zzz6f40-fix-flash-anim 500ms ease-out;
 }
+/* === [Zzz-LOGO-STATUS] (CSS cast) - farebny prstenec priamo na okraji kruhu, tam kde je retaz (viz JS
+   cast [Zzz-LOGO-STATUS] pre plne vysvetlenie vratane historie s predoslym box-shadow pokusom).
+   POCTIVY TECHNICKY LIMIT: verso-chain.jpg je JPG (bez alfa kanala/priehladnosti) - CSS nevie farebne
+   "vybrat" LEN retazove clanky a nechat medzery biele (to by vyzadovalo samostatny obrazok s
+   priehladnostou/masku). Tento prstenec preto farbi CELY okraj kruhu naraz (vizualne najblizsie k
+   "farbenie retaze", ake sa da dosiahnut bez upravy samotneho obrazku). | Vrso -> Claude AI | 2026-09-XX === */
+.circle#versoEntryButton.zzz-logo-green {
+  box-shadow: 0 0 0 4px #22c55e, 0 0 14px 4px rgba(34, 197, 94, 0.7);
+}
+.circle#versoEntryButton.zzz-logo-orange {
+  box-shadow: 0 0 0 4px #FF8C00, 0 0 14px 4px rgba(255, 140, 0, 0.7);
+}
+.circle#versoEntryButton.zzz-logo-red {
+  box-shadow: 0 0 0 4px #dc2626, 0 0 14px 4px rgba(220, 38, 38, 0.7);
+}
+/* === [/Zzz-LOGO-STATUS] (CSS cast) === */
 /* === [Zzz6-F40:NO-NATIVE-LONGPRESS] OPRAVA (Vrso hlasenie 2026-09-01, "ked podrzim zvyrazni sa vyssie nad
    tym klasicke mimo verso kontextove vyznacenie") - ochrana proti nativnemu "Kopirovat"/vyznaceniu textu
    (rovnaky princip ako existujuci zzz0-R1 FIX 2026-08-19 na #zzz6f7UsernameLabel) bola doteraz LEN na
@@ -8814,6 +8830,7 @@ function zzz6f7_set_login_state(isLoggedIn) {
   if (!label) return;
   zzz6f7_isLoggedIn = isLoggedIn;
   label.classList.toggle('zzz6-f7-active', !!isLoggedIn);
+  if (typeof zzz_recompute_logo_status === 'function') zzz_recompute_logo_status(); // Zzz-LOGO-STATUS
 }
 
 (function bindZzz6F7LoginState() {
@@ -8878,6 +8895,7 @@ let zzz0r1_lastKnownConnectionState = null;
 function zzz0r1_set_db_connection_state(isConnected, errorDetail, suppressToast = false) {
   const label = document.getElementById('zzz6f7UsernameLabel');
   if (label) label.classList.toggle('zzz0r1-db-disconnected', !isConnected);
+  if (typeof zzz_recompute_logo_status === 'function') zzz_recompute_logo_status(); // Zzz-LOGO-STATUS
   // OPRAVA (Vrso 2026-09-12, "aj tieto pripadne ine messages ktore nie su nutne minimalizuj/schovaj"):
   // rozsirene aj o DataCloneError/postMessage (Headers object could not be cloned) - ZNAMY, uz zdokumentovany
   // environment-quirk Supabase JS klienta (viz [DataCloneError-FIX] komentar nizsie v subore), potvrdene ze
@@ -15999,6 +16017,35 @@ function zzz_session_stop() {
   zzz_session_apply_headers_to_client(null, null); // Zzz-SESSION:FRESHNESS-GATE - vrat "sb" spat na plain anon klienta bez session headers
 }
 
+// === [Zzz-LOGO-STATUS] Vrso poziadavka: "oznac kde je logo button zelenou [ak prihlaseny], ak vypadok
+// siete/spojenia oranzovou a ak iny error (napr dvaja prihlaseny) [cervenou]... zjednot tvoje farebne/
+// procesne upravy s vyznacenim username...paci sa mi napad retaz oznacit farbou".
+// HISTORIA/KONTEXT (najdene v subore, Vrso 2026-09-11): predtym BOL skuseny box-shadow prstenec na tomto
+// kruhu, Vrso ho VYSLOVNE ziadal odstranit ("zrus tym tvojim zlatym kruhom... nic viac"). TOTO JE VEDOMY
+// NAVRAT k farbe na ziadost Vrsa (nie omyl/ignorovanie tej starej poziadavky) - TERAZ ale INAK, priamo na
+// retaz (drop-shadow sledujuci tvar grafiky cez alpha kanal, nie hranaty/okrúhly box-shadow prstenec okolo
+// celeho ohranicujuceho boxu) - vizualne prirodzenejsie "farbenie reťaze samotnej".
+// ZJEDNOTENIE (Vrso: "zjednot s vyznacenim username"): NEPOUZIVA vlastny nezavisly stavovy system - CITA
+// PRIAMO tie iste existujuce stavy, co uz farbia username text (.zzz6-f7-active/.zzz0r1-db-disconnected),
+// LEN ich PRIDA navyse aj na retaz - jeden zdroj pravdy, dva miesta zobrazenia.
+// PRIORITA (ak nastane viac naraz): CERVENA (standby/konflikt) > ORANZOVA (offline/DB nedostupna) > ZELENA
+// (prihlaseny, vsetko OK) > ziadna farba (neprihlaseny). | Vrso -> Claude AI | 2026-09-XX ===
+function zzz_recompute_logo_status() {
+  const circle = document.getElementById('versoEntryButton');
+  if (!circle) return;
+  const label = document.getElementById('zzz6f7UsernameLabel');
+  const isDbDisconnected = !!(label && label.classList.contains('zzz0r1-db-disconnected'));
+  circle.classList.remove('zzz-logo-green', 'zzz-logo-orange', 'zzz-logo-red');
+  if (zzz_isInStandby) {
+    circle.classList.add('zzz-logo-red');
+  } else if (zzz_isOffline || isDbDisconnected) {
+    circle.classList.add('zzz-logo-orange');
+  } else if (zzz6f7_isLoggedIn) {
+    circle.classList.add('zzz-logo-green');
+  }
+}
+// === [/Zzz-LOGO-STATUS] ===
+
 // === [Zzz-SESSION:STANDBY-UI] "STANDBY nie LOGOUT" (povodny navrh z verso-bezpecnost-podklad.md, bod 7) -
 // pouzivatel OSTAVA prihlaseny/vidi svoje data, len sa TLMIA zápisové akcie (nie plny lockout). Zatial
 // jednoduche riesenie: CSS trieda na <body>, ktora vizualne oznaci stav a (cez CSS pravidlo nizsie v
@@ -16008,12 +16055,14 @@ function zzz_enter_standby_mode() {
   if (zzz_isInStandby) return;
   zzz_isInStandby = true;
   document.body.classList.add('zzz-standby-mode');
+  zzz_recompute_logo_status(); // Zzz-LOGO-STATUS
   zzz6f2_show_toast('Zzz-SESSION: iné zariadenie prevzalo toto prihlásenie - si v STANDBY režime (len na čítanie), kým sa znova neprihlásiš.');
 }
 
 function zzz_exit_standby_mode() {
   zzz_isInStandby = false;
   document.body.classList.remove('zzz-standby-mode');
+  zzz_recompute_logo_status(); // Zzz-LOGO-STATUS
 }
 // === [/Zzz-SESSION:STANDBY-UI] ===
 
@@ -16028,6 +16077,7 @@ function zzz_enter_offline_mode() {
   if (zzz_isOffline) return;
   zzz_isOffline = true;
   document.body.classList.add('zzz-offline-mode');
+  zzz_recompute_logo_status(); // Zzz-LOGO-STATUS
   zzz6f2_show_toast('Zzz-SESSION: spojenie so serverom sa nepodarilo overiť - zápisy sú dočasne zablokované (ochranný OFFLINE režim), kým sa spojenie neobnoví.');
 }
 
@@ -16035,6 +16085,7 @@ function zzz_exit_offline_mode() {
   if (!zzz_isOffline) return;
   zzz_isOffline = false;
   document.body.classList.remove('zzz-offline-mode');
+  zzz_recompute_logo_status(); // Zzz-LOGO-STATUS
   zzz6f2_show_toast('Zzz-SESSION: spojenie obnovené - zápisy sú znova povolené.');
 }
 
