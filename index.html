@@ -14534,9 +14534,8 @@ let zzz10v1LastSentActivation = null; // { username, email, code, expiresAt } - 
 function zzz10v1_update_register_entry_button_state() {
   const btn = document.getElementById('versoRegisterSetupEntryButton');
   if (!btn) return; // btn neexistuje ak je user uz prihlaseny (vtedy sa renderuje LOG OUT namiesto)
-  const username = zzz10v1_normalize((entryData['17'] || '').trim());
-  const emailCell = document.getElementById('versoRegisterSetupEmailCell');
-  const email = zzz10v1_normalize((emailCell ? emailCell.value : '').trim());
+  const username = zzz10v1_normalize(zzz10v1UsernameFieldValue.trim());
+  const email = zzz10v1_normalize(zzz10v1EmailFieldValue.trim());
   const code = (entryData['35'] || '').trim();
   const s = zzz10v1LastSentActivation;
   const enabled = !!s
@@ -14588,11 +14587,16 @@ function zzz10v1_build_username_field() {
   wrap.appendChild(label);
   // === [/Zzz10-V1:USERNAME-LABEL] ===
 
-  // === [Zzz10-V1:USERNAME-LIVE] .zzz10v1-username-box je ZAMERNE NIE ".entry-cell" (a NEMA
+  // === [Zzz10-V1:USERNAME-LIVE] OPRAVA (Vrso 2026-09-15, "áno aj username [rovnaky problem ako email]"):
+  // PREDTYM sa KAZDY stlaceny znak zapisoval PRIAMO do zdieleneho entryData["17"] (write_to_entry na kazdy
+  // keystroke) - rovnaky bug ako pri emaile, len pre username: rozpisany (este NEDOKONCENY) pokus o
+  // username sa okamzite premietal do hlavnej CRM CL, viditelny vsade. TERAZ pocas pisania zapisuje LEN do
+  // vlastneho izolovaneho store (zzz10v1UsernameFieldValue) - entryData["17"] sa nastavi AZ RAZ, PO
+  // uspesnej registracii (viz koniec zzz10v1_submit_register - to je ZAMERNE ponechane, aby sa Login modal
+  // aj Zzz1-DEFAULT-OWNER-USER spravne predvyplnili novym menom - jednorazovy zapis PO fakte, nie
+  // priebezny unik POCAS pisania). .zzz10v1-username-box je ZAMERNE NIE ".entry-cell" (a NEMA
   // data-entry-id atribut) - render_entry_cell() (F1:CELL-LOGIC) by inak querySelectorAll-om nasiel tuto
-  // bunku a prepisal jej textContent, cim by zmazal mirror+input deti nizsie. Zapis do zdielaneho
-  // entryData["17"] sa napriek tomu deje (write_to_entry na kazdy keystroke), takze DATA su stale
-  // spolocne s Login (M1/M2) - len TENTO konkretny box sa renderuje SAM SEBOU. ===
+  // bunku a prepisal jej textContent, cim by zmazal mirror+input deti nizsie. | Vrso -> Claude AI | 2026-09-15 ===
   const box = document.createElement('div');
   box.className = 'zzz10v1-username-box';
   box.id = 'versoRegisterSetupUserBox';
@@ -14606,7 +14610,7 @@ function zzz10v1_build_username_field() {
   input.id = 'versoRegisterSetupUserInput';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.value = entryData['17'] || '';
+  input.value = zzz10v1UsernameFieldValue;
 
   box.appendChild(mirror);
   box.appendChild(input);
@@ -14615,7 +14619,7 @@ function zzz10v1_build_username_field() {
   zzz10v1_render_username_highlight(mirror, input.value, zzz10v1CachedRegistrations.usernames);
 
   input.addEventListener('input', () => {
-    write_to_entry('17', input.value); // perzistuje do zdielaneho entryData["17"]
+    zzz10v1UsernameFieldValue = input.value; // izolovany store, NIE entryData - viz OPRAVA komentar vyssie
     zzz10v1_render_username_highlight(mirror, input.value, zzz10v1CachedRegistrations.usernames);
     zzz10v1_update_send_button_state(document.getElementById('versoRegisterSetupSearchButton'), input.value, zzz10v1CachedRegistrations.usernames); // Zzz10-V1:BTN-AVAILABILITY-COLOR - zive prekreslenie SEND ACTIVATION CODE farby pri kazdom pismene
     zzz10v1_update_register_entry_button_state(); // Zzz10-V1:REGISTER-ENTRY-GATE - zmena username invaliduje predchadzajuci zapas
@@ -14647,13 +14651,47 @@ function zzz10v1_build_username_field() {
 // data-entry-id="10" s Login CONTENT - je to TERAZ plnohodnotny LOKALNY <input> (id
 // versoRegisterSetupEmailCell), uplne odpojeny od entryData/hlavnej CL, rovnaky princip ako Login USER/
 // CONTENT (Zzz6-F36). | Vrso -> Claude AI | 2026-09-15 ===
-// EMAIL pole - OPRAVA (Vrso hlasenie 2026-09-15, "prečo sa zobrazuje môj email po registrácii?"): PREDTYM
-// zdielalo data-entry-id="10" s Login CONTENT bunkou (rovnaky "DRY" dovod, ako bol povodne aj Login
-// CONTENT/heslo) - presne TEN ISTY BUG, ako sme uz raz nasli a opravili pri Login hesle (Zzz6-F36 refaktor,
-// 2026-09-02): cokolvek sa napise do tohto pola, sa vdaka render_entry_cell() (querySelectorAll na
-// data-entry-id) OKAMZITE premietne aj do hlavneho, VZDY VIDITELNEHO CRM Command Line riadku - realny unik
-// emailu do hlavneho zobrazenia appky. OPRAVENE rovnakym postupom ako pri Login: TERAZ plnohodnotny LOKALNY
-// <input> element, UPLNE ODPOJENY od entryData/hlavnej CL. | Vrso -> Claude AI | 2026-09-15 ===
+// EMAIL pole - OPRAVA (Vrso hlasenie 2026-09-15, "preco sa zobrazuje moj email po registracii?" + nasledne
+// spresnenie "chcem aby boli vyuzite CL/EL...kludne pouzi 1-M4 CRM template modul"): PRVY POKUS opravy
+// (holy <input>, rovnaky vzor ako Login) Vrso ODMIETOL - chce zachovat CL/EL VZHLAD/SPRAVANIE (klik na
+// bunku -> modalne okno na upravu, presne ako vsade inde v appke), LEN bez naviazania na entryData/hlavnu
+// CRM CL. RIESENIE: rovnaky PRINCIP ako existujuci Zzz1-M4a system (zzz1m4aFields - vlastny izolovany
+// store, klik->modal editacia, NIKDY entryData) - ale SAMOSTATNA, VLASTNA instancia pre toto jedno pole
+// (nie priamo zdielana M4a globalna premenna/DOM kontajner, ktory je vazany na INY ucel - template
+// preview modul). | Vrso -> Claude AI | 2026-09-15 ===
+let zzz10v1EmailFieldValue = ''; // Zzz10-R6:EMAIL-FIELD vlastny izolovany store (rovnaky princip ako zzz1m4aFields), NIKDY entryData
+let zzz10v1UsernameFieldValue = ''; // Zzz10-V1:USERNAME-LIVE vlastny izolovany store (rovnaky princip), NIKDY entryData pocas pisania
+
+function zzz10v1_open_email_modal(cell) {
+  const { box, removeBox } = zzz6f41_create_context_window('versoM4aContextWindowStack');
+  const header = document.createElement('div');
+  header.className = 'zzz-context-header';
+  header.textContent = 'EMAIL';
+  box.appendChild(header);
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'entry-modal-textarea';
+  textarea.value = zzz10v1EmailFieldValue;
+  box.appendChild(textarea);
+
+  const actions = document.createElement('div');
+  actions.className = 'entry-modal-actions';
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'entry-modal-delete';
+  deleteBtn.textContent = 'DELETE';
+  deleteBtn.onclick = () => { zzz10v1EmailFieldValue = ''; cell.textContent = ''; removeBox(); };
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'entry-modal-close';
+  closeBtn.textContent = 'ZATVORIT';
+  closeBtn.onclick = () => { zzz10v1EmailFieldValue = textarea.value; cell.textContent = textarea.value || ''; removeBox(); };
+
+  actions.appendChild(deleteBtn);
+  actions.appendChild(closeBtn);
+  box.appendChild(actions);
+}
+
 function zzz10v1_build_email_field() {
   const wrap = document.createElement('div');
   wrap.className = 'zzz10v1-field-col';
@@ -14665,12 +14703,11 @@ function zzz10v1_build_email_field() {
   label.textContent = 'EMAIL';
   wrap.appendChild(label);
 
-  const cell = document.createElement('input');
-  cell.type = 'text';
-  cell.className = 'entry-cell zzz10v1-email-cell zzz6f36-login-local-input';
+  const cell = document.createElement('div');
+  cell.className = 'entry-cell zzz10v1-email-cell';
   cell.id = 'versoRegisterSetupEmailCell';
-  cell.autocomplete = 'off';
-  cell.placeholder = 'tap to enter email';
+  cell.textContent = zzz10v1EmailFieldValue || 'tap to enter email';
+  cell.addEventListener('click', () => zzz10v1_open_email_modal(cell));
   wrap.appendChild(cell);
 
   return wrap;
@@ -14694,9 +14731,8 @@ function zzz10v1_build_send_activation_button(usernameBox) {
   btn.setAttribute('aria-label', 'Send activation code');
   btn.textContent = 'SEND ACTIVATION CODE';
   btn.addEventListener('click', async () => {
-    const username = (entryData['17'] || '').trim();
-    const emailCellSend = document.getElementById('versoRegisterSetupEmailCell');
-    const email = (emailCellSend ? emailCellSend.value : '').trim();
+    const username = zzz10v1UsernameFieldValue.trim();
+    const email = zzz10v1EmailFieldValue.trim();
     if (!username) {
       zzz6f2_show_toast('Zzz10-V1: najprv vypln USERNAME');
       return;
@@ -14820,7 +14856,7 @@ function zzz10v1_build_send_activation_button(usernameBox) {
       // user musi kod ziskat VYLUCNE z emailu. | Vrso -> Claude AI | 2026-09-14 ===
       zzz6f2_show_toast(`Zzz10-V1: aktivačný kód odoslaný na "${email}" - skontroluj si email (aj spam) a zadaj kód nižšie.`);
     } finally {
-      zzz10v1_update_send_button_state(btn, entryData['17'] || '', zzz10v1CachedRegistrations.usernames); // Zzz10-V1:BTN-AVAILABILITY-COLOR - namiesto natvrdo "false", respektuje disabled-kym-taken pravidlo
+      zzz10v1_update_send_button_state(btn, zzz10v1UsernameFieldValue || '', zzz10v1CachedRegistrations.usernames); // Zzz10-V1:BTN-AVAILABILITY-COLOR - namiesto natvrdo "false", respektuje disabled-kym-taken pravidlo
     }
   });
   return btn;
@@ -14888,9 +14924,8 @@ function zzz10v1_build_terms_note() {
 //     (zzz6f36_open_login_modal), aby si novy user hned nastavil heslo pod svojim novym username-om. ===
 // Zzz10-R6:EMAIL-FIELD (aj) - validacia/kontrola/ulozenie emailu, viz master-tag pri zzz10v1_build_email_field
 async function zzz10v1_submit_register() {
-  const username = (entryData['17'] || '').trim();
-  const emailCellSubmit = document.getElementById('versoRegisterSetupEmailCell');
-  const email = (emailCellSubmit ? emailCellSubmit.value : '').trim();
+  const username = zzz10v1UsernameFieldValue.trim();
+  const email = zzz10v1EmailFieldValue.trim();
   const enteredActivationCode = (entryData['35'] || '').trim();
   const passwordInput = document.getElementById('versoRegisterSetupPasswordInput'); // Zzz10-R7:PASSWORD-FIELD - lokalny, nie entryData
   const password = (passwordInput ? passwordInput.value : '').trim();
@@ -15037,8 +15072,10 @@ async function zzz10v1_submit_register() {
   zzz10v1_registrationsLocalCache[normalizedUsername] = JSON.parse(registrationPayload.data_json);
 
   zzz6f37_write_audit_log('user_register', { username, email }); // Zzz6-F37:AUDIT-LOG (2026-08-29)
-  zzz6f36_reset_command_line(); // vycisti formular (VSETKY R* bunky vratane USER/EMAIL/ACTIVATION CODE) pre dalsie pouzitie
+  zzz6f36_reset_command_line(); // vycisti formular (VSETKY R* bunky vratane USER/ACTIVATION CODE) pre dalsie pouzitie
   if (passwordInput) passwordInput.value = ''; // Zzz10-R7:PASSWORD-FIELD - lokalny input, nie entryData, vycistit rucne
+  zzz10v1EmailFieldValue = ''; // Zzz10-R6:EMAIL-FIELD - izolovany store, nie entryData, vycistit rucne (rovnaky princip ako heslo vyssie)
+  zzz10v1UsernameFieldValue = ''; // Zzz10-V1:USERNAME-LIVE - izolovany store, nie entryData, vycistit rucne (rovnaky princip)
 
   zzz6f2_show_toast(`Zzz10-V1 Register: uspesne zaregistrovany ako "${username}" - prihlas sa svojim novym heslom.`);
 
