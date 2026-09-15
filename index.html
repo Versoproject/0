@@ -3529,6 +3529,17 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     color: #3b82f6;
     text-decoration: underline;
   }
+  /* === [Zzz10-R7:PASSWORD-SIZE-SYNC] Vrso poziadavka 2026-09-15 ("synchronizovat velkostne s ostatnymi v
+     reg tabe") - PASSWORD pouziva zdielanu triedu .zzz6f36-login-local-input (90x44px, rovnaka ako Login
+     modul - TU sa NEMENI, aby to nerozbilo Login) - namiesto toho specifickejsie pravidlo LEN v ramci
+     Register Setup panelu, vysoka specificita prebije zdielane !important pravidla. Vyska zjednotena na
+     36px (rovnaka ako EMAIL aj USERNAME box), sirka 100px (ako USERNAME - heslo netreba tak siroke ako
+     email). | Vrso -> Claude AI | 2026-09-15 === */
+  .zzz10v1-panel input#versoRegisterSetupPasswordInput.zzz6f36-login-local-input {
+    width: 100px !important;
+    height: 36px !important;
+  }
+  /* === [/Zzz10-R7:PASSWORD-SIZE-SYNC] === */
   .zzz10v1-search-button {
     width: 100%;
     max-width: 260px;
@@ -14533,7 +14544,7 @@ let zzz10v1LastSentActivation = null; // { username, email, code, expiresAt } - 
 // zzz10v1_build_email_field - uz NIE entryData['10'])
 function zzz10v1_update_register_entry_button_state() {
   const btn = document.getElementById('versoRegisterSetupEntryButton');
-  if (!btn) return; // btn neexistuje ak je user uz prihlaseny (vtedy sa renderuje LOG OUT namiesto)
+  const passwordInput = document.getElementById('versoRegisterSetupPasswordInput'); // Zzz10-R7:PASSWORD-GATE - viz komentar pri zzz10v1_build_password_field
   const username = zzz10v1_normalize(zzz10v1UsernameFieldValue.trim());
   const email = zzz10v1_normalize(zzz10v1EmailFieldValue.trim());
   const code = (entryData['35'] || '').trim();
@@ -14543,7 +14554,8 @@ function zzz10v1_update_register_entry_button_state() {
     && email === s.email
     && code === s.code
     && Date.now() < new Date(s.expiresAt).getTime();
-  btn.disabled = !enabled;
+  if (btn) btn.disabled = !enabled;
+  if (passwordInput) passwordInput.disabled = !enabled; // Zzz10-R7:PASSWORD-GATE
 }
 // === [/Zzz10-V1:REGISTER-ENTRY-GATE] ===
 
@@ -14566,6 +14578,12 @@ function zzz10v1_build_password_field() {
   input.className = 'entry-cell zzz6f36-login-local-input';
   input.id = 'versoRegisterSetupPasswordInput';
   input.autocomplete = 'off';
+  // === [Zzz10-R7:PASSWORD-GATE] Vrso poziadavka 2026-09-15 ("vyplnit az po vlozeni aktivacneho kodu"):
+  // heslo pole je ZAMERNE disabled, kym sa nezhoduje spravne zadany aktivacny kod (rovnaka podmienka ako
+  // uz existujuci Zzz10-V1:REGISTER-ENTRY-GATE pre REGISTER ENTRY tlacidlo, viz
+  // zzz10v1_update_register_entry_button_state - ZNOVUPOUZITE, DRY, nie duplicitna logika). | Vrso -> Claude AI | 2026-09-15 ===
+  input.disabled = true;
+  input.placeholder = 'zadaj najprv aktivačný kód';
   wrap.appendChild(input);
 
   return { wrap, input };
@@ -14663,7 +14681,14 @@ let zzz10v1EmailFieldValue = ''; // Zzz10-R6:EMAIL-FIELD vlastny izolovany store
 let zzz10v1UsernameFieldValue = ''; // Zzz10-V1:USERNAME-LIVE vlastny izolovany store (rovnaky princip), NIKDY entryData pocas pisania
 
 function zzz10v1_open_email_modal(cell) {
-  const { box, removeBox } = zzz6f41_create_context_window('versoM4aContextWindowStack');
+  // === [Zzz10-R6:EMAIL-MODAL-FIX] OPRAVA (Vrso hlasenie 2026-09-15, "nedá sa vyplniť email"): PREDTYM sa
+  // pouzival 'versoM4aContextWindowStack' - kontajner, ktory existuje LEN v ramci samotneho M4a modulu
+  // (inde v appke). V kontexte Register Setup tento kontajner NIE JE v DOM, takze
+  // zzz6f41_create_context_window('versoM4aContextWindowStack') dostalo stack=null a stack.appendChild()
+  // TICHO SPADLO (TypeError, chyteny/prehliadnuty click-handlerom) - klik na EMAIL bunku preto nerobil
+  // vidiitelne nic. OPRAVENE: pouziva sa VSEOBECNY, VZDY-PRITOMNY kontajner (default parameter
+  // 'versoContextWindowStack'), rovnaky ako pouzivaju bezne entry-modaly vsade inde v appke. | Vrso -> Claude AI | 2026-09-15 ===
+  const { box, removeBox } = zzz6f41_create_context_window();
   const header = document.createElement('div');
   header.className = 'zzz-context-header';
   header.textContent = 'EMAIL';
