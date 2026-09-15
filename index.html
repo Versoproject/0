@@ -4039,6 +4039,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz-LOGO-STATUS - farebny prstenec na kruhovom logu (versoEntryButton): zelena=prihlaseny, oranzova=offline/DB nedostupna, cervena=standby/konflikt</span>
   <span class="module-tag">Zzz-RECOVERY:REMOTE-OVERRIDE (SYSTEM FUNCTION) - nudzove prevzatie uctu cez email token (zmena hesla + vynutene zrusenie session), token casovo neobmedzeny + auto-rotacia po pouziti, viz verso-recovery-setup.sql</span>
   <span class="module-tag">Zzz-SECURITY:BREACH-ALERT (SYSTEM FUNCTION) - email upozornenie po 5 nespravnych heslach za sebou, viz verso-breach-alert-setup.sql</span>
+  <span class="module-tag">Zzz10-R4:CHANGE-PASSWORD - skutocna zmena hesla (vyzaduje spravne stare heslo z cache), zrusi vsetky ostatne aktivne session</span>
+  <span class="module-tag">Zzz-RECOVERY:AUTO-TOKEN-ON-REGISTER - automaticky recovery token poslany emailom hned po uspesnej registracii</span>
   <span class="module-tag">Zzz10-V1:SEND-EMAIL - nahradene "bright-responder" novou Edge Function "verso-send-activation-email" (rovnaky Resend vzor ako Zzz0GitHub-Notify)</span>
   <span class="module-tag">Zzz6-F36 Login modal - pridany viditelny titulok "LOG IN" (predtym len maly gold button v riadku)</span>
   <span class="module-tag">Zzz10-0 Settings Workspace - opravene: NEZOBRAZUJE sa uz pred prihlasenim (predtym stary obsah zostaval za Login modalom)</span>
@@ -16666,19 +16668,82 @@ function zzz10m2_render_login_setup(body) {
   // === [/Zzz10-R1:MULTIVERIFICATION] ===
 
   // === [Zzz10-R4:CHANGE-PASSWORD] tlacidlo - Vrso 2026-08-24 ziadost "Pridaj zzz10-R4 change password
-  // button". Zatial LEN placeholder (info toast) - kedze povodny Zzz4-1 heslo-gate/hash system bol
-  // odstraneny (viz vyssie v subore), momentalne NEEXISTUJE ziadne skutocne ulozene heslo na zmenu.
-  // Miesto, kam sa neskor doplni SKUTOCNA zmena hesla, az ked vznikne novy sposob spravy hesla. | Vrso -> Claude AI | 2026-08-24 ===
-  const changePwBtn = document.createElement('button');
-  changePwBtn.type = 'button';
-  changePwBtn.className = 'zzz10r4-changepw-button';
-  changePwBtn.id = 'versoLoginSetupChangePasswordButton';
-  changePwBtn.setAttribute('aria-label', 'Change password');
-  changePwBtn.textContent = 'CHANGE PASSWORD';
-  changePwBtn.addEventListener('click', () => {
-    zzz6f2_show_toast('Zzz10-R4 Change Password: zatial bez funkcie (heslo momentalne nie je nikde ukladane/overovane)');
-  });
-  row.appendChild(changePwBtn);
+  // button". UPDATE (Vrso 2026-09-15, "to inak tiez zapracuj pod oznacenim Zzz10-R4 change password"):
+  // SKUTOCNA implementacia namiesto placeholder toastu - povodny komentar ("heslo nikde nie je ukladane")
+  // uz NEPLATI, odvtedy existuje realny Zzz0Auth-Gate system. Vyzaduje SPRAVNE stare heslo (pouzite z
+  // [Zzz6-F36:LAST-CREDENTIALS] cache - user uz je prihlaseny, netreba ho pisat znova), nove heslo zadane
+  // do noveho INLINE polia (zobrazi sa az po kliku na CHANGE PASSWORD, aby nezavadzalo bezny vzhlad
+  // obrazovky). Po uspesnej zmene sa (rovnaky princip ako recovery) NASILU zrusia vsetky aktivne session
+  // inde. Tlacidlo LEN ked SI prihlaseny (predtym sa renderovalo aj neprihlasenemu, co nedavalo zmysel -
+  // niet co menit, ked nie si prihlaseny). | Vrso -> Claude AI | 2026-09-15 ===
+  if (zzz6f7_isLoggedIn) {
+    const changePwBtn = document.createElement('button');
+    changePwBtn.type = 'button';
+    changePwBtn.className = 'zzz10r4-changepw-button';
+    changePwBtn.id = 'versoLoginSetupChangePasswordButton';
+    changePwBtn.setAttribute('aria-label', 'Change password');
+    changePwBtn.textContent = 'CHANGE PASSWORD';
+    row.appendChild(changePwBtn);
+
+    const changePwRow = document.createElement('div');
+    changePwRow.className = 'zzz10r4-changepw-row';
+    changePwRow.style.display = 'none';
+
+    const newPassWrap = document.createElement('div');
+    newPassWrap.className = 'zzz-support-field-wrap zzz-support-content-wrap';
+    const newPassLabel = document.createElement('div');
+    newPassLabel.className = 'zzz-support-field-label';
+    newPassLabel.textContent = 'NOVÉ HESLO';
+    newPassWrap.appendChild(newPassLabel);
+    const newPassInput = document.createElement('input');
+    newPassInput.type = 'password';
+    newPassInput.className = 'entry-cell zzz6f36-login-local-input';
+    newPassInput.id = 'versoChangePasswordNewInput';
+    newPassInput.autocomplete = 'off';
+    newPassWrap.appendChild(newPassInput);
+    changePwRow.appendChild(newPassWrap);
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'zzz-support-entry-button';
+    confirmBtn.textContent = 'POTVRDIŤ ZMENU';
+    confirmBtn.addEventListener('click', async () => {
+      const newPassword = newPassInput.value.trim();
+      if (!newPassword) { zzz6f2_show_toast('Zzz10-R4: zadaj nové heslo.'); return; }
+      confirmBtn.disabled = true;
+      try {
+        const resp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+          body: JSON.stringify({ action: 'change_password', username: zzz6f36LastLoginUsername, oldPassword: zzz6f36LastLoginPassword, newPassword })
+        });
+        const result = await resp.json();
+        if (result.success) {
+          zzz6f36LastLoginPassword = newPassword; // [Zzz6-F36:LAST-CREDENTIALS] cache - aktualizovat, nech HOLD-VIEW ukazuje spravne nove heslo
+          newPassInput.value = '';
+          changePwRow.style.display = 'none';
+          zzz6f2_show_toast('Zzz10-R4: heslo zmenené, všetky aktívne prihlásenia inde zrušené.');
+        } else {
+          const reasonText = {
+            wrong_old_password: 'súčasné heslo v cache nesedí (prihlás sa znova a skús to hneď potom)',
+            not_registered: 'účet nie je zaregistrovaný',
+            old_and_new_password_required: 'chýba staré alebo nové heslo'
+          }[result.reason] || result.reason || 'neznámy dôvod';
+          zzz6f2_show_toast(`Zzz10-R4: zmena zlyhala - ${reasonText}.`);
+        }
+      } catch (err) {
+        zzz6f2_show_toast(`Zzz10-R4: volanie zlyhalo. DÔVOD: ${(err && err.message) || String(err)}`);
+      } finally {
+        confirmBtn.disabled = false;
+      }
+    });
+    changePwRow.appendChild(confirmBtn);
+
+    changePwBtn.addEventListener('click', () => {
+      changePwRow.style.display = changePwRow.style.display === 'none' ? 'flex' : 'none';
+    });
+    row.appendChild(changePwRow);
+  }
   // === [/Zzz10-R4:CHANGE-PASSWORD] ===
 
   // === [Zzz10-R3:REGISTER] PRESUNUTE (Vrso 2026-08-24, "Sorry nie do zz10-M2... oprav a zapracuj do
