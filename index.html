@@ -14424,9 +14424,15 @@ async function zzz10v1_fetch_known_registrations() {
 // hotova permanentna registracia). | Vrso -> Claude AI | 2026-08-31 ===
 const ZZZ10V1_RESERVATION_DURATION_MS = 24 * 60 * 60 * 1000; // "rezervovane iba po dobu jedneho dna"
 
+// === [Zzz-RLS:RESERVATION-RPC] Vrso 2026-09-15 - priamy anon .upsert() na verso_verification prestal
+// fungovat po dnesnom RLS audite (SELECT pre anon zatvoreny, nahradeny verso_verification_public view) -
+// ON CONFLICT DO UPDATE interne potrebuje SELECT na konfliktny riadok, ktory uz anon nema. Riesenie:
+// SECURITY DEFINER RPC write_username_reservation (rovnaky vzor ako is_email_registered/
+// check_reservation_conflict/get_own_reservation) - obchadza RLS bezpecne, tabulka zostava zvonka uzavreta.
+// | Vrso -> Claude AI | 2026-09-15 ===
 async function zzz10v1_write_reservation(payload) {
   try {
-    const writePromise = sb.from('verso_verification').upsert(payload, { onConflict: 'id' }); // upsert (nie insert) - rezervacia sa smie prepisat/obnovit tym istym userom
+    const writePromise = sb.rpc('write_username_reservation', { p_id: payload.id, p_data_json: payload.data_json }); // RPC nahradzajuca priamy upsert, viz Zzz-RLS:RESERVATION-RPC vyssie
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('Zzz10-V1 reservation upsert timeout (4s)')), 4000)
     );
