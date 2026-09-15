@@ -15571,13 +15571,109 @@ function zzz6f36_render_login(body) {
   try { zzz6x_deviceHasRealLoginHistory = !!localStorage.getItem(ZZZ10R1_EXPECTED_USERNAME_KEY); } catch (e) { /* localStorage nedostupne */ }
   // === [/Zzz6-X:HIDE-VERSO-DEV-LOGIN] ===
 
+  // === [Zzz6-X:DEV-FULL-RESET-LOGIN] Vrso 2026-09-15 ziadost: "prerob aj devlogin (idealne tak aby sa
+  // tym prihlasenim rovno aktivoval email kvoli testovaniu planovanych funkcii cize aby simuloval novu
+  // registraciu...vzdy sa Verso login bude tykat Zzz6-X funkcie" - kazdy klik na Quick Login TERAZ najprv
+  // ZMAZE stary "verso" dev ucet (server-side, service_role, cez novu verso-auth-gate akciu
+  // dev_reset_verso - hardcoded LEN na username "verso", nikdy nie na iny) a potom prejde CELY registracny
+  // cyklus odznova (rezervacia + realny aktivacny email + registracia), rovnakymi uz existujucimi
+  // funkciami ako skutocny Register Setup formular (DRY - ziadna nova zapisova logika, len ine poradie
+  // volania). Aktivacny kod NEMUSI cist z emailu (appka ho uz pozna z kroku 2), email sa aj tak posiela
+  // realne pre vizualnu kontrolu novych funkcii viazanych na registraciu (napr. auto-recovery-token). ===
+  async function zzz6x_dev_reset_and_reregister_verso() {
+    const devUsername = 'Verso';
+    const devEmail = ZZZ10V1_REUSABLE_TEST_EMAILS[0];
+    const devPassword = 'devquicklogin';
+    const normalizedUsername = zzz10v1_normalize(devUsername);
+    const normalizedEmail = zzz10v1_normalize(devEmail);
+
+    // KROK 1 - server-side reset (service_role, hardcoded len "verso")
+    const resetResp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ action: 'dev_reset_verso' })
+    });
+    const resetResult = await resetResp.json();
+    if (!resetResult.success) {
+      throw new Error(`reset zlyhal (${resetResult.error || resetResult.reason || 'neznamy dovod'})`);
+    }
+
+    // KROK 2 - rezervacia (rovnaka funkcia ako SEND ACTIVATION CODE tlacidlo, viz Zzz10-V1:RESERVATION)
+    const activationCode = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = new Date(Date.now() + ZZZ10V1_RESERVATION_DURATION_MS).toISOString();
+    const reservationPayload = {
+      id: `reservation-${normalizedUsername}`,
+      record_type: 'username_reservation',
+      data_json: JSON.stringify({ username: devUsername, email: devEmail, activation_code: activationCode, expires_at: expiresAt }),
+      updated_at: new Date().toISOString()
+    };
+    const reservationResult = await zzz10v1_write_reservation(reservationPayload);
+    if (!reservationResult.success) {
+      throw new Error(`rezervacia zlyhala (${reservationResult.error})`);
+    }
+
+    // realny aktivacny email - best-effort, len na vizualnu kontrolu (kod uz mame vyssie, neblokuje flow)
+    fetch(`${SUPABASE_URL}/functions/v1/verso-send-activation-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ email: devEmail.trim().toLowerCase(), code: activationCode, username: devUsername })
+    }).catch(e => console.warn('Zzz6-X:DEV-FULL-RESET-LOGIN - aktivacny email best-effort zlyhal:', e));
+
+    // KROK 3 - heslo server-side (Zzz0Auth-Gate, rovnaky pattern ako zzz10v1_submit_register)
+    const registerResp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ action: 'register', username: normalizedUsername, password: devPassword })
+    });
+    const registerResult = await registerResp.json();
+    if (!registerResult.success) {
+      throw new Error(`Zzz0Auth-Gate register zlyhal (${registerResult.reason || 'neznamy dovod'})`);
+    }
+
+    // KROK 4 - permanentny zaznam vo verso_verification (rovnaka funkcia ako zzz10v1_submit_register)
+    const userIdResult = await zzz10v1_get_next_user_id_atomic();
+    const userId = userIdResult.success ? userIdResult.id : null;
+    const systemId = await zzz10r5_compute_system_id(devUsername);
+    const registeredAt = new Date().toISOString();
+    const registrationPayload = {
+      id: `register-${normalizedUsername}`,
+      record_type: 'user_registration',
+      data_json: JSON.stringify({
+        username: devUsername,
+        email: devEmail,
+        activation_code: activationCode,
+        user_id: userId,
+        system_id: systemId,
+        registered_at: registeredAt
+      }),
+      updated_at: registeredAt
+    };
+    const writeResult = await zzz10v1_write_registration(registrationPayload);
+    if (!writeResult.success && !writeResult.duplicate) {
+      throw new Error(`permanentny zapis registracie zlyhal (${writeResult.error || 'neznamy dovod'})`);
+    }
+    zzz6f37_write_audit_log('user_register', { username: devUsername, email: devEmail }); // Zzz6-F37:AUDIT-LOG, rovnaky vzor ako realna registracia
+  }
+  // === [/Zzz6-X:DEV-FULL-RESET-LOGIN] ===
+
   if (zzz6f36LoginMode !== 'multiverification' && zzz6x_deviceHasRealLoginHistory) {
     const quickLoginBtn = document.createElement('button');
     quickLoginBtn.type = 'button';
     quickLoginBtn.className = 'zzz10dev-quick-login-button';
     quickLoginBtn.id = 'versoQuickLoginButton';
     quickLoginBtn.textContent = 'QUICK LOGIN (DEV)';
-    quickLoginBtn.addEventListener('click', () => {
+    quickLoginBtn.addEventListener('click', async () => {
+      quickLoginBtn.disabled = true;
+      quickLoginBtn.textContent = 'RESETUJEM...';
+      try {
+        await zzz6x_dev_reset_and_reregister_verso(); // Zzz6-X:DEV-FULL-RESET-LOGIN - zmaze + znovu zaregistruje "Verso" pri kazdom kliku
+      } catch (err) {
+        zzz6f2_show_toast(`Zzz6-X:DEV-FULL-RESET-LOGIN - reset/registracia zlyhala: ${err.message || err}`);
+        quickLoginBtn.disabled = false;
+        quickLoginBtn.textContent = 'QUICK LOGIN (DEV)';
+        return;
+      }
+      quickLoginBtn.textContent = 'QUICK LOGIN (DEV)';
       const userInput = document.getElementById('versoLoginUserCell');
       const contentInput = document.getElementById('versoLoginContentCell');
       if (userInput) userInput.value = 'Verso';
