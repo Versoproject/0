@@ -16106,6 +16106,54 @@ async function zzz11m1_submit_username_setup({ username, content }) {
   }
 }
 
+// === [Zzz13-MV:MULTIVERIFICATION-DATA] Vrso poziadavka 2026-09-15 ("potrebujem riesit uz teraz...
+// pouzit uz vytvorenu username databazu, nazov je OK...mozem urobit fiktivne, len to treba pripravit"):
+// ZAKLADNA infrastruktura pre trvale multiverifikacne data (OP, foto, biometria v buducnosti) - PRIAMO v
+// PRIPRAVA, NIE UI zatial - toto je len ZAPISOVA funkcia (rovnaky vzor ako zzz11m1_submit_username_setup
+// vyssie, DRY) + priprava na sirsi Zzz13-MV modul. Zapisuje do TEJ ISTEJ tabulky (verso_username_setup),
+// ODLISENE cez category='multiverification' (namiesto 'username support') a NOVY data_json stlpec
+// (strukturovane data, nie len jednoduchy text ako povodny 'content'). Uzavreta tabulka (ziadny anon
+// SELECT/UPDATE/DELETE) - rovnaka bezpecnostna urovna, ako uz mala pre username support.
+// POCTIVE PRIZNANIE ROZSAHU: toto je LEN zapisovy mechanizmus + priprava struktury. Governance/signatari/
+// schvalovanie NIE JE sucastou tejto casti (Vrso vyslovne: "nejde mi o to vyriesit signatarstvo teraz").
+// Fiktivne/test data su OK, kym sa nedorieši, ake presne polia realne treba (a ktore sa NIKDY nemaju
+// ukladat, napr. rodne cislo). | Vrso -> Claude AI | 2026-09-15 ===
+async function zzz13mv_submit_multiverification_data({ username, verificationType, dataJson }) {
+  if (!username) {
+    zzz6f2_show_toast('Zzz13-MV: chyba username.');
+    return false;
+  }
+  if (!verificationType) {
+    zzz6f2_show_toast('Zzz13-MV: chyba typ verifikacie (verificationType).');
+    return false;
+  }
+  const payload = {
+    username,
+    content: verificationType, // kratky human-readable popis typu (napr. "identity_document_placeholder")
+    category: 'multiverification', // ODLISENE od 'username support' - viz komentar vyssie
+    data_json: JSON.stringify(dataJson || {}),
+    created_at: new Date().toISOString()
+  };
+  try {
+    const writePromise = sb.from('verso_username_setup').insert(payload);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Zzz13-MV insert timeout (4s)')), 4000)
+    );
+    const { error } = await Promise.race([writePromise, timeoutPromise]);
+    if (error) throw error;
+    zzz0r1_set_db_connection_state(true);
+    zzz6f2_show_toast(`Zzz13-MV: multiverifikačné dáta uložené (${verificationType}).`);
+    return true;
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    console.error(`Zzz13-MV:MULTIVERIFICATION-DATA - zapis zlyhal. DOVOD: ${errDetail}`);
+    zzz0r1_set_db_connection_state(false, errDetail, true);
+    zzz6f2_show_toast('Zzz13-MV: uloženie zlyhalo, skús znova.');
+    return false;
+  }
+}
+// === [/Zzz13-MV:MULTIVERIFICATION-DATA] ===
+
 function zzz11m1_render_username_setup(body) {
   const built = zzz_build_support_cl_row({
     idPrefix: 'UserSetup',
