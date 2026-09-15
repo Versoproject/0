@@ -8619,7 +8619,7 @@ const zzz4f1ConfirmedNumbersCache = zzz4f1_load_confirmed_numbers_cache_from_sto
 async function zzz4f1_get_confirmed_entry_numbers() {
   let remoteIds = [];
   try {
-    const fetchPromise = sb.from('verso_verification').select('*').eq('record_type', 'entry_number_confirmation');
+    const fetchPromise = sb.from('verso_verification_public').select('*').eq('record_type', 'entry_number_confirmation');
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('zzz4-1 Supabase fetch timeout (4s)')), 4000)
     );
@@ -14319,23 +14319,41 @@ async function zzz10v1_write_registration(payload) {
 // pokus by len zbytocne zdrzoval) - realna DB-level ochrana (PPP-1:USERNAME-UNIQUE-GUARD, insert-only PK)
 // zostava vzdy funkcna aj pri zlyhani oboch pokusov, TOTO rieši LEN spravnost vizualnej napovedy. | Vrso -> Claude AI | 2026-08-31 ===
 // Zzz10-R6:EMAIL-FIELD (aj) - zbiera 'emails' pole popri 'usernames'
+// === [Zzz-RLS:VERIFICATION-VIEW] Vrso poziadavka 2026-09-15 ("zatvor anon SELECT na verso_verification,
+// email nechranene citatelny") - TERAZ cita z verso_verification_public (bezpecny VIEW bez email polia,
+// viz verso-bezpecny-view-pre-verso-verification.sql) namiesto priamo z tabulky. "emails" pole uz VZDY
+// prazdne (view ho neobsahuje) - PONECHANE v navratovej hodnote len kvoli spatnej kompatibilite s
+// volajucim kodom (nizsie prerobene na samostatnu is_email_registered() RPC kontrolu, viz
+// zzz10v1_check_email_registered nizsie v subore), aby sa nemuselo prepisovat viac miest naraz. | Vrso -> Claude AI | 2026-09-15 ===
 async function zzz10v1_fetch_known_registrations_once(timeoutMs) {
   const usernames = [];
-  const emails = [];
   function collectFromRow(row) {
     let data = {};
     try { data = JSON.parse(row.data_json || '{}'); } catch (e) { return; /* poskodeny data_json - preskocit riadok */ }
     if (data.username) usernames.push(data.username);
-    if (data.email) emails.push(data.email);
   }
-  const fetchPromise = sb.from('verso_verification').select('*').eq('record_type', 'user_registration');
+  const fetchPromise = sb.from('verso_verification_public').select('*').eq('record_type', 'user_registration');
   const timeoutPromise = new Promise((_, reject) =>
     setTimeout(() => reject(new Error(`Zzz10-V1 Supabase fetch timeout (${timeoutMs / 1000}s)`)), timeoutMs)
   );
   const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
   if (error) throw error;
   (data || []).forEach(collectFromRow);
-  return { usernames, emails };
+  return { usernames, emails: [] }; // emails VZDY prazdne - viz komentar vyssie, pouzi zzz10v1_check_email_registered() namiesto .emails.includes()
+}
+
+// Zzz-RLS:VERIFICATION-VIEW - cielena, bezpecna kontrola JEDNEHO emailu (RPC, SECURITY DEFINER funkcia na
+// serveri) - nikdy nevystavi cely zoznam registrovanych emailov klientovi, na rozdiel od predoslej
+// .emails.includes() kontroly, ktora vyzadovala stiahnut VSETKY emaily naraz. | Vrso -> Claude AI | 2026-09-15
+async function zzz10v1_check_email_registered(normalizedEmail) {
+  try {
+    const { data, error } = await sb.rpc('is_email_registered', { check_email: normalizedEmail });
+    if (error) throw error;
+    return !!data;
+  } catch (err) {
+    console.error(`Zzz-RLS:VERIFICATION-VIEW - is_email_registered RPC zlyhalo. DOVOD: ${(err && err.message) || String(err)}`);
+    return false; // fail-open pre TENTO konkretny check (nie bezpecnostna hranica - DB-level UNIQUE/insert guard je skutocna ochrana proti duplicite, toto je len UX napoveda vopred)
+  }
 }
 
 // Zzz10-R6:EMAIL-FIELD (aj) - zbiera 'emails' pole popri 'usernames'
@@ -14413,27 +14431,37 @@ async function zzz10v1_write_reservation(payload) {
   }
 }
 
-// najde AKTIVNU (este nevyprsanu) rezervaciu pre dany normalizovany username, ak existuje. Vracia null ak
-// ziadna rezervacia neexistuje ALEBO uz vyprsala (24h, viz ZZZ10V1_RESERVATION_DURATION_MS).
-async function zzz10v1_fetch_reservation(normalizedUsername) {
-  const id = `reservation-${normalizedUsername}`;
+// === [Zzz-RLS:VERIFICATION-VIEW] Vrso poziadavka 2026-09-15 - povodna zzz10v1_fetch_reservation() citala
+// CELY rezervacny zaznam (vratane cudzieho emailu) priamo z tabulky - teraz NAHRADENE dvomi cielenymi RPC
+// volaniami (SECURITY DEFINER funkcie na serveri), kazde pre svoj presny ucel, ziadne z nich nikdy
+// nevystavi cudzi email/aktivacny kod:
+//   1) zzz10v1_check_reservation_conflict - LEN "existuje konflikt?" (ano/nie), pouzite pri SEND
+//      ACTIVATION CODE kroku (kontrola, ci username nie je prave rezervovany niekym inym).
+//   2) zzz10v1_get_own_reservation - VRATI detaily (vratane activation_code) LEN AK zadany email SEDI
+//      (dokaz vlastnictva) - pouzite pri finalnom REGISTER ENTRY kroku, kde uz appka POZNA username+email
+//      z predchadzajucich krokov a potrebuje overit aktivacny kod. | Vrso -> Claude AI | 2026-09-15 ===
+async function zzz10v1_check_reservation_conflict(normalizedUsername, normalizedEmail) {
   try {
-    const fetchPromise = sb.from('verso_verification').select('*').eq('id', id).eq('record_type', 'username_reservation');
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Zzz10-V1 reservation fetch timeout (4s)')), 4000)
-    );
-    const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+    const { data, error } = await sb.rpc('check_reservation_conflict', { p_username: normalizedUsername, p_email: normalizedEmail });
+    if (error) throw error;
+    return !!data;
+  } catch (err) {
+    const errDetail = (err && err.message) || String(err);
+    console.warn(`Zzz10-V1:RESERVATION - check_reservation_conflict RPC zlyhalo. DOVOD: ${errDetail}`);
+    zzz0r1_set_db_connection_state(false, errDetail, true);
+    return false; // fail-open - DB-level UNIQUE/insert guard je skutocna ochrana, toto je len UX napoveda vopred
+  }
+}
+
+async function zzz10v1_get_own_reservation(normalizedUsername, normalizedEmail) {
+  try {
+    const { data, error } = await sb.rpc('get_own_reservation', { p_username: normalizedUsername, p_email: normalizedEmail });
     if (error) throw error;
     zzz0r1_set_db_connection_state(true);
-    const row = (data || [])[0];
-    if (!row) return null;
-    let parsed = {};
-    try { parsed = JSON.parse(row.data_json || '{}'); } catch (e) { return null; /* poskodeny data_json */ }
-    if (!parsed.expires_at || new Date(parsed.expires_at).getTime() <= Date.now()) return null; // vyprsana rezervacia = ako keby neexistovala
-    return parsed;
+    return data || null;
   } catch (err) {
-    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
-    console.warn(`Zzz10-V1:RESERVATION - nacitanie rezervacie zlyhalo/timeout. DOVOD: ${errDetail}`);
+    const errDetail = (err && err.message) || String(err);
+    console.warn(`Zzz10-V1:RESERVATION - get_own_reservation RPC zlyhalo. DOVOD: ${errDetail}`);
     zzz0r1_set_db_connection_state(false, errDetail, true);
     return null;
   }
@@ -14687,15 +14715,15 @@ function zzz10v1_build_send_activation_button(usernameBox) {
         zzz6f2_show_toast(`Zzz10-V1: username "${username}" je uz obsadeny`);
         return;
       }
-      if (fresh.emails.includes(normalizedEmail) && !ZZZ10V1_REUSABLE_TEST_EMAILS.includes(normalizedEmail)) {
+      if (!ZZZ10V1_REUSABLE_TEST_EMAILS.includes(normalizedEmail) && await zzz10v1_check_email_registered(normalizedEmail)) {
         zzz6f2_show_toast(`Zzz10-V1: email "${email}" je uz zaregistrovany`);
         return;
       }
 
       // aktivna (este nevyprsana) rezervacia CUDZIEHO pokusu o ten isty username - vlastnu rezervaciu
       // (rovnaky email) mozno vzdy bez problemu obnovit/predlzit (upsert nizsie)
-      const existingReservation = await zzz10v1_fetch_reservation(normalizedUsername);
-      if (existingReservation && zzz10v1_normalize(existingReservation.email || '') !== normalizedEmail) {
+      const hasConflict = await zzz10v1_check_reservation_conflict(normalizedUsername, normalizedEmail);
+      if (hasConflict) {
         usernameBox.classList.add('zzz10v1-taken');
         usernameBox.classList.remove('zzz10v1-available');
         zzz6f2_show_toast(`Zzz10-V1: username "${username}" je momentalne rezervovany inym pokusom o registraciu - skus neskor.`);
@@ -14888,20 +14916,20 @@ async function zzz10v1_submit_register() {
     zzz6f2_show_toast(`Zzz10-V1 Register: username "${username}" je uz zaregistrovany - registracia zamietnuta.`);
     return;
   }
-  if (known.emails.includes(normalizedEmail) && !ZZZ10V1_REUSABLE_TEST_EMAILS.includes(normalizedEmail)) {
+  if (!ZZZ10V1_REUSABLE_TEST_EMAILS.includes(normalizedEmail) && await zzz10v1_check_email_registered(normalizedEmail)) {
     zzz6f2_show_toast(`Zzz10-V1 Register: email "${email}" je uz zaregistrovany - registracia zamietnuta.`);
     return;
   }
 
   // === [Zzz10-V1:RESERVATION-CHECK] bez platnej (nevyprsanej), na TENTO username+email znejucej
   // rezervacie sa nesmie registrovat - musi sa najprv stlacit SEND ACTIVATION CODE (viz vyssie v subore).
-  const reservation = await zzz10v1_fetch_reservation(normalizedUsername);
+  // Zzz-RLS:VERIFICATION-VIEW UPDATE (2026-09-15): get_own_reservation() vrati NULL AJ ked rezervacia
+  // neexistuje, AJ ked existuje ale s INYM emailom (obe situacie teraz zdielaju rovnaku, menej konkretnu
+  // hlasku - bezpecnostny kompromis: rozlisenie "existuje, ale zly email" by samo o sebe prezradilo
+  // cudziemu useru, ze dany username MA aktivnu rezervaciu, aj bez znalosti spravneho emailu). | Vrso -> Claude AI | 2026-09-15
+  const reservation = await zzz10v1_get_own_reservation(normalizedUsername, normalizedEmail);
   if (!reservation) {
-    zzz6f2_show_toast('Zzz10-V1 Register: ziadna platna rezervacia pre tento username - stlac najprv SEND ACTIVATION CODE (rezervacia trva 24h).');
-    return;
-  }
-  if (zzz10v1_normalize(reservation.email || '') !== normalizedEmail) {
-    zzz6f2_show_toast('Zzz10-V1 Register: EMAIL sa nezhoduje s emailom pouzitym pri SEND ACTIVATION CODE.');
+    zzz6f2_show_toast('Zzz10-V1 Register: žiadna platná rezervácia pre tento username+email - stlač najprv SEND ACTIVATION CODE (rezervácia trvá 24h).');
     return;
   }
   if ((reservation.activation_code || '') !== enteredActivationCode) {
@@ -15177,7 +15205,7 @@ async function zzzF_migrate_legacy_register_entries() {
   // NESMIE prepisat (novsi udaj ma vzdy prednost pred starym)
   let existingUsernameIds = new Set();
   try {
-    const { data, error } = await sb.from('verso_verification').select('id').eq('record_type', 'user_registration');
+    const { data, error } = await sb.from('verso_verification_public').select('id').eq('record_type', 'user_registration');
     if (error) throw error;
     (data || []).forEach(r => existingUsernameIds.add(r.id));
   } catch (err) {
@@ -15253,7 +15281,7 @@ async function zzz10v2_render_verification_database(tabContent) {
 
   let rows = [];
   try {
-    const fetchPromise = sb.from('verso_verification').select('*').order('updated_at', { ascending: false });
+    const fetchPromise = sb.from('verso_verification_public').select('*').order('updated_at', { ascending: false });
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('Zzz10-V2 Supabase fetch timeout (4s)')), 4000)
     );
