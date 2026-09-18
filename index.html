@@ -350,6 +350,20 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz2r38-tab-target-selected {
     box-shadow: inset 0 0 0 2px #C0C0C0 !important;
   }
+  /* [Zzz2-R38:SUB-TAB] Vrso 2026-09-17/18, doslovne: "docasny chip/subs oznaceny ako umiestnenie...vyznaceny
+     MODROU"..."sub-TAB...bude vyplnena ZELENOU farbou s kontrastnym pismom" - DVA chip stavy v SUBS okne:
+     docasny "placement:" (modra, rovnaka ako #versoCopyButton) a trvaly "tab:" (zelena, rovnaky odtien ako
+     existujuci success-flash konvencia inde v subore). | Vrso -> Claude AI | 2026-09-18 === */
+  .zzz6-f8-subs-chip-placement {
+    background-color: #2563eb !important;
+    border-color: #2563eb !important;
+    color: #ffffff !important;
+  }
+  .zzz6-f8-subs-chip-tab {
+    background-color: #22c55e !important;
+    border-color: #16a34a !important;
+    color: #0a0a0a !important;
+  }
 </style>
 <!-- === [/Zzz6-F29:SELECT-BUTTON] (CSS cast) ===-->
 
@@ -4358,7 +4372,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-F53 Login Setup Adapt Screen (SF) - responzivne proporcne zmensenie CELEHO Zzz6-F36 Login/Login Setup riadku (title/USER/CONTENT/NEW PASSWORD/ENTRY/LOG OUT/CHANGE PASSWORD/CONFIRM) pre velmi uzke obrazovky, + overflow-x:auto poistka</span>
   <span class="module-tag">Zzz2-R38 Move/Copy Tab (prototyp, zovseobecnene na AKYKOLVEK tab v Templates paneli LEN - Zzz10-T2 Multi Verification zamerne VYNECHANE, viazane na inu databazu/verso_verification) - SELECT+klik na tab = oznaci zdroj (zapise CATEGORY=create + SUB CATEGORY), MOVE(klik)+klik na tab = oznaci ciel (zapise TAG), PASTE(3s) = vygeneruje CONTENT, ENTER(3s) = zapise DO databazy A VYKONA presun (zatial LEN pre T2c/M4a2, ostatne taby su zaznamove/prototypove)</span>
   <span class="module-tag">Zzz2-R38:SELECT-TAB-SOURCE - SELECT tlacidlo (Zzz6-F29) vie oznacit CELY tab (nielen T2c, cely T1/T2/T3 Templates panel) ako zdroj (samostatna, nezavisla cast od existujuceho CL/EL vyberu, ten NEZMENENY), automaticky sa po oznaceni odarmuje aby neblokovalo dalsie CL kliky</span>
-  <span class="module-tag">Zzz2-R38:MOVE-TAB-TARGET - MOVE tlacidlo (strieborny okraj) kratkym klikom armuje "vyber ciela" rezim, nasledujuci klik na LUBOVOLNY tab zapise TAG a automaticky odarmuje</span>
+  <span class="module-tag">Zzz2-R38:MOVE-TAB-TARGET - MOVE tlacidlo (strieborny okraj) kratkym klikom armuje "vyber ciela" rezim, nasledujuci klik na LUBOVOLNY tab zapise docasny "placement:" chip do SUBS (nie uz TAG) a zostava armed (rucny toggle)</span>
+  <span class="module-tag">Zzz2-R38:SUB-TAB - SUBS chip nahradzuje TAG: docasny "placement:X" (modry, needitovatelny) pri vybere ciela, tesne pred zapisom do DB sa prepise na trvaly "tab:X" (zeleny, needitovatelny) - zdielany zzz2r38_subs_chip_display() helper renderuje oba stavy v hlavnej CRM aj M4a2</span>
   <span class="module-tag">Zzz2-R38:VALID-TARGETS (SF) - overuje TAG/SUB CATEGORY voci vsetkym T1+T2+T3 tabom v Templates paneli (cerstvo, kazdy novy T3 tab cez + ADD TEMPLATE je automaticky platny) - Zzz10-T2 Multi Verification zamerne mimo (ina databaza)</span>
   <span class="module-tag">Zzz2-R38:CATEGORY-RENAME - CATEGORY hodnota premenovana z "create" na "Use" (presnejsie vystihuje akciu "pouzi tento template")</span>
   <span class="module-tag">Zzz2-R38:LINK-TAB-ID - stabilne interne ID zdrojoveho tabu (napr. "zzz5t2-c", nie citatelny label) sa pri SELECT oznaceni zdroja zapisuje do LINK (R13) - docasne umiestnenie, kym sa nerozhodne trvale miesto</span>
@@ -7801,6 +7816,57 @@ function zzz6f8_parse_subs(raw) {
   return (raw || '').split(',').map(s => s.trim()).filter(s => s.length > 0);
 }
 
+// [Zzz2-R38:SUB-TAB] Vrso 2026-09-17/18, doslovne: "sub-ID ano bude uz cielovy tab...pri copy tab funkcia
+// tak sa nakopiruje tab umiestnenie do noveho DOCASNEHO chipu/subs oznaceneho ako umiestnenie a vyznaceneho
+// MODROU farbou...move tab funkciu oznac ako sub-TAB (needitovatelny) s presnym oznacenim umiestnenia [co]
+// bude aj po zapise vyplnena ZELENOU farbou s kontrastnym pismom...po entry sa docasny modry tab
+// umiestnenia vymaze...nove umiestnenie ostane s ID v zelenej" - NAHRADZA predoslu TAG(21)-based
+// implementaciu. Dva chip-formaty v SUBS(8), rozlisitelne prefixom:
+// - "placement:<tab>" = DOCASNY, vzniknuty klikom MOVE+tab (pred zapisom), zobrazeny MODRO v SUBS okne.
+// - "tab:<tab>" = TRVALY sub-TAB, vznikne PRESNE z "placement:" tesne PRED skutocnym zapisom do DB (viz
+// zzz6f2_run_entry_submit), zobrazeny ZELENO, needitovatelny (rovnako ako sub-EN auto-cislo). | Vrso ->
+// Claude AI | 2026-09-18 ===
+const ZZZ2R38_SUBS_PLACEMENT_PATTERN = /^placement:(.+)$/;
+const ZZZ2R38_SUBS_TAB_PATTERN = /^tab:(.+)$/;
+
+// precita aktualny ciel (docasny "placement:" ALEBO uz trvaly "tab:") zo SUBS retazca - pouziva sa v PASTE
+// (generovanie CONTENT) aj ENTER (validacia pred zapisom).
+function zzz2r38_get_subs_target(subsRaw) {
+  const subs = zzz6f8_parse_subs(subsRaw);
+  for (const s of subs) {
+    const m = ZZZ2R38_SUBS_PLACEMENT_PATTERN.exec(s) || ZZZ2R38_SUBS_TAB_PATTERN.exec(s);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+// zapise/prepise DOCASNY "placement:<tabId>" chip (odstrani akykolvek predchadzajuci placement:/tab: chip,
+// aby nikdy neboli v SUBS dva naraz).
+function zzz2r38_set_subs_placement(subsRaw, tabId) {
+  const subs = zzz6f8_parse_subs(subsRaw).filter(s => !ZZZ2R38_SUBS_PLACEMENT_PATTERN.test(s) && !ZZZ2R38_SUBS_TAB_PATTERN.test(s));
+  subs.push(`placement:${tabId}`);
+  return subs.join(', ');
+}
+
+// tesne PRED zapisom do DB: "placement:<x>" -> "tab:<x>" (docasny modry stane trvalym zelenym).
+function zzz2r38_finalize_subs_placement(subsRaw) {
+  const subs = zzz6f8_parse_subs(subsRaw).map(s => {
+    const m = ZZZ2R38_SUBS_PLACEMENT_PATTERN.exec(s);
+    return m ? `tab:${m[1]}` : s;
+  });
+  return subs.join(', ');
+}
+
+// zdielane MEDZI hlavnou CRM aj M4a2 izolovanou verziou SUBS okna - urcuje, ako sa ma jeden konkretny chip
+// zobrazit (text bez prefixu, farebna CSS trieda ak ide o placement:/tab:, needitovatelnost).
+function zzz2r38_subs_chip_display(sub) {
+  const placementMatch = ZZZ2R38_SUBS_PLACEMENT_PATTERN.exec(sub);
+  if (placementMatch) return { text: placementMatch[1], cssClass: 'zzz6-f8-subs-chip-placement', locked: true };
+  const tabMatch = ZZZ2R38_SUBS_TAB_PATTERN.exec(sub);
+  if (tabMatch) return { text: tabMatch[1], cssClass: 'zzz6-f8-subs-chip-tab', locked: true };
+  return { text: sub, cssClass: null, locked: false };
+}
+
 // [Zzz6-F8:SUBS-CONTEXT] Vrso 2026-09-17, doslovne: "v subs bude vzdy prvy oznacenie aj poradoveho cisla
 // requestu resp. cl daneho projektu...zapracuj podobny mechanizmus (noneditable ako su entry numbers).
 // Samozrejme to musi platit iba pre project ownera [a] project number!" - PRVY chip v SUBS je VZDY
@@ -7862,13 +7928,17 @@ function zzz6f8_open_subs_context_modal(id) {
       const chip = document.createElement('div');
       chip.className = 'zzz6-f21-tags-chip';
 
+      // [Zzz2-R38:SUB-TAB] rozpozna placement:/tab: chip (modra/zelena, needitovatelne) - zdielany helper
+      const display = zzz2r38_subs_chip_display(sub);
+      if (display.cssClass) chip.classList.add(display.cssClass);
+
       const span = document.createElement('span');
-      span.textContent = sub;
+      span.textContent = display.text;
       chip.appendChild(span);
 
-      // [Zzz6-F8:SUBS-CONTEXT] auto-cislo (idx 0, format "#N") je NEEDITOVATELNE - ziadny "x" na odstranenie,
-      // rovnaky princip ako Zzz1-R1 Entry Number.
-      if (!(idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub))) {
+      // [Zzz6-F8:SUBS-CONTEXT] auto-cislo (idx 0, format "#N") JE tiez needitovatelne - ziadny "x" na
+      // odstranenie, rovnaky princip ako Zzz1-R1 Entry Number. Rovnako placement:/tab: (display.locked).
+      if (!display.locked && !(idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub))) {
         const remove = document.createElement('span');
         remove.className = 'zzz6-f21-tags-remove';
         remove.textContent = '\u00D7';
@@ -10589,20 +10659,13 @@ let zzz2r38_target_selection = { label: null, el: null };
 // nerozhodlo kde presne to ma ist na trvalo). | Vrso -> Claude AI | 2026-09-17 ===
 function zzz2r38_handle_special_tab_click(tabId, tabLabel, btnEl, stableTabId) {
   if (zzz2r38MovePickTargetMode) {
-    write_to_entry('21', tabId);
-    // [Zzz2-R38:BUTTON-STAY-ARMED] Vrso 2026-09-17, doslovne: "malo by byt stlacim select a stlacim tab
-    // ktory chcem kopirovat. Select svieti na fialovo a je kontrastne. Ak stlacim select znovu tak sa
-    // deaktivuje...rovnako s move rovnako bez ohladu na stlac/podrz povel" - VRATENE spat na CISTY rucny
-    // toggle (2026-09-16 auto-disarm PO oznaceni tabu ODSTRANENY) - MOVE/SELECT tlacidlo teraz zostava
-    // "armed" (plna farba) AJ PO oznaceni tabu, vypne sa LEN opatovnym klikom na to iste tlacidlo. ZNAMY
-    // DOSLEDOK (Vrso vedome akceptoval tento kompromis touto poziadavkou): kym je SELECT takto "armed",
-    // klik na INU CL bunku (napr. TAG) sa este stale zaradi do multi-selectu namiesto otvorenia edit-modalu
-    // (rovnaky mechanizmus ako predtym) - user musi SELECT rucne vypnut pred upravou inych poli. | Vrso ->
-    // Claude AI | 2026-09-17 ===
+    // [Zzz2-R38:SUB-TAB] Vrso 2026-09-17/18 - NAHRADENE z write_to_entry('21', tabId) (TAG) na docasny
+    // "placement:" chip priamo v SUBS(8) - viz definicia funkcii + plne odovodnenie vyssie v subore.
+    write_to_entry('8', zzz2r38_set_subs_placement(entryData['8'], tabId));
     if (zzz2r38_target_selection.el) zzz2r38_target_selection.el.classList.remove('zzz2r38-tab-target-selected');
     zzz2r38_target_selection = { label: tabId, el: btnEl };
     btnEl.classList.add('zzz2r38-tab-target-selected');
-    zzz6f2_show_toast(`Zzz2-R38: TAG set to "${tabId}".`);
+    zzz6f2_show_toast(`Zzz2-R38: placement set to "${tabId}" (blue, temporary until ENTER).`);
     return true;
   }
   if (zzz6f29SelectMode) {
@@ -10639,12 +10702,12 @@ function zzz2r38_handle_special_tab_click(tabId, tabLabel, btnEl, stableTabId) {
   if (!btn) return;
   zzz_bind_long_press(btn, 3000, () => {
     const subCategoryValue = entryData['8'] || '';
-    const tagValue = entryData['21'] || '';
-    if (!subCategoryValue || !tagValue) {
-      zzz6f2_show_toast('Zzz2-R38: need SUB CATEGORY (SELECT a source tab first) and TAG (MOVE a target tab first).');
+    const targetValue = zzz2r38_get_subs_target(subCategoryValue); // [Zzz2-R38:SUB-TAB] cita placement:/tab: chip zo SUBS, nie uz TAG(21)
+    if (!subCategoryValue || !targetValue) {
+      zzz6f2_show_toast('Zzz2-R38: need SUB CATEGORY (SELECT a source tab first) and a placement (MOVE a target tab first).');
       return;
     }
-    const generatedContent = `MOVE ${subCategoryValue} TO ${tagValue}`;
+    const generatedContent = `MOVE ${subCategoryValue} TO ${targetValue}`;
     write_to_entry('10', generatedContent);
     zzz6f2_show_toast(`Zzz2-R38: CONTENT set to "${generatedContent}".`);
   }, () => (entryData['5'] || '').trim().toLowerCase() === 'use'); // relevantny LEN pre "Use" kategoriu
@@ -10736,21 +10799,27 @@ document.addEventListener('DOMContentLoaded', () => { zzz6f54_load_active_m4a_ta
     // akciou (Vrso to takto explicitne popisal). | Vrso -> Claude AI | 2026-09-16 ===
     const categoryValue = (entryData['5'] || '').trim().toLowerCase();
     if (categoryValue === 'use') {
-      const tagRaw = entryData['21'] || '';
-      if (!zzz2r38_is_known_tab_label(tagRaw)) {
-        zzz6f2_show_toast(`Zzz2-R38: unrecognized TAG destination "${tagRaw}" - use MOVE button + click a real tab.`);
+      // [Zzz2-R38:SUB-TAB] Vrso 2026-09-17/18 - cieľ sa uz NECITA z TAG(21), ale z SUBS(8) placement:/tab:
+      // chipu (viz zzz2r38_get_subs_target vyssie v subore).
+      const targetValue = zzz2r38_get_subs_target(entryData['8']);
+      if (!targetValue || !zzz2r38_is_known_tab_label(targetValue)) {
+        zzz6f2_show_toast(`Zzz2-R38: unrecognized placement "${targetValue || '(none)'}" - use MOVE button + click a real tab.`);
         return;
       }
       // CONTENT - ak uz PASTE (dlhym stlakom) nastavil, necha ho tak; inak si ho tu ako poistku sam dogeneruje
       if (!entryData['10']) {
         const subCategoryValue = entryData['8'] || '1-M4a';
-        write_to_entry('10', `MOVE ${subCategoryValue} TO ${tagRaw}`);
+        write_to_entry('10', `MOVE ${subCategoryValue} TO ${targetValue}`);
       }
+      // [Zzz2-R38:SUB-TAB] "placement:" (docasny, modry) -> "tab:" (trvaly, zeleny) TESNE PRED zapisom -
+      // presne tak, ako Vrso opisal ("po entry sa docasny modry tab umiestnenia vymaze...nove umiestnenie
+      // ostane s ID v zelenej").
+      write_to_entry('8', zzz2r38_finalize_subs_placement(entryData['8']));
       const contentSnapshot = entryData['10']; // submit_entries_to_db() po uspechu CELE entryData vycisti - snapshot MUSI byt PRED volanim
       const success = await submit_entries_to_db();
       if (success) {
         zzz6f2_flash_success();
-        zzz6f2_show_toast(`Zzz2-R38: move recorded and executed - target "${tagRaw}".`);
+        zzz6f2_show_toast(`Zzz2-R38: move recorded and executed - target "${targetValue}".`);
         // [Zzz6-F54:MOVE-INTERPRETER] okamzita aplikacia noveho ciela (netreba cakat na dalsi DB dotaz/reload).
         // Priamo hide() (nie zzz5t0_sync_duplicated_modules() - ta ma vlastnu memoizaciu podla klikneho tabu,
         // NEVSIMLA by si zmenu ciela, ak sa aktivny tab nezmenil) - hide() ma vlastny ownership-guard, takze
@@ -11882,12 +11951,17 @@ function zzz1m4a_open_local_subs_modal(id) {
       const chip = document.createElement('div');
       chip.className = 'zzz6-f21-tags-chip';
 
+      // [Zzz2-R38:SUB-TAB] rozpozna placement:/tab: chip (modra/zelena, needitovatelne) - zdielany helper
+      const display = zzz2r38_subs_chip_display(sub);
+      if (display.cssClass) chip.classList.add(display.cssClass);
+
       const span = document.createElement('span');
-      span.textContent = sub;
+      span.textContent = display.text;
       chip.appendChild(span);
 
-      // [Zzz6-F8:SUBS-CONTEXT] auto-cislo (idx 0, format "#N") je NEEDITOVATELNE - ziadny "x"
-      if (!(idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub))) {
+      // [Zzz6-F8:SUBS-CONTEXT] auto-cislo (idx 0, format "#N") JE tiez needitovatelne - ziadny "x".
+      // Rovnako placement:/tab: (display.locked).
+      if (!display.locked && !(idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub))) {
         const remove = document.createElement('span');
         remove.className = 'zzz6-f21-tags-remove';
         remove.textContent = '\u00D7';
