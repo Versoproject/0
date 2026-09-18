@@ -4387,6 +4387,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz10-R1 Multiverification - automaticky sa spusti po 10x nespravnom hesle POCAS Login pokusu (Zzz4-1 hook)</span>
   <span class="module-tag">Zzz10-R1:USERNAME-GUARD - cerveny ram na Zzz0-R1, ak login username nesedi s poslednym znamym na zariadeni</span>
   <span class="module-tag">Zzz6-X:AUTOLOGIN-VERSO - "Verso" sa VZDY automaticky prihlasi pri nacitani stranky (bez localStorage podmienky, kvoli rychlosti vyvoja) - vedomy docasny kompromis, viz komentar</span>
+  <span class="module-tag">Zzz6-X:VERSO-NO-DELETE - TRVALA (nie dev-only) ochrana: DELETE politika + UPDATE trigger na verso_entries teraz zabranuju zmazaniu/trashnutiu akehokolvek zaznamu s Project Owner="Verso" - kod zije VYLUCNE v Supabase SQL, tento riadok je len odkaz</span>
   <span class="module-tag">Zzz6-X:VERSO-ENTRY-DEFAULTS - cerstva CL dostava PROJECT NUMBER=1 predvyplnene, LEN ked je prihlaseny presne "Verso" (Project Owner/User uz predtym cez Zzz1-DEFAULT-OWNER-USER)</span>
   <span class="module-tag">Zzz10-R2 Log Out button (Zzz10-0 Settings Workspace, branch 1) - odhlasi, vrati na Zzz6-F36 Login</span>
   <span class="module-tag">Zzz10-M2 Login Setup module - USER/CONTENT su LOKALNE inputy (nie entryData), CONTENT je natívny type="password" (SHOW PASSWORD odstranene 2026-09-02)</span>
@@ -4402,6 +4403,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz2-R38:SELECT-TAB-SOURCE - SELECT tlacidlo (Zzz6-F29) vie oznacit CELY tab (nielen T2c, cely T1/T2/T3 Templates panel) ako zdroj (samostatna, nezavisla cast od existujuceho CL/EL vyberu, ten NEZMENENY), automaticky sa po oznaceni odarmuje aby neblokovalo dalsie CL kliky</span>
   <span class="module-tag">Zzz2-R38:MOVE-TAB-TARGET - MOVE tlacidlo (strieborny okraj) kratkym klikom armuje "vyber ciela" rezim, nasledujuci klik na LUBOVOLNY tab zapise docasny "placement:" chip do SUBS (nie uz TAG) a zostava armed (rucny toggle)</span>
   <span class="module-tag">Zzz2-R38:SUB-TAB - SUBS chip nahradzuje TAG: docasny "placement:X" (modry, needitovatelny) pri vybere ciela, tesne pred zapisom do DB sa prepise na trvaly "tab:X" (zeleny, needitovatelny) - zdielany zzz2r38_subs_chip_display() helper renderuje oba stavy v hlavnej CRM aj M4a2</span>
+  <span class="module-tag">Zzz6-F55:TAB-ID-DISPLAY - dlhy stlak (3s) na T1/T2 tabe (ziadna existujuca akcia) zobrazi toast so stabilnym ID; T3b+ taby maju to iste ID zobrazene ako riadok priamo v ich existujucom rename/delete okne (zzz5t0_open_tab_window), bez noveho gesta</span>
   <span class="module-tag">Zzz2-R38:VALID-TARGETS (SF) - overuje TAG/SUB CATEGORY voci vsetkym T1+T2+T3 tabom v Templates paneli (cerstvo, kazdy novy T3 tab cez + ADD TEMPLATE je automaticky platny) - Zzz10-T2 Multi Verification zamerne mimo (ina databaza)</span>
   <span class="module-tag">Zzz2-R38:CATEGORY-RENAME - CATEGORY hodnota premenovana z "create" na "Use" (presnejsie vystihuje akciu "pouzi tento template")</span>
   <span class="module-tag">Zzz2-R38:LINK-TAB-ID - stabilne interne ID zdrojoveho tabu (napr. "zzz5t2-c", nie citatelny label) sa pri SELECT oznaceni zdroja zapisuje do LINK (R13) - docasne umiestnenie, kym sa nerozhodne trvale miesto</span>
@@ -9718,6 +9720,31 @@ function zzz6f7_set_login_state(isLoggedIn) {
 // === [/Zzz6-X:AUTOLOGIN-VERSO] ===
 // === [/Zzz6-F7:LOGIN-STATE] ===
 
+// === [Zzz6-X:VERSO-NO-DELETE] Vrso 2026-09-18, doslovne: "zafixovat niektore templates (aby sa nedali
+// nikdy vymazat)...co sa tyka ochrany tak to uz je teraz! Vsak zafixovane mozme urobit tie v taby a
+// zapisane budu pod verso (vsetko verso bude systemove)" - PATRI do rovnakej "Verso-specific" Zzz6-X
+// rodiny ako Zzz6-X:AUTOLOGIN-VERSO/Zzz6-X:VERSO-ENTRY-DEFAULTS vyssie, ALE NA ROZDIEL od nich TOTO NIE JE
+// dev-only docasnost urcena na odstranenie - je to TRVALA, zamerna bezpecnostna ochrana.
+// POZOR: ZIADNY kod tejto funkcie NIE JE v tomto subore - cela ochrana zije VYLUCNE na strane Supabase SQL
+// (RLS + trigger), presne z dovodu, ktory sme si uz predtym vysvetlovali (client-side kontrola sa vzdy da
+// obist DevTools/priamym API volaniam - realna ochrana MUSI byt na strane databazy). Tento komentar je tu
+// LEN ako odkaz/dokumentacia, aby to bolo najdenatelne aj z JS strany projektu.
+// Realizacia (2 SQL zmeny na verso_entries):
+//  1) DELETE politika "verso_entries_delete_only_trashed_not_verso" - k existujucej podmienke
+//     (is_trashed=true) pribudlo "AND (fields_json->>'r4') IS DISTINCT FROM 'Verso'".
+//  2) Trigger funkcia verso_entries_restrict_update() rozsirena o novu podmienku - zamietne prechod
+//     is_trashed false->true (teda samotne TRASHNUTIE, nie len finalne DELETE), ak (fields_json->>'r4') =
+//     'Verso'.
+// Dosledok: KAZDY zaznam s Project Owner (R4) = "Verso" sa uz NEDA zmazat ani trashnut - ani cez appku, ani
+// priamym API volaním, kdekolvek na svete. Dohodnuty smer: systemove/Verso-jadro templaty (napr. M4a2, viz
+// Zzz2-R38 Move/Copy Tab mechanizmus) su hardcoded v JS + chranene TOUTO ochranou, kedze su vlastnene
+// "Verso". Bezny user, ktory si tab skopiruje/presunie cez tu istu Zzz2-R38 utilitu, ostava zatial bezny
+// (vymazatelny) - rozlisujuci mechanizmus/oznacenie "toto je systemove" vs "toto je uzivatelske" este NIE
+// JE vyriesene, plan na neskor. NEZAVISI od velkeho, oddeleneho "RLS enforcement cez vlastny JWT" bodu
+// (item 17 v backlogu) - tato konkretna ochrana potrebuje len Project Owner hodnotu, ziadny session
+// bridge. | Vrso -> Claude AI | 2026-09-18 ===
+// === [/Zzz6-X:VERSO-NO-DELETE] ===
+
 // === [Zzz6-F7:DB-CONNECTION] SYSTEM FUNCTION - oranzovy ram na username napise, ak zlyha spojenie s D-4
 // (Databaza/Supabase). Volane z KAZDEHO existujuceho Supabase try/catch miesta (Zzz1-D1 zapis, Zzz6-F2
 // citanie pre cislovanie, Zzz2-R29 citanie pre Database Workspace) - true pri uspechu, false pri
@@ -10692,8 +10719,15 @@ const ZZZ2R38_VALID_TARGETS = [];
 // sloty bez realneho templatu, takze dostavaju SVOJU VLASTNU identitu (label) ako placeholder "co je v
 // tomto tabe" - az ked pribudne realny obsah aj inde, sem sa doplni skutocne mapovanie. | Vrso -> Claude AI
 // | 2026-09-16 ===
-function zzz2r38_template_id_for_tab(tabIdentifier) {
-  if (tabIdentifier === 'T2c') return '1-M4a'; // jediny REALNY, uz postaveny obsah
+// OPRAVA (Vrso 2026-09-18, "zapisal move ale v T3a tabe nie je ten CRM template!") - SKUTOCNA PRICINA:
+// realny label T2c tabu je "T2c - Zzz1-M4a" (viz zzz5t0TabsT2), NIE holy "T2c" - porovnanie nizsie
+// (tabIdentifier === 'T2c') PRETO NIKDY nesedelo, SUB CATEGORY sa zapisal ako celý "T2c - Zzz1-M4a"
+// namiesto "1-M4a". To NAVYSE rozbilo aj CONTENT-parsing regex nizsie (zzz6f54_parse_move_target), ktory
+// cakal JEDNOSLOVNY zdroj - viacslovny "T2c - Zzz1-M4a" spravil z celeho regexu nezhodu, takze sa fyzicky
+// presun NIKDY nevykonal (Interpreter nevedel CONTENT rozpoznat). OPRAVA: teraz sa kontroluje STABILNE ID
+// tabu (druhy parameter, "zzz5t2-c"), nie fragilny text labelu. | Vrso -> Claude AI | 2026-09-18 ===
+function zzz2r38_template_id_for_tab(tabIdentifier, stableId) {
+  if (stableId === 'zzz5t2-c' || tabIdentifier === 'T2c') return '1-M4a'; // jediny REALNY, uz postaveny obsah
   return tabIdentifier || '1-M4a';
 }
 
@@ -10742,7 +10776,7 @@ function zzz2r38_handle_special_tab_click(tabId, tabLabel, btnEl, stableTabId) {
       // subore) - presnejsie vystihuje AKCIU ("pouzi tento template"), nie doslovne "vytvor novy udaj".
       // | Vrso -> Claude AI | 2026-09-17 ===
       write_to_entry('5', 'Use');
-      write_to_entry('8', zzz2r38_template_id_for_tab(tabId));
+      write_to_entry('8', zzz2r38_template_id_for_tab(tabId, stableTabId));
       write_to_entry('13', stableTabId || tabId); // [Zzz2-R38:LINK-TAB-ID] stabilne ID zdroja do LINK
     }
     return true;
@@ -10756,6 +10790,17 @@ function zzz2r38_handle_special_tab_click(tabId, tabLabel, btnEl, stableTabId) {
   btn.addEventListener('click', () => {
     zzz2r38MovePickTargetMode = !zzz2r38MovePickTargetMode;
     btn.classList.toggle('zzz2r38-move-armed', zzz2r38MovePickTargetMode);
+    // [Zzz2-R38:MOVE-DISARM-VISUAL] OPRAVA (Vrso 2026-09-18, "move po vypnuti button stale zostava
+    // oznacene ramom...u selectu funguje vypnutie") - SELECT-ove vypnutie (zzz6f29_set_select_mode(false))
+    // uz cisti vizualne oznacenie svojho tabu (zzz6f29_reset_tab_part) - MOVE toto ROVNAKO nerobilo, len
+    // preplo vlastny "armed" stav tlacidla, strieborny ramcek na ozncenenom tabe ZOSTAVAL navzdy. OPRAVA:
+    // pri VYPNUTI (nie zapnuti) MOVE sa teraz rovnako vycisti aj strieborne oznacenie tabu - symetria so
+    // SELECT-om. NEDOTYKA sa uz zapisaneho "placement:" chipu v SUBS (rovnaky princip ako SELECT - len
+    // vizualne sledovanie, nie data). | Vrso -> Claude AI | 2026-09-18 ===
+    if (!zzz2r38MovePickTargetMode && zzz2r38_target_selection.el) {
+      zzz2r38_target_selection.el.classList.remove('zzz2r38-tab-target-selected');
+      zzz2r38_target_selection = { label: null, el: null };
+    }
     zzz6f2_show_toast(zzz2r38MovePickTargetMode
       ? 'Zzz2-R38: MOVE armed - click the destination tab (Templates panel) to set TAG.'
       : 'Zzz2-R38: MOVE cancelled.');
@@ -10802,9 +10847,13 @@ let zzz6f54ActiveM4aTarget = null; // null = ziadny prikaz zatial, permisivne (o
 
 function zzz6f54_parse_move_target(contentText) {
   if (!contentText) return null;
-  const m = /MOVE\s+\S+\s+TO\s+(.+)/i.exec(String(contentText).trim());
+  // OPRAVA (Vrso 2026-09-18, "zapisal move ale sa nevykonal") - povodny regex "\S+" cakal JEDNOSLOVNY
+  // zdroj medzi "MOVE" a "TO", ale realne labely tabov obsahuju medzery (napr. "T2c - Zzz1-M4a") - takze
+  // regex NIKDY nesedel a cely presun sa ticho ignoroval. "(.+?)" (non-greedy) teraz spravne zachyti
+  // viacslovny zdroj az po prvy " TO " oddelovac. | Vrso -> Claude AI | 2026-09-18 ===
+  const m = /MOVE\s+(.+?)\s+TO\s+(.+)/i.exec(String(contentText).trim());
   if (!m) return null;
-  const normalized = m[1].trim().toLowerCase();
+  const normalized = m[2].trim().toLowerCase();
   if (normalized === 't2c') return 'T2c';
   if (ZZZ2R38_VALID_TARGETS.includes(normalized) && normalized !== 't2c') return '10-T2';
   return null;
@@ -14673,11 +14722,23 @@ function zzz5t0_delete_tab(tabsArray, tabId, prefix) {
 // zzz_bind_long_press utilitu (rovnaky princip, aky uz spolahlivo funguje inde v subore) - dlhe podrzanie
 // (3000ms) na T3 tabe otvori male "tab window" popup s DVOMA jasne oznacenymi volbami: PREMENOVAT a
 // ODSTRANIT TENTO TAB.
-function zzz5t0_open_tab_window(anchorEl, onRename, onDelete) {
+// [Zzz6-F55:TAB-ID-DISPLAY] Vrso 2026-09-18, doslovne: "treba potom zabezpecit nejaky sposob aby sa
+// napriklad podrzanim tabov ukazalo toto jedinecne id" - pridany nepovinny 4. parameter (stableId),
+// zobrazeny ako maly needitovatelny riadok v hornej casti okna. Umiestnene TU (nie ako NOVY dlhy-stlak),
+// kedze T3b+ taby uz maju dlhy-stlak obsadeny touto poplup okno akciou (rename/delete) - obohacuje
+// existujuce okno, nekonfliktuje s gestom. | Vrso -> Claude AI | 2026-09-18 ===
+function zzz5t0_open_tab_window(anchorEl, onRename, onDelete, stableId) {
   document.querySelectorAll('.zzz5t0-tab-window').forEach(m => m.remove()); // len jedno okno naraz
   const rect = anchorEl.getBoundingClientRect();
   const win = document.createElement('div');
   win.className = 'zzz5t0-tab-window';
+
+  if (stableId) {
+    const idLine = document.createElement('div');
+    idLine.style.cssText = 'font-size:9px;color:#999;padding:2px 4px 6px;user-select:text;-webkit-user-select:text;';
+    idLine.textContent = `ID: ${stableId}`;
+    win.appendChild(idLine);
+  }
 
   const renameBtn = document.createElement('button');
   renameBtn.type = 'button';
@@ -14751,9 +14812,11 @@ function zzz5t0_render_tabs_row(tabs, innerEl, activeId, prefix, onSelect, onRen
       onSelect(tab);
     });
 
-    // LOCKED tab (cely T1/T2, aj T3a) nedostava bezny dlhy-stlak menu - nie je co premenovat ani mazat.
+    // LOCKED tab T1/T2 (nie T3a, ta ma vlastnu RESET akciu nizsie) dostava NOVY [Zzz6-F55:TAB-ID-DISPLAY]
+    // dlhy-stlak (toast s ID) - predtym nemali dlhy-stlak VOBEC, takze ziadny konflikt gesta.
     // OSTATNE T3 taby (T3b+) dostavaju dlhy-stlak (3000ms, zdielana Zzz6-F27 utilita) -> "tab window"
-    // popup s PREMENOVAT/ODSTRANIT (viz zzz5t0_open_tab_window vyssie).
+    // popup s PREMENOVAT/ODSTRANIT + [Zzz6-F55:TAB-ID-DISPLAY] riadok s ID (viz zzz5t0_open_tab_window
+    // vyssie) - obohatene, nie novy gesto.
     if (!tab.locked) {
       zzz_bind_long_press(btn, 3000, () => {
         zzz5t0_open_tab_window(
@@ -14762,7 +14825,8 @@ function zzz5t0_render_tabs_row(tabs, innerEl, activeId, prefix, onSelect, onRen
             const next = window.prompt('Premenovat tab:', tab.label);
             if (next && next.trim()) { tab.label = next.trim(); zzz5t0_render_all_tabs(); }
           },
-          () => { zzz5t0_delete_tab(tabs, tab.id, prefix); }
+          () => { zzz5t0_delete_tab(tabs, tab.id, prefix); },
+          tab.id
         );
       });
     } else if (tab.id === 'zzz5t3-a') {
@@ -14770,6 +14834,15 @@ function zzz5t0_render_tabs_row(tabs, innerEl, activeId, prefix, onSelect, onRen
       // vymaze duplikovany obsah, viz zzz5t0_bulk_delete_added_templates), NEMENI ani NEMAZE T3a samotny.
       // Rovnaka dlzka (3000ms) ako T3b+ dlhy-stlak - odlisenie je uz cez ROZNE MIESTO/AKCIU, nie cez dlzku.
       zzz_bind_long_press(btn, 3000, zzz5t0_bulk_delete_added_templates);
+    } else {
+      // [Zzz6-F55:TAB-ID-DISPLAY] Vrso 2026-09-18, doslovne: "treba potom zabezpecit nejaky sposob aby sa
+      // napriklad podrzanim tabov ukazalo toto jedinecne id...zapis ako funkciu zzz6-F*(najvyssie cislo)" -
+      // T1/T2 taby (VSETKY LOCKED, ZIADNA existujuca dlhy-stlak akcia) - toto je jediny volny, nekonfliktny
+      // priestor na NOVE gesto: 3s podrzanie zobrazi toast s presnym stabilnym ID tabu (rovnake ID, ake
+      // Zzz2-R38 zapisuje do LINK pri SELECT). | Vrso -> Claude AI | 2026-09-18 ===
+      zzz_bind_long_press(btn, 3000, () => {
+        zzz6f2_show_toast(`Zzz6-F55: "${tab.label}" -> ID: "${tab.id}"`);
+      });
     }
     // [T2c VYMAZANE] Vrso 2026-09-01: "vymaz z t2c cely obsah...idem urobit novy modul do ineho chatu a
     // potom ho tam iba skopirujes" - 1-M4 CRM Template (Zzz5-W6) bol UPLNE ODSTRANENY (JS funkcie, HTML
