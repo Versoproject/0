@@ -17802,11 +17802,21 @@ function zzz10r1_trigger_multiverification() {
 // nie je artifact, ale defenzivne pre pripad, ze prehliadac localStorage blokuje/nema). | Vrso -> Claude AI | 2026-08-24 ===
 const ZZZ10R1_EXPECTED_USERNAME_KEY = 'verso_zzz10r1_expected_username';
 
+// [Zzz10-R1:USERNAME-GUARD] OPRAVA (Vrso 2026-09-18, "toto je zas zle? co je zas zle?" - screenshot
+// ukazoval username "Verso" ale cervenu, hoci nic in Nespravne zaregistrovane) - PORVNANIE bolo case-
+// SENSITIVE, ale server (zzz10v1_normalize) berie username case-INSENSITIVE - ak sa NIEKEDY SKOR na tomto
+// zariadeni prihlasilo napr. "verso" (male v) a teraz "Verso" (velke V), boli to podla servera TEN ISTY
+// ucet, ale tento flag ich oznacil ako MISMATCH (cervena) - falosny poplach. OPRAVA: porovnavaj OBE strany
+// normalizovane (rovnaka funkcia, aku uz appka pouziva na vsetky server-side volania), takze trivialny
+// rozdiel vo velkosti pisma uz NEVYVOLA cervenu - realny, INY username stale ano. | Vrso -> Claude AI |
+// 2026-09-18 ===
 function zzz10r1_check_and_flag_username_mismatch(username) {
   const label = document.getElementById('zzz6f7UsernameLabel');
   let expected = null;
   try { expected = localStorage.getItem(ZZZ10R1_EXPECTED_USERNAME_KEY); } catch (e) { /* localStorage nedostupne - preskocit kontrolu */ }
-  const mismatch = !!(expected && expected !== username);
+  const normalizedCurrent = zzz10v1_normalize(username);
+  const normalizedExpected = expected ? zzz10v1_normalize(expected) : null;
+  const mismatch = !!(normalizedExpected && normalizedExpected !== normalizedCurrent);
   if (label) label.classList.toggle('zzz0r1-username-mismatch', mismatch);
   if (mismatch) {
     zzz6f2_show_toast(`Zzz10-R1 POZOR: login pod "${username}", predtym na tomto zariadeni "${expected}" (oznacene cervenym)`);
@@ -18037,8 +18047,19 @@ function zzz_recompute_logo_status() {
   // 2026-09-14) namiesto zelenej - vizualne jasne "prihlaseny, ale NEOVERENE". Zelena teraz teda naozaj
   // znamena "realna, server-overena session", presne ako to Vrso chce. | Vrso -> Claude AI | 2026-09-18 ===
   if (label) {
-    const hasRealSession = !!zzz_sessionId;
-    label.classList.toggle('zzz6-f7-no-real-session', zzz6f7_isLoggedIn && !hasRealSession);
+    // OPRAVA (Vrso 2026-09-18, "ani autologin neprebehol...settings nejde stlacit" - konzola: "Cannot
+    // access 'zzz_sessionId' before initialization"): TDZ bug - tato funkcia sa vola VEKMI zavcasu pri
+    // nacitani stranky (cez bindZzz6F7LoginState() IIFE, dávno PRED riadkom, kde sa "let zzz_sessionId"
+    // niziie v subore skutocne deklaruje) - kazdy odkaz na zzz_sessionId PRED tymto riadkom hadze presne
+    // tuto chybu a zastavi VYKONAVANIE CELEHO ZVYSKU SKRIPTU (odtial prazdny PRESET/"username" placeholder/
+    // nefunkcne SETTINGS - vsetko, co sa malo nastavit/naviazat NESKOR v subore, sa uz nikdy nestihlo).
+    // OPRAVA: try/catch - pri tomto (velmi zavcasnom) volani ticho preskoci, dalsie SKUTOCNE volanie (po
+    // plnej inicializacii, napr. z autologin setTimeout-u) uz prejde v poriadku. | Vrso -> Claude AI |
+    // 2026-09-18 ===
+    try {
+      const hasRealSession = !!zzz_sessionId;
+      label.classList.toggle('zzz6-f7-no-real-session', zzz6f7_isLoggedIn && !hasRealSession);
+    } catch (e) { /* zzz_sessionId este v TDZ - preskoc, neskorsie volanie to doplni */ }
   }
 }
 // === [/Zzz-LOGO-STATUS] ===
