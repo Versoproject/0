@@ -9649,6 +9649,43 @@ function zzz6f7_set_login_state(isLoggedIn) {
     write_to_entry("2", "1");
   }
   // === [/Zzz6-X:VERSO-ENTRY-DEFAULTS] ===
+
+  // === [Zzz6-X:AUTOLOGIN-VERSO-REAL-SESSION] Vrso 2026-09-18, doslovne: "neda sa aspon pre verso username
+  // urobit aby refresh to zautomatizoval?" - navyse k cisto kozmetickemu stavu vyssie (ktory NEVYTVARA
+  // realnu session, viz vysvetlenie v chate), TERAZ sa navyse skusi SKUTOCNY login (rovnaky vzor ako
+  // existujuci Zzz6-X:VERSO-DEV-LOGIN-SECRET Quick Login tlacidlo), ALE BEZ jeho destruktivneho reset/
+  // reregister kroku - ten by na KAZDOM refreshi zmazal a znovu vytvoril cely Verso ucet aj s realnym
+  // emailom, co je tu nechcene. Otvori Login modal (potrebne, aby vznikli lokalne input polia
+  // versoLoginUserCell/versoLoginContentCell), vyplni username="Verso" + heslo "devquicklogin" (rovnake,
+  // ake pouziva Quick Login), odosle skutocnym zzz6f36_submit_login(), a hned zatvori. Ak "Verso" NIE JE
+  // (este) zaregistrovany s tymto heslom, submit ticho zlyha (zzz6f2_show_toast) - kozmeticky stav vyssie
+  // ostava nedotknuty, appka funguje presne ako doteraz (len bez realnej session). setTimeout(0), aby sa
+  // toto vykonalo AZ PO dokonceni synchronnej inicializacie stranky (Supabase klient a pod). | Vrso ->
+  // Claude AI | 2026-09-18 ===
+  setTimeout(async () => {
+    // [Zzz6-X:AUTOLOGIN-VERSO-REAL-SESSION] bezpecnostna poistka - skus REALNY login LEN na zariadeni, kde
+    // uz NIEKEDY prebehlo skutocne prihlasenie (rovnaky localStorage flag ako Quick Login tlacidlo
+    // vyssie/nizsie v subore) - inak by KAZDY refresh na uplne novom zariadeni (kde "Verso" este nikdy
+    // nebol s tymto heslom zaregistrovany) pripocital jeden "neuspesny pokus", a po 5 takych refreshoch by
+    // sa spustil existujuci breach-alert email mechanizmus - nechceny dosledok tejto poistky. | Vrso ->
+    // Claude AI | 2026-09-18 ===
+    let deviceHasRealLoginHistory = false;
+    try { deviceHasRealLoginHistory = !!localStorage.getItem(ZZZ10R1_EXPECTED_USERNAME_KEY); } catch (e) { /* localStorage nedostupne */ }
+    if (!deviceHasRealLoginHistory) return;
+    try {
+      zzz6f36_open_login_modal();
+      const userInput = document.getElementById('versoLoginUserCell');
+      const contentInput = document.getElementById('versoLoginContentCell');
+      if (userInput) userInput.value = zzz6xAutologinUsername;
+      if (contentInput) contentInput.value = 'devquicklogin';
+      await zzz6f36_submit_login();
+    } catch (e) {
+      // ticho ignoruj - kozmeticky stav vyssie uz appku funkcne nastavil, toto je len "bonus" realnej session
+    } finally {
+      zzz6f36_close_login_modal();
+    }
+  }, 0);
+  // === [/Zzz6-X:AUTOLOGIN-VERSO-REAL-SESSION] ===
 })();
 // === [/Zzz6-X:AUTOLOGIN-VERSO] ===
 // === [/Zzz6-F7:LOGIN-STATE] ===
@@ -17147,8 +17184,16 @@ function zzz6f36_open_login_modal(prefillUsername) {
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'entry-modal-close';
-  closeBtn.textContent = 'ZAVRIET';
+  // [Zzz6-F36:LOGIN-CLOSE-X] Vrso 2026-09-18, doslovne: "login module nema x na zatvorenie okna" - text
+  // "ZAVRIET" nahradeny skutocnym "×" symbolom (rovnaky vzor ako ostatne "x" zatvaracie tlacidla v subore,
+  // napr. Zzz5-T0 tab-window), aby bolo vizualne jasne rozpoznatelne ako zatvaracie tlacidlo okna. | Vrso
+  // -> Claude AI | 2026-09-18 ===
+  closeBtn.textContent = '\u00D7';
+  closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.style.alignSelf = 'flex-end';
+  closeBtn.style.fontSize = '20px';
+  closeBtn.style.lineHeight = '1';
+  closeBtn.style.padding = '0 6px';
   closeBtn.addEventListener('click', () => {
     zzz6f36LoginMode = 'normal'; // [Zzz6-X:MULTIVERIFICATION-SECRET-CODE] rucne zatvorenie (X) = zrusenie pokusu, naspat na bezny Login
     zzz6f36_close_login_modal();
