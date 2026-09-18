@@ -129,6 +129,15 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   color: #22c55e;
   text-shadow: none;
 }
+/* === [Zzz6-F7:REAL-SESSION-INDICATOR] Vrso 2026-09-18 (backlog polozka 22) - ZLATA (rovnaky odtien ako
+   povodny "prihlaseny" stav pred zavedenim zelenej 2026-09-14) prebije zelenu, ked je isLoggedIn=true ALE
+   ziadna realna/heartbeat-overena session neexistuje (zzz_sessionId=null) - typicky Zzz6-X:AUTOLOGIN-VERSO
+   bez uspesneho zzz10r8_verify_login_password pokusu. Umiestnene TU (PRED oranzovou nizsie), aby oranzova
+   (horsi problem - DB vypadok) mala pri sucasnom vyskyte oboch stale prioritu, presne ako uz opisuje
+   komentar pri [Zzz6-F7:DB-CONNECTION] nizsie. | Vrso -> Claude AI | 2026-09-18 === */
+.zzz6-f7-username.zzz6-f7-no-real-session {
+  color: #D4AF37 !important;
+}
 /* === [Zzz6-F7:DB-CONNECTION] SYSTEM FUNCTION - oranzova FARBA TEXTU username napisu (nie ramcek), ak sa
    zapis/citanie z D-4 (Databaza, Supabase) NEPODARI (odpojenie/timeout/chyba).
    UPDATE (Vrso 2026-08-24, "nie stvorec"): PREROBENE z border na text color (rovnaky princip ako
@@ -9639,8 +9648,11 @@ function zzz6f7_set_login_state(isLoggedIn) {
   if (!label) return;
 
   const zzz6xAutologinUsername = 'Verso'; // jedina hodnota, na ktoru je TOTO cele autologin hardcoded
+  // [Zzz6-X:AUTOLOGIN-VERSO] Vrso 2026-09-18, doslovne: "kozmeticku zrus" - ZIADNE okamzite
+  // zzz6f7_set_login_state(true) uz TU. Label zobrazuje meno hned (citatelnost), ale login-state (a teda
+  // aj farba) sa nastavi AZ NIZSIE, podla SKUTOCNEHO vysledku pozadneho pokusu - nie predtym. | Vrso ->
+  // Claude AI | 2026-09-18 ===
   label.textContent = zzz6xAutologinUsername;
-  zzz6f7_set_login_state(true);
 
   // === [Zzz1-DEFAULT-OWNER-USER] (Vrso 2026-08-25, "Prednastavena kazda cl na owner a user owner"):
   // cerstva/prazdna CL sa pri nacitani strany automaticky predvyplni - R4 (Project Owner) aj R17 (User)
@@ -9663,40 +9675,37 @@ function zzz6f7_set_login_state(isLoggedIn) {
   }
   // === [/Zzz6-X:VERSO-ENTRY-DEFAULTS] ===
 
-  // === [Zzz6-X:AUTOLOGIN-VERSO-REAL-SESSION] Vrso 2026-09-18, doslovne: "neda sa aspon pre verso username
-  // urobit aby refresh to zautomatizoval?" - navyse k cisto kozmetickemu stavu vyssie (ktory NEVYTVARA
-  // realnu session, viz vysvetlenie v chate), TERAZ sa navyse skusi SKUTOCNY login (rovnaky vzor ako
-  // existujuci Zzz6-X:VERSO-DEV-LOGIN-SECRET Quick Login tlacidlo), ALE BEZ jeho destruktivneho reset/
-  // reregister kroku - ten by na KAZDOM refreshi zmazal a znovu vytvoril cely Verso ucet aj s realnym
-  // emailom, co je tu nechcene. Otvori Login modal (potrebne, aby vznikli lokalne input polia
-  // versoLoginUserCell/versoLoginContentCell), vyplni username="Verso" + heslo "devquicklogin" (rovnake,
-  // ake pouziva Quick Login), odosle skutocnym zzz6f36_submit_login(), a hned zatvori. Ak "Verso" NIE JE
-  // (este) zaregistrovany s tymto heslom, submit ticho zlyha (zzz6f2_show_toast) - kozmeticky stav vyssie
-  // ostava nedotknuty, appka funguje presne ako doteraz (len bez realnej session). setTimeout(0), aby sa
-  // toto vykonalo AZ PO dokonceni synchronnej inicializacie stranky (Supabase klient a pod). | Vrso ->
-  // Claude AI | 2026-09-18 ===
+  // === [Zzz6-X:AUTOLOGIN-VERSO-REAL-SESSION] Vrso 2026-09-18, 3. iteracia. Pouziva
+  // zzz10r8_verify_login_password(username, password) PRIAMO (parametre, nie DOM) - nulove riziko suboja
+  // s pripadne otvorenym Login modalom.
+  // "kozmeticku zrus...akurat ak by naozaj vypadlo spojenie, zlatou farbou username by aspon LOKALNE
+  // signalizovalo ze je prihlaseny do Versa ale bez internetu" - TRI mozne vysledky pokusu, kazdy iny stav:
+  //  1) result.verified === true -> SKUTOCNA session (zzz_session_start uz prebehol vnutri verify) ->
+  //     zzz6f7_set_login_state(true) -> recompute uvidi zzz_sessionId a ukaze ZELENU (realne overene).
+  //  2) result.reason === 'lookup_failed' -> POKUS SA VOBEC NEDOSTAL K SERVERU (fetch zlyhal/timeout -
+  //     presne "vypadlo spojenie") - NA ZAKLADE existujucej historie realneho prihlasenia na tomto
+  //     zariadeni sa username POVAZUJE za "lokalne dovereryhodne prihlaseny" -> zzz6f7_set_login_state(true),
+  //     ale ziadna zzz_session_start sa nestala (zzz_sessionId zostava null) -> recompute ukaze ZLATU
+  //     ("prihlaseny, offline, neoverene") presne ako Vrso ziadal.
+  //  3) inak (napr. wrong_password/not_registered - server ODPOVEDAL, len s nesuhlasom) -> POKUS SKUTOCNE
+  //     ZLYHAL, nie je dovod predstierat prihlasenie - zzz6f7_set_login_state sa VOBEC nezavola, username
+  //     ostava bez farby (naozaj neprihlaseny).
+  // POISTKA (nezmenena): skusi sa LEN na zariadeni s uz existujucou historiou skutocneho prihlasenia -
+  // inak by kazdy refresh na novom zariadeni pripocital "neuspesny pokus" a po 5 spustil breach-alert.
+  // | Vrso -> Claude AI | 2026-09-18 ===
   setTimeout(async () => {
-    // [Zzz6-X:AUTOLOGIN-VERSO-REAL-SESSION] bezpecnostna poistka - skus REALNY login LEN na zariadeni, kde
-    // uz NIEKEDY prebehlo skutocne prihlasenie (rovnaky localStorage flag ako Quick Login tlacidlo
-    // vyssie/nizsie v subore) - inak by KAZDY refresh na uplne novom zariadeni (kde "Verso" este nikdy
-    // nebol s tymto heslom zaregistrovany) pripocital jeden "neuspesny pokus", a po 5 takych refreshoch by
-    // sa spustil existujuci breach-alert email mechanizmus - nechceny dosledok tejto poistky. | Vrso ->
-    // Claude AI | 2026-09-18 ===
     let deviceHasRealLoginHistory = false;
     try { deviceHasRealLoginHistory = !!localStorage.getItem(ZZZ10R1_EXPECTED_USERNAME_KEY); } catch (e) { /* localStorage nedostupne */ }
-    if (!deviceHasRealLoginHistory) return;
-    try {
-      zzz6f36_open_login_modal();
-      const userInput = document.getElementById('versoLoginUserCell');
-      const contentInput = document.getElementById('versoLoginContentCell');
-      if (userInput) userInput.value = zzz6xAutologinUsername;
-      if (contentInput) contentInput.value = 'devquicklogin';
-      await zzz6f36_submit_login();
-    } catch (e) {
-      // ticho ignoruj - kozmeticky stav vyssie uz appku funkcne nastavil, toto je len "bonus" realnej session
-    } finally {
-      zzz6f36_close_login_modal();
+    if (deviceHasRealLoginHistory) {
+      try {
+        const result = await zzz10r8_verify_login_password(zzz6xAutologinUsername, 'devquicklogin');
+        if (result.verified || result.reason === 'lookup_failed') {
+          zzz6f7_set_login_state(true); // pripad 1 (realne) alebo 2 (offline, lokalna dovera) - farbu rozlisi recompute nizsie podla zzz_sessionId
+        }
+        // pripad 3 (server odpovedal, ale zamietol) - VOBEC sa nezavola, ostava neprihlaseny
+      } catch (e) { /* ticho ignoruj - ostava neprihlaseny */ }
     }
+    zzz_recompute_logo_status(); // [Zzz-LOGO-STATUS] prejav skutocny vysledok (zzz_sessionId nastaveny/null) na indikatore
   }, 0);
   // === [/Zzz6-X:AUTOLOGIN-VERSO-REAL-SESSION] ===
 })();
@@ -17974,6 +17983,9 @@ function zzz_session_start(username, sessionId) {
   if (sessionId) { // ak server session_id nevratil (napr. upsert zlyhal), heartbeat nema zmysel spustat
     zzz_sessionHeartbeatInterval = setInterval(zzz_session_heartbeat_tick, ZZZ_SESSION_HEARTBEAT_MS);
   }
+  // [Zzz6-F7:REAL-SESSION-INDICATOR] Vrso 2026-09-18 (backlog 22) - realna session prave zacala, indikator
+  // sa musi ihned prekreslit (odstranit prip. zlatu "no-real-session" znacku, zelena je teraz opodstatnena).
+  if (typeof zzz_recompute_logo_status === 'function') zzz_recompute_logo_status();
 }
 
 function zzz_session_stop() {
@@ -17984,6 +17996,10 @@ function zzz_session_stop() {
   if (zzz_sessionHeartbeatInterval) { clearInterval(zzz_sessionHeartbeatInterval); zzz_sessionHeartbeatInterval = null; }
   document.body.classList.remove('zzz-standby-mode', 'zzz-offline-mode');
   zzz_session_apply_headers_to_client(null, null); // Zzz-SESSION:FRESHNESS-GATE - vrat "sb" spat na plain anon klienta bez session headers
+  // [Zzz6-F7:REAL-SESSION-INDICATOR] Vrso 2026-09-18 (backlog 22) - realna session prave skoncila (manualny
+  // logout ALEBO heartbeat zlyhanie) - indikator sa MUSI ihned prekreslit, inak by zelena/zlata zaostavala
+  // za skutocnym stavom az do dalsej nesuvisiacej udalosti.
+  if (typeof zzz_recompute_logo_status === 'function') zzz_recompute_logo_status();
 }
 
 // === [Zzz-LOGO-STATUS] Vrso poziadavka (2 kola): "oznac kde je logo button zelenou [ak prihlaseny], ak
@@ -18010,6 +18026,20 @@ function zzz_recompute_logo_status() {
     circle.classList.add('zzz-logo-orange');
   }
   // prihlaseny bez problemu -> ziadna trieda na kruhu (zelena je uz na texte cez .zzz6-f7-active)
+
+  // === [Zzz6-F7:REAL-SESSION-INDICATOR] Vrso 2026-09-18, doslovne (backlog polozka 22): "to kozmeticke
+  // oznacenie zelenym username...je hlavna bezpecnostna funkcia...vsak takto user vie vzdy v akom statuse
+  // sa nachadza a ci je vobec prihlaseny" - PREDTYM zelena (.zzz6-f7-active) znamenala LEN "zzz6f7_isLoggedIn
+  // je true", co pre Zzz6-X:AUTOLOGIN-VERSO NEODZRKADLOVALO, ci realna server-side session (zzz_sessionId)
+  // skutocne existuje - teda presny opak toho, co ma tento indikator podla Vrsa garantovat. OPRAVA: ked je
+  // isLoggedIn=true ALE zzz_sessionId=null (cosmeticky prihlaseny, ziadna realna/heartbeat-overena session),
+  // pouzije sa ZLATA (#D4AF37, rovnaky odtien ako povodny "prihlaseny" stav pred zavedenim zelenej
+  // 2026-09-14) namiesto zelenej - vizualne jasne "prihlaseny, ale NEOVERENE". Zelena teraz teda naozaj
+  // znamena "realna, server-overena session", presne ako to Vrso chce. | Vrso -> Claude AI | 2026-09-18 ===
+  if (label) {
+    const hasRealSession = !!zzz_sessionId;
+    label.classList.toggle('zzz6-f7-no-real-session', zzz6f7_isLoggedIn && !hasRealSession);
+  }
 }
 // === [/Zzz-LOGO-STATUS] ===
 
