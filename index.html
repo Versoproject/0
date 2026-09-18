@@ -4403,7 +4403,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz2-R38:SELECT-TAB-SOURCE - SELECT tlacidlo (Zzz6-F29) vie oznacit CELY tab (nielen T2c, cely T1/T2/T3 Templates panel) ako zdroj (samostatna, nezavisla cast od existujuceho CL/EL vyberu, ten NEZMENENY), automaticky sa po oznaceni odarmuje aby neblokovalo dalsie CL kliky</span>
   <span class="module-tag">Zzz2-R38:MOVE-TAB-TARGET - MOVE tlacidlo (strieborny okraj) kratkym klikom armuje "vyber ciela" rezim, nasledujuci klik na LUBOVOLNY tab zapise docasny "placement:" chip do SUBS (nie uz TAG) a zostava armed (rucny toggle)</span>
   <span class="module-tag">Zzz2-R38:SUB-TAB - SUBS chip nahradzuje TAG: docasny "placement:X" (modry, needitovatelny) pri vybere ciela, tesne pred zapisom do DB sa prepise na trvaly "tab:X" (zeleny, needitovatelny) - zdielany zzz2r38_subs_chip_display() helper renderuje oba stavy v hlavnej CRM aj M4a2</span>
-  <span class="module-tag">Zzz6-F55:TAB-ID-DISPLAY - dlhy stlak (3s) na T1/T2 tabe (ziadna existujuca akcia) zobrazi toast so stabilnym ID; T3b+ taby maju to iste ID zobrazene ako riadok priamo v ich existujucom rename/delete okne (zzz5t0_open_tab_window), bez noveho gesta</span>
+  <span class="module-tag">Zzz6-F55:TAB-ID-DISPLAY - dvoj-tuknutie (do 400ms) na LUBOVOLNOM tabe (T1/T2/T3, vratane T3a/T3b+) zobrazi toast so stabilnym ID, nekonfliktuje so ziadnym existujucim gestom; T1/T2 aj dlhy stlak (3s), T3b+ aj riadok priamo v rename/delete okne (zzz5t0_open_tab_window)</span>
   <span class="module-tag">Zzz2-R38:VALID-TARGETS (SF) - overuje TAG/SUB CATEGORY voci vsetkym T1+T2+T3 tabom v Templates paneli (cerstvo, kazdy novy T3 tab cez + ADD TEMPLATE je automaticky platny) - Zzz10-T2 Multi Verification zamerne mimo (ina databaza)</span>
   <span class="module-tag">Zzz2-R38:CATEGORY-RENAME - CATEGORY hodnota premenovana z "create" na "Use" (presnejsie vystihuje akciu "pouzi tento template")</span>
   <span class="module-tag">Zzz2-R38:LINK-TAB-ID - stabilne interne ID zdrojoveho tabu (napr. "zzz5t2-c", nie citatelny label) sa pri SELECT oznaceni zdroja zapisuje do LINK (R13) - docasne umiestnenie, kym sa nerozhodne trvale miesto</span>
@@ -5671,6 +5671,25 @@ function zzz_bind_long_press(el, ms, onLongPress, shouldStart) {
   }, true);
 }
 // === [/Zzz6-F27:LONGPRESS-COPY] (zdielane funkcie) ===
+
+// [Zzz6-F55:TAB-ID-DISPLAY] zdielana dvoj-tuknutie detekcia (rovnaky "gesture utility" princip ako
+// zzz_bind_long_press vyssie) - druhy klik na TEN ISTY element do 400ms = double-tap. Po detekcii sa stav
+// vynuluje (nie na null-element, na "ziadny predchadzajuci"), aby tretie rychle tuknutie NEZAPOCITALO ako
+// dalsi double-tap oproti druhemu. | Vrso -> Claude AI | 2026-09-18 ===
+let zzz6f55_lastTapEl = null;
+let zzz6f55_lastTapTime = 0;
+function zzz6f55_check_double_tap(el) {
+  const now = Date.now();
+  const isDouble = (el === zzz6f55_lastTapEl) && (now - zzz6f55_lastTapTime < 400);
+  if (isDouble) {
+    zzz6f55_lastTapEl = null;
+    zzz6f55_lastTapTime = 0;
+  } else {
+    zzz6f55_lastTapEl = el;
+    zzz6f55_lastTapTime = now;
+  }
+  return isDouble;
+}
 
 function zzz6f6_flash_cell(id) {
   const cell = document.querySelector(`.numbers-row .entry-cell[data-entry-id="${id}"]`);
@@ -14807,7 +14826,18 @@ function zzz5t0_render_tabs_row(tabs, innerEl, activeId, prefix, onSelect, onRen
     // zzz2r38_handle_special_tab_click() rozhodne, ci ide o MOVE-ciel alebo SELECT-zdroj namiesto normalneho
     // prepnutia tabu (onSelect sa vtedy vobec nezavola). Ked ani jeden rezim nie je aktivny, spravanie je
     // 1:1 nezmenene (normalny vyber tabu). | Vrso -> Claude AI | 2026-09-16 ===
+    // [Zzz6-F55:TAB-ID-DISPLAY] Vrso 2026-09-18, doslovne: "dajme na vsetky tabs 2x tukni rychlo po sebe a
+    // zobraz id" - ROZSIRENE z pôvodneho dlhy-stlak (ktory na T3a/T3b+ koliduje s inymi existujucimi
+    // akciami) na UNIVERZALNY dvoj-klik/tuknutie, funkcny na VSETKYCH taboch bez vynimky (aj T3a), kedze
+    // dvojklik nekoliduje so ZIADNYM existujucim gestom v subore. Zdielana zzz6f55_check_double_tap()
+    // detekcia (druhy klik do 400ms na TEN ISTY element = double-tap) - pri detekcii sa zobrazi ID a
+    // NORMALNA klik-logika (SELECT/MOVE/onSelect nizsie) sa pre TENTO klik preskoci, aby sa tab pri druhom
+    // tuknuti neprepol/nevybral navyse. | Vrso -> Claude AI | 2026-09-18 ===
     btn.addEventListener('click', () => {
+      if (zzz6f55_check_double_tap(btn)) {
+        zzz6f2_show_toast(`Zzz6-F55: "${tab.label}" -> ID: "${tab.id}"`);
+        return;
+      }
       if (zzz2r38_handle_special_tab_click(tab.label, tab.label, btn, tab.id)) return;
       onSelect(tab);
     });
