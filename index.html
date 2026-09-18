@@ -4344,7 +4344,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-F37:AUDIT-LOG (SYSTEM FUNCTION, append-only) - trvaly needitovatelny/nezmazatelny zaznam "kto co urobil a kedy" (entry_create/entry_trash_move/user_register/user_login/legacy_register_migrated), vlastna tabulka verso_audit_log, ODDELENA od verso_entries/CL (nikdy sa nezobrazuje v Database Workspace)</span>
   <span class="module-tag">Zzz10-R1 Multiverification - automaticky sa spusti po 10x nespravnom hesle POCAS Login pokusu (Zzz4-1 hook)</span>
   <span class="module-tag">Zzz10-R1:USERNAME-GUARD - cerveny ram na Zzz0-R1, ak login username nesedi s poslednym znamym na zariadeni</span>
-  <span class="module-tag">ZZZ0-R1:AUTOLOGIN-VERSO - "Verso" sa VZDY automaticky prihlasi pri nacitani stranky (bez localStorage podmienky, kvoli rychlosti vyvoja) - vedomy docasny kompromis, viz komentar</span>
+  <span class="module-tag">Zzz6-X:AUTOLOGIN-VERSO - "Verso" sa VZDY automaticky prihlasi pri nacitani stranky (bez localStorage podmienky, kvoli rychlosti vyvoja) - vedomy docasny kompromis, viz komentar</span>
+  <span class="module-tag">Zzz6-X:VERSO-ENTRY-DEFAULTS - cerstva CL dostava PROJECT NUMBER=1 predvyplnene, LEN ked je prihlaseny presne "Verso" (Project Owner/User uz predtym cez Zzz1-DEFAULT-OWNER-USER)</span>
   <span class="module-tag">Zzz10-R2 Log Out button (Zzz10-0 Settings Workspace, branch 1) - odhlasi, vrati na Zzz6-F36 Login</span>
   <span class="module-tag">Zzz10-M2 Login Setup module - USER/CONTENT su LOKALNE inputy (nie entryData), CONTENT je natívny type="password" (SHOW PASSWORD odstranene 2026-09-02)</span>
   <span class="module-tag">Zzz6-F36 Login KRITICKA OPRAVA 2026-09-02: USER/CONTENT UZ NEZDIELAJU entryData s hlavnou CRM Command Line (predtym leak - heslo/tajny kod bolo viditelne v hlavnej CL)</span>
@@ -9529,7 +9530,7 @@ function zzz6f7_set_login_state(isLoggedIn) {
   zzz6f7_set_login_state(zzz6f7_isLoggedIn);
 })();
 
-// === [ZZZ0-R1:AUTOLOGIN-VERSO] (predtym [ZZZ0-R1:TRUSTED-DEVICE-AUTOLOGIN], predtym [ZZZ0-R1:TESTING-
+// === [Zzz6-X:AUTOLOGIN-VERSO] (predtym [ZZZ0-R1:TRUSTED-DEVICE-AUTOLOGIN], predtym [ZZZ0-R1:TESTING-
 // AUTOLOGIN]) (Vrso 2026-08-25, "Project owner bude Verso aj logged in user ako priklad. Mozes to aj
 // nakodovat nech nemusim stale sa prihlasovat a pisat"): automaticky "prihlasi" username="Verso" pri
 // nacitani stranky.
@@ -9546,22 +9547,40 @@ function zzz6f7_set_login_state(isLoggedIn) {
 // vedome prijate Vrsom kvoli rychlosti vyvoja/testovania, PLANOVANE riesenie: buduci token-based
 // multiverification system (viz [Zzz10-TOKEN-AUTH] navrh nizsie/v konverzacii), ktory by mal TOTO
 // nahradit skutocnym overenim pred verejnym spustenim appky. | Vrso -> Claude AI | 2026-09-02 ===
+// PREZNACENE 2026-09-17 (Vrso: "zapis do zzz6-X verso + entry. Idealne aj vsetko co sa tyka loginu verso
+// a pod.") z [ZZZ0-R1:AUTOLOGIN-VERSO] na [Zzz6-X:AUTOLOGIN-VERSO] - patri do tej istej "tajnej/dev" Zzz6-X
+// rodiny ako Zzz6-X:VERSO-DEV-LOGIN-SECRET/Zzz6-X:DELETE-USERNAME-DATABASE (docasny, vedomy vyvojovy
+// kompromis, ODSTRANIT pred verejnym spustenim).
 (function zzz0r1_autologin_verso() {
   const label = document.getElementById('zzz6f7UsernameLabel');
   if (!label) return;
 
-  label.textContent = 'Verso';
+  const zzz6xAutologinUsername = 'Verso'; // jedina hodnota, na ktoru je TOTO cele autologin hardcoded
+  label.textContent = zzz6xAutologinUsername;
   zzz6f7_set_login_state(true);
 
   // === [Zzz1-DEFAULT-OWNER-USER] (Vrso 2026-08-25, "Prednastavena kazda cl na owner a user owner"):
   // cerstva/prazdna CL sa pri nacitani strany automaticky predvyplni - R4 (Project Owner) aj R17 (User)
   // dostanu aktualne prihlaseny username ako start hodnotu. Owner ich moze pred odoslanim upravit/rozsirit
   // (napr. pridat dalsich userov do R17 cez R17b, viz nizsie). | Vrso -> Claude AI | 2026-08-25 ===
-  write_to_entry("4", "Verso");
-  write_to_entry("17", "Verso");
+  write_to_entry("4", zzz6xAutologinUsername);
+  write_to_entry("17", zzz6xAutologinUsername);
   // === [/Zzz1-DEFAULT-OWNER-USER] ===
+
+  // === [Zzz6-X:VERSO-ENTRY-DEFAULTS] Vrso 2026-09-17, doslovne: "pridaj k verso ked logged in ze vzdy cl
+  // bude prednastavena aj na project number 1 a verso uz tusim je automaticky project owner" - LEN ked je
+  // prihlaseny username presne "Verso" (explicitny if, NIE nepodmienene pre kohokolvek), cerstva CL dostane
+  // NAVYSE aj PROJECT NUMBER(2)="1" ako predvyplnenu start hodnotu (rovnaky princip ako existujuce
+  // Zzz1-DEFAULT-OWNER-USER vyssie, len dalsie pole). Vedome uzko naviazane na tento konkretny (docasny,
+  // Zzz6-X) autologin blok - ked ho raz nahradi skutocny multi-user login, tento if-guard uz bude
+  // pripraveny spravne fungovat aj tam (nebude sa aplikovat na inych userov). | Vrso -> Claude AI |
+  // 2026-09-17 ===
+  if (zzz6xAutologinUsername === 'Verso') {
+    write_to_entry("2", "1");
+  }
+  // === [/Zzz6-X:VERSO-ENTRY-DEFAULTS] ===
 })();
-// === [/ZZZ0-R1:AUTOLOGIN-VERSO] ===
+// === [/Zzz6-X:AUTOLOGIN-VERSO] ===
 // === [/Zzz6-F7:LOGIN-STATE] ===
 
 // === [Zzz6-F7:DB-CONNECTION] SYSTEM FUNCTION - oranzovy ram na username napise, ak zlyha spojenie s D-4
@@ -10571,9 +10590,15 @@ let zzz2r38_target_selection = { label: null, el: null };
 function zzz2r38_handle_special_tab_click(tabId, tabLabel, btnEl, stableTabId) {
   if (zzz2r38MovePickTargetMode) {
     write_to_entry('21', tabId);
-    zzz2r38MovePickTargetMode = false;
-    const moveBtn = document.getElementById('versoMoveButton');
-    if (moveBtn) moveBtn.classList.remove('zzz2r38-move-armed');
+    // [Zzz2-R38:BUTTON-STAY-ARMED] Vrso 2026-09-17, doslovne: "malo by byt stlacim select a stlacim tab
+    // ktory chcem kopirovat. Select svieti na fialovo a je kontrastne. Ak stlacim select znovu tak sa
+    // deaktivuje...rovnako s move rovnako bez ohladu na stlac/podrz povel" - VRATENE spat na CISTY rucny
+    // toggle (2026-09-16 auto-disarm PO oznaceni tabu ODSTRANENY) - MOVE/SELECT tlacidlo teraz zostava
+    // "armed" (plna farba) AJ PO oznaceni tabu, vypne sa LEN opatovnym klikom na to iste tlacidlo. ZNAMY
+    // DOSLEDOK (Vrso vedome akceptoval tento kompromis touto poziadavkou): kym je SELECT takto "armed",
+    // klik na INU CL bunku (napr. TAG) sa este stale zaradi do multi-selectu namiesto otvorenia edit-modalu
+    // (rovnaky mechanizmus ako predtym) - user musi SELECT rucne vypnut pred upravou inych poli. | Vrso ->
+    // Claude AI | 2026-09-17 ===
     if (zzz2r38_target_selection.el) zzz2r38_target_selection.el.classList.remove('zzz2r38-tab-target-selected');
     zzz2r38_target_selection = { label: tabId, el: btnEl };
     btnEl.classList.add('zzz2r38-tab-target-selected');
@@ -10592,19 +10617,6 @@ function zzz2r38_handle_special_tab_click(tabId, tabLabel, btnEl, stableTabId) {
       write_to_entry('8', zzz2r38_template_id_for_tab(tabId));
       write_to_entry('13', stableTabId || tabId); // [Zzz2-R38:LINK-TAB-ID] stabilne ID zdroja do LINK
     }
-    // [Zzz2-R38:MOVE-TEMPLATE] OPRAVA (Vrso 2026-09-16, "vyplnil sa tag ale neda sa uz zmenit...cl je cez
-    // select zvyraznitelny, ale neda sa dat delete") - SKUTOCNA PRICINA oboch hlasenych bugov: SELECT
-    // (zzz6f29SelectMode) po oznaceni tabu OSTAVAL "armed", presne ako pri beznom CL/EL vybere (tam je to
-    // spravne - COPY/DELETE ho konzumuju). Tu ale nasledujuci klik na AKUKOLVEK CL bunku (vratane TAG) uz
-    // NEOTVORIL bezny edit-modal, ale ho namiesto toho pribral do multi-selectu (zzz6f29_toggle_cl_cell) -
-    // presne preto sa TAG "nedal zmenit" (v skutocnosti sa len zaradil do vyberu) a preto sa aj cela CL
-    // dala nechcene oznacit klikom na ENTRY NUMBER (zzz6f29_pick_cl_row). OPRAVA: SELECT sa TU automaticky
-    // ODARMUJE HNED PO oznaceni/odznaceni tabu (LEN flag+tlacidlo, NIE plny zzz6f29_reset_selection() - ten
-    // by zmazal aj samotny tab-vyber, ktory potrebujeme zachovat) - dalsie kliky na CL bunky sa uz spravaju
-    // normalne (otvaraju edit-modal). | Vrso -> Claude AI | 2026-09-16 ===
-    zzz6f29SelectMode = false;
-    const selectBtn = document.getElementById('versoAutomateButton');
-    if (selectBtn) selectBtn.classList.remove('zzz6f29-armed');
     return true;
   }
   return false;
@@ -10822,6 +10834,13 @@ const ZZZ4_0_WORKSPACE_PAGE_SIZE = 30;
 let zzz4_0_workspacePageCursor = null;    // entry_id posledneho nacitaneho riadku (null = od zaciatku)
 let zzz4_0_workspaceLoadedRows = [];      // akumulovane uz nacitane riadky (naprec vsetkymi doteraz nacitanymi strankami)
 let zzz4_0_workspaceHasMore = false;      // true = existuju dalsie, este nenacitane starsie zaznamy
+// [Zzz10-SCALE:DOUBLE-FETCH-GUARD] Vrso 2026-09-17, doslovne: "druha foto ale zas ten problem so zapisom -
+// entry 77 (aj 76) sa zobrazuju DVAKRAT v Database Workspace" - PRICINA: "NACITAT STARSIE" tlacidlo nemalo
+// ziadnu ochranu proti dvojitemu/rychlemu opakovanemu kliku - dva prekryvajuce sa fetch-y oba precitali
+// TEN ISTY zzz4_0_workspacePageCursor (ten sa aktualizuje AZ PO dokonceni fetchu), obaja vratili TU ISTU
+// stranku riadkov, oba .concat()-li na zzz4_0_workspaceLoadedRows -> duplicitne entry_id v zozname. | Vrso
+// -> Claude AI | 2026-09-17 ===
+let zzz4_0_workspaceFetchInProgress = false;
 
 const ZZZ4R17_FILTERABLE_IDS = ["2", "3", "4", "5", "8", "6", "7", "9", "10", "11", "13", "18", "19", "20"];
 
@@ -13619,6 +13638,12 @@ async function open_database_workspace(loadMore = false) {
   const workspace = document.getElementById('versoWorkspaceSection');
   if (!workspace) return;
 
+  // [Zzz10-SCALE:DOUBLE-FETCH-GUARD] pri "loadMore" (pokracovanie) IGNORUJ dalsi klik, kym predchadzajuci
+  // fetch este bezi - pri "sviezom" otvoreni (loadMore=false) sa naopak VZDY spusti nanovo (reset stavu
+  // nizsie to aj tak vycisti, takze prekryv tam nehrozi rovnakym sposobom).
+  if (loadMore && zzz4_0_workspaceFetchInProgress) return;
+  zzz4_0_workspaceFetchInProgress = true;
+
   // Zzz10-SCALE: "svieze" otvorenie (nie pokracovanie cez "NACITAT STARSIE") = reset stavu strankovania
   if (!loadMore) {
     zzz4_0_workspacePageCursor = null;
@@ -13695,6 +13720,7 @@ async function open_database_workspace(loadMore = false) {
     // (cely payload kazdeho zaznamu), bez akehokolvek filtra na prazdnost - kazdy uspesne zapisany zaznam sa zobrazi.
     rows = Object.values(submittedEntriesFullCache);
   }
+  zzz4_0_workspaceFetchInProgress = false; // [Zzz10-SCALE:DOUBLE-FETCH-GUARD] uvolni HNED PO fetchi (uspesnom aj neuspesnom), nie az na konci celej (dlhsej) render funkcie
 
   const currentUsername = zzz0r1_get_current_username(); // Zzz0-R1: pre porovnanie MOJE/cudzie
 
@@ -16835,7 +16861,7 @@ function zzz6f36_render_login(body) {
   // zaregistrovane, prejde okamzite (rovnako rychlo ako predtym), ALE TERAZ SKUTOCNE zalozi platnu session
   // (session_id, heartbeat) - zapisy entries preto uz NEBUDU blokovane.
   // PRECO TOTO NEPRIDAVA NOVE RIZIKO (Vrso vlastna spravna uvaha): "Verso" je AJ TAK uz automaticky
-  // prihlaseny KAZDEMU, kto appku otvori (viz ZZZ0-R1:AUTOLOGIN-VERSO vyssie v subore - trvaly, vedome
+  // prihlaseny KAZDEMU, kto appku otvori (viz Zzz6-X:AUTOLOGIN-VERSO vyssie v subore - trvaly, vedome
   // prijaty kompromis) - davanie mu funkcneho hesla len rozsiruje UZ EXISTUJUCU, uz akceptovanu expozíciu
   // na aj skutocne zapisy, nevytvara NOVY bezpecnostny bypass mechanizmus v kode.
   // Zostava hardcoded LEN na "Verso" (nikdy nie na iny/zadany username).
@@ -17673,7 +17699,7 @@ function zzz10r1_check_and_flag_username_mismatch(username) {
 // odhlasenia NIE JE 'manual' (t.j. islo by o AUTOMATICKE odhlasenie, napr. buduci db_disconnect trigger),
 // funkcia sa VOBEC NEVYKONA (Verso ostava prihlaseny). MANUALNY Log Out (explicitny klik na LOG OUT
 // tlacidlo) VZDY funguje aj pre Verso - toto chrani LEN pred NECHCENYM/AUTOMATICKYM odhlasenim, nie pred
-// zamernym rucnym odhlasenim. Viz aj [ZZZ0-R1:AUTOLOGIN-VERSO] vyssie v subore (Verso sa navyse
+// zamernym rucnym odhlasenim. Viz aj [Zzz6-X:AUTOLOGIN-VERSO] vyssie v subore (Verso sa navyse
 // AUTOMATICKY znova prihlasi pri kazdom nacitani stranky, takze aj manualny logout je v praxi len docasny,
 // kym sa stranka nenacita znova). | Vrso -> Claude AI | 2026-09-01 ===
 function zzz10r2_logout(reason = 'manual') {
