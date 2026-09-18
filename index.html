@@ -9291,22 +9291,33 @@ async function zzz4f1_confirm_entry_number(entryId, username, isOfflineTemp = fa
     updated_at: confirmedAt
   };
 
+  // [Zzz4-1:RLS-UPSERT-FIX] Vrso 2026-09-17, doslovne: "upravit kod...dufam ze to nema vplyv na ten proces
+  // prepisu hesiel a pod...heslo iba ako jeden z prikladov" - PRICINA opakovanej "new row violates row-
+  // level security policy for table verso_verification" chyby: .upsert() pri KONFLIKTE existujuceho "id"
+  // interne vykona UPDATE - ale RLS UPDATE politika na verso_verification je (podla referencneho dokumentu)
+  // obmedzena LEN na record_type='username_reservation', zatial co toto pise record_type=
+  // 'entry_number_confirmation' - RLS teda tento UPDATE vzdy zamietne.
+  // OPRAVA: .upsert()+onConflict NAHRADENE cistym .insert() - RLS INSERT politika je otvorena, takze prvy
+  // pokus vzdy prejde. Ak by (pri retry) rovnake "id" uz existovalo, Postgres to odmietne UNIQUE VIOLATION
+  // chybou (kod 23505) - NIE RLS chybou - a to sa TU explicitne chapajako USPECH (zaznam uz existuje, presne
+  // to bolo cielom), nie zlyhanie. ZIADNA zmena id formatu (`entrynum-${entryId}`, stale rovnake, presne
+  // preto, aby ostal kompatibilny s existujucim citanim v Zzz10-V2 Verification Database vyssie v subore,
+  // ktore tento presny format ocakava) - takze ZIADNY dopad na cokolvek ine, co z verso_verification cita
+  // alebo do nej zapisuje (heslo/Change Password ide cez UPLNE inu, oddelenu Edge Function
+  // verso-auth-gate.ts, tento subor sa jej vobec netyka). | Vrso -> Claude AI | 2026-09-17 ===
   try {
-    // FIX (Vrso 2026-08-28, offline scenario check): pridany 4s timeout, rovnaky dovod ako pri
-    // zzz6f2_get_next_entry_id_atomic vyssie - bez neho by toto volanie mohlo pri skutocnom offline stave
-    // dlho visiet, aj ked lokalne (krok 1 vyssie) je cislo uz davno zaznamenane.
-    const upsertPromise = sb.from('verso_verification').upsert(payload, { onConflict: 'id' });
+    const insertPromise = sb.from('verso_verification').insert(payload);
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Zzz4-1 upsert timeout (4s)')), 4000)
+      setTimeout(() => reject(new Error('Zzz4-1 insert timeout (4s)')), 4000)
     );
-    const { error } = await Promise.race([upsertPromise, timeoutPromise]);
-    if (error) {
+    const { error } = await Promise.race([insertPromise, timeoutPromise]);
+    if (error && error.code !== '23505') { // 23505 = unique_violation, znamena "uz existuje" = fakticky uspech
       const errDetail = (error && (error.message || error.details || error.hint)) || String(error);
       console.error(`Zzz4-1 Supabase error (potvrdenie entry number #${entryId} zlyhalo vzdialene, lokalne je ale zaznamenane). DOVOD: ${errDetail}`);
       zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
       return { success: false, error: errDetail };
     }
-    zzz4f1ConfirmedNumbersCache[entryId].synced = true; // Zzz4-1:OFFLINE-SYNC - uspesne vzdialene potvrdene
+    zzz4f1ConfirmedNumbersCache[entryId].synced = true; // Zzz4-1:OFFLINE-SYNC - uspesne vzdialene potvrdene (aj pri 23505 - uz TAM je)
     zzz4f1_save_confirmed_numbers_cache_to_storage();
     zzz0r1_set_db_connection_state(true); // Zzz6-F7:DB-CONNECTION
     return { success: true, error: null };
