@@ -129,15 +129,6 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   color: #22c55e;
   text-shadow: none;
 }
-/* === [Zzz6-F7:REAL-SESSION-INDICATOR] Vrso 2026-09-18 (backlog polozka 22) - ZLATA (rovnaky odtien ako
-   povodny "prihlaseny" stav pred zavedenim zelenej 2026-09-14) prebije zelenu, ked je isLoggedIn=true ALE
-   ziadna realna/heartbeat-overena session neexistuje (zzz_sessionId=null) - typicky Zzz6-X:AUTOLOGIN-VERSO
-   bez uspesneho zzz10r8_verify_login_password pokusu. Umiestnene TU (PRED oranzovou nizsie), aby oranzova
-   (horsi problem - DB vypadok) mala pri sucasnom vyskyte oboch stale prioritu, presne ako uz opisuje
-   komentar pri [Zzz6-F7:DB-CONNECTION] nizsie. | Vrso -> Claude AI | 2026-09-18 === */
-.zzz6-f7-username.zzz6-f7-no-real-session {
-  color: #D4AF37 !important;
-}
 /* === [Zzz6-F7:DB-CONNECTION] SYSTEM FUNCTION - oranzova FARBA TEXTU username napisu (nie ramcek), ak sa
    zapis/citanie z D-4 (Databaza, Supabase) NEPODARI (odpojenie/timeout/chyba).
    UPDATE (Vrso 2026-08-24, "nie stvorec"): PREROBENE z border na text color (rovnaky princip ako
@@ -147,6 +138,21 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   color: #FF8C00 !important;
 }
 /* === [/Zzz6-F7:DB-CONNECTION] === */
+/* === [Zzz6-F7:REAL-SESSION-INDICATOR] Vrso 2026-09-18 (backlog polozka 22), OPRAVA PRIORITY (Vrso
+   2026-09-18, "urcite ok?" - realny "Failed to fetch" pokus ukazal ORANZOVU namiesto zlatej, presne
+   OPACNE nez Vrso chcel: "zlatou farbou username by aspon lokalne signalizovalo ze je prihlaseny do
+   Versa ale bez internetu"): PREMIESTNENE za oranzovu (teraz VYHRAVA nad nou), po analyze zistene, ze
+   POVODNY dovod pre "oranzova prebije zlatu" (DB vypadok POCAS UZ REALNE zalozenej session) v skutocnosti
+   NIKDY nekoliduje s touto zlatou podmienkou - zzz_enter_offline_mode() NIKDY nemaze zzz_sessionId, takze
+   ak realna session uz existovala a spojenie len vypadlo, zlata podmienka (isLoggedIn=true ALE
+   zzz_sessionId=null) sa tam vobec nikdy neaktivuje - ZIADNY realny konflikt, bezpecne prehodit poradie.
+   Zlata teda TERAZ prebije oranzovu presne v tom JEDINOM pripade, kde k sucasnemu vyskytu obeho dochadza:
+   Zzz6-X:AUTOLOGIN-VERSO pokus o realny login zlyha na "Failed to fetch" (realny vypadok spojenia, este
+   PRED ziskaním akejkolvek session) - presne ten scenar, pre ktory Vrso zlatu chcel. | Vrso -> Claude AI |
+   2026-09-18 === */
+.zzz6-f7-username.zzz6-f7-no-real-session {
+  color: #D4AF37 !important;
+}
 /* === [Zzz10-R1:USERNAME-GUARD] CERVENA farba textu - CIASTOCNA implementacia povodneho
    [Zzz6-F7:DELEGATED-LOGIN] MEMO nizsie v subore (Vrso 2026-08-24: "Ak by bol login pod inym username ako
    je user ktory pouziva system oznac cervenym (to by sa teda nemalo vobec stat ale pre istotu)"). LEN
@@ -13771,10 +13777,13 @@ async function open_database_workspace(loadMore = false) {
   const workspace = document.getElementById('versoWorkspaceSection');
   if (!workspace) return;
 
-  // [Zzz10-SCALE:DOUBLE-FETCH-GUARD] pri "loadMore" (pokracovanie) IGNORUJ dalsi klik, kym predchadzajuci
-  // fetch este bezi - pri "sviezom" otvoreni (loadMore=false) sa naopak VZDY spusti nanovo (reset stavu
-  // nizsie to aj tak vycisti, takze prekryv tam nehrozi rovnakym sposobom).
-  if (loadMore && zzz4_0_workspaceFetchInProgress) return;
+  // [Zzz10-SCALE:DOUBLE-FETCH-GUARD] OPRAVA (Vrso 2026-09-18, "#86 aj #77 sa zase zobrazuju dvakrat") -
+  // predchadzajuca verzia chranila LEN "loadMore" volania, s chybnym predpokladom, ze "svieze" otvorenie
+  // (loadMore=false) je bezpecne, kedze si aj tak vycisti stav. To ale NEPLATI pri DVOCH SUCASNYCH
+  // "sviezich" otvoreniach - obe najprv vycistia (harmlessly) na [], ale POTOM OBE nezavisle fetchujú a
+  // OBE svoje vysledky .concat()-nu na TEN ISTY zdielany pole - presne odtial duplicita. OPRAVA: guard
+  // teraz plati VZDY (aj pre loadMore=false), nie len pre pokracovanie. | Vrso -> Claude AI | 2026-09-18 ===
+  if (zzz4_0_workspaceFetchInProgress) return;
   zzz4_0_workspaceFetchInProgress = true;
 
   // Zzz10-SCALE: "svieze" otvorenie (nie pokracovanie cez "NACITAT STARSIE") = reset stavu strankovania
