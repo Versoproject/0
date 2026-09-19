@@ -411,6 +411,17 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     outline: 2px solid #171717;
     outline-offset: 1px;
   }
+  /* [Zzz6-X:SUBS-ONE-ROW] Vrso 2026-09-19, doslovne: "vsimol som si ze sa v poslednej verzi zas tie open subs
+     ukladaju zas pod seba, maju by v jednom riadku" - PRICINA bola, ze label ("sub-EN"/"sub-REF"...) bol
+     samostatny <div> so sirkou 100 %, takze KAZDY chip si vynutil vlastny riadok. TERAZ je label MALY span
+     PRIAMO VNUTRI chipu (pred hodnotou), takze cely riadok subs sa normalne zalamuje ako cats
+     (.zzz6-f21-tags-list = flex-wrap). | Vrso -> Claude AI | 2026-09-19 === */
+  .zzz6-f8-subs-chip-label {
+    font-size: 7px;
+    font-weight: 600;
+    opacity: 0.6;
+    text-transform: lowercase;
+  }
   /* [Zzz6-X:SUBS-ID] FARBA ZMENENA (Vrso 2026-09-19, doslovne: "ID ma byt needitovatelny a zelenou farbou
      bunka") - sub-ID chip (stabilne ID tabu, nahradzuje predoslu LINK bunku) je teraz ZELENY namiesto
      povodnej fialovej. | Vrso -> Claude AI | 2026-09-19 === */
@@ -4445,6 +4456,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz2-R38:SUB-TAB - SUBS chip nahradzuje TAG: docasny "placement:X" (modry, needitovatelny) pri vybere ciela, tesne pred zapisom do DB sa prepise na trvaly "tab:X" (zeleny, needitovatelny) - zdielany zzz2r38_subs_chip_display() helper renderuje oba stavy v hlavnej CRM aj M4a2</span>
   <span class="module-tag">Zzz6-F55:TAB-ID-DISPLAY - dvoj-tuknutie (do 400ms) na LUBOVOLNOM tabe (T1/T2/T3, vratane T3a/T3b+) zobrazi toast so stabilnym ID, jedine gesto pre toto (dlhy stlak na T1/T2 uz robi Zzz6-F56 namiesto); T3b+ aj riadok priamo v rename/delete okne (zzz5t0_open_tab_window)</span>
   <span class="module-tag">Zzz6-F56:TAB-TEMPLATE-PREVIEW - HOLD-VIEW princip (ako heslo v Zzz10-M2): podrzanim (500ms prah, nie okamzite) na T1/T2 tabe sa docasne zobrazi M4a2 template priamo v tomto tabe (instruktazny nahlad, editovatelny lokalne bez realneho zapisu), pustenim sa okamzite skryje/resetuje. T3a/T3b+ nezmenene (vlastne RESET/rename-delete akcie)</span>
+  <span class="module-tag">Zzz6-F56:TAB-TEMPLATE-RESET - 3s podrzanie LUBOVOLNEHO T1*/T2* tabu vrati jeho modul do vychodzieho stavu cez zdielany router zzz5t0_reset_tab_template(): T2c = vycisti cely M4a2 template (polia, bunky, bodky, lokalne CL), T2b = Database Filter spat na default, T1c = Database Workspace znovu nacitany; tab bez obsahu len oznami, ze nie je co resetovat. Vsetko LEN lokalne, nikdy DB/entryData. HOLD-VIEW nahlad (500ms) bezi vedla toho nedotknuty</span>
+  <span class="module-tag">Zzz6-X:SUBS-ONE-ROW - zdielany zzz6f8_build_subs_chip() pre OBE SUBS okna (hlavna CRM aj M4a2): zlaty zaklad pre oba riadky (typove farby sub-ID/sub-TAB/sub-NUM prebijaju), label vnutri chipu = chipy v JEDNOM riadku (nie pod sebou), klik = cierne ohranicenie ako cats, 3s podrzanie = zmazanie open chipu</span>
+  <span class="module-tag">Zzz6-F27:LONGPRESS-TOLERANCE - zdielana zzz_bind_long_press utilita ruší 3s casovac az pri pohybe > 12 px (nie pri kazdom mikropohybe prsta/posune layoutu po zatvoreni klavesnice) - oprava "podrzanim sa nic nestane" na malych prvkoch, plati pre VSETKY dlhe stlaky v appke</span>
   <span class="module-tag">Zzz2-R38:VALID-TARGETS (SF) - overuje TAG/SUB CATEGORY voci vsetkym T1+T2+T3 tabom v Templates paneli (cerstvo, kazdy novy T3 tab cez + ADD TEMPLATE je automaticky platny) - Zzz10-T2 Multi Verification DOCASNE (Zzz6-X) povolene, ale LEN pre "Verso" username</span>
   <span class="module-tag">Zzz2-R38:CATEGORY-RENAME - CATEGORY hodnota premenovana z "create" na "Use" (presnejsie vystihuje akciu "pouzi tento template")</span>
   <span class="module-tag">Zzz6-X:SUBS-ID - stabilne interne ID zdrojoveho tabu (napr. "zzz5t2-c", nie citatelny label) sa pri SELECT oznaceni zdroja zapisuje AKO CHIP priamo do SUBS (format "id:...", needitovatelne) - NAHRADZA predoslý zapis do LINK bunky (R13), tá sa uz na toto nepouziva</span>
@@ -5686,16 +5700,34 @@ function zzz_flash_elements(elements, ms) {
 function zzz_bind_long_press(el, ms, onLongPress, shouldStart) {
   let timer = null;
   let fired = false;
+  // [Zzz6-F27:LONGPRESS-TOLERANCE] OPRAVA (Vrso 2026-09-19, doslovne: "ked ich stlacim...dokonca podrzanim
+  // 2-3s ani nevymazu/neodstrania") - SKUTOCNA PRICINA: kazdy touchmove, aj o 1-2 px (bezny mikropohyb prsta,
+  // alebo posun layoutu ked sa zavrie mobilna klavesnica), RUSIL casovac, takze 3s podrzanie na malom chipe
+  // sa casto vobec nedopocitalo do konca. TERAZ sa ruší LEN pri skutocnom pohybe/scrollovani (> 12 px od
+  // bodu dotyku) - kratke gesta (scroll zoznamu) stale rusia podrzanie okamzite, kedze prst prejde 12 px
+  // takmer hned. | Vrso -> Claude AI | 2026-09-19 ===
+  const ZZZ_LONGPRESS_MOVE_TOLERANCE_PX = 12;
+  let startX = 0, startY = 0;
   const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  const onTouchMove = (e) => {
+    if (!timer) return;
+    const t = e.touches && e.touches[0];
+    if (!t) { cancel(); return; }
+    if (Math.abs(t.clientX - startX) > ZZZ_LONGPRESS_MOVE_TOLERANCE_PX ||
+        Math.abs(t.clientY - startY) > ZZZ_LONGPRESS_MOVE_TOLERANCE_PX) cancel();
+  };
   const start = (e) => {
     if (shouldStart && !shouldStart(e)) return;
+    const t = e && e.touches && e.touches[0];
+    startX = t ? t.clientX : (e && e.clientX) || 0;
+    startY = t ? t.clientY : (e && e.clientY) || 0;
     fired = false;
     cancel();
     timer = setTimeout(() => { fired = true; onLongPress(); }, ms);
   };
   el.addEventListener('touchstart', start, { passive: true });
   el.addEventListener('touchend', cancel);
-  el.addEventListener('touchmove', cancel);
+  el.addEventListener('touchmove', onTouchMove, { passive: true });
   el.addEventListener('touchcancel', cancel);
   el.addEventListener('mousedown', start);
   el.addEventListener('mouseup', cancel);
@@ -8022,6 +8054,50 @@ function zzz2r38_subs_chip_display(sub) {
   return { text: sub, cssClass: null, locked: false, label: 'sub-REF' };
 }
 
+// === [Zzz6-X:SUBS-ONE-ROW] Vrso 2026-09-19, doslovne: "subs maju mat horne riadky tiez zltu farbu a
+// kliknutim sa uhranicia ciernou ako si urobila v cats... maju by v jednom riadku a ked ich stlacim
+// neoznacia sa ramikom a dokonca podrzanim 2-3s ani nevymazu/neodstrania" - JEDEN zdielany builder pre OBE
+// SUBS okna (hlavna CRM zzz6f8_open_subs_context_modal AJ izolovana M4a2 zzz1m4a_open_local_subs_modal), aby
+// sa rovnaka oprava nemusela pisat dvakrat (DRY, rovnaky princip ako zdielany zzz2r38_subs_chip_display).
+// Tri zmeny oproti predoslej verzii:
+//  1. OBA riadky (base aj open) maju teraz ZLATY zaklad (.zzz-category-chip-base, presne ako cats) - typove
+//     farby (sub-ID zelena, sub-TAB cervena/modra, sub-NUM tyrkysova) ostavaju NEDOTKNUTE, lebo tie si Vrso
+//     vyslovne vypytal skor a prebijaju zlatu cez !important.
+//  2. Label ("sub-EN"...) je teraz MALY span VNUTRI chipu, nie samostatny div so sirkou 100 % - to bol dovod,
+//     preco sa chipy ukladali pod seba namiesto jedneho riadku.
+//  3. Klik = oznacenie chipu ciernym ohranicenim (.zzz-category-chip-selected, 1:1 ako cats), opakovany klik
+//     odznaci. 3s podrzanie (len open chipy) = zmazanie, teraz uz spolahlivo vdaka
+//     [Zzz6-F27:LONGPRESS-TOLERANCE] oprave vyssie v subore.
+// | Vrso -> Claude AI | 2026-09-19 ===
+function zzz6f8_build_subs_chip(sub, selState, rerender, onDelete) {
+  const display = zzz2r38_subs_chip_display(sub);
+  const isOpen = !display.locked;
+
+  const chip = document.createElement('div');
+  chip.className = 'zzz-category-chip-base'; // zlata pre OBA riadky
+  if (display.cssClass) chip.classList.add(display.cssClass);
+  if (selState.value === sub) chip.classList.add('zzz-category-chip-selected'); // cierne ohranicenie, ako cats
+
+  const labelSpan = document.createElement('span');
+  labelSpan.className = 'zzz6-f8-subs-chip-label';
+  labelSpan.textContent = display.label;
+  chip.appendChild(labelSpan);
+
+  const valueSpan = document.createElement('span');
+  valueSpan.textContent = display.text;
+  chip.appendChild(valueSpan);
+
+  chip.addEventListener('click', () => {
+    selState.value = (selState.value === sub) ? null : sub;
+    rerender();
+  });
+
+  // mazanie 3s podrzanim - LEN open (needitovatelne base/locked chipy sa mazat nedaju, nezmenene)
+  if (isOpen) zzz_bind_long_press(chip, 3000, () => onDelete(sub));
+
+  return { chip, isOpen };
+}
+
 // [Zzz6-F8:SUBS-CONTEXT] Vrso 2026-09-17, doslovne: "v subs bude vzdy prvy oznacenie aj poradoveho cisla
 // requestu resp. cl daneho projektu...zapracuj podobny mechanizmus (noneditable ako su entry numbers).
 // Samozrejme to musi platit iba pre project ownera [a] project number!" - PRVY chip v SUBS je VZDY
@@ -8261,47 +8337,23 @@ function zzz6f8_open_subs_context_modal(id) {
   // odstran prip. STARE auto-generovane chipy (EN aj NUM) - prepocitaju sa nanovo nizsie, aby vzdy odzrkadlali aktualny stav
   let subs = zzz6f8_parse_subs(entryData[id]).filter(s => !ZZZ6F8_AUTO_NUMBER_PATTERN.test(s) && !ZZZ6F8_NUM_PATTERN.test(s));
 
-  function renderChips() {
+  // [Zzz6-X:SUBS-ONE-ROW] stav oznacenia (klik na chip) - lokalny PRE TOTO okno, nezapisuje sa nikam do dat
+  const selState = { value: null };
+
+  function renderChips(focusInput) {
     list.innerHTML = '';
     list2.innerHTML = '';
-    subs.forEach((sub, idx) => {
-      // [Zzz6-X:SUBS-LABELS] OPRAVA (Vrso 2026-09-19, "subs treba oznacit...sub-EN...sub-ID...sub-source?") -
-      // KAZDY typ chipu (nie len #N) dostane teraz vlastny maly label pred sebou, cez display.label
-      // (definovane v zzz2r38_subs_chip_display vyssie v subore). | Vrso -> Claude AI | 2026-09-19 ===
-      const display = zzz2r38_subs_chip_display(sub);
-      const isOpen = !display.locked;
-
-      const chipLabel = document.createElement('div');
-      chipLabel.style.fontSize = '7px';
-      chipLabel.style.color = '#999';
-      chipLabel.style.width = '100%';
-      chipLabel.textContent = display.label;
-      (isOpen ? list2 : list).appendChild(chipLabel);
-
-      const chip = document.createElement('div');
-      chip.className = isOpen ? 'zzz-category-chip-base' : 'zzz6-f21-tags-chip'; // [Zzz6-X:BASE-OPEN-SUBS] open = zlata, ako Category
-      if (display.cssClass) chip.classList.add(display.cssClass);
-
-      const span = document.createElement('span');
-      span.textContent = display.text;
-      chip.appendChild(span);
-
-      // [Zzz6-F8:SUBS-CONTEXT] auto-cislo (idx 0, format "#N") JE tiez needitovatelne - ziadny "x" na
-      // odstranenie, rovnaky princip ako Zzz1-R1 Entry Number. Rovnako placement:/tab: (display.locked).
-      // [Zzz6-X:BASE-OPEN-CATS] OPRAVA (Vrso 2026-09-19, "rovnako urob pre subs" - rovnaky princip ako Category
-      // Open cats) - "open" (nezamknute) suby uz nemaju viditelny × na klik, mazu sa 3s PODRZANIM celeho
-      // chipu (zzz_bind_long_press), konzistentne s Category Row 2. | Vrso -> Claude AI | 2026-09-19 ===
-      if (isOpen) {
-        zzz_bind_long_press(chip, 3000, () => {
-          const stillIdx = subs.indexOf(sub);
-          if (stillIdx === -1) return;
-          subs.splice(stillIdx, 1);
-          renderChips();
-        });
-        list2.appendChild(chip); // [Zzz6-X:BASE-OPEN-SUBS] open suby idu do DRUHEHO riadku
-      } else {
-        list.appendChild(chip); // base/locked suby ostavaju v PRVOM riadku, nezmenene
-      }
+    subs.forEach((sub) => {
+      // [Zzz6-X:SUBS-ONE-ROW] OPRAVA (Vrso 2026-09-19) - cely chip (zlata farba, label vnutri, klik-oznacenie,
+      // 3s mazanie) stavia teraz zdielany zzz6f8_build_subs_chip() vyssie v subore, nie tento blok.
+      const { chip, isOpen } = zzz6f8_build_subs_chip(sub, selState, () => renderChips(false), (target) => {
+        const stillIdx = subs.indexOf(target);
+        if (stillIdx === -1) return;
+        subs.splice(stillIdx, 1);
+        if (selState.value === target) selState.value = null;
+        renderChips(false);
+      });
+      (isOpen ? list2 : list).appendChild(chip); // open suby do DRUHEHO riadku, base/locked ostavaju v PRVOM
     });
 
     const input = document.createElement('input');
@@ -8315,7 +8367,7 @@ function zzz6f8_open_subs_context_modal(id) {
         if (val) {
           input.value = '';
           subs.push(val);
-          renderChips();
+          renderChips(true);
         }
       }
     });
@@ -8323,13 +8375,16 @@ function zzz6f8_open_subs_context_modal(id) {
       const val = input.value.trim();
       if (val) {
         subs.push(val);
-        renderChips();
+        renderChips(false);
       }
     });
     list2.appendChild(input); // [Zzz6-X:BASE-OPEN-SUBS] "+ sub" patri k open riadku (tam, kde nove suby vznikaju)
-    input.focus();
+    // [Zzz6-X:SUBS-ONE-ROW] OPRAVA - focus (a teda mobilna klavesnica) sa vyvola UZ LEN pri otvoreni okna a po
+    // pridani noveho subu, NIE pri kazdom prekresleni. Predtym aj klik/zmazanie chipu znovu vytiahlo klavesnicu,
+    // co posunulo layout pod prstom a rusilo prave prebiehajuce 3s podrzanie. | Vrso -> Claude AI | 2026-09-19 ===
+    if (focusInput) input.focus();
   }
-  renderChips();
+  renderChips(true);
 
   // [Zzz6-F8:SUBS-NUM] OPRAVA (Vrso 2026-09-19, "sub num si nema nic pocitat...ide len o vlastne ciselne
   // oznacenie v CL...nic by negeneroval sama. Nejde o matematicku funkciu, len o oznacenie userom") -
@@ -12598,45 +12653,24 @@ function zzz1m4a_open_local_subs_modal(id) {
 
   let subs = zzz6f8_parse_subs(zzz1m4aFields[id]).filter(s => !ZZZ6F8_AUTO_NUMBER_PATTERN.test(s) && !ZZZ6F8_NUM_PATTERN.test(s)); // [Zzz6-F8:SUBS-CONTEXT] odstran stare auto-generovane chipy (EN aj NUM), prepocitaju sa nanovo nizsie
 
-  function renderChips() {
+  // [Zzz6-X:SUBS-ONE-ROW] rovnaky stav oznacenia ako hlavna CRM verzia - lokalny PRE TOTO okno
+  const selState = { value: null };
+
+  function renderChips(focusInput) {
     list.innerHTML = '';
     list2.innerHTML = '';
-    subs.forEach((sub, idx) => {
-      // [Zzz6-X:SUBS-LABELS] rovnaka zmena ako hlavna CRM verzia vyssie v subore - kazdy typ chipu dostane
-      // vlastny label cez display.label. | Vrso -> Claude AI | 2026-09-19 ===
-      const display = zzz2r38_subs_chip_display(sub);
-      const isOpen = !display.locked;
-
-      const chipLabel = document.createElement('div');
-      chipLabel.style.fontSize = '7px';
-      chipLabel.style.color = '#999';
-      chipLabel.style.width = '100%';
-      chipLabel.textContent = display.label;
-      (isOpen ? list2 : list).appendChild(chipLabel);
-
-      const chip = document.createElement('div');
-      chip.className = isOpen ? 'zzz-category-chip-base' : 'zzz6-f21-tags-chip'; // [Zzz6-X:BASE-OPEN-SUBS] open = zlata
-      if (display.cssClass) chip.classList.add(display.cssClass);
-
-      const span = document.createElement('span');
-      span.textContent = display.text;
-      chip.appendChild(span);
-
-      // [Zzz6-F8:SUBS-CONTEXT] auto-cislo (idx 0, format "#N") JE tiez needitovatelne - ziadny "x".
-      // Rovnako placement:/tab: (display.locked).
-      // [Zzz6-X:BASE-OPEN-CATS] OPRAVA (Vrso 2026-09-19) - rovnaka zmena ako v hlavnej CRM verzii vyssie v
-      // subore: "open" suby sa mazu 3s podrzanim, nie × klikom. | Vrso -> Claude AI | 2026-09-19 ===
-      if (isOpen) {
-        zzz_bind_long_press(chip, 3000, () => {
-          const stillIdx = subs.indexOf(sub);
-          if (stillIdx === -1) return;
-          subs.splice(stillIdx, 1);
-          renderChips();
-        });
-        list2.appendChild(chip);
-      } else {
-        list.appendChild(chip);
-      }
+    subs.forEach((sub) => {
+      // [Zzz6-X:SUBS-ONE-ROW] OPRAVA (Vrso 2026-09-19) - rovnaka zmena ako hlavna CRM verzia vyssie v subore:
+      // chip stavia zdielany zzz6f8_build_subs_chip() (zlata pre oba riadky, label vnutri chipu = jeden
+      // riadok, klik = cierne ohranicenie, 3s podrzanie = zmazanie). | Vrso -> Claude AI | 2026-09-19 ===
+      const { chip, isOpen } = zzz6f8_build_subs_chip(sub, selState, () => renderChips(false), (target) => {
+        const stillIdx = subs.indexOf(target);
+        if (stillIdx === -1) return;
+        subs.splice(stillIdx, 1);
+        if (selState.value === target) selState.value = null;
+        renderChips(false);
+      });
+      (isOpen ? list2 : list).appendChild(chip);
     });
 
     const input = document.createElement('input');
@@ -12650,7 +12684,7 @@ function zzz1m4a_open_local_subs_modal(id) {
         if (val) {
           input.value = '';
           subs.push(val);
-          renderChips();
+          renderChips(true);
         }
       }
     });
@@ -12658,13 +12692,13 @@ function zzz1m4a_open_local_subs_modal(id) {
       const val = input.value.trim();
       if (val) {
         subs.push(val);
-        renderChips();
+        renderChips(false);
       }
     });
     list2.appendChild(input);
-    input.focus();
+    if (focusInput) input.focus(); // [Zzz6-X:SUBS-ONE-ROW] rovnaka oprava ako hlavna verzia - ziadny focus pri kazdom prekresleni
   }
-  renderChips();
+  renderChips(true);
 
   // [Zzz6-F8:SUBS-NUM] OPRAVA (Vrso 2026-09-19) - rovnaka oprava ako v hlavnej CRM verzii vyssie
   // (odstranene auto-vyplnanie, sub-NUM je teraz cisto rucne pisany chip).
@@ -13035,6 +13069,35 @@ function zzz1m4a_clear_local_attachments() {
   zzz1m4aLocalAttachments = [];
   zzz1m4a_render_local_attachments();
   zzz6f2_show_toast('Vsetky lokalne pripnute CL vymazane (M4a).');
+}
+
+// === [Zzz6-F56:TAB-TEMPLATE-RESET] Vrso 2026-09-19, doslovne: "vyplnil som v t2c template. Podrzanim tabu
+// 3s sa neresetuje do povodneho templatu/formatu!" - PRICINA: dosiaľ existoval LEN Zzz6-F56 HOLD-VIEW nahlad
+// (podrz = ukaz, pusti = skry), ktory ale NIKDY nesiahol na SAMOTNE DATA - vyplnene polia (zzz1m4aFields) aj
+// lokalne pripnute CL v M4a2 template ostali presne tak, ako ich Vrso napisal. TERAZ: 3s podrzanie tabu, v
+// ktorom template realne zije (T2c), vrati template do povodneho PRAZDNEHO formatu - vycisti vsetky polia,
+// vizualny obsah buniek, stav bodiek (priority/privacy/status) aj lokalne attachmenty. Ziadna z tychto
+// akcii sa NIKDY nedotkne realnej DB ani entryData - M4a2 je od zaciatku plne izolovany template. | Vrso ->
+// Claude AI | 2026-09-19 ===
+function zzz1m4a_reset_template() {
+  Object.keys(zzz1m4aFields).forEach(k => { delete zzz1m4aFields[k]; });
+
+  const row = document.getElementById('versoM4aCLNumbersRow');
+  if (row) {
+    // text buniek - PRESNE rovnaky selektor ako zzz1m4a_write_field() vyssie (.entry-cell), aby sa omylom
+    // nevymazal popis tlacidla (PRESET/MINI/ATTACH), ktore do tohto riadku tiez patria
+    row.querySelectorAll('.entry-cell[data-entry-id]').forEach(cellEl => { cellEl.textContent = ''; });
+    // bodky (R12 priority / R7 privacy / R26 status) - spat do vychodzieho, nenastaveneho stavu
+    row.querySelectorAll('[data-toggle="true"][data-entry-id]').forEach(cellEl => {
+      cellEl.classList.remove('is-active', 'zzz1r26-pending', 'zzz1r26-done', 'zzz1r26-final', 'zzz1r26-confirmed');
+      cellEl.setAttribute('aria-pressed', 'false');
+    });
+  }
+
+  zzz1m4aLocalAttachments = [];
+  zzz1m4a_render_local_attachments();
+  zzz_haptic_pulse(30);
+  zzz6f2_show_toast('Template reset to its original empty format (M4a2, local only).'); // [Zzz6-SF:SAME-LANGUAGE] user-facing text po anglicky
 }
 
 // PREROBENE PODLA PRESET VZORU (Vrso 2026-09-12) - viz plne vysvetlenie pri zzz6f48_bind_dual_press vyssie v
@@ -15334,6 +15397,49 @@ function zzz5t0_open_tab_window(anchorEl, onRename, onDelete, stableId) {
   setTimeout(() => document.addEventListener('click', closeOnOutsideClick, true), 0);
 }
 
+// === [Zzz6-F56:TAB-TEMPLATE-RESET] Vrso 2026-09-19, doslovne: "vyplnil som v t2c template. Podrzanim tabu
+// 3s sa neresetuje do povodneho templatu/formatu!" + upresnenie: "dufam ze reset si urobila po podrzani
+// tabov aj vseobecne t1* aj t*2" - JEDEN zdielany router pre 3s podrzanie na LUBOVOLNOM T1*/T2* tabe.
+// Kazdy tento tab je slot pre vlastny modul (viz ZZZ5T0_MODULE_REGISTRY nizsie), takze "povodny
+// template/format" znamena pre kazdy nieco ine - preto router, nie jedna univerzalna akcia. Nove moduly sa
+// sem len dopisu, gesto uz mat budu automaticky (rovnaky princip ako Zzz6-R:COPY-PASTE-EXCEPTIONS - jedno
+// centralne miesto namiesto rozsypanych kontrol). ZIADNY reset sa NIKDY nedotkne realnej DB ani entryData.
+// | Vrso -> Claude AI | 2026-09-19 ===
+function zzz5t0_reset_tab_template(tab) {
+  const tabId = tab && tab.id;
+
+  // T2c - 1-M4a2 CRM Template (jediny tab s vlastnymi vyplnitelnymi polami)
+  if (tabId === 'zzz5t2-c') { zzz1m4a_reset_template(); return; }
+
+  // T2b - Database Filter (Zzz5-W5): vrat filtrovacie pole na jeho VYCHODZIU hodnotu (input.defaultValue =
+  // presne to, co je v HTML atribute value, teda "povodny format" tohto modulu) a zahod vysledky
+  if (tabId === 'zzz5t2-b') {
+    const input = document.getElementById('versoT1bFilterInput');
+    const results = document.getElementById('versoT1bFilterResults');
+    if (input) input.value = input.defaultValue;
+    if (results) results.innerHTML = '';
+    zzz_haptic_pulse(30);
+    zzz6f2_show_toast('Database Filter reset to its default state.');
+    return;
+  }
+
+  // T1c - realny Zzz4-0 Database Workspace: zatvor a nechaj ho znovu vykreslit cez uz existujucu sync
+  // funkciu (rovnaky mechanizmus, aky pouziva prepinanie tabov - ziadna vlastna kopia logiky)
+  if (tabId === 'zzz5t1-c' && ZZZ5T0_MODULE_REGISTRY[tabId]) {
+    ZZZ5T0_MODULE_REGISTRY[tabId].hide();
+    zzz5t0LastDesiredKey = '';
+    zzz5t0_sync_duplicated_modules();
+    zzz_haptic_pulse(30);
+    zzz6f2_show_toast('Database Workspace reloaded to its default state.');
+    return;
+  }
+
+  // T1b Folder module (Zzz5-T4) - ZAMERNE bez resetu: jeho obsahom su F1*/F2* taby, ktore si vytvoril user
+  // sam; "reset" by znamenal ich zmazanie, co je destruktivna akcia a Vrso ju nepozadoval. Az na vyslovnu
+  // ziadost. Ostatne taby (T1a, T2a) su prazdne rezervovane sloty - niet co resetovat.
+  zzz6f2_show_toast('This tab has no template content to reset.');
+}
+
 function zzz5t0_render_tabs_row(tabs, innerEl, activeId, prefix, onSelect, onRename, showQuickClose) {
   if (!innerEl) return;
   innerEl.innerHTML = '';
@@ -15461,6 +15567,17 @@ function zzz5t0_render_tabs_row(tabs, innerEl, activeId, prefix, onSelect, onRen
       btn.addEventListener('mouseleave', zzz6f56End);
       btn.addEventListener('touchend', zzz6f56End);
       btn.addEventListener('touchcancel', zzz6f56End);
+
+      // === [Zzz6-F56:TAB-TEMPLATE-RESET] ROZSIRENE (Vrso 2026-09-19, doslovne: "dufam ze reset si urobila po
+      // podrzani tabov aj vseobecne t1* aj t*2") - 3s podrzanie NIE JE viazane len na T2c, ale na KAZDY
+      // T1*/T2* tab v tejto vetve. Co presne sa "resetuje", rozhoduje zdielany router
+      // zzz5t0_reset_tab_template() nizsie v subore (kazdy tab ma vlastny modul, teda aj vlastny vychodzi
+      // stav) - tab bez vlastneho obsahu len povie, ze nie je co resetovat, nic nerozbije. HOLD-VIEW nahlad
+      // (0.5s) vyssie ostava NEDOTKNUTY a bezi dalej vedla toho. | Vrso -> Claude AI | 2026-09-19 ===
+      zzz_bind_long_press(btn, 3000, () => {
+        zzz6f56End(); // ukonci prip. prebiehajuci HOLD-VIEW nahlad, aby sa reset ukazal na skutocnom stave
+        zzz5t0_reset_tab_template(tab);
+      });
     }
     // [T2c VYMAZANE] Vrso 2026-09-01: "vymaz z t2c cely obsah...idem urobit novy modul do ineho chatu a
     // potom ho tam iba skopirujes" - 1-M4 CRM Template (Zzz5-W6) bol UPLNE ODSTRANENY (JS funkcie, HTML
