@@ -422,6 +422,17 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     opacity: 0.6;
     text-transform: lowercase;
   }
+  /* [Zzz6-X:SUBS-HOLD-GUARD] Vrso 2026-09-19, doslovne: "ked podrzim open subs tak blikne vybrany text...
+     podrzanim 2-3s sa ma odstranit" - CSS cast ochrany proti nativnemu vyberu textu/callout menu pri 3s
+     podrzani chipu (JS cast - selectstart/contextmenu + priebezne rusenie vyberu - je pri
+     zzz6f8_build_subs_chip). touch-action:none navyse zabrani, aby prehliadac povazoval drzanie prsta na
+     chipe za zaciatok scrollovania a gesto zrusil. | Vrso -> Claude AI | 2026-09-19 === */
+  .zzz6-f8-subs-chip-guard {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: none;
+  }
   /* [Zzz6-X:SUBS-ID] FARBA ZMENENA (Vrso 2026-09-19, doslovne: "ID ma byt needitovatelny a zelenou farbou
      bunka") - sub-ID chip (stabilne ID tabu, nahradzuje predoslu LINK bunku) je teraz ZELENY namiesto
      povodnej fialovej. | Vrso -> Claude AI | 2026-09-19 === */
@@ -5697,6 +5708,33 @@ function zzz_flash_elements(elements, ms) {
 // nasledujuci "click" event, aby sa neotvoril aj obvykly kontextovy modal naraz s long-press akciou).
 // volitelny shouldStart(e) filter (2026-08-22) - ak vrati false, timer sa vobec nespusti pre tento konkretny
 // stlak (pouzite pri CELEJ CL/EL, aby sa netriggerlo naraz s long-press na KONKRETNU bunku vnutri riadku)
+// === [Zzz6-X:HOLD-SELECTION-GUARD] Vrso 2026-09-19, doslovne: "ked podrzim open subs tak blikne vybrany
+// text...podrzanim 2-3s sa ma odstranit" - zdielana JS cast ochrany proti nativnemu vyberu textu/callout
+// menu pri dlhom podrzani malych prvkov (chipy v SUBS aj Category oknach). Samotne CSS (user-select:none,
+// -webkit-touch-callout:none, touch-action:none - trieda .zzz6-f8-subs-chip-guard) na tomto Android/Chrome
+// kombe NESTACI, co uz raz overila skorsia session pri Zzz2-R6/R7 COPY geste - preto aj preventDefault na
+// selectstart/contextmenu a priebezne rusenie uz vzniknuteho vyberu POCAS drzania (80ms interval, rovnaky
+// vzor ako zzz1m4a_bind_mini_checklist_only). Pouziva sa VZDY spolu so zzz_bind_long_press, nikdy namiesto
+// neho. | Vrso -> Claude AI | 2026-09-19 ===
+function zzz_bind_hold_selection_guard(el) {
+  el.addEventListener('selectstart', (e) => e.preventDefault());
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
+  let selInterval = null;
+  const clearSel = () => {
+    const sel = window.getSelection && window.getSelection();
+    if (sel && sel.toString()) sel.removeAllRanges();
+  };
+  const holdStart = () => {
+    if (selInterval) clearInterval(selInterval);
+    selInterval = setInterval(clearSel, 80);
+  };
+  const holdEnd = () => { if (selInterval) { clearInterval(selInterval); selInterval = null; } };
+  el.addEventListener('touchstart', holdStart, { passive: true });
+  el.addEventListener('mousedown', holdStart);
+  ['touchend', 'touchcancel', 'mouseup', 'mouseleave'].forEach(ev => el.addEventListener(ev, holdEnd));
+  return holdEnd;
+}
+
 function zzz_bind_long_press(el, ms, onLongPress, shouldStart) {
   let timer = null;
   let fired = false;
@@ -8051,7 +8089,26 @@ function zzz2r38_subs_chip_display(sub) {
   const numMatch = ZZZ6F8_NUM_PATTERN.exec(sub);
   if (numMatch) return { text: numMatch[1], cssClass: 'zzz6-f8-subs-chip-num', locked: false, label: 'sub-NUM' }; // [Zzz6-F8:SUBS-NUM] OPRAVA - rucne pisany userom, teda VYMAZATELNY (uz nie auto-generovany), len farba zostava
   if (ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub)) return { text: sub, cssClass: null, locked: true, label: 'sub-EN' };
+  // [Zzz6-X:SUBS-REF-BASE] Vrso 2026-09-19, doslovne: "sub ref sme sa dohodli ze bude v hornom riadku ak to
+  // nejaka funkcia zapise (ako napr 1-m4a)" - sub-REF ma DVA povody vzniku a musia skoncit v ROZNYCH
+  // riadkoch: (a) zapisany FUNKCIOU (SELECT zdroja cez zzz2r38_template_id_for_tab - hodnota je vzdy
+  // identita realne existujuceho tabu, napr. "1-M4a") = BASE, horny riadok, needitovatelny, ako sub-EN/
+  // sub-ID/sub-TAB; (b) napisany RUCNE userom v "+ sub" poli = OPEN, dolny riadok, mazatelny 3s podrzanim.
+  // Kedze oba sa v SUBS retazci ukladaju ako holy text bez prefixu (format sa ZAMERNE nemeni - "ref:" prefix
+  // by rozbil zzz2r38_get_subs_source(), ktory hlada prave chip BEZ prefixu), rozlisuju sa podla toho, ci
+  // hodnota zodpoveda SKUTOCNE existujucemu tabu. | Vrso -> Claude AI | 2026-09-19 ===
+  if (zzz6f8_is_function_written_ref(sub)) return { text: sub, cssClass: null, locked: true, label: 'sub-REF' };
   return { text: sub, cssClass: null, locked: false, label: 'sub-REF' };
+}
+
+// [Zzz6-X:SUBS-REF-BASE] "zapisala to funkcia?" test pre holy (neprefixovany) sub-REF chip - viz vysvetlenie
+// vyssie. Znovupouziva uz existujuci zzz2r38_is_known_tab_label() (pozna VSETKY T1/T2/T3 taby vratane
+// novovytvorenych cez + ADD TEMPLATE, aj pevny 10-T2 pripad), takze netreba ziadny dalsi hardcoded zoznam.
+function zzz6f8_is_function_written_ref(sub) {
+  const val = (sub || '').trim();
+  if (!val) return false;
+  if (val === '1-M4a') return true; // vysledok zzz2r38_template_id_for_tab pre T2c/Multi Verification
+  try { return zzz2r38_is_known_tab_label(val); } catch (e) { return false; }
 }
 
 // === [Zzz6-X:SUBS-ONE-ROW] Vrso 2026-09-19, doslovne: "subs maju mat horne riadky tiez zltu farbu a
@@ -8074,7 +8131,7 @@ function zzz6f8_build_subs_chip(sub, selState, rerender, onDelete) {
   const isOpen = !display.locked;
 
   const chip = document.createElement('div');
-  chip.className = 'zzz-category-chip-base'; // zlata pre OBA riadky
+  chip.className = 'zzz-category-chip-base zzz6-f8-subs-chip-guard'; // zlata pre OBA riadky + ochrana proti nativnemu vyberu textu
   if (display.cssClass) chip.classList.add(display.cssClass);
   if (selState.value === sub) chip.classList.add('zzz-category-chip-selected'); // cierne ohranicenie, ako cats
 
@@ -8092,8 +8149,19 @@ function zzz6f8_build_subs_chip(sub, selState, rerender, onDelete) {
     rerender();
   });
 
+  // === [Zzz6-X:SUBS-HOLD-GUARD] Vrso 2026-09-19, doslovne: "na foto ked podrzim open subs tak blikne
+  // vybrany text...podrzanim 2-3s sa ma odstranit" - pri podrzani chipu skakal NATIVNY vyber textu
+  // prehliadaca (modre oznacenie), co gesto prerusilo skor, nez dobehol 3s casovac. Rieši to zdielany
+  // zzz_bind_hold_selection_guard() (viz vysvetlenie pri nom vyssie v subore) - rovnaky vzor pouzivaju aj
+  // cats chipy v Category okne. | Vrso -> Claude AI | 2026-09-19 ===
+  const chipHoldEnd = zzz_bind_hold_selection_guard(chip);
+
   // mazanie 3s podrzanim - LEN open (needitovatelne base/locked chipy sa mazat nedaju, nezmenene)
-  if (isOpen) zzz_bind_long_press(chip, 3000, () => onDelete(sub));
+  if (isOpen) zzz_bind_long_press(chip, 3000, () => {
+    chipHoldEnd();
+    zzz_haptic_pulse(30); // hmatove potvrdenie, ze 3s dobehlo a chip sa maze
+    onDelete(sub);
+  });
 
   return { chip, isOpen };
 }
@@ -8188,18 +8256,31 @@ function zzz_open_category_context_modal(id, getValue, setValue) {
     row1.innerHTML = '';
     baseCats.forEach((cat, idx) => {
       const chip = document.createElement('div');
-      chip.className = 'zzz-category-chip-base';
+      chip.className = 'zzz-category-chip-base zzz6-f8-subs-chip-guard'; // [Zzz6-X:SUBS-HOLD-GUARD] rovnaka ochrana proti nativnemu vyberu textu ako pri SUBS chipoch
       if (cat === currentVal) chip.classList.add('zzz-category-chip-selected');
       const span = document.createElement('span');
       span.textContent = cat;
       span.onclick = () => selectCat(cat);
       chip.appendChild(span);
-      // [Zzz6-X:CATEGORY-CONTEXT] OPRAVA (Vrso 2026-09-19, "tie base cats ked pridavam a potvrdim tak sa
-      // ulozi tiez ako noneditable cat" - kazdy Row-1 cat, VRATANE novo pridaneho, je TERAZ trvalo
-      // needitovatelny/nezmazatelny pre kohokolvek - ZIADNA delete moznost vobec, ani hold, ani klik.
-      // Predchadzajuca 3s-hold-delete vynimka pre "neskor pridane" base caty ZRUSENA - vsetky v Row 1 maju
-      // teraz rovnaku trvalu ochranu ako povodne System/Templates/Project. | Vrso -> Claude AI |
-      // 2026-09-19 ===
+      // [Zzz6-X:CATEGORY-BASE-DELETE] OPRAVA (Vrso 2026-09-19, doslovne: "zvyrazneny novy sub nejde podrzat
+      // a odstranit...iba co maju pravidla nemozu, ine ano. V hornom needitovatelnom riadku budu tie co sa
+      // velmi casto pouzivaju a systemove samozrejme") - predchadzajuca verzia zamkla CELY Row 1 natrvalo
+      // pre vsetkych, vratane cat-ov, ktore si Vrso sam prave pridal. TERAZ su trvalo nezmazatelne LEN
+      // SYSTEMOVE (ZZZ_CATEGORY_BASE_CATS_DEFAULT = System/Templates/Project) - tie maju "pravidla". Cokolvek
+      // do horneho riadku pribudne neskor (casto pouzivane hodnoty) sa da odstranit 3s podrzanim, presne ako
+      // Row 2. | Vrso -> Claude AI | 2026-09-19 ===
+      const isSystemCat = ZZZ_CATEGORY_BASE_CATS_DEFAULT.includes(cat);
+      if (!isSystemCat) {
+        zzz_bind_hold_selection_guard(chip);
+        zzz_bind_long_press(chip, 3000, () => {
+          const stillIdx = baseCats.indexOf(cat);
+          if (stillIdx === -1) return;
+          baseCats.splice(stillIdx, 1);
+          zzz_save_category_base_cats(baseCats);
+          zzz_haptic_pulse(30);
+          renderRows();
+        });
+      }
       row1.appendChild(chip);
     });
     const addBaseInput = document.createElement('input');
@@ -8238,17 +8319,19 @@ function zzz_open_category_context_modal(id, getValue, setValue) {
     row2.innerHTML = '';
     customCats.forEach((cat, idx) => {
       const chip = document.createElement('div');
-      chip.className = 'zzz-category-chip-base';
+      chip.className = 'zzz-category-chip-base zzz6-f8-subs-chip-guard'; // [Zzz6-X:SUBS-HOLD-GUARD] ochrana proti nativnemu vyberu textu pocas 3s podrzania
       if (cat === currentVal) chip.classList.add('zzz-category-chip-selected');
       const span = document.createElement('span');
       span.textContent = cat;
       span.onclick = () => selectCat(cat);
       chip.appendChild(span);
+      zzz_bind_hold_selection_guard(chip);
       zzz_bind_long_press(chip, 3000, () => {
         const stillIdx = customCats.indexOf(cat);
         if (stillIdx === -1) return;
         customCats.splice(stillIdx, 1);
         zzz_save_category_custom_cats(customCats);
+        zzz_haptic_pulse(30);
         renderRows();
       });
       row2.appendChild(chip);
