@@ -8004,16 +8004,22 @@ function zzz2r38_finalize_subs_placement(subsRaw) {
 
 // zdielane MEDZI hlavnou CRM aj M4a2 izolovanou verziou SUBS okna - urcuje, ako sa ma jeden konkretny chip
 // zobrazit (text bez prefixu, farebna CSS trieda ak ide o placement:/tab:, needitovatelnost).
+// [Zzz6-X:SUBS-LABELS] Vrso 2026-09-19, doslovne: "subs treba oznacit ako je napr sub-EN tak aj zelenym je
+// sub-ID...1-m4a je sub-source?...nemusi byt iba template lebo budu aj ine pripady" - kazdy typ chipu teraz
+// nesie aj svoj "label" (kratky nazov typu), nie len farbu/text. Nazov pre holy neprefixovany identifikacny
+// chip (napr. "1-M4a") navrhnuty ako "sub-REF" (referencia na to, co zaznam predstavuje) - VSEOBECNY nazov,
+// nie viazany len na Move/template pripad. | Vrso -> Claude AI | 2026-09-19 ===
 function zzz2r38_subs_chip_display(sub) {
   const placementMatch = ZZZ2R38_SUBS_PLACEMENT_PATTERN.exec(sub);
-  if (placementMatch) return { text: placementMatch[1], cssClass: 'zzz6-f8-subs-chip-placement', locked: true };
+  if (placementMatch) return { text: placementMatch[1], cssClass: 'zzz6-f8-subs-chip-placement', locked: true, label: 'sub-TAB' };
   const tabMatch = ZZZ2R38_SUBS_TAB_PATTERN.exec(sub);
-  if (tabMatch) return { text: tabMatch[1], cssClass: 'zzz6-f8-subs-chip-tab', locked: true };
+  if (tabMatch) return { text: tabMatch[1], cssClass: 'zzz6-f8-subs-chip-tab', locked: true, label: 'sub-TAB' };
   const idMatch = ZZZ6F8_ID_PATTERN.exec(sub);
-  if (idMatch) return { text: idMatch[1], cssClass: 'zzz6-f8-subs-chip-id', locked: true }; // [Zzz6-X:SUBS-ID] auto-zapisane appkou, needitovatelne rovnako ako sub-EN/sub-TAB
+  if (idMatch) return { text: idMatch[1], cssClass: 'zzz6-f8-subs-chip-id', locked: true, label: 'sub-ID' }; // [Zzz6-X:SUBS-ID] auto-zapisane appkou, needitovatelne rovnako ako sub-EN/sub-TAB
   const numMatch = ZZZ6F8_NUM_PATTERN.exec(sub);
-  if (numMatch) return { text: numMatch[1], cssClass: 'zzz6-f8-subs-chip-num', locked: false }; // [Zzz6-F8:SUBS-NUM] OPRAVA - rucne pisany userom, teda VYMAZATELNY (uz nie auto-generovany), len farba zostava
-  return { text: sub, cssClass: null, locked: false };
+  if (numMatch) return { text: numMatch[1], cssClass: 'zzz6-f8-subs-chip-num', locked: false, label: 'sub-NUM' }; // [Zzz6-F8:SUBS-NUM] OPRAVA - rucne pisany userom, teda VYMAZATELNY (uz nie auto-generovany), len farba zostava
+  if (ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub)) return { text: sub, cssClass: null, locked: true, label: 'sub-EN' };
+  return { text: sub, cssClass: null, locked: false, label: 'sub-REF' };
 }
 
 // [Zzz6-F8:SUBS-CONTEXT] Vrso 2026-09-17, doslovne: "v subs bude vzdy prvy oznacenie aj poradoveho cisla
@@ -8259,21 +8265,18 @@ function zzz6f8_open_subs_context_modal(id) {
     list.innerHTML = '';
     list2.innerHTML = '';
     subs.forEach((sub, idx) => {
-      // [Zzz6-F8:SUBS-CONTEXT] OPRAVA (Vrso 2026-09-19, "nevidim tam sub-en cislo oznacenie a pod nim
-      // prislusnu bunku s cislom") - maly label "sub-EN" pred samotnym #N chipom, aby bolo jasne, co
-      // predstavuje (predtym holé "#1" bez vysvetlenia). | Vrso -> Claude AI | 2026-09-19 ===
-      if (idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub)) {
-        const enLabel = document.createElement('div');
-        enLabel.style.fontSize = '7px';
-        enLabel.style.color = '#999';
-        enLabel.style.width = '100%';
-        enLabel.textContent = 'sub-EN';
-        list.appendChild(enLabel);
-      }
-
-      // [Zzz2-R38:SUB-TAB] rozpozna placement:/tab: chip (modra/zelena, needitovatelne) - zdielany helper
+      // [Zzz6-X:SUBS-LABELS] OPRAVA (Vrso 2026-09-19, "subs treba oznacit...sub-EN...sub-ID...sub-source?") -
+      // KAZDY typ chipu (nie len #N) dostane teraz vlastny maly label pred sebou, cez display.label
+      // (definovane v zzz2r38_subs_chip_display vyssie v subore). | Vrso -> Claude AI | 2026-09-19 ===
       const display = zzz2r38_subs_chip_display(sub);
-      const isOpen = !display.locked && !(idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub));
+      const isOpen = !display.locked;
+
+      const chipLabel = document.createElement('div');
+      chipLabel.style.fontSize = '7px';
+      chipLabel.style.color = '#999';
+      chipLabel.style.width = '100%';
+      chipLabel.textContent = display.label;
+      (isOpen ? list2 : list).appendChild(chipLabel);
 
       const chip = document.createElement('div');
       chip.className = isOpen ? 'zzz-category-chip-base' : 'zzz6-f21-tags-chip'; // [Zzz6-X:BASE-OPEN-SUBS] open = zlata, ako Category
@@ -11272,19 +11275,46 @@ function zzz2r38_open_paste_confirm_window(generatedContent) {
   label.textContent = 'Zzz2-R38: skontroluj pred zapisom';
   box.appendChild(label);
 
-  const rows = [
-    ['SOURCE', zzz2r38_get_subs_source(entryData['8']) || '(none)'],
-    ['TARGET', zzz2r38_get_subs_target(entryData['8']) || '(none)'],
-    ['CATEGORY', entryData['5'] || '(prazdna)'],
-    ['CONTENT', generatedContent],
-  ];
-  rows.forEach(([k, v]) => {
-    const row = document.createElement('div');
-    row.style.fontSize = '9px';
-    row.style.margin = '4px 0';
-    row.innerHTML = `<b>${k}:</b> ${v}`;
-    box.appendChild(row);
-  });
+  // [Zzz2-R38:PASTE-CONFIRM-GATE] OPRAVA (Vrso 2026-09-19, "paste by mal komplexnejsie v okne vypisat
+  // vykonane zapisy...staci ked zobrazi z buniek subs cats a content") - namiesto odvodenych SOURCE/TARGET
+  // teraz priamo SUROVE hodnoty z troch bunk, presne ako su. | Vrso -> Claude AI | 2026-09-19 ===
+  const subsRow = document.createElement('div');
+  subsRow.style.fontSize = '9px';
+  subsRow.style.margin = '4px 0';
+  subsRow.innerHTML = `<b>SUBS:</b> ${entryData['8'] || '(prazdne)'}`;
+  box.appendChild(subsRow);
+
+  // [Zzz2-R38:PASTE-CONFIRM-GATE] OPRAVA (Vrso 2026-09-19, "cat by mal aspon zobrazit pripadne dat moznost
+  // dopisat cat/s") - CATEGORY tu nie je len text, ale rovno EDITOVATELNY input - zmena sa zapise
+  // okamzite (write_to_entry), presne ako v hlavnom Category okne. | Vrso -> Claude AI | 2026-09-19 ===
+  const catLabel = document.createElement('div');
+  catLabel.style.fontSize = '9px';
+  catLabel.style.fontWeight = '700';
+  catLabel.style.marginTop = '6px';
+  catLabel.textContent = 'CATEGORY:';
+  box.appendChild(catLabel);
+
+  const catInput = document.createElement('input');
+  catInput.type = 'text';
+  catInput.className = 'zzz6-f21-tags-input';
+  catInput.style.width = '100%';
+  catInput.style.boxSizing = 'border-box';
+  catInput.value = entryData['5'] || '';
+  catInput.addEventListener('input', () => write_to_entry('5', catInput.value));
+  box.appendChild(catInput);
+
+  const contentLabel = document.createElement('div');
+  contentLabel.style.fontSize = '9px';
+  contentLabel.style.fontWeight = '700';
+  contentLabel.style.marginTop = '6px';
+  contentLabel.textContent = 'CONTENT:';
+  box.appendChild(contentLabel);
+
+  const contentRow = document.createElement('div');
+  contentRow.style.fontSize = '9px';
+  contentRow.style.margin = '4px 0';
+  contentRow.textContent = generatedContent;
+  box.appendChild(contentRow);
 
   const actions = document.createElement('div');
   actions.className = 'entry-modal-actions';
@@ -12572,19 +12602,17 @@ function zzz1m4a_open_local_subs_modal(id) {
     list.innerHTML = '';
     list2.innerHTML = '';
     subs.forEach((sub, idx) => {
-      // [Zzz6-F8:SUBS-CONTEXT] rovnaka zmena ako hlavna CRM verzia vyssie v subore - "sub-EN" label pred #N chipom.
-      if (idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub)) {
-        const enLabel = document.createElement('div');
-        enLabel.style.fontSize = '7px';
-        enLabel.style.color = '#999';
-        enLabel.style.width = '100%';
-        enLabel.textContent = 'sub-EN';
-        list.appendChild(enLabel);
-      }
-
-      // [Zzz2-R38:SUB-TAB] rozpozna placement:/tab: chip (modra/zelena, needitovatelne) - zdielany helper
+      // [Zzz6-X:SUBS-LABELS] rovnaka zmena ako hlavna CRM verzia vyssie v subore - kazdy typ chipu dostane
+      // vlastny label cez display.label. | Vrso -> Claude AI | 2026-09-19 ===
       const display = zzz2r38_subs_chip_display(sub);
-      const isOpen = !display.locked && !(idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub));
+      const isOpen = !display.locked;
+
+      const chipLabel = document.createElement('div');
+      chipLabel.style.fontSize = '7px';
+      chipLabel.style.color = '#999';
+      chipLabel.style.width = '100%';
+      chipLabel.textContent = display.label;
+      (isOpen ? list2 : list).appendChild(chipLabel);
 
       const chip = document.createElement('div');
       chip.className = isOpen ? 'zzz-category-chip-base' : 'zzz6-f21-tags-chip'; // [Zzz6-X:BASE-OPEN-SUBS] open = zlata
@@ -15388,23 +15416,27 @@ function zzz5t0_render_tabs_row(tabs, innerEl, activeId, prefix, onSelect, onRen
       // sam osebe NIKDY nezapisuje do realnej DB - ziadne dalsie osetrenie netreba), PUSTENIM prsta sa
       // OKAMZITE skryje a "resetuje" spat na predvoleny (prazdny) stav tohto tabu - cisto INSTRUKTAZNY,
       // docasny nahlad, ziadna trvala zmena. | Vrso -> Claude AI | 2026-09-18 ===
+      // === [Zzz6-F56:TAB-TEMPLATE-PREVIEW] OPRAVA (Vrso 2026-09-19, "kazdy T1*/T2* tab uz ma svoje templaty...
+      // v T2c JE m4a template, cize nikde inde sa nema zobrazovat podrz funkciou, to je nejaky bug") -
+      // SKUTOCNA PRICINA: predchadzajuca verzia VZDY ukazala M4a2 modul, nech si drzal HOCIJAKY tab - vlastna
+      // reparent-logika nemala ZIADNU podmienku "patri tento modul skutocne TOMUTO tabu?". OPRAVA: HOLD-VIEW
+      // teraz NEROBI vlastnu show/hide logiku vobec - namiesto toho DOCASNE nastavi zzz5t0LastClickedTabId
+      // na drzany tab a zavola SKUTOCNU, uz existujucu ZZZ5T0_MODULE_REGISTRY['zzz5t2-c'].show()/hide() - tá
+      // uz ma VSTAVANU gate-podmienku (porovnava proti zzz6f54ActiveM4aTarget, realnemu Move cielu) a TICHO
+      // nic neurobi, ak tento konkretny tab nie je skutocny M4a2 ciel. Po pusteni sa zzz5t0LastClickedTabId
+      // vrati na povodnu hodnotu + zavola sa plny sync, aby zostal spravne zobrazeny SKUTOCNY stav (napr.
+      // aktivny tab). | Vrso -> Claude AI | 2026-09-19 ===
+      let zzz6f56SavedLastClickedTabId = null;
       const zzz6f56PreviewShow = () => {
-        const el = document.getElementById('versoM4aTemplateStack');
-        const panel = document.getElementById('versoTemplatesInlineSection');
-        if (!el || !panel) return;
-        if (!el.dataset.zzz5t0OrigParentSaved) {
-          zzz5t0M4aOrigParent = el.parentNode;
-          zzz5t0M4aOrigNextSibling = el.nextSibling;
-          el.dataset.zzz5t0OrigParentSaved = 'true';
-        }
-        if (el.parentNode !== panel) panel.appendChild(el);
-        el.style.display = 'block';
+        zzz6f56SavedLastClickedTabId = zzz5t0LastClickedTabId;
+        zzz5t0LastClickedTabId = tab.id; // docasne - len aby show() nizsie spravne rozhodlo PRE TENTO tab
+        ZZZ5T0_MODULE_REGISTRY['zzz5t2-c'].show(); // vstavana gate-logika - zobrazi LEN ak je toto SKUTOCNY M4a2 ciel
       };
       const zzz6f56PreviewHide = () => {
-        // cache-bust + plny sync (nie priamy hide()) - spravne obnovi SKUTOCNY stav tohto tabu (napr. ak by
-        // tento konkretny tab NAHODOU bol aj realnym Move cielom, nahlad ostane spravne zobrazeny aj po pusteni)
+        ZZZ5T0_MODULE_REGISTRY['zzz5t2-c'].hide();
+        zzz5t0LastClickedTabId = zzz6f56SavedLastClickedTabId; // vrat povodnu (skutocnu) hodnotu
         zzz5t0LastDesiredKey = '';
-        zzz5t0_sync_duplicated_modules();
+        zzz5t0_sync_duplicated_modules(); // obnov realny stav (napr. skutocne aktivny tab, ak sa lisi)
       };
       // OPRAVA - priamy mousedown/touchstart by "bliklo" nahlad aj pri BEZNOM kratkom kliknuti (prepnutie
       // tabu). Pridane kratke oneskorenie (500ms) - nahlad sa spusti LEN ak prst este STALE drzi po tomto
