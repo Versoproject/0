@@ -4482,6 +4482,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-X:SUBS-ONE-ROW - zdielany zzz6f8_build_subs_chip() pre OBE SUBS okna (hlavna CRM aj M4a2): zlaty zaklad pre oba riadky (typove farby sub-ID/sub-TAB/sub-NUM prebijaju), label vnutri chipu = chipy v JEDNOM riadku (nie pod sebou), klik = cierne ohranicenie ako cats, 3s podrzanie = zmazanie open chipu</span>
   <span class="module-tag">Zzz6-X:REF-VS-SUB-LABELS - labely sa urcuju podla RIADKU, nie podla typu chipu: horny systemovy/needitovatelny riadok = ref-EN (#N), ref-SRC (1-M4a a pod., zapisane funkciou), ref-ID (id:), ref-TAB (placement:/tab:); dolny vlastny/mazatelny riadok = cislovanie sub-1, sub-2... podla poradia. Farby typov nedotknute</span>
   <span class="module-tag">Zzz6-F27:LONGPRESS-TOLERANCE - zdielana zzz_bind_long_press utilita ruší 3s casovac az pri pohybe > 12 px (nie pri kazdom mikropohybe prsta/posune layoutu po zatvoreni klavesnice) - oprava "podrzanim sa nic nestane" na malych prvkoch, plati pre VSETKY dlhe stlaky v appke</span>
+  <span class="module-tag">Zzz2-R38:PASTE-CONFIRM-GATE - PASTE (3s) je povinny overovaci krok pred ENTER: okno vypise VSETKY vyplnene CL polia, ktore sa zapisu, CATEGORY je editovatelna priamo v nom a POTVRDIT je neaktivny, kym je prazdna; potvrdenie odlozi odtlacok vsetkych poli a ENTER (3s) zapise LEN ak sa stav presne zhoduje, inak ziada nove potvrdenie</span>
   <span class="module-tag">Zzz2-R38:VALID-TARGETS (SF) - overuje TAG/SUB CATEGORY voci vsetkym T1+T2+T3 tabom v Templates paneli (cerstvo, kazdy novy T3 tab cez + ADD TEMPLATE je automaticky platny) - Zzz10-T2 Multi Verification DOCASNE (Zzz6-X) povolene, ale LEN pre "Verso" username</span>
   <span class="module-tag">Zzz2-R38:CATEGORY-RENAME - CATEGORY hodnota premenovana z "create" na "Use" (presnejsie vystihuje akciu "pouzi tento template")</span>
   <span class="module-tag">Zzz6-X:SUBS-ID - stabilne interne ID zdrojoveho tabu (napr. "zzz5t2-c", nie citatelny label) sa pri SELECT oznaceni zdroja zapisuje AKO CHIP priamo do SUBS (format "id:...", needitovatelne) - NAHRADZA predoslý zapis do LINK bunky (R13), tá sa uz na toto nepouziva</span>
@@ -11281,6 +11282,16 @@ let zzz2r38_target_selection = { label: null, el: null };
 // MOVE ciela ho resetuje, ENTER ho vyzaduje pred akymkolvek zapisom (aj kratky klik, aj 3s podrzanie). |
 // Vrso -> Claude AI | 2026-09-19 ===
 let zzz2r38MoveConfirmed = false;
+// [Zzz2-R38:PASTE-CONFIRM-GATE] Vrso 2026-09-20, doslovne: "zaroven skontroluje potvrdene a az ked sa
+// zhoduje prejde enter" - samotny boolean flag nestacil: resetoval sa LEN pri zmene SELECT/MOVE, takze ked
+// Vrso po potvrdeni prepisal napr. PROJECT NAME alebo CONTENT, ENTER by zapisal nieco INE, nez co bolo v
+// potvrdzovacom okne. TERAZ sa pri POTVRDIT odlozi ODTLACOK (snapshot) VSETKYCH CL poli a ENTER zapise LEN
+// vtedy, ked sa aktualny stav s nim PRESNE zhoduje - inak vyzve na nove PASTE potvrdenie. | Vrso -> Claude
+// AI | 2026-09-20 ===
+let zzz2r38ConfirmedSnapshot = null;
+function zzz2r38_snapshot_entry_payload() {
+  return JSON.stringify(ZZZ_CL_FIELDS.map(([entryKey]) => [entryKey, (entryData[entryKey] || '').trim()]));
+}
 
 // [Zzz2-R38:LINK-TAB-ID] Vrso 2026-09-17, doslovne: "este sme zabudli id tabu kde budes zapisovat? Zatial
 // vpis vzdy do link bunky v cl" - stabilne interne ID zdrojoveho tabu (napr. "zzz5t2-c", NIE citatelny
@@ -11378,7 +11389,7 @@ function zzz2r38_handle_special_tab_click(tabId, tabLabel, btnEl, stableTabId) {
     // (prefill "templates", da sa nechat tak alebo prepisat). NENAHRADZA volne pisanie kategorie inde -
     // spusti sa LEN pri tomto konkretnom MOVE-s-templates-Category pripade. | Vrso -> Claude AI | 2026-09-19 ===
     zzz2r38_maybe_prompt_category_rename();
-    zzz2r38MoveConfirmed = false; // [Zzz2-R38:PASTE-CONFIRM-GATE] novy/zmeneny ciel = treba znova potvrdit cez PASTE
+    zzz2r38MoveConfirmed = false; zzz2r38ConfirmedSnapshot = null; // [Zzz2-R38:PASTE-CONFIRM-GATE] novy/zmeneny ciel = treba znova potvrdit cez PASTE
     if (zzz2r38_target_selection.el) zzz2r38_target_selection.el.classList.remove('zzz2r38-tab-target-selected');
     zzz2r38_target_selection = { label: tabId, el: btnEl };
     btnEl.classList.add('zzz2r38-tab-target-selected');
@@ -11404,7 +11415,7 @@ function zzz2r38_handle_special_tab_click(tabId, tabLabel, btnEl, stableTabId) {
     // (write_to_entry je synchronne), aby sa id: chip pridal K prave zapisanemu identifikatoru, nie ho
     // prepisal. | Vrso -> Claude AI | 2026-09-19 ===
     write_to_entry('8', zzz6f8_set_subs_id(entryData['8'], stableTabId || tabId));
-    zzz2r38MoveConfirmed = false; // [Zzz2-R38:PASTE-CONFIRM-GATE] zmena zdroja = treba znova potvrdit cez PASTE
+    zzz2r38MoveConfirmed = false; zzz2r38ConfirmedSnapshot = null; // [Zzz2-R38:PASTE-CONFIRM-GATE] zmena zdroja = treba znova potvrdit cez PASTE
     return true;
   }
   return false;
@@ -11460,26 +11471,46 @@ function zzz2r38_open_paste_confirm_window(generatedContent) {
   label.style.fontSize = '9px';
   label.style.fontWeight = '700';
   label.style.color = '#171717';
-  label.textContent = 'Zzz2-R38: skontroluj pred zapisom';
+  label.textContent = 'Zzz2-R38: check everything before it is written';
   box.appendChild(label);
 
-  // [Zzz2-R38:PASTE-CONFIRM-GATE] OPRAVA (Vrso 2026-09-19, "paste by mal komplexnejsie v okne vypisat
-  // vykonane zapisy...staci ked zobrazi z buniek subs cats a content") - namiesto odvodenych SOURCE/TARGET
-  // teraz priamo SUROVE hodnoty z troch bunk, presne ako su. | Vrso -> Claude AI | 2026-09-19 ===
-  const subsRow = document.createElement('div');
-  subsRow.style.fontSize = '9px';
-  subsRow.style.margin = '4px 0';
-  subsRow.innerHTML = `<b>SUBS:</b> ${entryData['8'] || '(prazdne)'}`;
-  box.appendChild(subsRow);
+  // === [Zzz2-R38:PASTE-CONFIRM-GATE] ROZSIRENE (Vrso 2026-09-20, doslovne: "paste 3s...zapise ostatne a
+  // vyzve k doplneniu category resp. zobrazi vsetko na zapis/potvrdenie?") - okno uz neukazuje LEN SUBS/
+  // CATEGORY/CONTENT, ale KOMPLETNY zoznam vsetkych vyplnenych CL poli, presne v poradi ZZZ_CL_FIELDS
+  // (zdielany zoznam, takze pribudnutie pola sa sem premietne samo). CONTENT (vygenerovany zo SELECT+MOVE)
+  // sa do zaznamu zapise UZ TU, pri potvrdeni - nie az v ENTERi - aby to, co Vrso v okne vidi, bolo
+  // DOSLOVNE to, co sa zapise. | Vrso -> Claude AI | 2026-09-20 ===
+  const listWrap = document.createElement('div');
+  listWrap.style.fontSize = '9px';
+  listWrap.style.margin = '4px 0';
+  box.appendChild(listWrap);
 
-  // [Zzz2-R38:PASTE-CONFIRM-GATE] OPRAVA (Vrso 2026-09-19, "cat by mal aspon zobrazit pripadne dat moznost
-  // dopisat cat/s") - CATEGORY tu nie je len text, ale rovno EDITOVATELNY input - zmena sa zapise
-  // okamzite (write_to_entry), presne ako v hlavnom Category okne. | Vrso -> Claude AI | 2026-09-19 ===
+  function renderSummary() {
+    listWrap.innerHTML = '';
+    ZZZ_CL_FIELDS.forEach(([entryKey, rKey, fieldLabel]) => {
+      if (entryKey === '5') return; // CATEGORY ma vlastny editovatelny riadok nizsie
+      const raw = entryKey === '10' ? (generatedContent || entryData['10'] || '') : (entryData[entryKey] || '');
+      const val = String(raw).trim();
+      if (!val) return; // prazdne polia nezahlcuju zoznam
+      const row = document.createElement('div');
+      row.style.margin = '2px 0';
+      const b = document.createElement('b');
+      b.textContent = fieldLabel + ': ';
+      row.appendChild(b);
+      row.appendChild(document.createTextNode(val));
+      listWrap.appendChild(row);
+    });
+  }
+  renderSummary();
+
+  // [Zzz2-R38:PASTE-CONFIRM-GATE] CATEGORY - editovatelna PRIAMO tu (zmena sa zapise okamzite cez
+  // write_to_entry, rovnako ako v hlavnom Category okne). Vrso 2026-09-20: "vyzve k doplneniu category" -
+  // pokial je prazdna, POTVRDIT je NEAKTIVNY a okno to aj napise, takze zapis bez kategorie neprejde.
   const catLabel = document.createElement('div');
   catLabel.style.fontSize = '9px';
   catLabel.style.fontWeight = '700';
   catLabel.style.marginTop = '6px';
-  catLabel.textContent = 'CATEGORY:';
+  catLabel.textContent = 'PROJECT CATEGORY:';
   box.appendChild(catLabel);
 
   const catInput = document.createElement('input');
@@ -11487,31 +11518,38 @@ function zzz2r38_open_paste_confirm_window(generatedContent) {
   catInput.className = 'zzz6-f21-tags-input';
   catInput.style.width = '100%';
   catInput.style.boxSizing = 'border-box';
+  catInput.placeholder = 'fill in the category';
   catInput.value = entryData['5'] || '';
-  catInput.addEventListener('input', () => write_to_entry('5', catInput.value));
   box.appendChild(catInput);
 
-  const contentLabel = document.createElement('div');
-  contentLabel.style.fontSize = '9px';
-  contentLabel.style.fontWeight = '700';
-  contentLabel.style.marginTop = '6px';
-  contentLabel.textContent = 'CONTENT:';
-  box.appendChild(contentLabel);
-
-  const contentRow = document.createElement('div');
-  contentRow.style.fontSize = '9px';
-  contentRow.style.margin = '4px 0';
-  contentRow.textContent = generatedContent;
-  box.appendChild(contentRow);
+  const catWarn = document.createElement('div');
+  catWarn.style.fontSize = '8px';
+  catWarn.style.color = '#dc2626';
+  catWarn.style.marginTop = '2px';
+  box.appendChild(catWarn);
 
   const actions = document.createElement('div');
   actions.className = 'entry-modal-actions';
   const confirmBtn = document.createElement('button');
   confirmBtn.className = 'entry-modal-close';
   confirmBtn.textContent = 'POTVRDIT';
+
+  function syncCatState() {
+    const filled = catInput.value.trim().length > 0;
+    confirmBtn.disabled = !filled;
+    confirmBtn.style.opacity = filled ? '' : '0.45';
+    catWarn.textContent = filled ? '' : 'CATEGORY is empty - fill it in to confirm the entry.';
+  }
+  catInput.addEventListener('input', () => { write_to_entry('5', catInput.value); syncCatState(); });
+  syncCatState();
+
   confirmBtn.onclick = () => {
+    if (confirmBtn.disabled) return;
+    // CONTENT sa zapisuje UZ TERAZ - potvrdzujeme presne to, co pojde do DB (viz vysvetlenie vyssie)
+    if (generatedContent) write_to_entry('10', generatedContent);
     zzz2r38MoveConfirmed = true;
-    zzz6f2_show_toast('Zzz2-R38: potvrdene - ENTER teraz zapise.');
+    zzz2r38ConfirmedSnapshot = zzz2r38_snapshot_entry_payload(); // odtlacok VSETKYCH poli, ENTER ho porovna
+    zzz6f2_show_toast('Zzz2-R38: confirmed - hold ENTER (3s) to write.');
     removeBox();
   };
   actions.appendChild(confirmBtn);
@@ -11638,6 +11676,17 @@ document.addEventListener('DOMContentLoaded', () => { zzz6f54_load_active_m4a_ta
         zzz6f2_show_toast('Zzz2-R38: najprv podrz PASTE (3s) a potvrď zápis - ENTER kým to nepovolíš, nezapíše.');
         return;
       }
+      // [Zzz2-R38:PASTE-CONFIRM-GATE] Vrso 2026-09-20, doslovne: "zaroven skontroluje potvrdene a az ked sa
+      // zhoduje prejde enter" - nestaci, ze sa NIEKEDY potvrdilo: porovna sa ODTLACOK vsetkych CL poli z
+      // momentu potvrdenia s ich AKTUALNYM stavom. Ak sa cokolvek medzitym zmenilo (aj pole, ktore so
+      // SELECT/MOVE vobec nesuvisi), zapis sa zastavi a vyzada nove PASTE potvrdenie - inak by ENTER zapisal
+      // nieco ine, nez co Vrso v potvrdzovacom okne videl. | Vrso -> Claude AI | 2026-09-20 ===
+      if (zzz2r38ConfirmedSnapshot !== null && zzz2r38_snapshot_entry_payload() !== zzz2r38ConfirmedSnapshot) {
+        zzz2r38MoveConfirmed = false;
+        zzz2r38ConfirmedSnapshot = null;
+        zzz6f2_show_toast('Zzz2-R38: data changed after confirmation - hold PASTE (3s) and confirm again.');
+        return;
+      }
       // [Zzz2-R38:SUB-TAB] Vrso 2026-09-17/18 - cieľ sa uz NECITA z TAG(21), ale z SUBS(8) placement:/tab:
       // chipu (viz zzz2r38_get_subs_target vyssie v subore).
       const targetValue = zzz2r38_get_subs_target(entryData['8']);
@@ -11673,7 +11722,7 @@ document.addEventListener('DOMContentLoaded', () => { zzz6f54_load_active_m4a_ta
         // [Zzz2-R38:TARGET-MARKER] rovnaka uprataci logika pre MOVE-ciel (strieborny ramcek) - uz splnil ucel
         if (zzz2r38_target_selection.el) zzz2r38_target_selection.el.classList.remove('zzz2r38-tab-target-selected');
         zzz2r38_target_selection = { label: null, el: null };
-        zzz2r38MoveConfirmed = false; // [Zzz2-R38:PASTE-CONFIRM-GATE] uprac po sebe, dalsi Move zaznam bude znova potrebovat potvrdenie
+        zzz2r38MoveConfirmed = false; zzz2r38ConfirmedSnapshot = null; // [Zzz2-R38:PASTE-CONFIRM-GATE] uprac po sebe, dalsi Move zaznam bude znova potrebovat potvrdenie
       }
       return;
     }
