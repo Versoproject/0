@@ -8080,41 +8080,19 @@ function zzz_save_category_custom_cats(list) {
 // genericka verzia - funguje pre hlavnu CRM (entryData) AJ izolovany M4a2 (zzz1m4aFields) cez getValue/setValue
 function zzz_open_category_context_modal(id, getValue, setValue) {
   const { box, removeBox } = zzz6f41_create_context_window();
-  box.appendChild(zzz_build_context_header(id));
+  box.appendChild(zzz_build_context_header(id)); // [Zzz6-X:CATEGORY-CONTEXT] OPRAVA (Vrso 2026-09-19, "staci raz proj category") - odstraneny duplicitny druhy label pod headerom
 
-  const label = document.createElement('div');
-  label.style.fontSize = '9px';
-  label.style.fontWeight = '700';
-  label.style.color = '#171717';
-  label.textContent = 'PROJECT CATEGORY';
-  box.appendChild(label);
-
-  const isVerso = zzz_sessionUsername === 'Verso';
   let baseCats = zzz_load_category_base_cats();
   let customCats = zzz_load_category_custom_cats();
 
-  const row1Label = document.createElement('div');
-  row1Label.style.fontSize = '7px';
-  row1Label.style.color = '#999';
-  row1Label.style.margin = '4px 0 2px';
-  row1Label.textContent = isVerso
-    ? 'BASE (system) - klik = vyber, + prida novy, × zmaze (len Verso)'
-    : 'BASE (system) - klik = vyber, + prida novy (mazat smie len Verso)';
-  box.appendChild(row1Label);
-
   const row1 = document.createElement('div');
   row1.className = 'zzz6-f21-tags-list';
+  row1.style.marginTop = '4px';
   box.appendChild(row1);
-
-  const row2Label = document.createElement('div');
-  row2Label.style.fontSize = '7px';
-  row2Label.style.color = '#999';
-  row2Label.style.margin = '6px 0 2px';
-  row2Label.textContent = 'CATS (bezne)';
-  box.appendChild(row2Label);
 
   const row2 = document.createElement('div');
   row2.className = 'zzz6-f21-tags-list';
+  row2.style.marginTop = '6px';
   box.appendChild(row2);
 
   function selectCat(val) {
@@ -8134,31 +8112,32 @@ function zzz_open_category_context_modal(id, getValue, setValue) {
       span.textContent = cat;
       span.onclick = () => selectCat(cat);
       chip.appendChild(span);
-      if (isVerso) { // [Zzz6-X:CATEGORY-CONTEXT] mazat z Row 1 smie LEN Verso
-        const remove = document.createElement('span');
-        remove.className = 'zzz6-f21-tags-remove';
-        remove.textContent = '\u00D7';
-        remove.onclick = (e) => {
-          e.stopPropagation();
-          baseCats.splice(idx, 1);
-          zzz_save_category_base_cats(baseCats);
-          renderRows();
-        };
-        chip.appendChild(remove);
-      }
+      // [Zzz6-X:CATEGORY-CONTEXT] OPRAVA (Vrso 2026-09-19, "tie base cats ked pridavam a potvrdim tak sa
+      // ulozi tiez ako noneditable cat" - kazdy Row-1 cat, VRATANE novo pridaneho, je TERAZ trvalo
+      // needitovatelny/nezmazatelny pre kohokolvek - ZIADNA delete moznost vobec, ani hold, ani klik.
+      // Predchadzajuca 3s-hold-delete vynimka pre "neskor pridane" base caty ZRUSENA - vsetky v Row 1 maju
+      // teraz rovnaku trvalu ochranu ako povodne System/Templates/Project. | Vrso -> Claude AI |
+      // 2026-09-19 ===
       row1.appendChild(chip);
     });
     const addBaseInput = document.createElement('input');
     addBaseInput.type = 'text';
     addBaseInput.className = 'zzz6-f21-tags-input';
-    addBaseInput.placeholder = '+ new base cat';
+    addBaseInput.placeholder = '+';
     addBaseInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         const val = addBaseInput.value.trim();
-        if (val && !baseCats.includes(val)) {
-          baseCats.push(val);
-          zzz_save_category_base_cats(baseCats);
+        if (val) {
+          // [Zzz6-X:CATEGORY-CONTEXT] OPRAVA (Vrso 2026-09-19, "ako funguju subs urob aj cats...tento
+          // princip") - PRESNE ako "+ sub": napis -> Enter -> vznikne chip A ROVNO SA VYBERIE ako hodnota
+          // (predtym trebalo napisat este raz do samostatneho "volneho" pola dole - ZRUSENE, mätuce, zle) -
+          // input sa hned vyprazdni, pripraveny na dalsi. | Vrso -> Claude AI | 2026-09-19 ===
+          if (!baseCats.includes(val)) {
+            baseCats.push(val);
+            zzz_save_category_base_cats(baseCats);
+          }
+          setValue(val);
           addBaseInput.value = '';
           renderRows();
         }
@@ -8166,38 +8145,43 @@ function zzz_open_category_context_modal(id, getValue, setValue) {
     });
     row1.appendChild(addBaseInput);
 
+    // [Zzz6-X:CATEGORY-CONTEXT] OPRAVA (Vrso 2026-09-19, "Open cats urob rovnako len nebudu noneditable...po
+    // ich vytvoreni a podrzani 2-3s sa vymazu") - Row 2 ("Open" cats) ma ROVNAKY vizual ako Row 1
+    // (.zzz-category-chip-base), ale MAZANIE je teraz 3s PODRZANIE (zzz_bind_long_press), NIE jednoduchy ×
+    // klik. | Vrso -> Claude AI | 2026-09-19 ===
     row2.innerHTML = '';
     customCats.forEach((cat, idx) => {
       const chip = document.createElement('div');
-      chip.className = 'zzz6-f21-tags-chip'; // [Zzz6-X:CATEGORY-CONTEXT] Row 2 = klasicke cats, rovnaky vzhlad ako Tags/SUBS
+      chip.className = 'zzz-category-chip-base';
       if (cat === currentVal) chip.classList.add('zzz-category-chip-selected');
       const span = document.createElement('span');
       span.textContent = cat;
       span.onclick = () => selectCat(cat);
       chip.appendChild(span);
-      const remove = document.createElement('span');
-      remove.className = 'zzz6-f21-tags-remove';
-      remove.textContent = '\u00D7';
-      remove.onclick = (e) => {
-        e.stopPropagation();
-        customCats.splice(idx, 1);
+      zzz_bind_long_press(chip, 3000, () => {
+        const stillIdx = customCats.indexOf(cat);
+        if (stillIdx === -1) return;
+        customCats.splice(stillIdx, 1);
         zzz_save_category_custom_cats(customCats);
         renderRows();
-      };
-      chip.appendChild(remove);
+      });
       row2.appendChild(chip);
     });
     const addCustomInput = document.createElement('input');
     addCustomInput.type = 'text';
     addCustomInput.className = 'zzz6-f21-tags-input';
-    addCustomInput.placeholder = '+ cat';
+    addCustomInput.placeholder = '+';
     addCustomInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         const val = addCustomInput.value.trim();
-        if (val && !customCats.includes(val)) {
-          customCats.push(val);
-          zzz_save_category_custom_cats(customCats);
+        if (val) {
+          // [Zzz6-X:CATEGORY-CONTEXT] rovnaky princip ako Row 1 vyssie - "+ sub" vzor: pridat A vybrat naraz.
+          if (!customCats.includes(val)) {
+            customCats.push(val);
+            zzz_save_category_custom_cats(customCats);
+          }
+          setValue(val);
           addCustomInput.value = '';
           renderRows();
         }
@@ -8206,22 +8190,6 @@ function zzz_open_category_context_modal(id, getValue, setValue) {
     row2.appendChild(addCustomInput);
   }
   renderRows();
-
-  const freeLabel = document.createElement('div');
-  freeLabel.style.fontSize = '7px';
-  freeLabel.style.color = '#999';
-  freeLabel.style.margin = '6px 0 2px';
-  freeLabel.textContent = 'alebo napis volnu hodnotu:';
-  box.appendChild(freeLabel);
-
-  const freeInput = document.createElement('input');
-  freeInput.type = 'text';
-  freeInput.className = 'zzz6-f21-tags-input';
-  freeInput.style.width = '100%';
-  freeInput.style.boxSizing = 'border-box';
-  freeInput.value = getValue() || '';
-  freeInput.addEventListener('input', () => setValue(freeInput.value));
-  box.appendChild(freeInput);
 
   const actions = document.createElement('div');
   actions.className = 'entry-modal-actions';
@@ -8251,13 +8219,7 @@ function zzz_open_category_context_modal(id, getValue, setValue) {
 
 function zzz6f8_open_subs_context_modal(id) {
   const { box, removeBox } = zzz6f41_create_context_window(); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] dokovane pod CL
-  box.appendChild(zzz_build_context_header(id)); // [Zzz6-F23:CONTEXT-HEADER]
-
-  const label = document.createElement('div');
-  label.style.fontSize = '9px';
-  label.style.fontWeight = '700';
-  label.style.color = '#171717';
-  label.textContent = 'SUBS';
+  box.appendChild(zzz_build_context_header(id)); // [Zzz6-F23:CONTEXT-HEADER] [Zzz6-F8:SUBS-CONTEXT] OPRAVA (Vrso 2026-09-19, "odstran duplicitny popis subs") - samostatny druhy "SUBS" label pod headerom ODSTRANENY
 
   // [Zzz6-F8:SUBS-CONTEXT] Vrso 2026-09-17, doslovne: "chyba tam to cislovanie" - najcastejsi dovod, preco
   // auto-cislo chyba, je jednoduchy: PROJECT NUMBER (alebo OWNER) este nie je vyplneny (auto-cislo sa
@@ -8280,6 +8242,17 @@ function zzz6f8_open_subs_context_modal(id) {
   function renderChips() {
     list.innerHTML = '';
     subs.forEach((sub, idx) => {
+      // [Zzz6-F8:SUBS-CONTEXT] OPRAVA (Vrso 2026-09-19, "nevidim tam sub-en cislo oznacenie a pod nim
+      // prislusnu bunku s cislom") - maly label "sub-EN" pred samotnym #N chipom, aby bolo jasne, co
+      // predstavuje (predtym holé "#1" bez vysvetlenia). | Vrso -> Claude AI | 2026-09-19 ===
+      if (idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub)) {
+        const enLabel = document.createElement('div');
+        enLabel.style.fontSize = '7px';
+        enLabel.style.color = '#999';
+        enLabel.style.width = '100%';
+        enLabel.textContent = 'sub-EN';
+        list.appendChild(enLabel);
+      }
       const chip = document.createElement('div');
       chip.className = 'zzz6-f21-tags-chip';
 
@@ -8293,15 +8266,16 @@ function zzz6f8_open_subs_context_modal(id) {
 
       // [Zzz6-F8:SUBS-CONTEXT] auto-cislo (idx 0, format "#N") JE tiez needitovatelne - ziadny "x" na
       // odstranenie, rovnaky princip ako Zzz1-R1 Entry Number. Rovnako placement:/tab: (display.locked).
+      // [Zzz6-X:BASE-OPEN-CATS] OPRAVA (Vrso 2026-09-19, "rovnako urob pre subs" - rovnaky princip ako Category
+      // Open cats) - "open" (nezamknute) suby uz nemaju viditelny × na klik, mazu sa 3s PODRZANIM celeho
+      // chipu (zzz_bind_long_press), konzistentne s Category Row 2. | Vrso -> Claude AI | 2026-09-19 ===
       if (!display.locked && !(idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub))) {
-        const remove = document.createElement('span');
-        remove.className = 'zzz6-f21-tags-remove';
-        remove.textContent = '\u00D7';
-        remove.onclick = () => {
-          subs.splice(idx, 1);
+        zzz_bind_long_press(chip, 3000, () => {
+          const stillIdx = subs.indexOf(sub);
+          if (stillIdx === -1) return;
+          subs.splice(stillIdx, 1);
           renderChips();
-        };
-        chip.appendChild(remove);
+        });
       }
 
       list.appendChild(chip);
@@ -8379,7 +8353,6 @@ function zzz6f8_open_subs_context_modal(id) {
   actions.appendChild(deleteBtn);
   actions.appendChild(copyBtn);
   actions.appendChild(closeBtn);
-  box.appendChild(label);
   box.appendChild(hint);
   box.appendChild(list);
   box.appendChild(actions);
@@ -12490,13 +12463,7 @@ function zzz1m4a_open_local_entry_modal(id) {
 // | 2026-09-17 ===
 function zzz1m4a_open_local_subs_modal(id) {
   const { box, removeBox } = zzz6f41_create_context_window('versoM4aContextWindowStack');
-  box.appendChild(zzz_build_context_header(id));
-
-  const label = document.createElement('div');
-  label.style.fontSize = '9px';
-  label.style.fontWeight = '700';
-  label.style.color = '#171717';
-  label.textContent = 'SUBS';
+  box.appendChild(zzz_build_context_header(id)); // [Zzz6-F8:SUBS-CONTEXT] OPRAVA (Vrso 2026-09-19) - duplicitny "SUBS" label ODSTRANENY, rovnako ako hlavna CRM verzia
 
   // [Zzz6-F8:SUBS-CONTEXT] rovnaky hint ako v hlavnej CRM verzii vyssie v subore - M4a2 cita z
   // zzz1m4aFields (izolovane), nie z entryData.
@@ -12516,6 +12483,15 @@ function zzz1m4a_open_local_subs_modal(id) {
   function renderChips() {
     list.innerHTML = '';
     subs.forEach((sub, idx) => {
+      // [Zzz6-F8:SUBS-CONTEXT] rovnaka zmena ako hlavna CRM verzia vyssie v subore - "sub-EN" label pred #N chipom.
+      if (idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub)) {
+        const enLabel = document.createElement('div');
+        enLabel.style.fontSize = '7px';
+        enLabel.style.color = '#999';
+        enLabel.style.width = '100%';
+        enLabel.textContent = 'sub-EN';
+        list.appendChild(enLabel);
+      }
       const chip = document.createElement('div');
       chip.className = 'zzz6-f21-tags-chip';
 
@@ -12529,15 +12505,15 @@ function zzz1m4a_open_local_subs_modal(id) {
 
       // [Zzz6-F8:SUBS-CONTEXT] auto-cislo (idx 0, format "#N") JE tiez needitovatelne - ziadny "x".
       // Rovnako placement:/tab: (display.locked).
+      // [Zzz6-X:BASE-OPEN-CATS] OPRAVA (Vrso 2026-09-19) - rovnaka zmena ako v hlavnej CRM verzii vyssie v
+      // subore: "open" suby sa mazu 3s podrzanim, nie × klikom. | Vrso -> Claude AI | 2026-09-19 ===
       if (!display.locked && !(idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub))) {
-        const remove = document.createElement('span');
-        remove.className = 'zzz6-f21-tags-remove';
-        remove.textContent = '\u00D7';
-        remove.onclick = () => {
-          subs.splice(idx, 1);
+        zzz_bind_long_press(chip, 3000, () => {
+          const stillIdx = subs.indexOf(sub);
+          if (stillIdx === -1) return;
+          subs.splice(stillIdx, 1);
           renderChips();
-        };
-        chip.appendChild(remove);
+        });
       }
 
       list.appendChild(chip);
@@ -12607,7 +12583,6 @@ function zzz1m4a_open_local_subs_modal(id) {
 
   actions.appendChild(deleteBtn);
   actions.appendChild(closeBtn);
-  box.appendChild(label);
   box.appendChild(hint);
   box.appendChild(list);
   box.appendChild(actions);
