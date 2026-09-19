@@ -416,11 +416,22 @@ body{margin:0;color:#fff;font-family:sans-serif;}
      samostatny <div> so sirkou 100 %, takze KAZDY chip si vynutil vlastny riadok. TERAZ je label MALY span
      PRIAMO VNUTRI chipu (pred hodnotou), takze cely riadok subs sa normalne zalamuje ako cats
      (.zzz6-f21-tags-list = flex-wrap). | Vrso -> Claude AI | 2026-09-19 === */
+  /* [Zzz6-X:SUBS-ONE-ROW] Vrso 2026-09-19, doslovne: "tie nazvy subs maju byt ako oznacenie ale nad danymi
+     bunkami. Uz to tak bolo" - label je SPAT NAD chipom, ale kazdy chip je vlastna mala jednotka (stlpec:
+     label hore, chip pod nim) a tieto jednotky idu VEDLA SEBA v jednom flex-wrap riadku. Povodna verzia
+     mala label ako samostatny div so sirkou 100 %, co kazdemu chipu vynutilo vlastny riadok - to bol cely
+     ten problem "suby pod sebou". | Vrso -> Claude AI | 2026-09-19 === */
+  .zzz6-f8-subs-chip-unit {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
   .zzz6-f8-subs-chip-label {
     font-size: 7px;
     font-weight: 600;
-    opacity: 0.6;
-    text-transform: lowercase;
+    color: #999;
+    padding-left: 4px;
   }
   /* [Zzz6-X:SUBS-HOLD-GUARD] Vrso 2026-09-19, doslovne: "ked podrzim open subs tak blikne vybrany text...
      podrzanim 2-3s sa ma odstranit" - CSS cast ochrany proti nativnemu vyberu textu/callout menu pri 3s
@@ -5720,17 +5731,35 @@ function zzz_bind_hold_selection_guard(el) {
   el.addEventListener('selectstart', (e) => e.preventDefault());
   el.addEventListener('contextmenu', (e) => e.preventDefault());
   let selInterval = null;
+  let holdStartPulse = null;
+  let isHolding = false;
   const clearSel = () => {
     const sel = window.getSelection && window.getSelection();
     if (sel && sel.toString()) sel.removeAllRanges();
   };
   const holdStart = () => {
+    isHolding = true;
     if (selInterval) clearInterval(selInterval);
     selInterval = setInterval(clearSel, 80);
+    // [Zzz6-X:HOLD-SELECTION-GUARD] Vrso 2026-09-19, doslovne: "ak len podrzim narychlo nejaky sub co chcem
+    // vymazat tak pohne strankou a nejde" - kratky hmatovy pulz po 400ms povie "drzanie sa pocita, drz
+    // dalej", takze netreba hadat, ci gesto vobec zabralo (rovnaky vzor ako M4a MINI tlacidlo).
+    if (holdStartPulse) clearTimeout(holdStartPulse);
+    holdStartPulse = setTimeout(() => { holdStartPulse = null; zzz_haptic_pulse(15); }, 400);
   };
-  const holdEnd = () => { if (selInterval) { clearInterval(selInterval); selInterval = null; } };
+  const holdEnd = () => {
+    isHolding = false;
+    if (selInterval) { clearInterval(selInterval); selInterval = null; }
+    if (holdStartPulse) { clearTimeout(holdStartPulse); holdStartPulse = null; }
+  };
   el.addEventListener('touchstart', holdStart, { passive: true });
   el.addEventListener('mousedown', holdStart);
+  // [Zzz6-X:HOLD-SELECTION-GUARD] HLAVNA cast opravy "pohne strankou a nejde": pokial prst drzi PRIAMO na
+  // tomto prvku, zakaz prehliadacu scrollovat pod nim (passive:false, teda preventDefault SMIE fungovat).
+  // Bez toho staci, ze sa stranka posunie o par pixelov, a dotyk sa zmeni na scroll gesto - 3s casovac sa
+  // zrusi a vyzera to, ze "podrzanie nefunguje". Samotne CSS touch-action:none na to na tomto Android/
+  // Chrome kombe nestacilo. | Vrso -> Claude AI | 2026-09-19 ===
+  el.addEventListener('touchmove', (e) => { if (isHolding && e.cancelable) e.preventDefault(); }, { passive: false });
   ['touchend', 'touchcancel', 'mouseup', 'mouseleave'].forEach(ev => el.addEventListener(ev, holdEnd));
   return holdEnd;
 }
@@ -5744,7 +5773,7 @@ function zzz_bind_long_press(el, ms, onLongPress, shouldStart) {
   // sa casto vobec nedopocitalo do konca. TERAZ sa ruší LEN pri skutocnom pohybe/scrollovani (> 12 px od
   // bodu dotyku) - kratke gesta (scroll zoznamu) stale rusia podrzanie okamzite, kedze prst prejde 12 px
   // takmer hned. | Vrso -> Claude AI | 2026-09-19 ===
-  const ZZZ_LONGPRESS_MOVE_TOLERANCE_PX = 12;
+  const ZZZ_LONGPRESS_MOVE_TOLERANCE_PX = 20; // [Zzz6-F27:LONGPRESS-TOLERANCE] zvysene z 12 (Vrso 2026-09-19, "ak len podrzim narychlo...pohne strankou a nejde") - prst na malom chipe prirodzene driftne o par px, a na prvkoch so zzz_bind_hold_selection_guard() je scroll aj tak uz zablokovany, takze prisnejsia hranica len rusila legitimne podrzania
   let startX = 0, startY = 0;
   const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
   const onTouchMove = (e) => {
@@ -8120,8 +8149,11 @@ function zzz6f8_is_function_written_ref(sub) {
 //  1. OBA riadky (base aj open) maju teraz ZLATY zaklad (.zzz-category-chip-base, presne ako cats) - typove
 //     farby (sub-ID zelena, sub-TAB cervena/modra, sub-NUM tyrkysova) ostavaju NEDOTKNUTE, lebo tie si Vrso
 //     vyslovne vypytal skor a prebijaju zlatu cez !important.
-//  2. Label ("sub-EN"...) je teraz MALY span VNUTRI chipu, nie samostatny div so sirkou 100 % - to bol dovod,
-//     preco sa chipy ukladali pod seba namiesto jedneho riadku.
+//  2. Label ("sub-EN"...) je SPAT NAD chipom (Vrso 2026-09-19: "tie nazvy subs maju byt ako oznacenie ale
+//     nad danymi bunkami, uz to tak bolo") - ale NIE ako samostatny div so sirkou 100 % (to bol povodny
+//     dovod, preco si kazdy chip vynutil vlastny riadok). Kazdy chip je teraz vlastna mala "jednotka"
+//     (.zzz6-f8-subs-chip-unit - stlpec: label hore, chip pod nim) a TIETO jednotky idu vedla seba v
+//     jednom flex-wrap riadku. Label hore AJ chipy vedla seba naraz.
 //  3. Klik = oznacenie chipu ciernym ohranicenim (.zzz-category-chip-selected, 1:1 ako cats), opakovany klik
 //     odznaci. 3s podrzanie (len open chipy) = zmazanie, teraz uz spolahlivo vdaka
 //     [Zzz6-F27:LONGPRESS-TOLERANCE] oprave vyssie v subore.
@@ -8130,19 +8162,23 @@ function zzz6f8_build_subs_chip(sub, selState, rerender, onDelete) {
   const display = zzz2r38_subs_chip_display(sub);
   const isOpen = !display.locked;
 
+  const unit = document.createElement('div');
+  unit.className = 'zzz6-f8-subs-chip-unit';
+
+  const labelEl = document.createElement('div');
+  labelEl.className = 'zzz6-f8-subs-chip-label';
+  labelEl.textContent = display.label;
+  unit.appendChild(labelEl);
+
   const chip = document.createElement('div');
   chip.className = 'zzz-category-chip-base zzz6-f8-subs-chip-guard'; // zlata pre OBA riadky + ochrana proti nativnemu vyberu textu
   if (display.cssClass) chip.classList.add(display.cssClass);
   if (selState.value === sub) chip.classList.add('zzz-category-chip-selected'); // cierne ohranicenie, ako cats
 
-  const labelSpan = document.createElement('span');
-  labelSpan.className = 'zzz6-f8-subs-chip-label';
-  labelSpan.textContent = display.label;
-  chip.appendChild(labelSpan);
-
   const valueSpan = document.createElement('span');
   valueSpan.textContent = display.text;
   chip.appendChild(valueSpan);
+  unit.appendChild(chip);
 
   chip.addEventListener('click', () => {
     selState.value = (selState.value === sub) ? null : sub;
@@ -8163,7 +8199,7 @@ function zzz6f8_build_subs_chip(sub, selState, rerender, onDelete) {
     onDelete(sub);
   });
 
-  return { chip, isOpen };
+  return { chip, unit, isOpen };
 }
 
 // [Zzz6-F8:SUBS-CONTEXT] Vrso 2026-09-17, doslovne: "v subs bude vzdy prvy oznacenie aj poradoveho cisla
@@ -8429,14 +8465,14 @@ function zzz6f8_open_subs_context_modal(id) {
     subs.forEach((sub) => {
       // [Zzz6-X:SUBS-ONE-ROW] OPRAVA (Vrso 2026-09-19) - cely chip (zlata farba, label vnutri, klik-oznacenie,
       // 3s mazanie) stavia teraz zdielany zzz6f8_build_subs_chip() vyssie v subore, nie tento blok.
-      const { chip, isOpen } = zzz6f8_build_subs_chip(sub, selState, () => renderChips(false), (target) => {
+      const { unit, isOpen } = zzz6f8_build_subs_chip(sub, selState, () => renderChips(false), (target) => {
         const stillIdx = subs.indexOf(target);
         if (stillIdx === -1) return;
         subs.splice(stillIdx, 1);
         if (selState.value === target) selState.value = null;
         renderChips(false);
       });
-      (isOpen ? list2 : list).appendChild(chip); // open suby do DRUHEHO riadku, base/locked ostavaju v PRVOM
+      (isOpen ? list2 : list).appendChild(unit); // open suby do DRUHEHO riadku, base/locked ostavaju v PRVOM
     });
 
     const input = document.createElement('input');
@@ -12746,14 +12782,14 @@ function zzz1m4a_open_local_subs_modal(id) {
       // [Zzz6-X:SUBS-ONE-ROW] OPRAVA (Vrso 2026-09-19) - rovnaka zmena ako hlavna CRM verzia vyssie v subore:
       // chip stavia zdielany zzz6f8_build_subs_chip() (zlata pre oba riadky, label vnutri chipu = jeden
       // riadok, klik = cierne ohranicenie, 3s podrzanie = zmazanie). | Vrso -> Claude AI | 2026-09-19 ===
-      const { chip, isOpen } = zzz6f8_build_subs_chip(sub, selState, () => renderChips(false), (target) => {
+      const { unit, isOpen } = zzz6f8_build_subs_chip(sub, selState, () => renderChips(false), (target) => {
         const stillIdx = subs.indexOf(target);
         if (stillIdx === -1) return;
         subs.splice(stillIdx, 1);
         if (selState.value === target) selState.value = null;
         renderChips(false);
       });
-      (isOpen ? list2 : list).appendChild(chip);
+      (isOpen ? list2 : list).appendChild(unit);
     });
 
     const input = document.createElement('input');
