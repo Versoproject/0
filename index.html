@@ -8243,11 +8243,21 @@ function zzz6f8_open_subs_context_modal(id) {
   const list = document.createElement('div');
   list.className = 'zzz6-f21-tags-list'; // DRY - rovnaka trieda ako Tags, len iny obsah/label
 
+  // [Zzz6-X:BASE-OPEN-SUBS] Vrso 2026-09-19, doslovne: "mala si vytvorit tiez druhy riadok ako cats...
+  // mozes ich tiez radsej tou zlatou farbou" - DRUHY, SAMOSTATNY riadok pre "open" (needitovatelne
+  // needitovatelne - teda naopak, PRAVE editovatelne/rucne pisane) suby, vizualne oddeleny od prveho
+  // (base/auto) riadku, ktory OSTAVA presne tak ako bol (Vrso: "prvy...riadok...nechaj ako je"). Rovnaka
+  // zlata farba ako Category Row 1/2 (.zzz-category-chip-base). | Vrso -> Claude AI | 2026-09-19 ===
+  const list2 = document.createElement('div');
+  list2.className = 'zzz6-f21-tags-list';
+  list2.style.marginTop = '6px';
+
   // odstran prip. STARE auto-generovane chipy (EN aj NUM) - prepocitaju sa nanovo nizsie, aby vzdy odzrkadlali aktualny stav
   let subs = zzz6f8_parse_subs(entryData[id]).filter(s => !ZZZ6F8_AUTO_NUMBER_PATTERN.test(s) && !ZZZ6F8_NUM_PATTERN.test(s));
 
   function renderChips() {
     list.innerHTML = '';
+    list2.innerHTML = '';
     subs.forEach((sub, idx) => {
       // [Zzz6-F8:SUBS-CONTEXT] OPRAVA (Vrso 2026-09-19, "nevidim tam sub-en cislo oznacenie a pod nim
       // prislusnu bunku s cislom") - maly label "sub-EN" pred samotnym #N chipom, aby bolo jasne, co
@@ -8260,11 +8270,13 @@ function zzz6f8_open_subs_context_modal(id) {
         enLabel.textContent = 'sub-EN';
         list.appendChild(enLabel);
       }
-      const chip = document.createElement('div');
-      chip.className = 'zzz6-f21-tags-chip';
 
       // [Zzz2-R38:SUB-TAB] rozpozna placement:/tab: chip (modra/zelena, needitovatelne) - zdielany helper
       const display = zzz2r38_subs_chip_display(sub);
+      const isOpen = !display.locked && !(idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub));
+
+      const chip = document.createElement('div');
+      chip.className = isOpen ? 'zzz-category-chip-base' : 'zzz6-f21-tags-chip'; // [Zzz6-X:BASE-OPEN-SUBS] open = zlata, ako Category
       if (display.cssClass) chip.classList.add(display.cssClass);
 
       const span = document.createElement('span');
@@ -8276,16 +8288,17 @@ function zzz6f8_open_subs_context_modal(id) {
       // [Zzz6-X:BASE-OPEN-CATS] OPRAVA (Vrso 2026-09-19, "rovnako urob pre subs" - rovnaky princip ako Category
       // Open cats) - "open" (nezamknute) suby uz nemaju viditelny × na klik, mazu sa 3s PODRZANIM celeho
       // chipu (zzz_bind_long_press), konzistentne s Category Row 2. | Vrso -> Claude AI | 2026-09-19 ===
-      if (!display.locked && !(idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub))) {
+      if (isOpen) {
         zzz_bind_long_press(chip, 3000, () => {
           const stillIdx = subs.indexOf(sub);
           if (stillIdx === -1) return;
           subs.splice(stillIdx, 1);
           renderChips();
         });
+        list2.appendChild(chip); // [Zzz6-X:BASE-OPEN-SUBS] open suby idu do DRUHEHO riadku
+      } else {
+        list.appendChild(chip); // base/locked suby ostavaju v PRVOM riadku, nezmenene
       }
-
-      list.appendChild(chip);
     });
 
     const input = document.createElement('input');
@@ -8310,7 +8323,7 @@ function zzz6f8_open_subs_context_modal(id) {
         renderChips();
       }
     });
-    list.appendChild(input);
+    list2.appendChild(input); // [Zzz6-X:BASE-OPEN-SUBS] "+ sub" patri k open riadku (tam, kde nove suby vznikaju)
     input.focus();
   }
   renderChips();
@@ -8362,6 +8375,7 @@ function zzz6f8_open_subs_context_modal(id) {
   actions.appendChild(closeBtn);
   box.appendChild(hint);
   box.appendChild(list);
+  box.appendChild(list2);
   box.appendChild(actions);
   zzz6f41_bind_outside_click(box, closeModal);
 }
@@ -11069,6 +11083,14 @@ function zzz2r38_is_known_tab_label(label) {
 // sa v zzz5t0_render_tabs_row pri vykreslovani triedy .zzz2r38-tab-target-selected (strieborny ramcek).
 let zzz2r38_target_selection = { label: null, el: null };
 
+// [Zzz2-R38:PASTE-CONFIRM-GATE] Vrso 2026-09-19, doslovne: "co ak by bol paste akysi extra overovaci
+// krok...enter sa najprv obrati na paste button a az ked sa vsetko potvrdi zapise" - PASTE (3s) je teraz
+// POVINNA kontrola pred ENTER pre kazdy Move zaznam (zobrazi zhrnutie zdroj/ciel/CONTENT/Category, POTVRDIT
+// tlacidlo). Tento flag drzi, ci uz bolo potvrdene PRE AKTUALNY MOVE ciel - kazda zmena SELECT zdroja alebo
+// MOVE ciela ho resetuje, ENTER ho vyzaduje pred akymkolvek zapisom (aj kratky klik, aj 3s podrzanie). |
+// Vrso -> Claude AI | 2026-09-19 ===
+let zzz2r38MoveConfirmed = false;
+
 // [Zzz2-R38:LINK-TAB-ID] Vrso 2026-09-17, doslovne: "este sme zabudli id tabu kde budes zapisovat? Zatial
 // vpis vzdy do link bunky v cl" - stabilne interne ID zdrojoveho tabu (napr. "zzz5t2-c", NIE citatelny
 // label "T2c" - ten uz je v SUB CATEGORY) sa teraz VZDY zapise do LINK (R13) pri SELECT oznaceni zdroja.
@@ -11165,10 +11187,11 @@ function zzz2r38_handle_special_tab_click(tabId, tabLabel, btnEl, stableTabId) {
     // (prefill "templates", da sa nechat tak alebo prepisat). NENAHRADZA volne pisanie kategorie inde -
     // spusti sa LEN pri tomto konkretnom MOVE-s-templates-Category pripade. | Vrso -> Claude AI | 2026-09-19 ===
     zzz2r38_maybe_prompt_category_rename();
+    zzz2r38MoveConfirmed = false; // [Zzz2-R38:PASTE-CONFIRM-GATE] novy/zmeneny ciel = treba znova potvrdit cez PASTE
     if (zzz2r38_target_selection.el) zzz2r38_target_selection.el.classList.remove('zzz2r38-tab-target-selected');
     zzz2r38_target_selection = { label: tabId, el: btnEl };
     btnEl.classList.add('zzz2r38-tab-target-selected');
-    zzz6f2_show_toast(`Zzz2-R38: placement set to "${tabId}" (blue, temporary until ENTER). CONTENT auto-generated.`);
+    zzz6f2_show_toast(`Zzz2-R38: placement set to "${tabId}" (blue, temporary until ENTER). CONTENT auto-generated - hold PASTE to confirm before ENTER.`);
     return true;
   }
   if (zzz6f29SelectMode) {
@@ -11190,6 +11213,7 @@ function zzz2r38_handle_special_tab_click(tabId, tabLabel, btnEl, stableTabId) {
     // (write_to_entry je synchronne), aby sa id: chip pridal K prave zapisanemu identifikatoru, nie ho
     // prepisal. | Vrso -> Claude AI | 2026-09-19 ===
     write_to_entry('8', zzz6f8_set_subs_id(entryData['8'], stableTabId || tabId));
+    zzz2r38MoveConfirmed = false; // [Zzz2-R38:PASTE-CONFIRM-GATE] zmena zdroja = treba znova potvrdit cez PASTE
     return true;
   }
   return false;
@@ -11218,11 +11242,12 @@ function zzz2r38_handle_special_tab_click(tabId, tabLabel, btnEl, stableTabId) {
   });
 })();
 
-// [Zzz2-R38:AUTO-CONTENT] Vrso 2026-09-19 - PASTE uz NIE JE povinny krok (CONTENT sa auto-generuje pri MOVE,
-// viz zzz2r38_generate_move_content() a jej volanie v zzz2r38_handle_special_tab_click) - tlacidlo OSTAVA
-// ako volitelny rucny RE-zapis (napr. ak by niekto CONTENT medzitym rucne upravil/pokazil a chce ho
-// obnovit z aktualneho SUBS stavu). Zdielana funkcia teraz namiesto duplicitnej logiky. | Vrso -> Claude AI
-// | 2026-09-19 ===
+// [Zzz2-R38:PASTE-CONFIRM-GATE] Vrso 2026-09-19, doslovne: "co ak by bol paste akysi extra overovaci
+// krok...da prompt na cat a moze informovat co vykona jeho zapis...bezny clovek si nic neskontroluje sam" -
+// PASTE (3s) je teraz POVINNY overovaci krok pred ENTER pre kazdy Move zaznam. Otvori zhrnutie (zdroj, ciel,
+// CONTENT, aktualna Category) s POTVRDIT tlacidlom - az PO kliku naň sa zzz2r38MoveConfirmed nastavi na
+// true, co ENTER (nizsie, zzz6f2_run_entry_submit) vyzaduje pred akymkolvek zapisom. | Vrso -> Claude AI |
+// 2026-09-19 ===
 (function bindZzz2R38PasteButton() {
   const btn = document.getElementById('versoEditButton'); // "PASTE" label (id nezmeneny, legacy nazov)
   if (!btn) return;
@@ -11232,9 +11257,49 @@ function zzz2r38_handle_special_tab_click(tabId, tabLabel, btnEl, stableTabId) {
       zzz6f2_show_toast('Zzz2-R38: need SUB CATEGORY (SELECT a source tab first) and a placement (MOVE a target tab first).');
       return;
     }
-    zzz6f2_show_toast(`Zzz2-R38: CONTENT re-generated to "${generatedContent}".`);
+    zzz2r38_open_paste_confirm_window(generatedContent);
   }, () => zzz2r38_has_pending_placement(entryData['8'])); // relevantny LEN ked MOVE uz vybral ciel (nie Category)
 })();
+
+function zzz2r38_open_paste_confirm_window(generatedContent) {
+  const { box, removeBox } = zzz6f41_create_context_window();
+  box.appendChild(zzz_build_context_header('10'));
+
+  const label = document.createElement('div');
+  label.style.fontSize = '9px';
+  label.style.fontWeight = '700';
+  label.style.color = '#171717';
+  label.textContent = 'Zzz2-R38: skontroluj pred zapisom';
+  box.appendChild(label);
+
+  const rows = [
+    ['SOURCE', zzz2r38_get_subs_source(entryData['8']) || '(none)'],
+    ['TARGET', zzz2r38_get_subs_target(entryData['8']) || '(none)'],
+    ['CATEGORY', entryData['5'] || '(prazdna)'],
+    ['CONTENT', generatedContent],
+  ];
+  rows.forEach(([k, v]) => {
+    const row = document.createElement('div');
+    row.style.fontSize = '9px';
+    row.style.margin = '4px 0';
+    row.innerHTML = `<b>${k}:</b> ${v}`;
+    box.appendChild(row);
+  });
+
+  const actions = document.createElement('div');
+  actions.className = 'entry-modal-actions';
+  const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'entry-modal-close';
+  confirmBtn.textContent = 'POTVRDIT';
+  confirmBtn.onclick = () => {
+    zzz2r38MoveConfirmed = true;
+    zzz6f2_show_toast('Zzz2-R38: potvrdene - ENTER teraz zapise.');
+    removeBox();
+  };
+  actions.appendChild(confirmBtn);
+  box.appendChild(actions);
+  zzz6f41_bind_outside_click(box, removeBox); // zatvorenie BEZ potvrdenia = zzz2r38MoveConfirmed ostava false
+}
 
 // === [Zzz6-F54:MOVE-INTERPRETER] Vrso 2026-09-16, doslovne: "ano aj zapracuj ako zzz6-F*(najvyssie volne
 // cislo)?...aby sa to neplietlo ako napr read command, reader...move interpreter?" - CITA zapisane Zzz2-R38
@@ -11347,6 +11412,14 @@ document.addEventListener('DOMContentLoaded', () => { zzz6f54_load_active_m4a_ta
     // -> Claude AI | 2026-09-19 ===
     const hasMoveTarget = zzz2r38_has_pending_placement(entryData['8']);
     if (hasMoveTarget) {
+      // [Zzz2-R38:PASTE-CONFIRM-GATE] Vrso 2026-09-19, doslovne: "enter sa najprv obrati na paste button a az
+      // ked sa vsetko potvrdi zapise" - ENTER ODMIETNE zapisat Move zaznam, kym nebolo potvrdene cez PASTE
+      // (zzz2r38MoveConfirmed). Kazda zmena SELECT/MOVE tento flag resetuje (viz nastavenia vyssie v subore),
+      // takze potvrdenie plati LEN pre aktualne zvoleny zdroj+ciel. | Vrso -> Claude AI | 2026-09-19 ===
+      if (!zzz2r38MoveConfirmed) {
+        zzz6f2_show_toast('Zzz2-R38: najprv podrz PASTE (3s) a potvrď zápis - ENTER kým to nepovolíš, nezapíše.');
+        return;
+      }
       // [Zzz2-R38:SUB-TAB] Vrso 2026-09-17/18 - cieľ sa uz NECITA z TAG(21), ale z SUBS(8) placement:/tab:
       // chipu (viz zzz2r38_get_subs_target vyssie v subore).
       const targetValue = zzz2r38_get_subs_target(entryData['8']);
@@ -11382,6 +11455,7 @@ document.addEventListener('DOMContentLoaded', () => { zzz6f54_load_active_m4a_ta
         // [Zzz2-R38:TARGET-MARKER] rovnaka uprataci logika pre MOVE-ciel (strieborny ramcek) - uz splnil ucel
         if (zzz2r38_target_selection.el) zzz2r38_target_selection.el.classList.remove('zzz2r38-tab-target-selected');
         zzz2r38_target_selection = { label: null, el: null };
+        zzz2r38MoveConfirmed = false; // [Zzz2-R38:PASTE-CONFIRM-GATE] uprac po sebe, dalsi Move zaznam bude znova potrebovat potvrdenie
       }
       return;
     }
@@ -11400,11 +11474,13 @@ document.addEventListener('DOMContentLoaded', () => { zzz6f54_load_active_m4a_ta
 
   zzz_bind_long_press(entryBtn, 3000, async () => {
     if (zzz4r17SearchMode) return;
-    // [Zzz6-F2:HOLD-PRIORITY-FIX] category="Use" (Zzz2-R38 Move) ma VZDY prioritu pred batch-attach-submit,
-    // aj ked su nahodou pripnute nesuvisiace drafty z predchadzajucej session (tie by inak vyhrali a Move by
-    // sa niekedy vobec nespustil). | Vrso -> Claude AI | 2026-09-16 ===
-    const categoryValue = (entryData['5'] || '').trim().toLowerCase();
-    if (categoryValue === 'use') {
+    // [Zzz6-F2:HOLD-PRIORITY-FIX] Move ma VZDY prioritu pred batch-attach-submit, aj ked su nahodou pripnute
+    // nesuvisiace drafty z predchadzajucej session (tie by inak vyhrali a Move by sa niekedy vobec
+    // nespustil). [Zzz2-R38:CATEGORY-MANUAL] OPRAVA (Vrso 2026-09-19) - dalsi zabudnuty pozostatok starej
+    // kontroly categoryValue==='use' (uz nespolahlive, Category je volne pisane pole) - prepnute na
+    // zzz2r38_has_pending_placement, rovnako ako ostatne miesta v subore. | Vrso -> Claude AI |
+    // 2026-09-19 ===
+    if (zzz2r38_has_pending_placement(entryData['8'])) {
       await zzz6f2_run_entry_submit();
       return;
     }
@@ -12485,10 +12561,16 @@ function zzz1m4a_open_local_subs_modal(id) {
   const list = document.createElement('div');
   list.className = 'zzz6-f21-tags-list';
 
+  // [Zzz6-X:BASE-OPEN-SUBS] rovnaka zmena ako hlavna CRM verzia vyssie v subore - druhy, zlaty riadok pre open suby.
+  const list2 = document.createElement('div');
+  list2.className = 'zzz6-f21-tags-list';
+  list2.style.marginTop = '6px';
+
   let subs = zzz6f8_parse_subs(zzz1m4aFields[id]).filter(s => !ZZZ6F8_AUTO_NUMBER_PATTERN.test(s) && !ZZZ6F8_NUM_PATTERN.test(s)); // [Zzz6-F8:SUBS-CONTEXT] odstran stare auto-generovane chipy (EN aj NUM), prepocitaju sa nanovo nizsie
 
   function renderChips() {
     list.innerHTML = '';
+    list2.innerHTML = '';
     subs.forEach((sub, idx) => {
       // [Zzz6-F8:SUBS-CONTEXT] rovnaka zmena ako hlavna CRM verzia vyssie v subore - "sub-EN" label pred #N chipom.
       if (idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub)) {
@@ -12499,11 +12581,13 @@ function zzz1m4a_open_local_subs_modal(id) {
         enLabel.textContent = 'sub-EN';
         list.appendChild(enLabel);
       }
-      const chip = document.createElement('div');
-      chip.className = 'zzz6-f21-tags-chip';
 
       // [Zzz2-R38:SUB-TAB] rozpozna placement:/tab: chip (modra/zelena, needitovatelne) - zdielany helper
       const display = zzz2r38_subs_chip_display(sub);
+      const isOpen = !display.locked && !(idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub));
+
+      const chip = document.createElement('div');
+      chip.className = isOpen ? 'zzz-category-chip-base' : 'zzz6-f21-tags-chip'; // [Zzz6-X:BASE-OPEN-SUBS] open = zlata
       if (display.cssClass) chip.classList.add(display.cssClass);
 
       const span = document.createElement('span');
@@ -12514,16 +12598,17 @@ function zzz1m4a_open_local_subs_modal(id) {
       // Rovnako placement:/tab: (display.locked).
       // [Zzz6-X:BASE-OPEN-CATS] OPRAVA (Vrso 2026-09-19) - rovnaka zmena ako v hlavnej CRM verzii vyssie v
       // subore: "open" suby sa mazu 3s podrzanim, nie × klikom. | Vrso -> Claude AI | 2026-09-19 ===
-      if (!display.locked && !(idx === 0 && ZZZ6F8_AUTO_NUMBER_PATTERN.test(sub))) {
+      if (isOpen) {
         zzz_bind_long_press(chip, 3000, () => {
           const stillIdx = subs.indexOf(sub);
           if (stillIdx === -1) return;
           subs.splice(stillIdx, 1);
           renderChips();
         });
+        list2.appendChild(chip);
+      } else {
+        list.appendChild(chip);
       }
-
-      list.appendChild(chip);
     });
 
     const input = document.createElement('input');
@@ -12548,7 +12633,7 @@ function zzz1m4a_open_local_subs_modal(id) {
         renderChips();
       }
     });
-    list.appendChild(input);
+    list2.appendChild(input);
     input.focus();
   }
   renderChips();
@@ -12592,6 +12677,7 @@ function zzz1m4a_open_local_subs_modal(id) {
   actions.appendChild(closeBtn);
   box.appendChild(hint);
   box.appendChild(list);
+  box.appendChild(list2);
   box.appendChild(actions);
   zzz6f41_bind_outside_click(box, closeModal);
 }
