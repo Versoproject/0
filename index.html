@@ -15783,13 +15783,62 @@ async function zzz6f11_place_entries(mode) { // 'copy' | 'move'
   const currentUsername = zzz0r1_get_current_username();
   let done = 0;
   let failedAt = null;
+  const skipped = [];        // uz su na tomto cieli
+  const skippedForeign = []; // cudzie zaznamy, MOVE na nich nie je dovoleny
 
   for (const row of rows) {
     try {
       let fields = {};
       try { fields = JSON.parse(row.fields_json || '{}'); } catch (e) { fields = {}; }
+
+      // === [Zzz6-F11:PLACE-ENTRIES] Vrso 2026-09-20, doslovne: "na to iste miesto radsej nekopirovat.
+      // Zbytocne by to robilo zrejme duplicitne zaznamy" - ak uz zaznam NA TOMTO CIELI je (rovnaky tab: chip),
+      // preskoc ho. Toto je jediny pripad, kedy by vznikli dva naozaj rovnake riadky na rovnakom mieste -
+      // inam kopirovanie duplicitu nerobi, lebo kazda kopia ma vlastne entry_id a iny tab: chip.
+      // | Vrso -> Claude AI | 2026-09-20 ===
+      if (zzz2r38_get_subs_target(fields.r8 || '') === targetId) {
+        skipped.push(`#${row.entry_id}`);
+        continue;
+      }
+
+      // === [Zzz6-F11:OWN-RECORDS-ONLY] Vrso 2026-09-20, doslovne: "ci sa tento proces neda zneuzit nejako ze
+      // niekto presunie cudziu entry resp. vytvori akusi svoju kopiu len tym ze ju presunul v taboch" - MOVE
+      // nastavuje superseded_by na CUDZOM zazname, cize by nim niekto vedel skryt zaznam ineho usera z
+      // Database Workspace. Preto MOVE smie LEN na vlastnych zaznamoch (zhoda username alebo Project Owner);
+      // cudzi zaznam sa da nanajvys skopirovat, original ostava nedotknuty. Je to zatial APPKOVA ochrana -
+      // skutocne vynutenie pride az s JWT->RLS mostom, lebo databaza dnes nevie, kto zapisuje.
+      // | Vrso -> Claude AI | 2026-09-20 ===
+      if (mode === 'move') {
+        const rowOwner = (row.username || fields.r4 || '').trim().toLowerCase();
+        const me = (currentUsername || '').trim().toLowerCase();
+        if (rowOwner && me && rowOwner !== me) {
+          skippedForeign.push(`#${row.entry_id}`);
+          continue;
+        }
+      }
+
       // umiestnenie noveho zaznamu: prepis tab:/placement: chip na ciel (helper sam odstrani predosly)
       fields.r8 = zzz2r38_finalize_subs_placement(zzz2r38_set_subs_placement(fields.r8 || '', targetId));
+
+      // === [Zzz6-F22-copy-credit:AUTO-CREDIT] Vrso 2026-09-20, doslovne: "ano super zapis aj r22" - kazda
+      // umiestnena KOPIA si so sebou nesie acknowledgement na svoj zdroj, presne ako kopirovanie jednej bunky
+      // cez COPY tlacidlo. Bez toho by autorstvo drzal len stlpec copied_from, ktory user v appke nevidi.
+      // Rovnaky tvar zaznamu aj rovnaka deduplikacia ako zzz6f22_record_copy_credit vyssie v subore - len sa
+      // pise priamo do fields noveho zaznamu (ten sa neskláda cez CL, takze entryData sa ho netyka).
+      // | Vrso -> Claude AI | 2026-09-20 ===
+      const creditOwner = (row.username || fields.r4 || 'neznamy').toString().trim() || 'neznamy';
+      const credits = zzz6f22_parse_credits(fields.r22);
+      const alreadyCredited = credits.some(c => c.own !== true && String(c.entryId) === String(row.entry_id) && c.owner === creditOwner);
+      if (!alreadyCredited) {
+        credits.push({
+          owner: creditOwner,
+          cl: zzz6f22_build_short_cl(row.entry_id, fields.r9),
+          entryId: row.entry_id,
+          own: false,
+          status: 'verified'
+        });
+        fields.r22 = JSON.stringify(credits);
+      }
 
       const { data: nextIdData, error: nextIdErr } = await sb.rpc('get_next_entry_id');
       if (nextIdErr) throw nextIdErr;
@@ -15835,9 +15884,13 @@ async function zzz6f11_place_entries(mode) { // 'copy' | 'move'
     zzz6f2_show_toast(failedAt
       ? `Zzz6-F11: ${what} ${done}/${rows.length} records to "${targetLabel}" - stopped at ${failedAt}.`
       : `Zzz6-F11: ${done} record(s) ${what} to "${targetLabel}".`);
+  } else if (skipped.length || skippedForeign.length) {
+    zzz6f2_show_toast('Zzz6-F11: nothing to do - see the notes below.');
   } else {
     zzz6f2_show_toast(`Zzz6-F11: nothing was written${failedAt ? ' - ' + failedAt : ''}.`);
   }
+  if (skipped.length) zzz6f2_show_toast(`Zzz6-F11: already in this destination, skipped: ${skipped.join(', ')}.`);
+  if (skippedForeign.length) zzz6f2_show_toast(`Zzz6-F11: MOVE is only allowed on your own records - skipped: ${skippedForeign.join(', ')}. You can COPY them instead.`);
 
   zzz6f29_reset_el_part();
   if (zzz2r38_target_selection.el) zzz2r38_target_selection.el.classList.remove('zzz2r38-tab-target-selected');
