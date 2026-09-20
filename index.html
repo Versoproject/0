@@ -16005,10 +16005,21 @@ async function open_organizer_workspace() {
       if (error) throw error;
       placedRows = data || [];
     }
+    // [Zzz6-F13:EDIT-AS-VERSION] Vrso 2026-09-20, doslovne: "nebolo by lepsie edited by you a hadam je to
+    // jasne pri prihlasenom username. To iste asi plati pre project ownera" - sekcia uz nevypisuje VSETKY
+    // nahradene zaznamy v systeme, ale len MOJE: bud som ich zapisal ja (username), alebo som ich project
+    // owner (r4). Rovnaka zasada ako pri zatriedeni - ORG ukazuje moje veci, nie cudzie.
     const { data: sup, error: supErr } = await sb.from('verso_entries').select('*')
       .not('superseded_by', 'is', null).order('updated_at', { ascending: false });
     if (supErr) throw supErr;
-    supersededRows = sup || [];
+    const meLower = zzz10v1_normalize(zzz0r1_get_current_username()); // [Zzz0-R2:USERNAME-CASE]
+    supersededRows = (sup || []).filter(r => {
+      if (!meLower) return false;
+      let f = {};
+      try { f = JSON.parse(r.fields_json || '{}'); } catch (e) {}
+      return zzz10v1_normalize(r.username) === meLower
+          || zzz10v1_normalize(f.r4) === meLower; // [Zzz0-R2:USERNAME-CASE]
+    });
     zzz0r1_set_db_connection_state(true);
   } catch (err) {
     const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
@@ -16021,7 +16032,7 @@ async function open_organizer_workspace() {
 
   const title = document.createElement('div');
   title.className = 'db-workspace-title';
-  title.textContent = `ORGANIZER (Zzz4-3) - ${placedRows.length} organized by you, ${supersededRows.length} previous versions`;
+  title.textContent = `ORGANIZER (Zzz4-3) - ${placedRows.length} organized, ${supersededRows.length} edited`;
   wrap.appendChild(title);
 
   function section(headingText, rows, emptyText, groupByTab) {
@@ -16060,7 +16071,7 @@ async function open_organizer_workspace() {
   }
 
   section('ORGANIZED BY YOU', placedRows, 'Nothing organized yet - SELECT a record, MOVE a destination tab, then hold ENTER.', true); // [Zzz6-F15:PLACEMENT-LAYER] Vrso 2026-09-20: "znelo by lepsie organized by you" - sedi aj s nazvom ORG tlacidla
-  section('PREVIOUS VERSIONS', supersededRows, 'No replaced records.', false);
+  section('EDITED BY YOU', supersededRows, 'No previous versions of your records.', false);
 
   zzz10t2_hide_m4a_template();
   workspace.innerHTML = '';
@@ -16127,8 +16138,8 @@ async function zzz6f11_place_entries(mode) { // 'copy' | 'move'
       // skutocne vynutenie pride az s JWT->RLS mostom, lebo databaza dnes nevie, kto zapisuje.
       // | Vrso -> Claude AI | 2026-09-20 ===
       if (mode === 'move') {
-        const rowOwner = (row.username || fields.r4 || '').trim().toLowerCase();
-        const me = (currentUsername || '').trim().toLowerCase();
+        const rowOwner = zzz10v1_normalize(row.username || fields.r4); // [Zzz0-R2:USERNAME-CASE]
+        const me = zzz10v1_normalize(currentUsername);
         if (rowOwner && me && rowOwner !== me) {
           skippedForeign.push(`#${row.entry_id}`);
           continue;
@@ -16292,7 +16303,11 @@ let zzz6f15PlacementsCache = null; // { [entryId]: [tabId, ...] } pre PRIHLASENE
 
 async function zzz6f15_load_my_placements(force) {
   if (zzz6f15PlacementsCache && !force) return zzz6f15PlacementsCache;
-  const me = zzz0r1_get_current_username();
+  // [Zzz6-F15:PLACEMENT-LAYER] USERNAME CASE - v databaze su riadky ulozene malymi pismenami (a RLS porovnava
+  // lower(username) = verso_jwt_username()), ale prihlaseny username si drzi povodny tvar "Verso". Bez tejto
+  // normalizacie by .eq('username', 'Verso') nenasiel NIC a zatriedenia by ticho zmizli - presne ta trieda
+  // chyby, co nikdy nevyhodi error, len prazdny zoznam. | Vrso -> Claude AI | 2026-09-20
+  const me = zzz10v1_normalize(zzz0r1_get_current_username()); // [Zzz0-R2:USERNAME-CASE]
   const map = {};
   if (!me) { zzz6f15PlacementsCache = map; return map; }
   try {
@@ -16313,7 +16328,7 @@ async function zzz6f15_load_my_placements(force) {
 
 // mode 'copy' = zatried AJ sem (predosle zatriedenia ostanu), 'move' = zatried LEN sem
 async function zzz6f15_place_entries(rows, targetId, mode) {
-  const me = zzz0r1_get_current_username();
+  const me = zzz10v1_normalize(zzz0r1_get_current_username()); // [Zzz0-R2:USERNAME-CASE]
   if (!me) { zzz6f2_show_toast('Zzz6-F15: log in first - placements are stored per username.', 'warn'); return; }
 
   let done = 0;
@@ -16380,8 +16395,8 @@ function zzz6f13_start_edit_from_selection() {
     return;
   }
   const row = rows[0];
-  const rowOwner = (row.username || '').trim().toLowerCase();
-  const me = (zzz0r1_get_current_username() || '').trim().toLowerCase();
+  const rowOwner = zzz10v1_normalize(row.username); // [Zzz0-R2:USERNAME-CASE]
+  const me = zzz10v1_normalize(zzz0r1_get_current_username());
   if (rowOwner && me && rowOwner !== me) {
     // rovnaka zasada ako Zzz6-F11:OWN-RECORDS-ONLY - cudzi zaznam sa neda nahradit vlastnou verziou
     zzz6f2_show_toast(`Zzz6-F13: #${row.entry_id} belongs to someone else - you can COPY it, not replace it.`);
@@ -17752,6 +17767,20 @@ function open_verification_workspace() {
 //   - Toto vsetko su okrajove pripady pre BUDUCU, hlbsiu pracu (Vrso spomina "zakladny prekladac
 //     terminologie...pripadne AI") - teraz zamerne LEN univerzalny, jednoduchy fix bez specialneho
 //     kodovania per-jazyk.
+// === [Zzz0-R2:USERNAME-CASE] PRAVIDLO (Vrso 2026-09-20, doslovne: "neda sa ten lowercase zaviest rovno po
+// celom kode resp. kde to ma vyznam a este lepsie napisat hadam aj do pravidiel v kode...ktore predide
+// takymto upravam") - USERNAME sa NIKDY neporovnava priamo. Registrovany tvar si zachovava velke pismena
+// ("Verso"), ale KAZDE porovnanie, dopyt aj kluc musi prejst cez zzz10v1_normalize() - na OBOCH stranach.
+// V databaze plati to iste: kazda RLS policy a RPC funkcia porovnava lower(username) = verso_jwt_username().
+//
+// PRECO PRAVIDLO A NIE ODPORUCANIE: tato trieda chyby NIKDY nevyhodi chybovu hlasku. Prejavi sa ako prazdny
+// zoznam alebo ticho odmietnuty zapis, takze sa hlada na uplne nespravnom mieste. Stalo nas to uz dve kola:
+// Resend porovnaval "The.verso..." vs "the.verso..." (tyzdne nefungujuce recovery emaily) a verso_placements
+// mali "Verso" proti tokenu "verso" (zatriedenia sa ticho prestali zobrazovat).
+//
+// KDE PLATI: porovnanie vlastnika (username, Project Owner r4), kazdy .eq('username', ...) dopyt, kluce do
+// lokalnych map podla usera, kazda nova RLS policy. NEPLATI na zobrazovanie - userovi sa vzdy ukazuje jeho
+// povodny tvar mena. | Vrso -> Claude AI | 2026-09-20 ===
 function zzz10v1_normalize(str) {
   return (str || '')
     .normalize('NFKD').replace(/\p{M}/gu, '') // univerzalne odstranenie VSETKYCH kombinujucich znakov (marks) naprac vsetkymi Unicode pismami
