@@ -15995,7 +15995,9 @@ async function open_organizer_workspace() {
   //   2. PREDOSLE VERZIE - zaznamy, ktore niekto nahradil novsou verziou (superseded_by, vznika pri
   //      Zzz6-F13 editacii); tie z Database Workspace vypadli.
   const placements = await zzz6f15_load_my_placements(true);
-  const placedIds = Object.keys(placements);
+  const placedIds = Object.keys(placements).map(id => Number(id)).filter(n => !Number.isNaN(n));
+  // [Zzz6-F15:PLACEMENT-LAYER] entry_id je v DB CISLO - kluce JS objektu su vzdy RETAZCE, takze .in() by
+  // dostalo ["105"] namiesto [105]. Preto explicitny prevod na cisla. | Vrso -> Claude AI | 2026-09-20
 
   let placedRows = [];
   let supersededRows = [];
@@ -16024,6 +16026,9 @@ async function open_organizer_workspace() {
   } catch (err) {
     const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
     console.warn(`Zzz6-F10 Organizer fetch zlyhal. DOVOD: ${errDetail}`);
+    // [Zzz6-F10:ORGANIZER-WORKSPACE] rovnaky dovod ako pri placements vyssie - bez viditelnej hlasky sa
+    // prazdny Organizer neda odlisit od "nic tam nie je". | Vrso -> Claude AI | 2026-09-20
+    zzz6f2_show_toast(`Zzz6-F10: Organizer fetch failed - ${errDetail}`, 'warn');
     zzz0r1_set_db_connection_state(false, errDetail, true);
   }
 
@@ -16320,9 +16325,16 @@ async function zzz6f15_load_my_placements(force) {
       map[r.entry_id].push(r.tab_id);
     });
   } catch (err) {
+    // [Zzz6-F15:PLACEMENT-LAYER] OPRAVA DIAGNOSTIKY (Vrso 2026-09-20) - zlyhanie tu bolo len v konzole, ktoru
+    // Vrso na mobile nema. Prejavilo sa to ako prazdny Organizer bez akehokolvek naznaku preco - presne ten
+    // typ tichej chyby, pred ktorym varuje pravidlo "vzdy viditelny toast pri zlyhani na pozadi".
+    zzz6f2_show_toast(`Zzz6-F15: placements load failed - ${(err && (err.message || err.details || err.hint)) || err}`, 'warn');
     console.warn('Zzz6-F15: placements load failed', err);
   }
   zzz6f15PlacementsCache = map;
+  // diagnostika: kolko zatriedeni sa realne nacitalo a pod akym menom sme sa pytali
+  console.log(`Zzz6-F15: loaded ${Object.keys(map).length} placement(s) for "${me}"`);
+  if (!me) zzz6f2_show_toast('Zzz6-F15: no username resolved - placements cannot be loaded.', 'warn');
   return map;
 }
 
