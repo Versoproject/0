@@ -4514,6 +4514,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-X:SUBS-ONE-ROW - zdielany zzz6f8_build_subs_chip() pre OBE SUBS okna (hlavna CRM aj M4a2): zlaty zaklad pre oba riadky (typove farby sub-ID/sub-TAB/sub-NUM prebijaju), label vnutri chipu = chipy v JEDNOM riadku (nie pod sebou), klik = cierne ohranicenie ako cats, 3s podrzanie = zmazanie open chipu</span>
   <span class="module-tag">Zzz6-X:REF-VS-SUB-LABELS - labely sa urcuju podla RIADKU, nie podla typu chipu: horny systemovy/needitovatelny riadok = ref-EN (#N), ref-SRC (1-M4a a pod., zapisane funkciou), ref-ID (id:), ref-TAB (placement:/tab:); dolny vlastny/mazatelny riadok = cislovanie sub-1, sub-2... podla poradia. Farby typov nedotknute</span>
   <span class="module-tag">Zzz6-F27:LONGPRESS-TOLERANCE - zdielana zzz_bind_long_press utilita ruší 3s casovac az pri pohybe > 12 px (nie pri kazdom mikropohybe prsta/posune layoutu po zatvoreni klavesnice) - oprava "podrzanim sa nic nestane" na malych prvkoch, plati pre VSETKY dlhe stlaky v appke</span>
+  <span class="module-tag">Zzz6-F11:PLACE-ENTRIES - vseobecny COPY/MOVE pre skutocne zaznamy: COPY = novy riadok s copied_from, oba aktivne; MOVE = to iste plus originalu sa nastavi superseded_by (treti stav "placed", original sa nikdy needituje ani nemaze, nic nejde do trashu). Gesto: ORG kratky klik = Organizer, 3s podrzanie = potvrdzovacie okno so zoznamom vybranych zaznamov a tlacidlami COPY/MOVE</span>
   <span class="module-tag">Zzz2-R32:ORGANIZER + Zzz6-F10:ORGANIZER-WORKSPACE - nove ORG tlacidlo v SEKCII 3 hned vedla TRASH; workspace vypisuje NAHRADENE (superseded_by IS NOT NULL) zaznamy - treti stav medzi aktivnym a trashnutym: nikdy sa nemazu, obsah nedotknuty, len vypadnu z Database Workspace. Vzor 1:1 podla Zzz6-F35 Trash Workspace, oznacenie "placed" sa vykresluje zo stlpca, nezapisuje sa do SUBS</span>
   <span class="module-tag">Zzz6-F9:CATS-PERSISTENCE - localStorage perzistencia oboch riadkov "cats" v Project Category okne (zzz_category_base_cats = Row 1 base, default System/Templates/Project trvalo nezmazatelne; zzz_category_custom_cats = Row 2 open) - zdielany lokalny vyberovy zoznam, nie per-entry data</span>
   <span class="module-tag">Zzz2-R38:TAB-CONTENTS + BULK-MOVE - zzz5t0_list_tab_contents(tabId) precita VSETKO, co v tabe je (vlastny modul + vsetko pridane cez + ADD TEMPLATE + prave zakotvene 1-M4a); SELECT zdrojoveho tabu tym naplni zoznam a pri 2+ moduloch ENTER zapise KAZDY presun ako samostatny zaznam (nie jeden zlepenec), PASTE okno ich pred potvrdenim vsetky vypise</span>
@@ -15684,6 +15685,145 @@ async function open_organizer_workspace() {
 })();
 // === end Zzz2-R32 (Organizer workspace) ===
 
+// === [Zzz6-F11:PLACE-ENTRIES] Vrso 2026-09-20, doslovne: "move urobit copy/delete ako ma byt.. no to
+// potrebujem...potrebujeme vseobecny copy aj move mechanizmus" - VSEOBECNY copy/move pre SKUTOCNE ZAZNAMY
+// (nie pre template moduly, tie riesi Zzz2-R38). Obe akcie su ten isty zapis, lisia sa JEDINYM krokom:
+//   COPY = INSERT novy riadok s copied_from = original; OBA ostavaju aktivne.
+//   MOVE = to iste PLUS originalu sa nastavi superseded_by = nove entry_id (treti stav "placed").
+// Original sa NIKDY needituje ani nemaze - umiestnenie (tab: chip) zije v SUBS vnutri fields_json, ktory je
+// needitovatelny (verso_entries_restrict_update_trigger), takze presun MUSI vzniknut ako novy zaznam. Nic sa
+// pritom nedostane do trashu a nevznikne tam duplicita (Vrso: "zas nemozeme mat duplicity v trash").
+// Gesto: ORG tlacidlo kratky klik = Organizer Workspace, 3s podrzanie = toto okno (rovnaky vzor ako vsade
+// inde v appke - kratke gesto zobrazuje, dlhe koná). | Vrso -> Claude AI | 2026-09-20 ===
+function zzz6f11_collect_selected_rows() {
+  return (zzz6f29_selection.el.rows || []).map(r => r.row).filter(r => r && r.entry_id !== undefined);
+}
+
+async function zzz6f11_place_entries(mode) { // 'copy' | 'move'
+  const rows = zzz6f11_collect_selected_rows();
+  const targetId = zzz2r38_target_selection.label; // pozor: drzi STABILNE ID tabu, nie citatelny label
+  if (!rows.length || !targetId) return;
+
+  const currentUsername = zzz0r1_get_current_username();
+  let done = 0;
+  let failedAt = null;
+
+  for (const row of rows) {
+    try {
+      let fields = {};
+      try { fields = JSON.parse(row.fields_json || '{}'); } catch (e) { fields = {}; }
+      // umiestnenie noveho zaznamu: prepis tab:/placement: chip na ciel (helper sam odstrani predosly)
+      fields.r8 = zzz2r38_finalize_subs_placement(zzz2r38_set_subs_placement(fields.r8 || '', targetId));
+
+      const { data: nextIdData, error: nextIdErr } = await sb.rpc('get_next_entry_id');
+      if (nextIdErr) throw nextIdErr;
+      const newEntryId = nextIdData;
+
+      const payload = {
+        entry_id: newEntryId,
+        r1: row.r1 || '',
+        fields_json: JSON.stringify(fields),
+        // content_hash ZAMERNE null: umiestneny zaznam je ODVODENY, nie novo napisany obsah. Hash ma UNIQUE
+        // index (Zzz6-F22:NO-DOUBLE-ENTRIES) a jeho ulohou je chytat omylom dvakrat zapisany CL - nie brzdit
+        // legitimne kopie. Partial index ignoruje NULL, takze to nic nerozbije.
+        content_hash: null,
+        entry_date: zzz6f14_format_today(),
+        username: currentUsername,
+        zzz_session_id: zzz_sessionId, // [Zzz-SESSION:FRESHNESS-GATE] bez tohto RLS insert odmietne
+        copied_from: row.entry_id,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error: insertErr } = await sb.from('verso_entries').insert([payload]);
+      if (insertErr) throw insertErr;
+
+      if (mode === 'move') {
+        // jediny rozdiel oproti COPY - original sa oznaci ako nahradeny. Trigger dovoli nastavit superseded_by
+        // len RAZ a nikdy ho nezrusit, takze aj toto ostava append-only.
+        const { error: supErr } = await sb.from('verso_entries')
+          .update({ superseded_by: newEntryId, updated_at: new Date().toISOString() })
+          .eq('entry_id', row.entry_id);
+        if (supErr) throw supErr;
+      }
+      done++;
+    } catch (err) {
+      failedAt = `#${row.entry_id} (${(err && (err.message || err.details)) || String(err)})`;
+      break;
+    }
+  }
+
+  if (done > 0) {
+    zzz6f2_flash_success();
+    const targetLabel = zzz5t0_find_tab_label_by_id(targetId) || targetId;
+    const what = mode === 'move' ? 'moved' : 'copied';
+    zzz6f2_show_toast(failedAt
+      ? `Zzz6-F11: ${what} ${done}/${rows.length} records to "${targetLabel}" - stopped at ${failedAt}.`
+      : `Zzz6-F11: ${done} record(s) ${what} to "${targetLabel}".`);
+  } else {
+    zzz6f2_show_toast(`Zzz6-F11: nothing was written${failedAt ? ' - ' + failedAt : ''}.`);
+  }
+
+  zzz6f29_reset_el_part();
+  if (zzz2r38_target_selection.el) zzz2r38_target_selection.el.classList.remove('zzz2r38-tab-target-selected');
+  zzz2r38_target_selection = { label: null, el: null };
+  if (typeof zzz6f40_workspaceOpener === 'function') zzz6f40_workspaceOpener(); // prekresli aktualny workspace
+}
+
+function zzz6f11_open_placement_window() {
+  const rows = zzz6f11_collect_selected_rows();
+  const targetId = zzz2r38_target_selection.label;
+  if (!rows.length) { zzz6f2_show_toast('Zzz6-F11: select the record(s) first (SELECT + tap the rows).'); return; }
+  if (!targetId) { zzz6f2_show_toast('Zzz6-F11: pick a destination first (MOVE button + tap a tab).'); return; }
+
+  const { box, removeBox } = zzz6f41_create_context_window();
+  const targetLabel = zzz5t0_find_tab_label_by_id(targetId) || targetId;
+
+  const head = document.createElement('div');
+  head.style.cssText = 'font-size:9px;font-weight:700;color:#171717;';
+  head.textContent = `Zzz6-F11: place ${rows.length} record(s) into "${targetLabel}"`;
+  box.appendChild(head);
+
+  const list = document.createElement('div');
+  list.style.cssText = 'font-size:9px;margin:4px 0;';
+  rows.forEach((row, i) => {
+    let fields = {};
+    try { fields = JSON.parse(row.fields_json || '{}'); } catch (e) {}
+    const name = (fields.r3 || fields.r10 || '').toString().trim().slice(0, 40);
+    const line = document.createElement('div');
+    line.textContent = `${i + 1}. #${row.entry_id}${name ? ' - ' + name : ''}`;
+    list.appendChild(line);
+  });
+  box.appendChild(list);
+
+  const note = document.createElement('div');
+  note.style.cssText = 'font-size:8px;color:#555;margin-bottom:4px;';
+  note.textContent = 'COPY keeps the original active. MOVE marks the original as placed - it is never deleted, just shown in the Organizer.';
+  box.appendChild(note);
+
+  const actions = document.createElement('div');
+  actions.className = 'entry-modal-actions';
+  ['copy', 'move'].forEach(mode => {
+    const btn = document.createElement('button');
+    btn.className = 'entry-modal-close';
+    btn.textContent = mode.toUpperCase();
+    btn.onclick = () => { removeBox(); zzz6f11_place_entries(mode); };
+    actions.appendChild(btn);
+  });
+  box.appendChild(actions);
+  zzz6f41_bind_outside_click(box, removeBox); // zatvorenie bez akcie
+}
+// === [/Zzz6-F11:PLACE-ENTRIES] ===
+
+(function bindZzz6F11OrganizerHold() {
+  const orgBtn = document.getElementById('versoOrganizerButton'); // Zzz2-R32
+  if (!orgBtn) return;
+  zzz_bind_hold_selection_guard(orgBtn);
+  zzz_bind_long_press(orgBtn, 3000, () => {
+    zzz_haptic_pulse(30);
+    zzz6f11_open_placement_window();
+  });
+})();
+
 // === [Zzz5-T1:TABS] Zzz5-T1 Tabs Module - napojenie TEMPLATES tlacidla (Zzz2-R23, versoTemplatesButton,
 // SEKCIA 2) + panel close [x]. ZIADNY overlay/modal - klik na TEMPLATES TOGGLE-uje viditelnost sekcie
 // #versoTemplatesInlineSection (rovnaky princip ako Zzz7-R Content Space), close [x] v paneli ju vzdy
@@ -15927,8 +16067,13 @@ function zzz5t0_render_tabs_row(tabs, innerEl, activeId, prefix, onSelect, onRen
     btn.className = 'zzz5t0-tab'
       + (tab.id === activeId ? ' zzz5t0-tab-active' : '')
       + (tab.id === zzz5t0LastClickedTabId ? ' zzz5t0-tab-current' : '') // [Zzz5-W5:CURRENT-TAB-FILL]
-      + (zzz6f29_selection.tab.id === tab.label ? ' zzz6f29-tab-selected' : '') // [Zzz2-R38:MOVE-TEMPLATE] SELECT-zdroj (fialova), zovseobecnene na akykolvek tab
-      + (zzz2r38_target_selection.label === tab.label ? ' zzz2r38-tab-target-selected' : '') // [Zzz2-R38:TARGET-MARKER] MOVE-ciel (strieborna) - obe sa PREKRESLUJU nanovo pri kazdom renderi, zvyraznenie musi vychadzat z ULOZENEHO stavu (label), nie zo starej DOM referencie
+      // [Zzz2-R38:TARGET-MARKER] OPRAVA (2026-09-20, najdene pri stavbe Zzz6-F11) - oba stavy UZ DAVNO drzia
+      // STABILNE ID tabu (zzz6f29_selection.tab.id aj zzz2r38_target_selection.label), ale porovnavali sa
+      // voci tab.label (citatelny nazov). Nikdy sa teda nezhodovali a fialovy SELECT-zdroj aj strieborny
+      // MOVE-ciel po kazdom prekresleni tabov ticho zmizli. Teraz sa porovnava voci tab.id, cize proti tomu,
+      // co je v stave naozaj ulozene. | Vrso -> Claude AI | 2026-09-20 ===
+      + (zzz6f29_selection.tab.id === tab.id ? ' zzz6f29-tab-selected' : '') // SELECT-zdroj (fialova)
+      + (zzz2r38_target_selection.label === tab.id ? ' zzz2r38-tab-target-selected' : '') // MOVE-ciel (strieborna)
       // [Zzz6-F54:ANCHOR-MARKER] Vrso 2026-09-20, doslovne: "neviem overit uspesnost...template nikde" -
       // tab, v ktorom je 1-M4a template PRAVE ZAKOTVENY (podla posledneho Zzz2-R38 move prikazu), je teraz
       // TRVALO viditelne oznaceny zelenym ramcekom - nie len jednorazovym toastom, ktory zmizne. Vzdy sa
