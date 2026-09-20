@@ -4516,6 +4516,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-F27:LONGPRESS-TOLERANCE - zdielana zzz_bind_long_press utilita ruší 3s casovac az pri pohybe > 12 px (nie pri kazdom mikropohybe prsta/posune layoutu po zatvoreni klavesnice) - oprava "podrzanim sa nic nestane" na malych prvkoch, plati pre VSETKY dlhe stlaky v appke</span>
   <span class="module-tag">Zzz6-F6:EL-CONTEXT-STANDARD - SUBS a PROJECT CATEGORY vyzeraju ROVNAKO vo vsetkych CRM moduloch: hlavna CL, M4a2 template aj ulozene zaznamy v Database/Trash/Organizer riadkoch (rovnake chipy cez zzz6f8_build_subs_chip a .zzz-category-chip-base). V ulozenych zaznamoch su chipy read-only, lebo obsah zaznamu je needitovatelny; tlacidla DELETE/COPY/ATTACH/ZATVORIT pracuju s CL, nie so zaznamom</span>
   <span class="module-tag">Zzz2-R38:PASTE-DISPATCH - PASTE (3s) je jedine potvrdzovacie gesto pre obe umiestnenia a sam rozlisi kontext: vybrate zaznamy -> Zzz6-F11:PLACE-ENTRIES okno (COPY/MOVE), inak skladany Move zaznam -> Zzz2-R38:PASTE-CONFIRM-GATE okno. ORG tlacidlo (Zzz2-R32:ORGANIZER) uz sluzi VYLUCNE na otvorenie workspace</span>
+  <span class="module-tag">Zzz6-F13:EDIT-AS-VERSION - PASTE tlacidlo premenovane na EDIT: kratky stlak = vkladanie z Verso schranky (Zzz2-R7), 3s podrzanie = nacita vybraty zaznam do CL na upravu. ENTER potom zapise NOVU entry s novym cislom a povodnej nastavi superseded_by, cize aktualna verzia ostava v Database Workspace a stara sa najde v Organizeri. Potvrdzovacie okna prebral ENTER (3s)</span>
   <span class="module-tag">Zzz6-F11:PLACE-ENTRIES - vseobecny COPY/MOVE pre skutocne zaznamy: COPY = novy riadok s copied_from, oba aktivne; MOVE = to iste plus originalu sa nastavi superseded_by (treti stav "placed", original sa nikdy needituje ani nemaze, nic nejde do trashu). Gesto: ORG kratky klik = Organizer, 3s podrzanie = potvrdzovacie okno so zoznamom vybranych zaznamov a tlacidlami COPY/MOVE</span>
   <span class="module-tag">Zzz2-R32:ORGANIZER + Zzz6-F10:ORGANIZER-WORKSPACE - nove ORG tlacidlo v SEKCII 3 hned vedla TRASH; workspace vypisuje NAHRADENE (superseded_by IS NOT NULL) zaznamy - treti stav medzi aktivnym a trashnutym: nikdy sa nemazu, obsah nedotknuty, len vypadnu z Database Workspace. Vzor 1:1 podla Zzz6-F35 Trash Workspace, oznacenie "placed" sa vykresluje zo stlpca, nezapisuje sa do SUBS</span>
   <span class="module-tag">Zzz6-F9:CATS-PERSISTENCE - localStorage perzistencia oboch riadkov "cats" v Project Category okne (zzz_category_base_cats = Row 1 base, default System/Templates/Project trvalo nezmazatelne; zzz_category_custom_cats = Row 2 open) - zdielany lokalny vyberovy zoznam, nie per-entry data</span>
@@ -4664,7 +4665,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
         <button class="pos-bottom" id="versoSettingsButton" aria-label="Settings">SETTINGS</button>
         <!-- <<< Zzz1-R24 END -->
 
-        <button class="pos-bottom-right" id="versoEditButton" aria-label="Paste">PASTE</button>
+        <button class="pos-bottom-right" id="versoEditButton" aria-label="Edit">EDIT</button><!-- [Zzz6-F13:EDIT-AS-VERSION] Vrso 2026-09-20: "paste button by som zmenil na edit" - kratky stlak vklada z Verso schranky (Zzz2-R7), 3s podrzanie edituje vybraty zaznam -->
         <!-- === [Zzz2-R6/R7:GENERIC-CLIPBOARD-COPY-PASTE] Vrso 2026-09-14 ziadost: premenovane z EDIT na
              PASTE (bolo uplne nepouzivane/bez listenera predtym, viz JS cast nizsie v subore) === -->
         <button class="pos-right" id="versoAutomateButton" aria-label="Select">SELECT</button>
@@ -9050,9 +9051,19 @@ function zzz6f22_open_entry_in_database(entryId) {
 // mieste (predtym presne to sposobilo neciталеlny "dvojity" text na screenshotoch) - kazdy dalsi toast sa
 // zoradi POD predchadzajuci (viz zzz6f2_activeToasts). | Vrso -> Claude AI | 2026-08-23 ===
 let zzz6f2_activeToasts = [];
-function zzz6f2_show_toast(message, duration = 6000) {
+// [Zzz6-F2:TOAST-KIND] Vrso 2026-09-20, doslovne: "mozno by bolo dobre to oznacit aby bolo jasne ze tak to
+// ma byt nejako" - toast uz nie je len text: volitelny druhy parameter urcuje, ci ide o USPECH (zelena ciara
+// + ✓), UPOZORNENIE (oranzova + ⚠) alebo bezne info (nezmenene). Vzhlad je zamerne len uzky farebny pruh na
+// lavej strane + znak - aby to na mobile nezabralo viac miesta nez samotna sprava. | Vrso -> Claude AI |
+// 2026-09-20 ===
+function zzz6f2_show_toast(message, kindOrDuration, maybeDuration) {
+  const kind = typeof kindOrDuration === 'string' ? kindOrDuration : null;
+  const duration = typeof kindOrDuration === 'number' ? kindOrDuration : (maybeDuration || 6000);
+  const mark = kind === 'ok' ? '✓ ' : (kind === 'warn' ? '⚠ ' : '');
   const toast = document.createElement('div');
-  toast.textContent = message;
+  toast.textContent = mark + message;
+  if (kind === 'ok') toast.style.borderLeft = '4px solid #22c55e';
+  if (kind === 'warn') toast.style.borderLeft = '4px solid #f59e0b';
   toast.style.position = 'fixed';
   toast.style.left = '50%';
   toast.style.transform = 'translateX(-50%)';
@@ -10648,6 +10659,7 @@ function zzz4_0_build_fields_json_from_entrydata() {
 }
 // === [/Zzz4-0:FLEX-SCHEMA] (helper) ===
 
+let zzz6f2LastWrittenEntryId = null; // [Zzz6-F13:EDIT-AS-VERSION] viz submit_entries_to_db nizsie
 async function submit_entries_to_db(options = {}) {
   // === [Zzz6-F2:CL-SOURCE] Vrso 2026-09-12 ("namiesto povodnej cl pojde do databazy uz nova zzz1-m1 CL, aj
   // s mini buttonom"): POTVRDENIE, ziadna zmena spravania - tato funkcia VZDY citala a stale cita PRIAMO zo
@@ -10740,6 +10752,9 @@ async function submit_entries_to_db(options = {}) {
   // povodnemu poradiu, ked sa R22 doplnalo PRED priradenim cisla) + popisu (Zzz1-R9), takze KAZDY zapis
   // zaruceno nesie klikatelny link na presne #<entry number> (viz zzz6f22_open_entry_in_database) | Vrso -> Claude AI | 2026-08-21
   zzz6f22_ensure_original_author(nextEntryId);
+  // [Zzz6-F13:EDIT-AS-VERSION] posledne realne zapisane cislo si drzime globalne - editacia ho potrebuje,
+  // aby vedela, ktorym zaznamom ma povodny nahradit (superseded_by). | Vrso -> Claude AI | 2026-09-20
+  zzz6f2LastWrittenEntryId = nextEntryId;
 
   const entryDateStr = zzz6f14_format_today(); // Zzz6-F14: aktualny datum priradeny k tomuto zaznamu
 
@@ -11554,34 +11569,21 @@ function zzz2r38_handle_special_tab_click(tabId, tabLabel, btnEl, stableTabId) {
 // CONTENT, aktualna Category) s POTVRDIT tlacidlom - az PO kliku naň sa zzz2r38MoveConfirmed nastavi na
 // true, co ENTER (nizsie, zzz6f2_run_entry_submit) vyzaduje pred akymkolvek zapisom. | Vrso -> Claude AI |
 // 2026-09-19 ===
-// === [Zzz2-R38:PASTE-DISPATCH] Vrso 2026-09-20, doslovne: "dufam ze sa da pouzit org iba ako workspace a
-// vsetko sa bude riesit cez select copy/move button. Paste moze nahradzat org 3s funkciu napr" - PASTE (3s)
-// je teraz JEDINE potvrdzovacie gesto pre OBA druhy umiestnenia a sam rozlisi, o ktore ide:
-//   (a) su vybrate ZAZNAMY (riadky v Database Workspace) + ciel -> okno Zzz6-F11:PLACE-ENTRIES (COPY/MOVE),
-//   (b) inak, ak sa prave sklada Move zaznam v CL -> povodne Zzz2-R38:PASTE-CONFIRM-GATE okno.
-// ORG tlacidlo (Zzz2-R32:ORGANIZER) tym pada spat na jedinu ulohu: otvorit workspace. Jeho 3s podrzanie uz
-// nic nerobi. | Vrso -> Claude AI | 2026-09-20 ===
-(function bindZzz2R38PasteButton() {
-  const btn = document.getElementById('versoEditButton'); // "PASTE" label (id nezmeneny, legacy nazov)
+// === [Zzz6-F13:EDIT-AS-VERSION] Vrso 2026-09-20, doslovne: "paste button by som zmenil na edit (napr
+// stlacenie iba vlozi zvyrazneny text, kedze mam na toto verso riesenie) a podrzanie 3s bude editovat nejaku
+// entry z databazy. Paste 3s funkciu by prevzal enter 3s a po potvrdeni okna by sa urobila entry priamo" -
+// tlacidlo sa PREMENOVALO na EDIT. Kratky stlak = nezmenene vkladanie z Verso schranky (Zzz2-R7). 3s
+// podrzanie = nacita VYBRATY zaznam do CL na upravu (viz zzz6f13_start_edit_from_selection vyssie).
+// Potvrdzovacie okna (Zzz6-F11 umiestnenie aj Zzz2-R38 Move) prebral ENTER (3s) - viz Zzz6-F2:ENTER-BUTTON
+// nizsie v subore. | Vrso -> Claude AI | 2026-09-20 ===
+(function bindZzz6F13EditButton() {
+  const btn = document.getElementById('versoEditButton'); // teraz popis "EDIT" (id nezmenene, legacy nazov)
   if (!btn) return;
   zzz_bind_hold_selection_guard(btn);
-  zzz_bind_long_press(btn, 3000, () => {
-    // (a) umiestnenie SKUTOCNYCH zaznamov ma prednost - je to explicitnejsi vyber (user rukou oznacil riadky)
-    if (zzz6f11_collect_selected_rows().length > 0) {
-      zzz6f11_open_placement_window(); // sam si vypyta ciel, ak chyba
-      return;
-    }
-    // (b) povodny overovaci krok pre Move zaznam skladany v CL
-    const generatedContent = zzz2r38_generate_move_content();
-    if (!generatedContent) {
-      zzz6f2_show_toast('Zzz2-R38: need SUB CATEGORY (SELECT a source tab first) and a placement (MOVE a target tab first).');
-      return;
-    }
-    zzz2r38_open_paste_confirm_window(generatedContent);
-  }, () => zzz6f11_collect_selected_rows().length > 0 || zzz2r38_has_pending_placement(entryData['8']));
+  zzz_bind_long_press(btn, 3000, () => zzz6f13_start_edit_from_selection());
 })();
 
-function zzz2r38_open_paste_confirm_window(generatedContent) {
+function zzz2r38_open_paste_confirm_window(generatedContent, onConfirmed) {
   const { box, removeBox } = zzz6f41_create_context_window();
   box.appendChild(zzz_build_context_header('10'));
 
@@ -11689,8 +11691,11 @@ function zzz2r38_open_paste_confirm_window(generatedContent) {
     if (generatedContent) write_to_entry('10', generatedContent);
     zzz2r38MoveConfirmed = true;
     zzz2r38ConfirmedSnapshot = zzz2r38_snapshot_entry_payload(); // odtlacok VSETKYCH poli, ENTER ho porovna
-    zzz6f2_show_toast('Zzz2-R38: confirmed - hold ENTER (3s) to write.');
     removeBox();
+    // [Zzz2-R38:PASTE-DISPATCH] Vrso 2026-09-20: "po potvrdeni okna by sa urobila entry priamo" - potvrdenie
+    // uz nie je medzikrok pred dalsim stlacenim, zapis ide hned.
+    if (typeof onConfirmed === 'function') onConfirmed();
+    else zzz6f2_show_toast('Zzz2-R38: confirmed - hold ENTER (3s) to write.');
   };
   actions.appendChild(confirmBtn);
   box.appendChild(actions);
@@ -11810,7 +11815,10 @@ document.addEventListener('DOMContentLoaded', () => { zzz6f54_load_active_m4a_ta
   function zzz6f2_hold_required() {
     const hasMoveTarget = zzz2r38_has_pending_placement(entryData['8']); // [Zzz2-R38:CATEGORY-MANUAL] namiesto categoryValue==='use'
     const hasDrafts = zzz6f17Attachments.some(a => a.source === 'cl' || a.source === 'preset');
-    return hasMoveTarget || hasDrafts;
+    // [Zzz2-R38:PASTE-DISPATCH] vybrate ZAZNAMY tiez vyzaduju dlhy stlak - inak by zzz_bind_long_press
+    // (shouldStart) gesto vobec nespustila a umiestnovacie okno by sa nedalo otvorit. | Vrso -> Claude AI | 2026-09-20
+    const hasSelectedRows = zzz6f11_collect_selected_rows().length > 0;
+    return hasMoveTarget || hasDrafts || hasSelectedRows;
   }
 
   async function zzz6f2_run_entry_submit() {
@@ -11826,7 +11834,7 @@ document.addEventListener('DOMContentLoaded', () => { zzz6f54_load_active_m4a_ta
       // (zzz2r38MoveConfirmed). Kazda zmena SELECT/MOVE tento flag resetuje (viz nastavenia vyssie v subore),
       // takze potvrdenie plati LEN pre aktualne zvoleny zdroj+ciel. | Vrso -> Claude AI | 2026-09-19 ===
       if (!zzz2r38MoveConfirmed) {
-        zzz6f2_show_toast('Zzz2-R38: najprv podrz PASTE (3s) a potvrď zápis - ENTER kým to nepovolíš, nezapíše.');
+        zzz6f2_show_toast('Zzz2-R38: hold ENTER (3s) first - the confirmation window opens, and writing happens right after you confirm.');
         return;
       }
       // [Zzz2-R38:PASTE-CONFIRM-GATE] Vrso 2026-09-20, doslovne: "zaroven skontroluje potvrdene a az ked sa
@@ -11837,7 +11845,7 @@ document.addEventListener('DOMContentLoaded', () => { zzz6f54_load_active_m4a_ta
       if (zzz2r38ConfirmedSnapshot !== null && zzz2r38_snapshot_entry_payload() !== zzz2r38ConfirmedSnapshot) {
         zzz2r38MoveConfirmed = false;
         zzz2r38ConfirmedSnapshot = null;
-        zzz6f2_show_toast('Zzz2-R38: data changed after confirmation - hold PASTE (3s) and confirm again.');
+        zzz6f2_show_toast('Zzz2-R38: data changed after confirmation - hold ENTER (3s) and confirm again.');
         return;
       }
       // [Zzz2-R38:SUB-TAB] Vrso 2026-09-17/18 - cieľ sa uz NECITA z TAG(21), ale z SUBS(8) placement:/tab:
@@ -11939,7 +11947,7 @@ document.addEventListener('DOMContentLoaded', () => { zzz6f54_load_active_m4a_ta
           zzz5t0_sync_duplicated_modules();
           zzz5t0_render_all_tabs(); // [Zzz6-F54:ANCHOR-MARKER] prekresli zeleny ramcek na novom kotviacom tabe
           const targetLabel = zzz5t0_find_tab_label_by_id(parsedTarget) || parsedTarget;
-          zzz6f2_show_toast(`Zzz2-R38: move written and applied - 1-M4a is now anchored to "${targetLabel}". Open that tab to see it.`);
+          zzz6f2_show_toast(`Zzz2-R38: move written and applied - 1-M4a is now anchored to "${targetLabel}". Open that tab to see it.`, 'ok');
         } else {
           zzz6f2_show_toast(`Zzz2-R38: move recorded, but target "${targetValue}" could not be applied - check CONTENT.`);
         }
@@ -11952,13 +11960,16 @@ document.addEventListener('DOMContentLoaded', () => { zzz6f54_load_active_m4a_ta
       return;
     }
     const success = await submit_entries_to_db();
-    if (success) zzz6f2_flash_success(); // zelene zvyraznenie na 1s len pri uspesnom zapise, nie pri duplicite
+    if (success) {
+      zzz6f2_flash_success(); // zelene zvyraznenie na 1s len pri uspesnom zapise, nie pri duplicite
+      await zzz6f13_finish_edit_if_any(); // [Zzz6-F13:EDIT-AS-VERSION] prepoji povodny zaznam na novu verziu
+    }
   }
 
   entryBtn.addEventListener('click', async () => {
     if (zzz4r17SearchMode) return; // Zzz4-R17: v search mode ENTER button nezapisuje (rovnaky princip ako Enter/logo)
     if (zzz6f2_hold_required()) {
-      zzz6f2_show_toast('Zzz6-F2: hold ENTER for 3s to confirm (MOVE target selected and/or attached drafts).');
+      zzz6f2_show_toast('Zzz6-F2: hold ENTER for 3s to confirm (selected records, MOVE target and/or attached drafts).');
       return; // kratky klik NESTACI - viz [Zzz6-F2:CREATE-HOLD-GATE] vyssie
     }
     await zzz6f2_run_entry_submit();
@@ -11966,6 +11977,24 @@ document.addEventListener('DOMContentLoaded', () => { zzz6f54_load_active_m4a_ta
 
   zzz_bind_long_press(entryBtn, 3000, async () => {
     if (zzz4r17SearchMode) return;
+    // === [Zzz2-R38:PASTE-DISPATCH] PRESUNUTE na ENTER (Vrso 2026-09-20: "paste 3s funkciu by prevzal enter
+    // 3s a po potvrdeni okna by sa urobila entry priamo") - ENTER (3s) je teraz JEDINE potvrdzovacie gesto a
+    // sam rozlisi kontext: (a) vybrate ZAZNAMY -> okno Zzz6-F11:PLACE-ENTRIES (COPY/MOVE), (b) skladany Move
+    // zaznam, ktory este nebol potvrdeny -> Zzz2-R38:PASTE-CONFIRM-GATE okno, ktore po POTVRDIT zapise
+    // ROVNO, bez druheho stlacenia. | Vrso -> Claude AI | 2026-09-20 ===
+    if (zzz6f11_collect_selected_rows().length > 0) {
+      zzz6f11_open_placement_window();
+      return;
+    }
+    if (zzz2r38_has_pending_placement(entryData['8']) && !zzz2r38MoveConfirmed) {
+      const generatedContent = zzz2r38_generate_move_content();
+      if (!generatedContent) {
+        zzz6f2_show_toast('Zzz2-R38: need SUB CATEGORY (SELECT a source tab first) and a placement (MOVE a target tab first).');
+        return;
+      }
+      zzz2r38_open_paste_confirm_window(generatedContent, async () => { await zzz6f2_run_entry_submit(); });
+      return;
+    }
     // [Zzz6-F2:HOLD-PRIORITY-FIX] Move ma VZDY prioritu pred batch-attach-submit, aj ked su nahodou pripnute
     // nesuvisiace drafty z predchadzajucej session (tie by inak vyhrali a Move by sa niekedy vobec
     // nespustil). [Zzz2-R38:CATEGORY-MANUAL] OPRAVA (Vrso 2026-09-19) - dalsi zabudnuty pozostatok starej
@@ -15726,11 +15755,31 @@ async function open_organizer_workspace() {
     rows.forEach(row => {
       // metadata hlavicka - "placed" oznacenie vykreslene ZO STLPCA (viz vysvetlenie vyssie), obojsmerna
       // dohladatelnost: superseded_by = cim bol nahradeny, copied_from = odkial prisiel
+      // === [Zzz6-F10:ORGANIZER-WORKSPACE] Vrso 2026-09-20, doslovne: "v org ale urob tak ze sa cez search
+      // button oznacenim novej bude dat vyhladat novy zaznam resp. aj stary ak je to realne" - cisla v
+      // hlavicke su TAPATELNE a otvoria dany zaznam v Database Workspace cez uz existujuci
+      // zzz6f22_open_entry_in_database() (ten nastavi entry-ID filter, ktory zamerne NEMA superseded_by
+      // podmienku, takze najde aj UZ NAHRADENY zaznam - preto funguju oba smery: nova verzia aj tato stara).
+      // | Vrso -> Claude AI | 2026-09-20 ===
       const meta = document.createElement('div');
       meta.style.cssText = 'font-size:8px;font-weight:700;color:#0369a1;padding:2px 4px;';
       const placedAt = row.updated_at ? new Date(row.updated_at).toLocaleString() : '?';
-      const fromPart = row.copied_from ? ` - copied from #${row.copied_from}` : '';
-      meta.textContent = `#${row.entry_id} - placed: replaced by #${row.superseded_by}${fromPart} - ${placedAt}`;
+
+      function metaLink(text, entryId) {
+        const a = document.createElement('span');
+        a.textContent = text;
+        a.style.cssText = 'text-decoration:underline;cursor:pointer;';
+        a.addEventListener('click', (e) => { e.stopPropagation(); zzz6f22_open_entry_in_database(entryId); });
+        return a;
+      }
+      meta.appendChild(metaLink(`#${row.entry_id}`, row.entry_id)); // tento (stary) zaznam
+      meta.appendChild(document.createTextNode(' - placed: replaced by '));
+      meta.appendChild(metaLink(`#${row.superseded_by}`, row.superseded_by)); // aktualna verzia
+      if (row.copied_from) {
+        meta.appendChild(document.createTextNode(' - copied from '));
+        meta.appendChild(metaLink(`#${row.copied_from}`, row.copied_from)); // zdroj, z ktoreho vznikol
+      }
+      meta.appendChild(document.createTextNode(` - ${placedAt}`));
       rowsWrap.appendChild(meta);
 
       const gridRow = zzz4_0_build_entry_row(row); // rovnaky renderer ako Database aj Trash Workspace
@@ -15881,16 +15930,26 @@ async function zzz6f11_place_entries(mode) { // 'copy' | 'move'
     zzz6f2_flash_success();
     const targetLabel = zzz5t0_find_tab_label_by_id(targetId) || targetId;
     const what = mode === 'move' ? 'moved' : 'copied';
+    const notes = [];
+    if (skipped.length) notes.push(`${skipped.join(', ')} already there`);
+    if (skippedForeign.length) notes.push(`${skippedForeign.join(', ')} not yours`);
     zzz6f2_show_toast(failedAt
       ? `Zzz6-F11: ${what} ${done}/${rows.length} records to "${targetLabel}" - stopped at ${failedAt}.`
-      : `Zzz6-F11: ${done} record(s) ${what} to "${targetLabel}".`);
-  } else if (skipped.length || skippedForeign.length) {
-    zzz6f2_show_toast('Zzz6-F11: nothing to do - see the notes below.');
+      : `Zzz6-F11: ${done} record(s) ${what} to "${targetLabel}"${notes.length ? ' (skipped: ' + notes.join('; ') + ')' : ''}.`, failedAt ? 'warn' : 'ok');
   } else {
-    zzz6f2_show_toast(`Zzz6-F11: nothing was written${failedAt ? ' - ' + failedAt : ''}.`);
+    // [Zzz6-F11:PLACE-ENTRIES] OPRAVA hlasok (Vrso 2026-09-20, foto-test: "daky problem s paste tusim") -
+    // predtym prisli DVA toasty za sebou, prvy z nich neurcity ("nothing to do - see the notes below"), co
+    // vyzeralo ako chyba, hoci sa len spravne preskocil zaznam, ktory UZ v cieli je. Teraz je to JEDEN jasny
+    // toast, ktory pomenuje ciel aj co s tym. | Vrso -> Claude AI | 2026-09-20 ===
+    const targetLabelForMsg = zzz5t0_find_tab_label_by_id(targetId) || targetId;
+    if (skipped.length) {
+      zzz6f2_show_toast(`Zzz6-F11: ${skipped.join(', ')} is already in "${targetLabelForMsg}" - nothing written. Pick a different destination.`, 'warn');
+    } else if (skippedForeign.length) {
+      zzz6f2_show_toast(`Zzz6-F11: ${skippedForeign.join(', ')} belongs to someone else - MOVE is only allowed on your own records. Use COPY instead.`, 'warn');
+    } else {
+      zzz6f2_show_toast(`Zzz6-F11: nothing was written${failedAt ? ' - ' + failedAt : ''}.`);
+    }
   }
-  if (skipped.length) zzz6f2_show_toast(`Zzz6-F11: already in this destination, skipped: ${skipped.join(', ')}.`);
-  if (skippedForeign.length) zzz6f2_show_toast(`Zzz6-F11: MOVE is only allowed on your own records - skipped: ${skippedForeign.join(', ')}. You can COPY them instead.`);
 
   zzz6f29_reset_el_part();
   if (zzz2r38_target_selection.el) zzz2r38_target_selection.el.classList.remove('zzz2r38-tab-target-selected');
@@ -15942,6 +16001,64 @@ function zzz6f11_open_placement_window() {
   zzz6f41_bind_outside_click(box, removeBox); // zatvorenie bez akcie
 }
 // === [/Zzz6-F11:PLACE-ENTRIES] ===
+
+// === [Zzz6-F13:EDIT-AS-VERSION] Vrso 2026-09-20, doslovne: "treba vytvorit teda aj edit button? ...paste
+// button by som zmenil na edit (napr stlacenie iba vlozi zvyrazneny text...a podrzanie 3s bude editovat
+// nejaku entry z databazy)" - EDITACIA NEPREPISUJE zaznam. Obsah zaznamu je needitovatelny
+// (verso_entries_restrict_update_trigger) a je to tak zamerne - preto sa uprava robi VERZIOVANIM: vybraty
+// zaznam sa nacita do CL, Vrso ho prepise ako chce, a ENTER zapise NOVU entry s novym cislom. Povodnemu sa
+// vzapati nastavi superseded_by na to nove cislo, takze vypadne z Database Workspace a najde sa v
+// Organizeri ako "replaced by #N". Aktualna (opravena) verzia teda ostava tam, kde s nou Vrso pracuje, a
+// historia ostava uplna. | Vrso -> Claude AI | 2026-09-20 ===
+let zzz6f13EditSourceEntryId = null; // ktory zaznam prave editujeme (null = bezny novy zapis)
+
+function zzz6f13_start_edit_from_selection() {
+  const rows = zzz6f11_collect_selected_rows();
+  if (rows.length !== 1) {
+    zzz6f2_show_toast('Zzz6-F13: select exactly ONE record to edit (SELECT + tap the row).');
+    return;
+  }
+  const row = rows[0];
+  const rowOwner = (row.username || '').trim().toLowerCase();
+  const me = (zzz0r1_get_current_username() || '').trim().toLowerCase();
+  if (rowOwner && me && rowOwner !== me) {
+    // rovnaka zasada ako Zzz6-F11:OWN-RECORDS-ONLY - cudzi zaznam sa neda nahradit vlastnou verziou
+    zzz6f2_show_toast(`Zzz6-F13: #${row.entry_id} belongs to someone else - you can COPY it, not replace it.`);
+    return;
+  }
+
+  let fields = {};
+  try { fields = JSON.parse(row.fields_json || '{}'); } catch (e) { fields = {}; }
+  ZZZ_CL_FIELDS.forEach(([entryKey, rKey]) => {
+    write_to_entry(entryKey, fields[rKey] !== undefined ? (fields[rKey] || '') : '');
+  });
+
+  zzz6f13EditSourceEntryId = row.entry_id;
+  zzz6f29_reset_el_part();
+  zzz_haptic_pulse(30);
+  zzz6f2_show_toast(`Zzz6-F13: editing #${row.entry_id} - change what you need, then ENTER. A NEW entry is written and #${row.entry_id} becomes its previous version.`);
+}
+
+// zavola sa po KAZDOM uspesnom zapise - ak sme editovali, prepoji verzie
+async function zzz6f13_finish_edit_if_any() {
+  if (zzz6f13EditSourceEntryId === null) return;
+  const sourceId = zzz6f13EditSourceEntryId;
+  zzz6f13EditSourceEntryId = null;
+  const newId = zzz6f2LastWrittenEntryId;
+  if (!newId) return;
+  try {
+    const { error } = await sb.from('verso_entries')
+      .update({ superseded_by: newId, updated_at: new Date().toISOString() })
+      .eq('entry_id', sourceId);
+    if (error) throw error;
+    zzz6f2_show_toast(`Zzz6-F13: #${newId} is now the current version; #${sourceId} moved to the Organizer.`, 'ok');
+  } catch (err) {
+    // POCTIVO: nova verzia UZ JE zapisana, len prepojenie zlyhalo - povedz to rovno, nech Vrso nema v
+    // databaze dva aktivne zaznamy bez toho, aby o tom vedel.
+    zzz6f2_show_toast(`Zzz6-F13: #${newId} written, but linking #${sourceId} as its previous version FAILED - both are active now. ${(err && err.message) || ''}`, 'warn');
+  }
+}
+// === [/Zzz6-F13:EDIT-AS-VERSION] ===
 
 // [Zzz2-R38:PASTE-DISPATCH] Vrso 2026-09-20 - povodne 3s podrzanie ORG tlacidla ZRUSENE. Potvrdzovacie gesto
 // pre umiestnenie zaznamov je teraz JEDNOTNE s templatmi: PASTE (3s). ORG ostava cisto workspace tlacidlo.
