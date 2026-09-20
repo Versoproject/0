@@ -4516,6 +4516,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-F27:LONGPRESS-TOLERANCE - zdielana zzz_bind_long_press utilita ruší 3s casovac az pri pohybe > 12 px (nie pri kazdom mikropohybe prsta/posune layoutu po zatvoreni klavesnice) - oprava "podrzanim sa nic nestane" na malych prvkoch, plati pre VSETKY dlhe stlaky v appke</span>
   <span class="module-tag">Zzz6-F6:EL-CONTEXT-STANDARD - SUBS a PROJECT CATEGORY vyzeraju ROVNAKO vo vsetkych CRM moduloch: hlavna CL, M4a2 template aj ulozene zaznamy v Database/Trash/Organizer riadkoch (rovnake chipy cez zzz6f8_build_subs_chip a .zzz-category-chip-base). V ulozenych zaznamoch su chipy read-only, lebo obsah zaznamu je needitovatelny; tlacidla DELETE/COPY/ATTACH/ZATVORIT pracuju s CL, nie so zaznamom</span>
   <span class="module-tag">Zzz2-R38:PASTE-DISPATCH - PASTE (3s) je jedine potvrdzovacie gesto pre obe umiestnenia a sam rozlisi kontext: vybrate zaznamy -> Zzz6-F11:PLACE-ENTRIES okno (COPY/MOVE), inak skladany Move zaznam -> Zzz2-R38:PASTE-CONFIRM-GATE okno. ORG tlacidlo (Zzz2-R32:ORGANIZER) uz sluzi VYLUCNE na otvorenie workspace</span>
+  <span class="module-tag">Zzz6-F14:ENTRY-LOG-WINDOW - klik na ENTRY NUMBER bunku v ktoromkolvek workspace riadku otvori log zaznamu: replaced by / copied from (tukatelne cisla), MOVE prikaz z CONTENT, kde je zaznam umiestneny, ci je v trashi a cas poslednej zmeny. Nic sa kvoli nemu nezapisuje - cita sa z uz existujucich stlpcov. Nahradza predoslu modru hlavicku nad riadkami v Organizeri</span>
   <span class="module-tag">Zzz6-F13:EDIT-AS-VERSION - PASTE tlacidlo premenovane na EDIT: kratky stlak = vkladanie z Verso schranky (Zzz2-R7), 3s podrzanie = nacita vybraty zaznam do CL na upravu. ENTER potom zapise NOVU entry s novym cislom a povodnej nastavi superseded_by, cize aktualna verzia ostava v Database Workspace a stara sa najde v Organizeri. Potvrdzovacie okna prebral ENTER (3s)</span>
   <span class="module-tag">Zzz6-F11:PLACE-ENTRIES - vseobecny COPY/MOVE pre skutocne zaznamy: COPY = novy riadok s copied_from, oba aktivne; MOVE = to iste plus originalu sa nastavi superseded_by (treti stav "placed", original sa nikdy needituje ani nemaze, nic nejde do trashu). Gesto: ORG kratky klik = Organizer, 3s podrzanie = potvrdzovacie okno so zoznamom vybranych zaznamov a tlacidlami COPY/MOVE</span>
   <span class="module-tag">Zzz2-R32:ORGANIZER + Zzz6-F10:ORGANIZER-WORKSPACE - nove ORG tlacidlo v SEKCII 3 hned vedla TRASH; workspace vypisuje NAHRADENE (superseded_by IS NOT NULL) zaznamy - treti stav medzi aktivnym a trashnutym: nikdy sa nemazu, obsah nedotknuty, len vypadnu z Database Workspace. Vzor 1:1 podla Zzz6-F35 Trash Workspace, oznacenie "placed" sa vykresluje zo stlpca, nezapisuje sa do SUBS</span>
@@ -14315,6 +14316,79 @@ function zzz4_0_get_field_value(row, field) {
 // Nie je to zapis do zdrojoveho EL zaznamu (ten je needitovatelny/uz ulozeny) - textarea tu slovi LEN ako
 // pripravna plocha pred COPY do CL, rovnako ako pri kazdom inom kontextovom okne. Needitovatelne/auto polia
 // mimo ZZZ_CL_FIELDS (ENTRY NUMBER, ENTRY DATE, ACKNOWLEDGEMENT) NIE su klikatelne. | Vrso -> Claude AI | 2026-08-21 ===
+// === [Zzz6-F14:ENTRY-LOG-WINDOW] Vrso 2026-09-20, doslovne: "len sa mi nepaci ze popisuje replaced by...
+// nad entry...nedame to radsej napr do okna entry number ako edit log? Pripadne ci tam nevpisovat aj move
+// log, pripadne ine taketo pomocne logy" - hlavicka nad riadkom v Organizeri ZRUSENA a vsetko, co o zazname
+// vieme "navyse", sa otvara klikom na ENTRY NUMBER bunku. Tato bunka doteraz nerobila NIC (nema field.key,
+// takze zzz6f6_open_el_cell_context_modal ju hned na zaciatku odmietal). Log sa CITA z toho, co uz v
+// databaze je - nic sa kvoli nemu nikam nezapisuje: superseded_by (nahradene), copied_from (povod), CONTENT
+// s prefixom MOVE (presun) a is_trashed. Cisla su tukatelne rovnako ako predtym v hlavicke.
+// | Vrso -> Claude AI | 2026-09-20 ===
+function zzz6f14_open_entry_log_window(row) {
+  if (!row) return;
+  const { box, removeBox } = zzz6f41_create_context_window();
+
+  const head = document.createElement('div');
+  head.style.cssText = 'font-size:10px;font-weight:700;color:#171717;';
+  head.textContent = `ENTRY #${row.entry_id} - log`;
+  box.appendChild(head);
+
+  const list = document.createElement('div');
+  list.style.cssText = 'font-size:9px;margin:4px 0;line-height:1.6;';
+
+  function line(label, entryId, extra) {
+    const div = document.createElement('div');
+    const b = document.createElement('b');
+    b.textContent = label + ': ';
+    div.appendChild(b);
+    if (entryId !== undefined && entryId !== null && entryId !== '') {
+      const a = document.createElement('span');
+      a.textContent = `#${entryId}`;
+      a.style.cssText = 'text-decoration:underline;cursor:pointer;';
+      a.addEventListener('click', (e) => {
+        e.stopPropagation();
+        zzz6f2_show_toast(`Opening entry #${entryId}`, 'ok');
+        removeBox();
+        zzz6f22_open_entry_in_database(entryId);
+      });
+      div.appendChild(a);
+    }
+    if (extra) div.appendChild(document.createTextNode((entryId ? ' ' : '') + extra));
+    list.appendChild(div);
+  }
+
+  let fields = {};
+  try { fields = JSON.parse(row.fields_json || '{}'); } catch (e) {}
+
+  let anything = false;
+  if (row.superseded_by) { line('Replaced by', row.superseded_by, '(this one is a previous version)'); anything = true; }
+  if (row.copied_from) { line('Copied from', row.copied_from, null); anything = true; }
+  const moveContent = (fields.r10 || '').trim();
+  if (/^MOVE\s/i.test(moveContent)) { line('Move', null, moveContent); anything = true; }
+  const tabTarget = zzz2r38_get_subs_target(fields.r8 || '');
+  if (tabTarget) { line('Placed in', null, zzz5t0_find_tab_label_by_id(tabTarget) || tabTarget); anything = true; }
+  if (row.is_trashed) { line('State', null, 'in Trash'); anything = true; }
+  line('Last change', null, row.updated_at ? new Date(row.updated_at).toLocaleString() : '?');
+
+  if (!anything) {
+    const none = document.createElement('div');
+    none.style.cssText = 'font-size:9px;color:#555;';
+    none.textContent = 'No edits, moves or copies recorded for this entry.';
+    list.appendChild(none);
+  }
+  box.appendChild(list);
+
+  const actions = document.createElement('div');
+  actions.className = 'entry-modal-actions';
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'entry-modal-close';
+  closeBtn.textContent = 'ZATVORIT';
+  closeBtn.onclick = removeBox;
+  actions.appendChild(closeBtn);
+  box.appendChild(actions);
+  zzz6f41_bind_outside_click(box, removeBox);
+}
+
 function zzz6f6_open_el_cell_context_modal(field, val, row) {
   if (!field.key) return; // ENTRY NUMBER/ENTRY DATE - automaticke, nekopirovatelne
   const match = ZZZ_CL_FIELDS.find(([, rowKey]) => rowKey === field.key);
@@ -14677,6 +14751,35 @@ function zzz4_0_build_entry_row(row) {
         }
       }
       cellEl.textContent = val || '-';
+      // [Zzz6-F14:ENTRY-LOG-WINDOW] ENTRY NUMBER bunka - jedine miesto, kde su "pomocne" logy zaznamu
+      if (field.wrap === 'entry-number-wrap') {
+        cellEl.classList.add('zzz6f6-el-cell-copyable');
+        cellEl.title = 'Klik: ukaz cele cislo | 2x klik: log zaznamu (edit/move/copy)';
+        // [Zzz6-F14:ENTRY-LOG-WINDOW] Vrso 2026-09-20, doslovne: "entry number bunka by stlacenim mala ukazat
+        // cislo/obsah bunky nie? To by som inak zmenil na 2x tukni a stlac otvori entry number window kde budu
+        // aj tie logy" - JEDEN tuk = vypise cele cislo do toastu (bunka je uzka a viacciferne cislo sa v nej
+        // ureze), DVA tuky = otvori log. Dvojtuk si meriame sami (dva tuky do 400ms) - nativny dblclick je na
+        // Androide nespolahlivy a casto ho predbehne zoom gesto prehliadaca. | Vrso -> Claude AI | 2026-09-20
+        let zzz6f14LastTapAt = 0;
+        let zzz6f14SingleTapTimer = null;
+        cellEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (zzz6f29SelectMode) return; // v select-mode nech klik dalej patri vyberu riadku
+          const now = Date.now();
+          if (now - zzz6f14LastTapAt < 400) {
+            if (zzz6f14SingleTapTimer) { clearTimeout(zzz6f14SingleTapTimer); zzz6f14SingleTapTimer = null; }
+            zzz6f14LastTapAt = 0;
+            zzz6f14_open_entry_log_window(row); // druhy tuk - log
+            return;
+          }
+          zzz6f14LastTapAt = now;
+          // prvy tuk sa vykona az po uplynuti dvojtukoveho okna, inak by pri dvojtuku blikol aj toast
+          zzz6f14SingleTapTimer = setTimeout(() => {
+            zzz6f14SingleTapTimer = null;
+            zzz6f2_show_toast(`Entry #${row.entry_id}`);
+          }, 400);
+        });
+      }
       // [Zzz6-F6:COPY-EL-CELL] len kopirovatelne polia (v ZZZ_CL_FIELDS) dostanu klikatelny vzhlad + handler
       if (field.key && ZZZ_CL_FIELDS.some(([, rowKey]) => rowKey === field.key)) {
         cellEl.classList.add('zzz6f6-el-cell-copyable');
@@ -15755,39 +15858,10 @@ async function open_organizer_workspace() {
     rows.forEach(row => {
       // metadata hlavicka - "placed" oznacenie vykreslene ZO STLPCA (viz vysvetlenie vyssie), obojsmerna
       // dohladatelnost: superseded_by = cim bol nahradeny, copied_from = odkial prisiel
-      // === [Zzz6-F10:ORGANIZER-WORKSPACE] Vrso 2026-09-20, doslovne: "v org ale urob tak ze sa cez search
-      // button oznacenim novej bude dat vyhladat novy zaznam resp. aj stary ak je to realne" - cisla v
-      // hlavicke su TAPATELNE a otvoria dany zaznam v Database Workspace cez uz existujuci
-      // zzz6f22_open_entry_in_database() (ten nastavi entry-ID filter, ktory zamerne NEMA superseded_by
-      // podmienku, takze najde aj UZ NAHRADENY zaznam - preto funguju oba smery: nova verzia aj tato stara).
-      // | Vrso -> Claude AI | 2026-09-20 ===
-      const meta = document.createElement('div');
-      meta.style.cssText = 'font-size:8px;font-weight:700;color:#0369a1;padding:2px 4px;';
-      const placedAt = row.updated_at ? new Date(row.updated_at).toLocaleString() : '?';
-
-      function metaLink(text, entryId) {
-        const a = document.createElement('span');
-        a.textContent = text;
-        a.style.cssText = 'text-decoration:underline;cursor:pointer;';
-        a.addEventListener('click', (e) => {
-          e.stopPropagation();
-          // [Zzz6-F10:ORGANIZER-WORKSPACE] Vrso 2026-09-20, doslovne: "nech sa aj cislo zobrazi ako oznam keby
-          // bolo velmi vysoke a nedalo sa precitat z bunky" - ENTRY NUMBER bunka je uzka a viacciferne cislo
-          // sa v nej ureze, preto ho klik najprv vypise cele do toastu a az potom otvori zaznam.
-          zzz6f2_show_toast(`Opening entry #${entryId}`, 'ok');
-          zzz6f22_open_entry_in_database(entryId);
-        });
-        return a;
-      }
-      meta.appendChild(metaLink(`#${row.entry_id}`, row.entry_id)); // tento (stary) zaznam
-      meta.appendChild(document.createTextNode(' - placed: replaced by '));
-      meta.appendChild(metaLink(`#${row.superseded_by}`, row.superseded_by)); // aktualna verzia
-      if (row.copied_from) {
-        meta.appendChild(document.createTextNode(' - copied from '));
-        meta.appendChild(metaLink(`#${row.copied_from}`, row.copied_from)); // zdroj, z ktoreho vznikol
-      }
-      meta.appendChild(document.createTextNode(` - ${placedAt}`));
-      rowsWrap.appendChild(meta);
+      // [Zzz6-F14:ENTRY-LOG-WINDOW] Vrso 2026-09-20, doslovne: "nepaci sa mi ze popisuje replaced by nad
+      // entry, nedame to radsej do okna entry number ako edit log" - povodna modra hlavicka nad kazdym
+      // riadkom ZRUSENA. Vsetky udaje (replaced by / copied from / move / placed in) su teraz v logu, ktory
+      // sa otvori klikom na ENTRY NUMBER bunku daneho riadku. | Vrso -> Claude AI | 2026-09-20 ===
 
       const gridRow = zzz4_0_build_entry_row(row); // rovnaky renderer ako Database aj Trash Workspace
       rowsWrap.appendChild(gridRow);
