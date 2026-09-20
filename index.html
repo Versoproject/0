@@ -4516,6 +4516,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-F27:LONGPRESS-TOLERANCE - zdielana zzz_bind_long_press utilita ruší 3s casovac az pri pohybe > 12 px (nie pri kazdom mikropohybe prsta/posune layoutu po zatvoreni klavesnice) - oprava "podrzanim sa nic nestane" na malych prvkoch, plati pre VSETKY dlhe stlaky v appke</span>
   <span class="module-tag">Zzz6-F6:EL-CONTEXT-STANDARD - SUBS a PROJECT CATEGORY vyzeraju ROVNAKO vo vsetkych CRM moduloch: hlavna CL, M4a2 template aj ulozene zaznamy v Database/Trash/Organizer riadkoch (rovnake chipy cez zzz6f8_build_subs_chip a .zzz-category-chip-base). V ulozenych zaznamoch su chipy read-only, lebo obsah zaznamu je needitovatelny; tlacidla DELETE/COPY/ATTACH/ZATVORIT pracuju s CL, nie so zaznamom</span>
   <span class="module-tag">Zzz2-R38:PASTE-DISPATCH - PASTE (3s) je jedine potvrdzovacie gesto pre obe umiestnenia a sam rozlisi kontext: vybrate zaznamy -> Zzz6-F11:PLACE-ENTRIES okno (COPY/MOVE), inak skladany Move zaznam -> Zzz2-R38:PASTE-CONFIRM-GATE okno. ORG tlacidlo (Zzz2-R32:ORGANIZER) uz sluzi VYLUCNE na otvorenie workspace</span>
+  <span class="module-tag">Zzz6-F33:DELETE-TIERS - DELETE rozhoduje podla DLZKY stlacenia, nie podla toho co je nahodou oznacene: kratky tuk = vymaze oznacene CL bunky, 3s = reset celej CL (alebo oznacenych buniek), 5s = presun oznacenych zaznamov do Trash. Hmatove pulzy na 3s a 5s. Predtym staciil jeden tuk s oznacenym riadkom na to, aby zaznam skoncil v trashi</span>
   <span class="module-tag">Zzz6-F15:PLACEMENT-LAYER - zatriedenie zaznamu zije vo vlastnej tabulke verso_placements (username+entry_id+tab_id), NIE v zazname: MOVE uz nevyraba ziadnu kopiu ani novu entry, len prehodi riadok, a samotny zaznam ostava nezmeneny a viditelny v Database Workspace. COPY ostava skutocnym duplikovanim. Organizer ma dve casti: FILED BY YOU (moje zatriedenia) a PREVIOUS VERSIONS (nahradene zaznamy)</span>
   <span class="module-tag">Zzz6-F14:ENTRY-LOG-WINDOW - klik na ENTRY NUMBER bunku v ktoromkolvek workspace riadku otvori log zaznamu: replaced by / copied from (tukatelne cisla), MOVE prikaz z CONTENT, kde je zaznam umiestneny, ci je v trashi a cas poslednej zmeny. Nic sa kvoli nemu nezapisuje - cita sa z uz existujucich stlpcov. Nahradza predoslu modru hlavicku nad riadkami v Organizeri</span>
   <span class="module-tag">Zzz6-F13:EDIT-AS-VERSION - PASTE tlacidlo premenovane na EDIT: kratky stlak = vkladanie z Verso schranky (Zzz2-R7), 3s podrzanie = nacita vybraty zaznam do CL na upravu. ENTER potom zapise NOVU entry s novym cislom a povodnej nastavi superseded_by, cize aktualna verzia ostava v Database Workspace a stara sa najde v Organizeri. Potvrdzovacie okna prebral ENTER (3s)</span>
@@ -6471,10 +6472,113 @@ async function zzz6f33_handle_delete_click() {
   zzz6f29_reset_selection();
 }
 
+// === [Zzz6-F33:DELETE-TIERS] Vrso 2026-09-20, doslovne: "stlacenim vymaz bunku, 3s vymaz (nie do trash len
+// akysi reset) cl alebo selected cls, 5s vymaze resp. presunie z db do trash" - DELETE uz nerozhoduje podla
+// toho, co je nahodou oznacene, ale podla DLZKY STLACENIA. Predtym staciil JEDEN tuk s oznacenym riadkom v
+// Database Workspace na to, aby zaznam skoncil v trashi - to je prilis lacne gesto na nezvratnu akciu.
+// Teraz su tri zretelne urovne a kazda dalsia je "drahsia":
+//   kratky tuk  = vymaz OZNACENE CL bunky (nic v databaze sa nedeje),
+//   3s          = reset celej CL (alebo oznacenych CL buniek) - zase LEN rozpisana CL, nie databaza,
+//   5s          = presun oznacenych zaznamov z databazy do Trash (jedina akcia, co siaha na DB).
+// Hmatove pulzy na 3s a 5s hovoria, kde prave si, takze sa neda "prestrelit" na trash omylom.
+// | Vrso -> Claude AI | 2026-09-20 ===
+async function zzz6f33_delete_selected_cl_cells() {
+  const sel = zzz6f29_selection;
+  const hasClCellsSelection = sel.cl.type === 'cl-cells' && sel.cl.cells.length > 0;
+  if (!hasClCellsSelection) {
+    zzz6f2_show_toast('DELETE: tap = clear selected CL cells | hold 3s = reset the whole CL | hold 5s = move selected records to Trash.');
+    return;
+  }
+  const cellEls = sel.cl.cells.map(c => c.el);
+  await zzz6f33_flash_red(cellEls);
+  sel.cl.cells.forEach(c => zzz6f33_write_entry_silent(c.id, ''));
+  refresh_database_workspace_if_open();
+  zzz6f2_show_toast(`DELETE: ${sel.cl.cells.length} CL cell(s) cleared.`, 'ok');
+  zzz6f29_reset_selection();
+}
+
+async function zzz6f33_reset_cl() {
+  const sel = zzz6f29_selection;
+  const hasClCellsSelection = sel.cl.type === 'cl-cells' && sel.cl.cells.length > 0;
+  if (hasClCellsSelection) {
+    const cellEls = sel.cl.cells.map(c => c.el);
+    await zzz6f33_flash_red(cellEls);
+    sel.cl.cells.forEach(c => zzz6f33_write_entry_silent(c.id, ''));
+    refresh_database_workspace_if_open();
+    zzz6f2_show_toast(`DELETE: ${sel.cl.cells.length} selected CL cell(s) reset.`, 'ok');
+  } else {
+    zzz6f33_clear_whole_cl();
+    zzz6f2_show_toast('DELETE: whole CL reset - nothing in the database was touched.', 'ok');
+  }
+  zzz6f29_reset_selection();
+}
+
+async function zzz6f33_trash_selected_records() {
+  const sel = zzz6f29_selection;
+  const hasElRows = sel.el.rows.length > 0;
+  const hasElCells = sel.el.type === 'el-cells' && sel.el.cells.length > 0;
+  if (!hasElRows && !hasElCells) {
+    zzz6f2_show_toast('DELETE (5s): nothing selected in the database - SELECT the record rows first.', 'warn');
+    return;
+  }
+  if (hasElRows) {
+    for (const { row, rowEl } of sel.el.rows) {
+      const rowEls = rowEl ? Array.from(rowEl.querySelectorAll('.entry-cell, .priority-dot-button, .privacy-dot-button, .status-dot-button')) : [];
+      await zzz6f33_flash_red(rowEls);
+      await zzz6f34_move_row_to_trash(row);
+    }
+  } else {
+    // vyber cez jednotlive bunky - stale CELY riadok do Trash (zaznamy su nedelitelne)
+    const row = sel.el.cells[0] && sel.el.cells[0].row;
+    if (row) {
+      const rowEls = sel.el.cells.map(c => c.el);
+      await zzz6f33_flash_red(rowEls);
+      await zzz6f34_move_row_to_trash(row);
+    }
+  }
+  zzz6f29_reset_selection();
+}
+
 (function bindZzz6F33DeleteButton() {
   const btn = document.getElementById('versoDeleteButton'); // Zzz1-R25
   if (!btn) return;
-  btn.addEventListener('click', zzz6f33_handle_delete_click);
+  zzz_bind_hold_selection_guard(btn);
+
+  const ZZZ6F33_RESET_MS = 3000;
+  const ZZZ6F33_TRASH_MS = 5000;
+  let pressStartedAt = 0;
+  let pulse3 = null, pulse5 = null;
+
+  function startPress() {
+    pressStartedAt = Date.now();
+    if (pulse3) clearTimeout(pulse3);
+    if (pulse5) clearTimeout(pulse5);
+    // hmatove "medzniky" - pri 3s a 5s vies, ze si prekrocil hranicu, aj bez pozerania na obrazovku
+    pulse3 = setTimeout(() => zzz_haptic_pulse(20), ZZZ6F33_RESET_MS);
+    pulse5 = setTimeout(() => zzz_haptic_pulse(40), ZZZ6F33_TRASH_MS);
+  }
+  function endPress() {
+    if (pulse3) { clearTimeout(pulse3); pulse3 = null; }
+    if (pulse5) { clearTimeout(pulse5); pulse5 = null; }
+    if (!pressStartedAt) return;
+    const held = Date.now() - pressStartedAt;
+    pressStartedAt = 0;
+    if (held >= ZZZ6F33_TRASH_MS) zzz6f33_trash_selected_records();
+    else if (held >= ZZZ6F33_RESET_MS) zzz6f33_reset_cl();
+    else zzz6f33_delete_selected_cl_cells();
+  }
+  function cancelPress() {
+    if (pulse3) { clearTimeout(pulse3); pulse3 = null; }
+    if (pulse5) { clearTimeout(pulse5); pulse5 = null; }
+    pressStartedAt = 0;
+  }
+
+  btn.addEventListener('touchstart', startPress, { passive: true });
+  btn.addEventListener('mousedown', startPress);
+  btn.addEventListener('touchend', endPress);
+  btn.addEventListener('mouseup', endPress);
+  btn.addEventListener('touchcancel', cancelPress);
+  btn.addEventListener('mouseleave', cancelPress);
 })();
 // === [/Zzz6-F33:DELETE] ===
 
