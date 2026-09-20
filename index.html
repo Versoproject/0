@@ -16329,9 +16329,15 @@ async function zzz6f15_load_my_placements(force) {
   const map = {};
   if (!me) { zzz6f15PlacementsCache = map; return map; }
   try {
+    // === [Zzz6-F15:PLACEMENT-LAYER] OPRAVA (Vrso 2026-09-20, diagnostika ukazala token="verso" | visible
+    // rows=3, teda databaza riadky VYDAVA a chyba bola v tomto dopyte) - PRICINA: appka si k dopytu pridavala
+    // este VLASTNY filter .eq('username', me), cize sa to iste pravidlo vyhodnocovalo DVAKRAT: raz v RLS a raz
+    // v kode. Staci, aby sa tie dva tvary mena na chvilu rozisli, a zoznam je prazdny BEZ CHYBY.
+    // TERAZ: filter je VYLUCNE v RLS politike. Co dopyt vrati, to su UZ LEN moje riadky - databaza cudzie
+    // nevyda. Menej kodu, jedno miesto pravdy a cela tato trieda chyby zanika. | Vrso -> Claude AI | 2026-09-20
     const { data, error } = await sb.from('verso_placements')
       .select('entry_id, tab_id')
-      .eq('username', me);
+      .is('removed_at', null); // aktivne zatriedenia (append-only: zrusene maju cas v removed_at)
     if (error) throw error;
     (data || []).forEach(r => {
       if (!map[r.entry_id]) map[r.entry_id] = [];
