@@ -4516,6 +4516,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-F27:LONGPRESS-TOLERANCE - zdielana zzz_bind_long_press utilita ruší 3s casovac az pri pohybe > 12 px (nie pri kazdom mikropohybe prsta/posune layoutu po zatvoreni klavesnice) - oprava "podrzanim sa nic nestane" na malych prvkoch, plati pre VSETKY dlhe stlaky v appke</span>
   <span class="module-tag">Zzz6-F6:EL-CONTEXT-STANDARD - SUBS a PROJECT CATEGORY vyzeraju ROVNAKO vo vsetkych CRM moduloch: hlavna CL, M4a2 template aj ulozene zaznamy v Database/Trash/Organizer riadkoch (rovnake chipy cez zzz6f8_build_subs_chip a .zzz-category-chip-base). V ulozenych zaznamoch su chipy read-only, lebo obsah zaznamu je needitovatelny; tlacidla DELETE/COPY/ATTACH/ZATVORIT pracuju s CL, nie so zaznamom</span>
   <span class="module-tag">Zzz2-R38:PASTE-DISPATCH - PASTE (3s) je jedine potvrdzovacie gesto pre obe umiestnenia a sam rozlisi kontext: vybrate zaznamy -> Zzz6-F11:PLACE-ENTRIES okno (COPY/MOVE), inak skladany Move zaznam -> Zzz2-R38:PASTE-CONFIRM-GATE okno. ORG tlacidlo (Zzz2-R32:ORGANIZER) uz sluzi VYLUCNE na otvorenie workspace</span>
+  <span class="module-tag">Zzz6-F15:PLACEMENT-LAYER - zatriedenie zaznamu zije vo vlastnej tabulke verso_placements (username+entry_id+tab_id), NIE v zazname: MOVE uz nevyraba ziadnu kopiu ani novu entry, len prehodi riadok, a samotny zaznam ostava nezmeneny a viditelny v Database Workspace. COPY ostava skutocnym duplikovanim. Organizer ma dve casti: FILED BY YOU (moje zatriedenia) a PREVIOUS VERSIONS (nahradene zaznamy)</span>
   <span class="module-tag">Zzz6-F14:ENTRY-LOG-WINDOW - klik na ENTRY NUMBER bunku v ktoromkolvek workspace riadku otvori log zaznamu: replaced by / copied from (tukatelne cisla), MOVE prikaz z CONTENT, kde je zaznam umiestneny, ci je v trashi a cas poslednej zmeny. Nic sa kvoli nemu nezapisuje - cita sa z uz existujucich stlpcov. Nahradza predoslu modru hlavicku nad riadkami v Organizeri</span>
   <span class="module-tag">Zzz6-F13:EDIT-AS-VERSION - PASTE tlacidlo premenovane na EDIT: kratky stlak = vkladanie z Verso schranky (Zzz2-R7), 3s podrzanie = nacita vybraty zaznam do CL na upravu. ENTER potom zapise NOVU entry s novym cislom a povodnej nastavi superseded_by, cize aktualna verzia ostava v Database Workspace a stara sa najde v Organizeri. Potvrdzovacie okna prebral ENTER (3s)</span>
   <span class="module-tag">Zzz6-F11:PLACE-ENTRIES - vseobecny COPY/MOVE pre skutocne zaznamy: COPY = novy riadok s copied_from, oba aktivne; MOVE = to iste plus originalu sa nastavi superseded_by (treti stav "placed", original sa nikdy needituje ani nemaze, nic nejde do trashu). Gesto: ORG kratky klik = Organizer, 3s podrzanie = potvrdzovacie okno so zoznamom vybranych zaznamov a tlacidlami COPY/MOVE</span>
@@ -14366,7 +14367,13 @@ function zzz6f14_open_entry_log_window(row) {
   const moveContent = (fields.r10 || '').trim();
   if (/^MOVE\s/i.test(moveContent)) { line('Move', null, moveContent); anything = true; }
   const tabTarget = zzz2r38_get_subs_target(fields.r8 || '');
-  if (tabTarget) { line('Placed in', null, zzz5t0_find_tab_label_by_id(tabTarget) || tabTarget); anything = true; }
+  if (tabTarget) { line('Placed in (record)', null, zzz5t0_find_tab_label_by_id(tabTarget) || tabTarget); anything = true; }
+  // [Zzz6-F15:PLACEMENT-LAYER] MOJE zatriedenie - uz nie je v zazname, ale v samostatnej tabulke
+  const myTabs = (zzz6f15PlacementsCache && zzz6f15PlacementsCache[row.entry_id]) || [];
+  if (myTabs.length) {
+    line('Filed by you in', null, myTabs.map(t => zzz5t0_find_tab_label_by_id(t) || t).join(', '));
+    anything = true;
+  }
   if (row.is_trashed) { line('State', null, 'in Trash'); anything = true; }
   line('Last change', null, row.updated_at ? new Date(row.updated_at).toLocaleString() : '?');
 
@@ -15820,23 +15827,33 @@ async function open_organizer_workspace() {
   if (!workspace) return;
 
   zzz10t2_hide_m4a_template(); // [Zzz10-T2:M4A-ANCHOR] poistka - #versoWorkspaceSection je zdielane aj s M4a slotom
-  workspace.innerHTML = '<div class="db-workspace organizer-workspace"><div class="db-workspace-title">ORGANIZER (Zzz4-3)</div><div class="db-workspace-loading">Loading placed records...</div></div>';
+  workspace.innerHTML = '<div class="db-workspace organizer-workspace"><div class="db-workspace-title">ORGANIZER (Zzz4-3)</div><div class="db-workspace-loading">Loading...</div></div>';
 
-  let rows = [];
+  // [Zzz6-F15:PLACEMENT-LAYER] Organizer ma teraz DVE casti a su to dve UPLNE INE veci:
+  //   1. MOJE ZATRIEDENIA - z verso_placements, teda moje vlastne usporiadanie; zaznam sa pritom nemenil
+  //      a v Database Workspace ostava normalne viditelny.
+  //   2. PREDOSLE VERZIE - zaznamy, ktore niekto nahradil novsou verziou (superseded_by, vznika pri
+  //      Zzz6-F13 editacii); tie z Database Workspace vypadli.
+  const placements = await zzz6f15_load_my_placements(true);
+  const placedIds = Object.keys(placements);
+
+  let placedRows = [];
+  let supersededRows = [];
   try {
-    const fetchPromise = sb.from('verso_entries').select('*').not('superseded_by', 'is', null).order('updated_at', { ascending: false });
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Zzz6-F10 Supabase fetch timeout (4s)')), 4000)
-    );
-    const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
-    if (error) throw error;
-    rows = data || [];
+    if (placedIds.length) {
+      const { data, error } = await sb.from('verso_entries').select('*').in('entry_id', placedIds);
+      if (error) throw error;
+      placedRows = data || [];
+    }
+    const { data: sup, error: supErr } = await sb.from('verso_entries').select('*')
+      .not('superseded_by', 'is', null).order('updated_at', { ascending: false });
+    if (supErr) throw supErr;
+    supersededRows = sup || [];
     zzz0r1_set_db_connection_state(true);
   } catch (err) {
     const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
-    console.warn(`Zzz6-F10 Organizer fetch zlyhal/timeout. DOVOD: ${errDetail}`);
+    console.warn(`Zzz6-F10 Organizer fetch zlyhal. DOVOD: ${errDetail}`);
     zzz0r1_set_db_connection_state(false, errDetail, true);
-    rows = [];
   }
 
   const wrap = document.createElement('div');
@@ -15844,28 +15861,36 @@ async function open_organizer_workspace() {
 
   const title = document.createElement('div');
   title.className = 'db-workspace-title';
-  title.textContent = `ORGANIZER (Zzz4-3)${rows.length ? ' - ' + rows.length + ' placed records' : ''}`;
+  title.textContent = `ORGANIZER (Zzz4-3) - ${placedRows.length} filed by you, ${supersededRows.length} previous versions`;
   wrap.appendChild(title);
 
-  if (rows.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'db-workspace-empty';
-    empty.textContent = 'No placed records yet.';
-    wrap.appendChild(empty);
-  } else {
+  function section(headingText, rows, emptyText, groupByTab) {
+    const heading = document.createElement('div');
+    heading.style.cssText = 'font-size:10px;font-weight:700;color:#171717;padding:6px 4px 2px;';
+    heading.textContent = headingText;
+    wrap.appendChild(heading);
+
+    if (!rows.length) {
+      const empty = document.createElement('div');
+      empty.className = 'db-workspace-empty';
+      empty.textContent = emptyText;
+      wrap.appendChild(empty);
+      return;
+    }
     const rowsWrap = document.createElement('div');
     rowsWrap.className = 'db-workspace-rows';
     rows.forEach(row => {
-      // metadata hlavicka - "placed" oznacenie vykreslene ZO STLPCA (viz vysvetlenie vyssie), obojsmerna
-      // dohladatelnost: superseded_by = cim bol nahradeny, copied_from = odkial prisiel
-      // [Zzz6-F14:ENTRY-LOG-WINDOW] Vrso 2026-09-20, doslovne: "nepaci sa mi ze popisuje replaced by nad
-      // entry, nedame to radsej do okna entry number ako edit log" - povodna modra hlavicka nad kazdym
-      // riadkom ZRUSENA. Vsetky udaje (replaced by / copied from / move / placed in) su teraz v logu, ktory
-      // sa otvori klikom na ENTRY NUMBER bunku daneho riadku. | Vrso -> Claude AI | 2026-09-20 ===
-
-      const gridRow = zzz4_0_build_entry_row(row); // rovnaky renderer ako Database aj Trash Workspace
-      rowsWrap.appendChild(gridRow);
-
+      if (groupByTab) {
+        // pri MOJICH zatriedeniach ma zmysel vidiet, KDE je zaznam zatriedeny (aj vo viacerych naraz)
+        const tabs = (placements[row.entry_id] || []).map(t => zzz5t0_find_tab_label_by_id(t) || t);
+        if (tabs.length) {
+          const where = document.createElement('div');
+          where.style.cssText = 'font-size:8px;font-weight:700;color:#0369a1;padding:2px 4px;';
+          where.textContent = tabs.join(' | ');
+          rowsWrap.appendChild(where);
+        }
+      }
+      rowsWrap.appendChild(zzz4_0_build_entry_row(row)); // rovnaky renderer ako Database aj Trash Workspace
       const dbModalStack = document.createElement('div');
       dbModalStack.className = 'context-window-stack';
       dbModalStack.id = 'versoDbEntryModal_' + (row && row.entry_id !== undefined ? row.entry_id : '');
@@ -15873,6 +15898,9 @@ async function open_organizer_workspace() {
     });
     wrap.appendChild(rowsWrap);
   }
+
+  section('FILED BY YOU', placedRows, 'Nothing filed yet - SELECT a record, MOVE a destination tab, then hold ENTER.', true);
+  section('PREVIOUS VERSIONS', supersededRows, 'No replaced records.', false);
 
   zzz10t2_hide_m4a_template();
   workspace.innerHTML = '';
@@ -16066,7 +16094,7 @@ function zzz6f11_open_placement_window() {
 
   const note = document.createElement('div');
   note.style.cssText = 'font-size:8px;color:#555;margin-bottom:4px;';
-  note.textContent = 'COPY keeps the original active. MOVE marks the original as placed - it is never deleted, just shown in the Organizer.';
+  note.textContent = 'COPY writes a real new record (new entry number). MOVE only files this record under the destination - the record itself is not changed and no copy is created.';
   box.appendChild(note);
 
   const actions = document.createElement('div');
@@ -16075,13 +16103,105 @@ function zzz6f11_open_placement_window() {
     const btn = document.createElement('button');
     btn.className = 'entry-modal-close';
     btn.textContent = mode.toUpperCase();
-    btn.onclick = () => { removeBox(); zzz6f11_place_entries(mode); };
+    btn.onclick = () => {
+      removeBox();
+      // [Zzz6-F15:PLACEMENT-LAYER] MOVE uz NEVYRABA zaznam - len zatriedi (prehodi riadok v verso_placements).
+      // COPY ostava skutocnym duplikovanim zaznamu (Vrso 2026-09-20: "nechaj copy ako je lebo to bude
+      // sikovne/dolezite na bezne kopirovanie roznych informacii").
+      if (mode === 'move') zzz6f15_place_entries(rows, targetId, 'move');
+      else zzz6f11_place_entries('copy');
+    };
     actions.appendChild(btn);
   });
   box.appendChild(actions);
   zzz6f41_bind_outside_click(box, removeBox); // zatvorenie bez akcie
 }
 // === [/Zzz6-F11:PLACE-ENTRIES] ===
+
+// === [Zzz6-F15:PLACEMENT-LAYER] Vrso 2026-09-20 - ZASADNE PRAVIDLO, ktore si Vrso sam stanovil: "v databaze
+// bola entry stale rovnaka a len user si zatriedi cez org/move ako chce...aby niekto cudzi nemusel zistovat
+// kde to ma dany username zaevidovane". Umiestnenie preto UZ NIE JE sucastou zaznamu (tab: chip vo
+// fields_json) - zije vo vlastnej tabulke verso_placements (username + entry_id + tab_id), takze:
+//   - samotny zaznam sa pri zatriedeni VOBEC NEMENI a nevznika kvoli nemu ziadna kopia,
+//   - kazdy user ma vlastne usporiadanie, cudzie ho nezaujima,
+//   - MOVE prestal vyrabat zaznamy - len prehodi riadok.
+// POCTIVO: kym nie je JWT->RLS most, username je len zapisana hodnota, nie overena identita - oddelene od
+// zaznamu uz to je, skutocne SUKROMNE este nie (kto si vypyta tabulku priamo cez API, uvidi aj cudzie
+// riadky). Druhu polovicu dovrsi az ten most. | Vrso -> Claude AI | 2026-09-20 ===
+let zzz6f15PlacementsCache = null; // { [entryId]: [tabId, ...] } pre PRIHLASENEHO usera
+
+async function zzz6f15_load_my_placements(force) {
+  if (zzz6f15PlacementsCache && !force) return zzz6f15PlacementsCache;
+  const me = zzz0r1_get_current_username();
+  const map = {};
+  if (!me) { zzz6f15PlacementsCache = map; return map; }
+  try {
+    const { data, error } = await sb.from('verso_placements')
+      .select('entry_id, tab_id')
+      .eq('username', me);
+    if (error) throw error;
+    (data || []).forEach(r => {
+      if (!map[r.entry_id]) map[r.entry_id] = [];
+      map[r.entry_id].push(r.tab_id);
+    });
+  } catch (err) {
+    console.warn('Zzz6-F15: placements load failed', err);
+  }
+  zzz6f15PlacementsCache = map;
+  return map;
+}
+
+// mode 'copy' = zatried AJ sem (predosle zatriedenia ostanu), 'move' = zatried LEN sem
+async function zzz6f15_place_entries(rows, targetId, mode) {
+  const me = zzz0r1_get_current_username();
+  if (!me) { zzz6f2_show_toast('Zzz6-F15: log in first - placements are stored per username.', 'warn'); return; }
+
+  let done = 0;
+  const skipped = [];
+  let failedAt = null;
+
+  for (const row of rows) {
+    try {
+      if (mode === 'move') {
+        // MOVE = jedine zatriedenie: zrus vsetky moje predosle riadky pre tento zaznam
+        const { error: delErr } = await sb.from('verso_placements')
+          .delete().eq('username', me).eq('entry_id', row.entry_id);
+        if (delErr) throw delErr;
+      }
+      const { error: insErr } = await sb.from('verso_placements')
+        .insert([{ username: me, entry_id: row.entry_id, tab_id: targetId }]);
+      if (insErr) {
+        // UNIQUE(username, entry_id, tab_id) - uz tam je, co je pri COPY legitimne, nie chyba
+        if (String(insErr.code) === '23505') { skipped.push(`#${row.entry_id}`); continue; }
+        throw insErr;
+      }
+      done++;
+    } catch (err) {
+      failedAt = `#${row.entry_id} (${(err && (err.message || err.details)) || String(err)})`;
+      break;
+    }
+  }
+
+  await zzz6f15_load_my_placements(true);
+  const targetLabel = zzz5t0_find_tab_label_by_id(targetId) || targetId;
+  if (done > 0) {
+    zzz6f2_flash_success();
+    zzz6f2_show_toast(failedAt
+      ? `Zzz6-F15: filed ${done}/${rows.length} into "${targetLabel}" - stopped at ${failedAt}.`
+      : `Zzz6-F15: ${done} record(s) filed into "${targetLabel}"${skipped.length ? ' (already there: ' + skipped.join(', ') + ')' : ''}. The records themselves were not changed.`,
+      failedAt ? 'warn' : 'ok');
+  } else if (skipped.length) {
+    zzz6f2_show_toast(`Zzz6-F15: ${skipped.join(', ')} already filed in "${targetLabel}" - nothing to do.`, 'warn');
+  } else {
+    zzz6f2_show_toast(`Zzz6-F15: nothing filed${failedAt ? ' - ' + failedAt : ''}.`, 'warn');
+  }
+
+  zzz6f29_reset_el_part();
+  if (zzz2r38_target_selection.el) zzz2r38_target_selection.el.classList.remove('zzz2r38-tab-target-selected');
+  zzz2r38_target_selection = { label: null, stableId: null, el: null };
+  if (typeof zzz6f40_workspaceOpener === 'function') zzz6f40_workspaceOpener();
+}
+// === [/Zzz6-F15:PLACEMENT-LAYER] ===
 
 // === [Zzz6-F13:EDIT-AS-VERSION] Vrso 2026-09-20, doslovne: "treba vytvorit teda aj edit button? ...paste
 // button by som zmenil na edit (napr stlacenie iba vlozi zvyrazneny text...a podrzanie 3s bude editovat
