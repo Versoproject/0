@@ -5420,16 +5420,45 @@ let sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 // odhlaseni, aby VSETKY zapisy cez tento klient automaticky niesli x-verso-username/x-verso-session-id
 // headers (viz zzz_session_apply_headers_to_client nizsie v subore) - bez tohto by server-side RLS
 // freshness kontrola (verso-session-freshness-gate.sql) nemala co citat a VSETKO by odmietla. | Vrso -> Claude AI | 2026-09-XX ===
+let zzz0auth_sessionToken = null; // [Zzz0Auth-Gate:SESSION-TOKEN] session token z verso-auth-gate - LEN v pamati JS (nikdy localStorage). Deklarovane TU, pred prvym pouzitim v hlavickach klienta (TDZ).
+
 function zzz_session_apply_headers_to_client(username, sessionId) {
   const headers = {};
   if (username && sessionId) {
     headers['x-verso-username'] = username;
     headers['x-verso-session-id'] = sessionId;
   }
+  // === [Zzz0Auth-Gate:JWT-BRIDGE] Vrso 2026-09-20 - TOTO je cela klientska cast mosta: session token, ktory
+  // vydala verso-auth-gate, sa odteraz posiela ako Authorization hlavicka. Kedze je podpisany LEGACY JWT
+  // SECRETOM projektu, Supabase ho overi ako svoj vlastny a jeho claims (verso_username, verso_app) dorucia
+  // az do Postgresu, kde ich citaju verso_jwt_username()/verso_jwt_app(). Az tymto prestava "anon" znamenat
+  // "ktokolvek" a RLS zacne vidiet, KTO zapisuje. Bez tokenu (odhlaseny stav) hlavicka chyba a klient bezi
+  // ako predtym, cisto na anon kluci. | Vrso -> Claude AI | 2026-09-20 ===
+  if (zzz0auth_sessionToken) {
+    headers['Authorization'] = `Bearer ${zzz0auth_sessionToken}`;
+  }
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     global: { headers }
   });
+}
+
+// [Zzz0Auth-Gate:JWT-BRIDGE] diagnostika mosta - zavola verso_whoami() v databaze a ukaze, co Postgres z
+// tokenu naozaj precital. Pouzi ju hned po prihlaseni; kym vracia username, most stoji.
+async function zzz0auth_check_bridge() {
+  try {
+    const { data, error } = await sb.rpc('verso_whoami');
+    if (error) throw error;
+    const who = data || {};
+    zzz6f2_show_toast(who.logged_in
+      ? `JWT bridge OK - Postgres sees "${who.username}" (app: ${who.app || '?'}).`
+      : 'JWT bridge NOT active - Postgres sees no Verso identity yet.', who.logged_in ? 'ok' : 'warn');
+    console.log('Zzz0Auth-Gate:JWT-BRIDGE whoami =', who);
+    return who;
+  } catch (err) {
+    zzz6f2_show_toast(`JWT bridge check failed: ${(err && err.message) || err}`, 'warn');
+    return null;
+  }
 }
 // === [/Zzz-SESSION:FRESHNESS-GATE] ===
 
@@ -19999,7 +20028,7 @@ function zzz10r2_logout(reason = 'manual') {
 // VSADE NARAZ (Postgres funkcia, ktora token overi, pouzita v kazdej RLS policy) - TOTO JE SAMOSTATNY,
 // VACSI KROK, este NEUROBENY. Zatial token EXISTUJE (zaklad), ale ZIADNA RLS policy ho este nevyzaduje -
 // anon-key zapisy zostavaju rovnako otvorene ako pred timto krokom, kym RLS-enforcement fazu nedokoncime. | Vrso -> Claude AI | 2026-09-02 ===
-let zzz0auth_sessionToken = null; // Zzz0Auth-Gate:SESSION-TOKEN - LEN v pamati, zatial nikym nevyzadovany (viz UPDATE komentar vyssie)
+// [Zzz0Auth-Gate:SESSION-TOKEN] deklaracia je PRESUNUTA VYSSIE (k zzz_session_apply_headers_to_client) - viz [Zzz0Auth-Gate:JWT-BRIDGE] tam. Premenna je `let` a klient ju cita uz pri stavbe hlaviciek, cize deklaracia MUSI predchadzat prve pouzitie (TDZ - presne ten typ chyby, co raz uz ticho zabil cely beh skriptu).
 
 // === [Zzz-SESSION:SINGLE-ACTIVE] Vrso poziadavka, doslovne (2 kola): "Potrebujem zapracovat single active
 // session mechanizmus...standby system je fajn" + OPRAVA (Vrso, druhe kolo): "Ide o to ze ma ist o online
