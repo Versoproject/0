@@ -4514,6 +4514,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-X:SUBS-ONE-ROW - zdielany zzz6f8_build_subs_chip() pre OBE SUBS okna (hlavna CRM aj M4a2): zlaty zaklad pre oba riadky (typove farby sub-ID/sub-TAB/sub-NUM prebijaju), label vnutri chipu = chipy v JEDNOM riadku (nie pod sebou), klik = cierne ohranicenie ako cats, 3s podrzanie = zmazanie open chipu</span>
   <span class="module-tag">Zzz6-X:REF-VS-SUB-LABELS - labely sa urcuju podla RIADKU, nie podla typu chipu: horny systemovy/needitovatelny riadok = ref-EN (#N), ref-SRC (1-M4a a pod., zapisane funkciou), ref-ID (id:), ref-TAB (placement:/tab:); dolny vlastny/mazatelny riadok = cislovanie sub-1, sub-2... podla poradia. Farby typov nedotknute</span>
   <span class="module-tag">Zzz6-F27:LONGPRESS-TOLERANCE - zdielana zzz_bind_long_press utilita ruší 3s casovac az pri pohybe > 12 px (nie pri kazdom mikropohybe prsta/posune layoutu po zatvoreni klavesnice) - oprava "podrzanim sa nic nestane" na malych prvkoch, plati pre VSETKY dlhe stlaky v appke</span>
+  <span class="module-tag">Zzz6-F6:EL-CONTEXT-STANDARD - SUBS a PROJECT CATEGORY vyzeraju ROVNAKO vo vsetkych CRM moduloch: hlavna CL, M4a2 template aj ulozene zaznamy v Database/Trash/Organizer riadkoch (rovnake chipy cez zzz6f8_build_subs_chip a .zzz-category-chip-base). V ulozenych zaznamoch su chipy read-only, lebo obsah zaznamu je needitovatelny; tlacidla DELETE/COPY/ATTACH/ZATVORIT pracuju s CL, nie so zaznamom</span>
   <span class="module-tag">Zzz2-R38:PASTE-DISPATCH - PASTE (3s) je jedine potvrdzovacie gesto pre obe umiestnenia a sam rozlisi kontext: vybrate zaznamy -> Zzz6-F11:PLACE-ENTRIES okno (COPY/MOVE), inak skladany Move zaznam -> Zzz2-R38:PASTE-CONFIRM-GATE okno. ORG tlacidlo (Zzz2-R32:ORGANIZER) uz sluzi VYLUCNE na otvorenie workspace</span>
   <span class="module-tag">Zzz6-F11:PLACE-ENTRIES - vseobecny COPY/MOVE pre skutocne zaznamy: COPY = novy riadok s copied_from, oba aktivne; MOVE = to iste plus originalu sa nastavi superseded_by (treti stav "placed", original sa nikdy needituje ani nemaze, nic nejde do trashu). Gesto: ORG kratky klik = Organizer, 3s podrzanie = potvrdzovacie okno so zoznamom vybranych zaznamov a tlacidlami COPY/MOVE</span>
   <span class="module-tag">Zzz2-R32:ORGANIZER + Zzz6-F10:ORGANIZER-WORKSPACE - nove ORG tlacidlo v SEKCII 3 hned vedla TRASH; workspace vypisuje NAHRADENE (superseded_by IS NOT NULL) zaznamy - treti stav medzi aktivnym a trashnutym: nikdy sa nemazu, obsah nedotknuty, len vypadnu z Database Workspace. Vzor 1:1 podla Zzz6-F35 Trash Workspace, oznacenie "placed" sa vykresluje zo stlpca, nezapisuje sa do SUBS</span>
@@ -8210,7 +8211,7 @@ function zzz6f8_is_function_written_ref(sub) {
 //     odznaci. 3s podrzanie (len open chipy) = zmazanie, teraz uz spolahlivo vdaka
 //     [Zzz6-F27:LONGPRESS-TOLERANCE] oprave vyssie v subore.
 // | Vrso -> Claude AI | 2026-09-19 ===
-function zzz6f8_build_subs_chip(sub, selState, rerender, onDelete, openIndex) {
+function zzz6f8_build_subs_chip(sub, selState, rerender, onDelete, openIndex, readOnly) {
   const display = zzz2r38_subs_chip_display(sub);
   const isOpen = !display.locked;
 
@@ -8246,8 +8247,10 @@ function zzz6f8_build_subs_chip(sub, selState, rerender, onDelete, openIndex) {
   // cats chipy v Category okne. | Vrso -> Claude AI | 2026-09-19 ===
   const chipHoldEnd = zzz_bind_hold_selection_guard(chip);
 
-  // mazanie 3s podrzanim - LEN open (needitovatelne base/locked chipy sa mazat nedaju, nezmenene)
-  if (isOpen) zzz_bind_long_press(chip, 3000, () => {
+  // mazanie 3s podrzanim - LEN open (needitovatelne base/locked chipy sa mazat nedaju, nezmenene).
+  // [Zzz6-F6:EL-CONTEXT-STANDARD] readOnly = pohlad na UZ ULOZENY zaznam (Database/Trash/Organizer riadok) -
+  // vyzera rovnako, ale nic sa nemaze, lebo obsah zaznamu je needitovatelny (restrict_update trigger).
+  if (isOpen && !readOnly) zzz_bind_long_press(chip, 3000, () => {
     chipHoldEnd();
     zzz_haptic_pulse(30); // hmatove potvrdenie, ze 3s dobehlo a chip sa maze
     onDelete(sub);
@@ -13138,12 +13141,24 @@ function zzz1m4a_open_local_subs_modal(id) {
     removeBox();
   };
 
+  // === [Zzz6-F8:SUBS-CONTEXT] Vrso 2026-09-20, doslovne: "nebolo by mat dobre kontext subs okno rovnake aj v
+  // hlavnej m4 aj m4a module?...toto ma byt standard, rovnako cats" - M4a2 verzia SUBS okna ako jedina
+  // NEMALA tlacidlo COPY, hoci hlavna CRM verzia ho ma. Doplnene, aby boli obe okna naozaj IDENTICKE
+  // (chipy uz zdielaju zzz6f8_build_subs_chip, cats zdielaju celu zzz_open_category_context_modal). Kopiruje
+  // sa rovnako ako v hlavnej verzii - cez zzz6f6_copy_cell_to_cl, len zo zzz1m4aFields namiesto entryData.
+  // | Vrso -> Claude AI | 2026-09-20 ===
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'entry-modal-copy';
+  copyBtn.textContent = 'COPY';
+  copyBtn.onclick = () => { zzz6f6_copy_cell_to_cl(id, subs.join(', ')); zzz6f6_flash_button(copyBtn); };
+
   const closeBtn = document.createElement('button');
   closeBtn.className = 'entry-modal-close';
   closeBtn.textContent = 'ZATVORIT';
   closeBtn.onclick = closeModal;
 
   actions.appendChild(deleteBtn);
+  actions.appendChild(copyBtn);
   actions.appendChild(closeBtn);
   box.appendChild(hint);
   box.appendChild(list);
@@ -14288,8 +14303,45 @@ function zzz6f6_open_el_cell_context_modal(field, val, row) {
   textarea.className = 'entry-modal-textarea';
   textarea.value = (val === '-' ? '' : val);
 
-  box.appendChild(zzz_build_suggest_row(clId, textarea)); // [Zzz6-F26:SUGGEST-CHIPS]
-  box.appendChild(textarea);
+  // === [Zzz6-F6:EL-CONTEXT-STANDARD] Vrso 2026-09-20, doslovne: "aj vizualne to chcem mat vo vsetkych crm
+  // moduloch rovnake" - SUBS (R8) a PROJECT CATEGORY (R5) sa aj v ulozenych zaznamoch (Database/Trash/
+  // Organizer riadky) zobrazuju TAK ISTO ako v hlavnej CRM CL a v M4a2: ako chipy, nie ako holy text v
+  // textarea. Vzhlad ide cez PRESNE tie iste funkcie (zzz6f8_build_subs_chip, trieda .zzz-category-chip-base),
+  // takze sa uz nikdy nemôžu rozisť. Rozdiel je JEDINY a nutny: tu su chipy read-only - obsah ulozeneho
+  // zaznamu je needitovatelny (verso_entries_restrict_update_trigger), takze niet co mazat. Tlacidla
+  // (DELETE/COPY/ATTACH/ZATVORIT) ostavaju nedotknute - tie aj tak pracuju s CL, nie so zaznamom.
+  // | Vrso -> Claude AI | 2026-09-20 ===
+  const rawVal = (val === '-' ? '' : val);
+  if (clId === '8' && rawVal) {
+    const subsList = zzz6f8_parse_subs(rawVal);
+    const selState = { value: null };
+    const list = document.createElement('div');
+    list.className = 'zzz6-f21-tags-list';
+    const list2 = document.createElement('div');
+    list2.className = 'zzz6-f21-tags-list';
+    let openCount = 0;
+    subsList.forEach(sub => {
+      const isOpenChip = !zzz2r38_subs_chip_display(sub).locked;
+      if (isOpenChip) openCount++;
+      const { unit, isOpen } = zzz6f8_build_subs_chip(sub, selState, () => {}, () => {}, openCount, true);
+      (isOpen ? list2 : list).appendChild(unit);
+    });
+    box.appendChild(list);
+    box.appendChild(list2);
+  } else if (clId === '5' && rawVal) {
+    const catRow = document.createElement('div');
+    catRow.className = 'zzz6-f21-tags-list';
+    const catChip = document.createElement('div');
+    catChip.className = 'zzz-category-chip-base zzz-category-chip-selected zzz6-f8-subs-chip-guard';
+    const catSpan = document.createElement('span');
+    catSpan.textContent = rawVal;
+    catChip.appendChild(catSpan);
+    catRow.appendChild(catChip);
+    box.appendChild(catRow);
+  } else {
+    box.appendChild(zzz_build_suggest_row(clId, textarea)); // [Zzz6-F26:SUGGEST-CHIPS]
+    box.appendChild(textarea);
+  }
 
   const actions = document.createElement('div');
   actions.className = 'entry-modal-actions';
@@ -14320,8 +14372,9 @@ function zzz6f6_open_el_cell_context_modal(field, val, row) {
       username: row.username || '',
       description: zzz4_0_get_field_value(row, { key: 'r9' })
     } : null;
-    zzz6f6_copy_cell_to_cl(clId, textarea.value, sourceInfo); // toast + modry flash (DRY)
-    zzz_remember_suggestion(clId, textarea.value);
+    const copyValue = (clId === '8' || clId === '5') && rawVal ? rawVal : textarea.value; // [Zzz6-F6:EL-CONTEXT-STANDARD] chipovy pohlad nema textarea
+    zzz6f6_copy_cell_to_cl(clId, copyValue, sourceInfo); // toast + modry flash (DRY)
+    zzz_remember_suggestion(clId, copyValue);
     zzz6f6_flash_button(copyBtn);
   };
 
@@ -14349,8 +14402,11 @@ function zzz6f6_open_el_cell_context_modal(field, val, row) {
   actions.appendChild(closeBtn);
   box.appendChild(actions);
   zzz6f41_bind_outside_click(box, closeModal);
-  textarea.focus();
-  const stopAutosize = verso_autosize_modal_textarea(textarea); // [Zzz6-F17:CONTEXT-WINDOW-ADAPTIVE-SIZE]
+  // [Zzz6-F6:EL-CONTEXT-STANDARD] pri chipovom pohlade (SUBS/CATEGORY) textarea nie je v okne - nefokusuj ju
+  // a nespustaj na nej autosize, inak by sa zbytocne vytiahla mobilna klavesnica nad okno bez pola.
+  const chipView = (clId === '8' || clId === '5') && rawVal;
+  if (!chipView) textarea.focus();
+  const stopAutosize = chipView ? () => {} : verso_autosize_modal_textarea(textarea); // [Zzz6-F17:CONTEXT-WINDOW-ADAPTIVE-SIZE]
 }
 // === [/Zzz6-F6:COPY-EL-CELL] ===
 
