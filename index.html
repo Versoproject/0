@@ -4475,6 +4475,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-F34 Move (interna funkcia, presun EL riadku z verso_entries do verso_trash)</span>
   <span class="module-tag">Zzz6-F35 Trash Workspace (Zzz2-R24, versoTrashButton - zobrazenie verso_trash)</span>
   <span class="module-tag">Zzz6-F12:ARCHIVE-WORKSPACE (Zzz2-R25, versoArchieveButton) - nezmazatelny archiv fyzicky zmazanych zaznamov (verso_trash), len na citanie, vlastne riadky</span>
+  <span class="module-tag">Zzz6-F22-paste-credit:PASTE-SOURCE - pri vlozeni do obsahoveho pola sa do acknowledgementu zapise aj zdroj, ak sa da zistit (nazov suboru, link); inak rucne; citlive polia sa nesleduju nikdy</span>
+  <span class="module-tag">Zzz6-X:NATIVE-PASTE-IN-FIELDS - trvale pravidlo: v kazdom textovom poli (input/textarea) musi fungovat nativne vlozenie/kopirovanie z telefonu; blokovanie nativneho menu/vyberu nikdy neplati pre textove polia</span>
   <span class="module-tag">Zzz6-X:DEV-TEST-ACCOUNT - QUICK LOGIN (TEST) prihlasi na testovaci ucet "Verso1" (rezervovane meno, heslo v zdrojaku - len testovacie data), bez resetu; ODSTRANIT pred verejnym spustenim</span>
   <span class="module-tag">Zzz6-X:DELETE-CONFIRM-SIMPLE - potvrdenie mazania z kosa = len 3 polia (MV fraza, token, heslo) + CONFIRM, bez potvrdzovacej frazy</span>
   <span class="module-tag">Zzz6-F29:SELECT-ALL - SELECT podrzat 3s = oznacit vsetky viditelne riadky v otvorenej utilite (Database/Trash/Archive/Organizer), druhe podrzanie zrusi vyber</span>
@@ -5651,7 +5653,7 @@ function zzz6f41_create_context_window(targetId = 'versoContextWindowStack', pre
   const stack = document.getElementById(targetId);
   const box = document.createElement('div');
   box.className = 'entry-modal-box';
-  box.addEventListener('contextmenu', (e) => e.preventDefault()); // OPRAVA (Vrso 2026-09-12) - viz [NO-NATIVE-SELECT] entry-modal-box CSS
+  box.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest('input, textarea')) return; e.preventDefault(); }); // OPRAVA (Vrso 2026-09-12) - viz [NO-NATIVE-SELECT] entry-modal-box CSS. [Zzz6-X:NATIVE-PASTE-IN-FIELDS] 2026-09-21 - Vrso: "Token viem dat iba ako paste cez verso" - blokovanie nativneho menu teraz NEPLATI pre textove polia (input/textarea), inak sa do nich nedalo vlozit nic zvonka (napr. token z emailu). Zvysok okna nativne menu dalej blokuje. | Vrso -> Claude AI | 2026-09-21
   // OPRAVA (Vrso 2026-09-11, "mini window by sa malo tiez otvorit/prilepit rovnako, resp. byt nadradene inym
   // prilepenym oknam"): predtym VZDY appendChild (na koniec, teda VIZUALNE naspodok pri viacerych otvorenych
   // oknach). `prepend` (pouziva zzz6f48_open_mini_modal nizsie) vlozi MINI okno VZDY ako PRVE/navrchu, bez
@@ -5824,8 +5826,11 @@ function zzz_flash_elements(elements, ms) {
 // vzor ako zzz1m4a_bind_mini_checklist_only). Pouziva sa VZDY spolu so zzz_bind_long_press, nikdy namiesto
 // neho. | Vrso -> Claude AI | 2026-09-19 ===
 function zzz_bind_hold_selection_guard(el) {
-  el.addEventListener('selectstart', (e) => e.preventDefault());
-  el.addEventListener('contextmenu', (e) => e.preventDefault());
+  // [Zzz6-X:NATIVE-PASTE-IN-FIELDS] 2026-09-21 - poistka do buducna: ak by sa guard niekedy pouzil na kontajner,
+  // ktory obsahuje textove pole, nativne menu (Vlozit/Kopirovat) a vyber textu v POLI zostanu funkcne. | Vrso -> Claude AI | 2026-09-21
+  const zzzIsTextField = (e) => !!(e.target && e.target.closest && e.target.closest('input, textarea'));
+  el.addEventListener('selectstart', (e) => { if (zzzIsTextField(e)) return; e.preventDefault(); });
+  el.addEventListener('contextmenu', (e) => { if (zzzIsTextField(e)) return; e.preventDefault(); });
   let selInterval = null;
   let holdStartPulse = null;
   let isHolding = false;
@@ -9155,18 +9160,49 @@ function zzz6f22_record_copy_credit(sourceEntryId, sourceUsername, sourceDescrip
 // pola sa to tyka. Skutocny povodny zdroj ("copyright") OSTAVA NEZNAMY/needit automaticky - username ho moze
 // KEDYKOLVEK doplnit/opravit rucne cez existujuci Zzz6-F22-add modal (ZDROJ:, manual=true), memo o "Web Line"
 // (Zzz6-F22-external vyssie) neskor doplni presnejsi sposob zberu tohto zdroja. | Vrso -> Claude AI | 2026-08-31 ===
-function zzz6f22_record_paste_credit(fieldLabel) {
+// === [Zzz6-F22-paste-credit:PASTE-SOURCE] Vrso 2026-09-21, doslovne: "Ak nejde o hesla a blbosti tak nezabud ze
+// acknowledgement pri pastovani bude link alebo nazov suboru (to ani neviem ci sa da tak ked tak manualne aspon
+// daky popis pripadne ako volitelna moznost v acknowledgement bunke" - prehliadac pri beznom vlozeni NEPREZRADI,
+// odkial text pochadza (zdrojovu stranku ani aplikaciu) - to sa technicky NEDA. Da sa ale zistit:
+//   - NAZOV SUBORU, ked sa vklada subor (napr. obrazok) - clipboardData.files
+//   - LINK, ked vlozeny text JE alebo OBSAHUJE webovu adresu (max. 3)
+// Ak sa nic z toho nenajde, zdroj ostava prazdny a da sa DOPLNIT RUCNE cez existujuce Zzz6-F22-add okno
+// (ZDROJ:, manual) - to je ta volitelna moznost v acknowledgement bunke. CITLIVE POLIA (heslo, token, MV fraza,
+// email) sa NIKDY nesleduju - tento listener sa na ne jednoducho neviaze. | Vrso -> Claude AI | 2026-09-21 ===
+function zzz6f22_detect_paste_source(e) {
+  try {
+    const cd = e && e.clipboardData;
+    if (!cd) return '';
+    const files = cd.files ? Array.from(cd.files) : [];
+    if (files.length > 0) return files.map(f => f.name).filter(Boolean).join(', ');
+    const uriList = (cd.getData('text/uri-list') || '').split(/\r?\n/).filter(l => l && !l.startsWith('#'));
+    if (uriList.length > 0) return uriList.slice(0, 3).join(', ');
+    const text = cd.getData('text/plain') || '';
+    const urls = text.match(/https?:\/\/[^\s<>"']+/g) || [];
+    return urls.slice(0, 3).join(', ');
+  } catch (err) {
+    return '';
+  }
+}
+
+// store (volitelne) = kam patri R22 - predvolene hlavna CL (entryData); M4a template ma vlastne lokalne polia
+function zzz6f22_record_paste_credit(fieldLabel, source = '', store = null) {
   const owner = zzz0r1_get_current_username() || 'neznamy';
-  const current = zzz6f22_parse_credits(entryData[ZZZ6_F22_ENTRY_ID]);
-  const record = { owner, cl: `Paste do ${fieldLabel}`, entryId: null, own: false, status: 'verified' };
+  const readRaw = store ? store.read : () => entryData[ZZZ6_F22_ENTRY_ID];
+  const writeRaw = store ? store.write : (v) => write_to_entry(ZZZ6_F22_ENTRY_ID, v);
+  const current = zzz6f22_parse_credits(readRaw());
+  const record = { owner, cl: source ? `Paste do ${fieldLabel} - source: ${source}` : `Paste do ${fieldLabel}`, entryId: null, own: false, status: 'verified' };
+  if (source) record.source = source;
   current.push(record); // ziadna dedup kontrola - kazdy paste je vlastna udalost, aj opakovana do toho isteho pola
-  write_to_entry(ZZZ6_F22_ENTRY_ID, JSON.stringify(current));
+  writeRaw(JSON.stringify(current));
 }
 
 // viaze 'paste' listener na dane textarea - zdielane pre generic modal (a dalsie kompatibilne modaly v buducnosti)
-function zzz6f22_bind_paste_tracking(textarea, fieldLabel) {
-  textarea.addEventListener('paste', () => zzz6f22_record_paste_credit(fieldLabel));
+// POZOR [Zzz6-F22-paste-credit:PASTE-SOURCE]: NIKDY neviazat na citlive polia (heslo, token, MV fraza, email).
+function zzz6f22_bind_paste_tracking(textarea, fieldLabel, store = null) {
+  textarea.addEventListener('paste', (e) => zzz6f22_record_paste_credit(fieldLabel, zzz6f22_detect_paste_source(e), store));
 }
+// === [/Zzz6-F22-paste-credit:PASTE-SOURCE] ===
 // === [/Zzz6-F22-paste-credit:PASTE-CREDIT] ===
 
 // === [Zzz6-F22-view:VIEW-ONLY] (SPECIAL, READ-ONLY) - klik na R22 bunku (aj v Database Workspace grid s
@@ -12358,7 +12394,7 @@ function zzz4r17_open_filter_modal(id) {
 
   const box = document.createElement('div');
   box.className = 'entry-modal-box';
-  box.addEventListener('contextmenu', (e) => e.preventDefault()); // OPRAVA (Vrso 2026-09-12) - viz [NO-NATIVE-SELECT] entry-modal-box CSS
+  box.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest('input, textarea')) return; e.preventDefault(); }); // OPRAVA (Vrso 2026-09-12) - viz [NO-NATIVE-SELECT] entry-modal-box CSS. [Zzz6-X:NATIVE-PASTE-IN-FIELDS] 2026-09-21 - Vrso: "Token viem dat iba ako paste cez verso" - blokovanie nativneho menu teraz NEPLATI pre textove polia (input/textarea), inak sa do nich nedalo vlozit nic zvonka (napr. token z emailu). Zvysok okna nativne menu dalej blokuje. | Vrso -> Claude AI | 2026-09-21
 
   const label = document.createElement('div');
   label.style.fontSize = '9px';
@@ -13268,6 +13304,14 @@ function zzz1m4a_open_local_entry_modal(id) {
   textarea.className = 'entry-modal-textarea';
   textarea.value = zzz1m4aFields[id] || '';
   textarea.addEventListener('input', () => zzz1m4a_write_field(id, textarea.value));
+  // [Zzz6-F22-paste-credit:PASTE-SOURCE] 2026-09-21 - vlozenie aj v M4a template zapise acknowledgement, ale do
+  // VLASTNEHO R22 tohto templatu (zzz1m4aFields), nie do hlavnej CL. Citlive polia tu nie su. | Vrso -> Claude AI | 2026-09-21
+  if (id !== ZZZ6_F22_ENTRY_ID) {
+    zzz6f22_bind_paste_tracking(textarea, zzz_get_readonly_cell_label(id), {
+      read: () => zzz1m4aFields[ZZZ6_F22_ENTRY_ID],
+      write: (v) => zzz1m4a_write_field(ZZZ6_F22_ENTRY_ID, v)
+    });
+  }
 
   box.appendChild(zzz_build_suggest_row(id, textarea, null)); // liveSaveId=null - chip klik NEZAPISUJE do entryData
   box.appendChild(zzz1_build_quickchips_row(
@@ -15533,7 +15577,7 @@ function open_db_record_modal(entryId, fullText, entryUsername) {
 
   const box = document.createElement('div');
   box.className = 'entry-modal-box';
-  box.addEventListener('contextmenu', (e) => e.preventDefault()); // OPRAVA (Vrso 2026-09-12) - viz [NO-NATIVE-SELECT] entry-modal-box CSS
+  box.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest('input, textarea')) return; e.preventDefault(); }); // OPRAVA (Vrso 2026-09-12) - viz [NO-NATIVE-SELECT] entry-modal-box CSS. [Zzz6-X:NATIVE-PASTE-IN-FIELDS] 2026-09-21 - Vrso: "Token viem dat iba ako paste cez verso" - blokovanie nativneho menu teraz NEPLATI pre textove polia (input/textarea), inak sa do nich nedalo vlozit nic zvonka (napr. token z emailu). Zvysok okna nativne menu dalej blokuje. | Vrso -> Claude AI | 2026-09-21
 
   const label = document.createElement('div');
   label.style.fontSize = '9px';
@@ -19550,7 +19594,7 @@ function zzz6f36_open_login_modal(prefillUsername) {
 
   const box = document.createElement('div');
   box.className = 'entry-modal-box';
-  box.addEventListener('contextmenu', (e) => e.preventDefault()); // OPRAVA (Vrso 2026-09-12) - viz [NO-NATIVE-SELECT] entry-modal-box CSS
+  box.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest('input, textarea')) return; e.preventDefault(); }); // OPRAVA (Vrso 2026-09-12) - viz [NO-NATIVE-SELECT] entry-modal-box CSS. [Zzz6-X:NATIVE-PASTE-IN-FIELDS] 2026-09-21 - Vrso: "Token viem dat iba ako paste cez verso" - blokovanie nativneho menu teraz NEPLATI pre textove polia (input/textarea), inak sa do nich nedalo vlozit nic zvonka (napr. token z emailu). Zvysok okna nativne menu dalej blokuje. | Vrso -> Claude AI | 2026-09-21
 
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
