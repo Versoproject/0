@@ -545,6 +545,15 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz6f48-mini-button.zzz-rec-el, .zzz4-0-entry-btn.zzz-rec-el { border-color: #16a34a !important; }
   .zzz6f48-mini-button.zzz-rec-trashed, .zzz4-0-entry-btn.zzz-rec-trashed { border-color: #dc2626 !important; }
   .zzz6f48-mini-button.zzz-rec-archive, .zzz4-0-entry-btn.zzz-rec-archive { border-color: #111111 !important; }
+  /* [Zzz4-0:LINE-ACTIVE-GOLD] Vrso 2026-09-21, doslovne: "az ked kliknem na entry number daneho attachmentu teda
+     line alebo napr selectom by sa riadok mal rovnako vyznacit (zlatou) mini/attach button...s ohranicenim podla
+     ich typu/databazy" - AKTIVNY riadok (klik na jeho ENTRY NUMBER alebo oznaceny cez SELECT) ma ZLATU vypln
+     ATTACH/ENTRY tlacidla, ohranicenie zostava podla druhu zapisu. Musi byt ZA pravidlom entry-attached (rovnaka
+     specificita, neskorsie vyhrava). | Vrso -> Claude AI | 2026-09-21 */
+  .zzz6f48-mini-button.zzz-line-active, .zzz4-0-entry-btn.zzz-line-active {
+    background-color: #D4AF37 !important;
+    color: #171717 !important;
+  }
   /* [Zzz1-R37:PRESET-HIDDEN-MARK] Vrso 2026-09-11, "ak preset button schoval nejake attachmenty/pripnutia tak
      vnutro button bude cely striebornou a preset text zlatou" - plati pre M4 aj M4a (zdielana trieda, viz
      zzz1r37_toggle_all_attachments_visibility). */
@@ -4488,6 +4497,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-X:NATIVE-PASTE-IN-FIELDS - trvale pravidlo: v kazdom textovom poli (input/textarea) musi fungovat nativne vlozenie/kopirovanie z telefonu; blokovanie nativneho menu/vyberu nikdy neplati pre textove polia</span>
   <span class="module-tag">Zzz6-X:DEV-TEST-ACCOUNT - QUICK LOGIN (TEST) prihlasi na testovaci ucet "Verso1" (rezervovane meno, heslo v zdrojaku - len testovacie data), bez resetu; ODSTRANIT pred verejnym spustenim</span>
   <span class="module-tag">Zzz6-X:DELETE-CONFIRM-SIMPLE - potvrdenie mazania z kosa = len 3 polia (MV fraza, token, heslo) + CONFIRM, bez potvrdzovacej frazy</span>
+  <span class="module-tag">Zzz4-0:LINE-ACTIVE-GOLD - aktivny riadok (klik na ENTRY NUMBER pripnuteho riadku alebo SELECT) ma zlatu vypln ATTACH/ENTRY tlacidla, ohranicenie ostava podla druhu zapisu</span>
   <span class="module-tag">Zzz4-0:RECORD-TYPE-BORDER - druh zapisu podla farby ohranicenia ENTRY/ATTACH tlacidla: CL zlata, ulozeny zaznam zelena, kos cervena, archiv cierna</span>
   <span class="module-tag">Zzz6-F2:ENTER-CONFIRM-WINDOW - ENTER (3s) pri pripnutych draftoch otvori okno: zaskrtnut ktore zapisat (predvolene oznacene cez SELECT) alebo potvrdit vsetky</span>
   <span class="module-tag">Zzz6-F29:ATTACH-FINGERPRINT - pripnuta CL sa rozlisuje podla odtlacku obsahu (nie Project Name); totozna CL sa nepripne dvakrat</span>
@@ -6236,13 +6246,23 @@ function zzz6f29_linked_row_els(entryId, extraEl) {
   return els;
 }
 const ZZZ6F29_ROW_CELL_SELECTOR = '.entry-cell, .priority-dot-button, .privacy-dot-button, .status-dot-button';
+// [Zzz4-0:LINE-ACTIVE-GOLD] zlata vypln ATTACH/ENTRY tlacidla na vsetkych zobrazeniach toho isteho riadku.
+// Pri pripnutych riadkoch sa stav pamata aj v attachmente (lineActive), aby prezil prekreslenie zoznamu. | Vrso -> Claude AI | 2026-09-21
+function zzz6f29_set_line_button_active(rowEls, on) {
+  (rowEls || []).forEach(el => {
+    const btn = el.querySelector('.zzz6f48-mini-button');
+    if (btn) btn.classList.toggle('zzz-line-active', on);
+    if (el.zzzAttachmentItem) el.zzzAttachmentItem.lineActive = on;
+  });
+}
 // === [/Zzz6-F29:SELECT-LINKED] ===
 
 function zzz6f29_reset_el_part() {
   zzz6f29_selection.el.cells.forEach(c => c.el && c.el.classList.remove('zzz6f28-selected'));
   zzz6f29_selection.el.rows.forEach(r => {
-    zzz6f29_linked_row_els(r.row && r.row.entry_id, r.rowEl) // [Zzz6-F29:SELECT-LINKED] zrusit aj na pripnutych kopiach
-      .forEach(rowEl => rowEl.querySelectorAll('.zzz6f28-selected').forEach(el => el.classList.remove('zzz6f28-selected')));
+    const zzzLinked = zzz6f29_linked_row_els(r.row && r.row.entry_id, r.rowEl); // [Zzz6-F29:SELECT-LINKED] zrusit aj na pripnutych kopiach
+    zzzLinked.forEach(rowEl => rowEl.querySelectorAll('.zzz6f28-selected').forEach(el => el.classList.remove('zzz6f28-selected')));
+    zzz6f29_set_line_button_active(zzzLinked, false); // [Zzz4-0:LINE-ACTIVE-GOLD]
   });
   zzz6f28_clear_el_selection();
   zzz6f29_selection.el = { type: null, cells: [], rowKey: null, rows: [] };
@@ -6277,9 +6297,11 @@ function zzz6f29_toggle_el_row(row, rowEl) {
   const linkedEls = zzz6f29_linked_row_els(row.entry_id, rowEl); // [Zzz6-F29:SELECT-LINKED] vsetky zobrazenia toho isteho zaznamu
   if (idx >= 0) {
     linkedEls.forEach(el => el.querySelectorAll(ZZZ6F29_ROW_CELL_SELECTOR).forEach(c => c.classList.remove('zzz6f28-selected')));
+    zzz6f29_set_line_button_active(linkedEls, false); // [Zzz4-0:LINE-ACTIVE-GOLD]
     zzz6f29_selection.el.rows.splice(idx, 1);
   } else {
     linkedEls.forEach(el => el.querySelectorAll(ZZZ6F29_ROW_CELL_SELECTOR).forEach(c => c.classList.add('zzz6f28-selected')));
+    zzz6f29_set_line_button_active(linkedEls, true); // [Zzz4-0:LINE-ACTIVE-GOLD]
     zzz6f29_selection.el.rows.push({ row, rowEl });
   }
   zzz6f6_lastEntryLineRow = row;
@@ -9735,6 +9757,7 @@ function zzz6f17_build_attached_cl_grid_row(item) {
     rowEl.setAttribute('data-entry-id', String(zzzLinkedRow.entry_id));
     rowEl.zzzRowData = zzzLinkedRow;
   }
+  rowEl.zzzAttachmentItem = item; // [Zzz4-0:LINE-ACTIVE-GOLD] na zapamatanie aktivneho stavu riadku
   // [Zzz6-F29:SELECT-LINKED] 2026-09-21 - aj neulozene pripnute riadky maju identitu: PRESET = ID riadku v PRESET
   // okne, CL = odtlacok obsahu ([Zzz6-F29:ATTACH-FINGERPRINT]). Do vyberu idu ako "pseudo-riadok" s tymto klucom,
   // DELETE ich len ODOPNE (nie su to zaznamy v databaze, nic sa nemaze). | Vrso -> Claude AI | 2026-09-21
@@ -9783,6 +9806,7 @@ function zzz6f17_build_attached_cl_grid_row(item) {
   // [Zzz4-0:RECORD-TYPE-BORDER] 2026-09-21 - pripnuty riadok sa rozlisuje LEN ohranicenim (predtym EL mal plnu zelenu
   // vypln): CL/PRESET zlata (ako doteraz), ulozeny zaznam zelena, z kosa cervena, z archivu cierna | Vrso -> Claude AI | 2026-09-21
   miniBtn.classList.add(item.source === 'el' ? zzz4_0_record_type_class(item.sourceRow) : 'zzz-rec-cl');
+  if (item.lineActive) miniBtn.classList.add('zzz-line-active'); // [Zzz4-0:LINE-ACTIVE-GOLD] prezije prekreslenie
   miniPlaceholder.appendChild(miniBtn);
   rowEl.appendChild(miniPlaceholder);
   zzz6f17_bind_mini_for_attachment(miniBtn, rowEl, item);
@@ -9804,9 +9828,13 @@ function zzz6f17_build_attached_cl_grid_row(item) {
       if (item.entryNumber) numberCell.textContent = item.entryNumber;
       if (zzzLinkedRow || zzzDraftRow) { // [Zzz6-F29:SELECT-LINKED] v select mode = oznacit cely zaznam (ako ENTRY NUMBER v Database)
         numberCell.addEventListener('click', (e) => {
-          if (!zzz6f29SelectMode) return;
           e.stopPropagation();
-          zzz6f29_toggle_el_row(zzzLinkedRow || zzzDraftRow, rowEl);
+          if (zzz6f29SelectMode) {
+            zzz6f29_toggle_el_row(zzzLinkedRow || zzzDraftRow, rowEl);
+            return;
+          }
+          // [Zzz4-0:LINE-ACTIVE-GOLD] mimo select mode: klik na ENTRY NUMBER prepne zlate vyznacenie tohto riadku
+          zzz6f29_set_line_button_active([rowEl], !item.lineActive);
         });
       }
       wrapEl.appendChild(numberCell);
