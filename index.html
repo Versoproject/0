@@ -6404,7 +6404,7 @@ async function zzz6f34_move_row_to_trash(row, silent = false) {
     zzz0r1_set_db_connection_state(false, lastErrDetail, true);
     zzz6f34_pendingMoves[row.entry_id] = row;
     zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_MOVES_KEY, zzz6f34_pendingMoves);
-    if (!silent) zzz6f2_show_toast(`Presun do Trash zlyhal (#${row.entry_id}), skusi sa automaticky znova`);
+    if (!silent) zzz6f2_show_toast(`Presun do Trash zlyhal (#${row.entry_id}): ${lastErrDetail}`); // [Zzz6-F34:VISIBLE-ERROR] 2026-09-21 - presny dovod viditelne v appke (predtym len v konzole, na mobile nedostupnej) | Vrso -> Claude AI | 2026-09-21
     return false;
   }
 
@@ -17859,9 +17859,18 @@ const zzz10v1_registrationsLocalCache = {}; // username (normalizovany) -> {user
 // jednoducha uprava neskor. | Vrso -> Claude AI | 2026-08-28 ===
 async function zzz6f36_write_login_event(payload) {
   try {
-    const writePromise = sb.from('verso_verification').upsert(payload, { onConflict: 'id' });
+    // === [Zzz6-F36:LOGIN-EVENT-APPEND-ONLY] OPRAVA 2026-09-21 (Vrso: login presiel, ale toast "databaza
+    // momentalne nedostupna, oranzovy ram"). PRICINA: tu bol .upsert(onConflict:'id') na jeden riadok
+    // login-<username>. Od RLS auditu 2026-09-15 smie UPDATE na verso_verification LEN
+    // record_type='username_reservation' - takze druhy a kazdy dalsi login (riadok uz existoval -> upsert =
+    // UPDATE) bol ticho odmietnuty. Databaza NEBOLA nedostupna, zapis bol zamietnuty (pravidlo 12 v
+    // referencnom zazname: pred zatvorenim UPDATE skontrolovat upsert-y). RIESENIE: .insert() s unikatnym id
+    // na kazde prihlasenie - append-only, presne podla principu "zmena = novy zaznam, nie edit", a navyse
+    // vznika skutocna historia prihlaseni (zaklad pre buduci prah 5 neuspesnych pokusov / breach alert).
+    // UPDATE politika zostava prisna, nic sa neuvolnuje. | Vrso -> Claude AI | 2026-09-21 ===
+    const writePromise = sb.from('verso_verification').insert(payload);
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Zzz6-F36 login upsert timeout (4s)')), 4000)
+      setTimeout(() => reject(new Error('Zzz6-F36 login insert timeout (4s)')), 4000)
     );
     const { error } = await Promise.race([writePromise, timeoutPromise]);
     if (error) throw error;
@@ -20399,7 +20408,7 @@ async function zzz6f36_submit_login(options = {}) {
   // nema opodstatnenie a je zbytocne riziko. | Vrso -> Claude AI | 2026-09-02
   const loginAt = new Date().toISOString();
   const loginPayload = {
-    id: `login-${zzz10v1_normalize(username)}`, // jeden zaznam na username = "posledne prihlasenie" (upsert)
+    id: `login-${zzz10v1_normalize(username)}-${loginAt}`, // [Zzz6-F36:LOGIN-EVENT-APPEND-ONLY] 2026-09-21 - unikatne id na kazde prihlasenie (predtym jeden riadok + upsert, ktory RLS od 09-15 ticho odmietal) | Vrso -> Claude AI | 2026-09-21
     record_type: 'login_event',
     data_json: JSON.stringify({ username, password_provided: !!enteredPassword, logged_in_at: loginAt }),
     updated_at: loginAt
