@@ -4474,6 +4474,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-F33 Delete (CL clear / CL cells / move EL riadku do Trash cez F28-F29 select)</span>
   <span class="module-tag">Zzz6-F34 Move (interna funkcia, presun EL riadku z verso_entries do verso_trash)</span>
   <span class="module-tag">Zzz6-F35 Trash Workspace (Zzz2-R24, versoTrashButton - zobrazenie verso_trash)</span>
+  <span class="module-tag">Zzz6-F12:ARCHIVE-WORKSPACE (Zzz2-R25, versoArchieveButton) - nezmazatelny archiv fyzicky zmazanych zaznamov (verso_trash), len na citanie, vlastne riadky</span>
+  <span class="module-tag">Zzz6-X:DELETE-ONLY-FROM-TRASH - VYMAZAT VSETKY ENTRIES je LEN v Trash Workspace, maze len vlastne trashnute zaznamy, archiv sa nemaze</span>
   <span class="module-tag">Zzz10-0 Settings Workspace (Zzz1-R24, versoSettingsButton)</span>
   <span class="module-tag">Zzz10-0:CL command line (placeholder)</span>
   <span class="module-tag">Zzz10-0:VERSO-AI button (MEMO - buduca funkcia senzorov/obrany proti sledovaniu)</span>
@@ -15215,7 +15217,7 @@ async function zzz4_0_delete_all_entries() {
     zzz4_0_workspacePageCursor = null;
     zzz4_0_workspaceLoadedRows = [];
     zzz4_0_workspaceHasMore = false;
-    await open_database_workspace(false);
+    await open_trash_workspace(); // [Zzz6-X:DELETE-ONLY-FROM-TRASH] tlacidlo je v Trash - obnovit Trash, nie Database | Vrso -> Claude AI | 2026-09-21
   } catch (err) {
     const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
     console.error('zzz4_0_delete_all_entries zlyhalo:', errDetail);
@@ -15345,12 +15347,8 @@ async function open_database_workspace(loadMore = false) {
       : 'DATABASE WORKSPACE (Zzz4-0)');
   wrap.appendChild(title);
 
-  const deleteAllBtn = document.createElement('button');
-  deleteAllBtn.type = 'button';
-  deleteAllBtn.className = 'zzz4-0-delete-all-btn';
-  deleteAllBtn.textContent = 'VYMAZAT VSETKY ENTRIES';
-  deleteAllBtn.onclick = () => zzz4_0_open_delete_all_confirm();
-  wrap.appendChild(deleteAllBtn);
+  // [Zzz6-X:DELETE-ONLY-FROM-TRASH] 2026-09-21 - VYMAZAT VSETKY ENTRIES tlacidlo PRESUNUTE do Trash Workspace
+  // (Vrso, doslovne: "Hlavne premiestni vymazat vsetko iba do trash!"). | Vrso -> Claude AI | 2026-09-21
 
   // [Zzz6-F22-link:ENTRY-LINK] "ZRUSIT FILTER" - vidiet len ked je aktivny presny entry-number filter.
   if (entryIdFilterActive) {
@@ -15936,6 +15934,17 @@ async function open_trash_workspace() {
   title.textContent = `TRASH (Zzz4-2)${rows.length ? ' - ' + rows.length + ' zaznamov' : ''}`;
   wrap.appendChild(title);
 
+  // [Zzz6-X:DELETE-ONLY-FROM-TRASH] Vrso 2026-09-21: "Hlavne premiestni vymazat vsetko iba do trash!" - tlacidlo
+  // zije LEN tu (predtym v Database Workspace). Zobrazi sa len ked je v Trash co mazat. | Vrso -> Claude AI | 2026-09-21
+  if (rows.length > 0) {
+    const deleteAllBtn = document.createElement('button');
+    deleteAllBtn.type = 'button';
+    deleteAllBtn.className = 'zzz4-0-delete-all-btn';
+    deleteAllBtn.textContent = 'VYMAZAT VSETKY ENTRIES';
+    deleteAllBtn.onclick = () => zzz4_0_open_delete_all_confirm();
+    wrap.appendChild(deleteAllBtn);
+  }
+
   if (rows.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'db-workspace-empty';
@@ -15984,6 +15993,88 @@ async function open_trash_workspace() {
   });
 })();
 // === end Zzz2-R24 (Trash workspace) ===
+
+// === [Zzz6-F12:ARCHIVE-WORKSPACE] Vrso 2026-09-21, doslovne: "V 2-R* je archiv button. Kludne po jeho stlaceni
+// mozes archivne zaznamy ukladat tam. Neskor archiv aj trash presuniem do multiverifikacie resp. Settings
+// workspacu na to urceneho a tam bude aj restore" - ARCHIVE tlacidlo (Zzz2-R25, versoArchieveButton), doteraz
+// bez funkcie, zobrazuje verso_trash = NEZMAZATELNY archiv fyzicky zmazanych zaznamov (plni ho DB trigger
+// verso_entries_archive_on_delete_trigger pri kazdom DELETE z verso_entries). LEN NA CITANIE - ziadne mazanie,
+// ziadny restore (restore pride neskor v Settings workspace, Zzz10-T6 Restore). SELECT politika
+// verso_trash_select_own pusti LEN vlastne archivne riadky (lower(username) = verso_jwt_username()).
+// Stlpce verso_trash su text (entry_id, fields_json) - pred renderom sa prevedu na tvar verso_entries, aby
+// sa dal znovupouzit ten isty renderer riadku ako Database/Trash. | Vrso -> Claude AI | 2026-09-21 ===
+async function open_archive_workspace() {
+  const workspace = document.getElementById('versoWorkspaceSection');
+  if (!workspace) return;
+  zzz10t2_hide_m4a_template();
+  workspace.innerHTML = '<div class="db-workspace trash-workspace"><div class="db-workspace-title">ARCHIVE (Zzz6-F12)</div><div class="db-workspace-loading">Loading archive...</div></div>';
+
+  let rows = [];
+  let fetchError = null;
+  try {
+    const fetchPromise = sb.from('verso_trash').select('*').order('trashed_at', { ascending: false });
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Zzz6-F12 Supabase fetch timeout (4s)')), 4000)
+    );
+    const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+    if (error) throw error;
+    rows = data || [];
+  } catch (err) {
+    fetchError = (err && (err.message || err.details || err.hint)) || String(err);
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'db-workspace trash-workspace';
+  const title = document.createElement('div');
+  title.className = 'db-workspace-title';
+  title.textContent = `ARCHIVE (Zzz6-F12)${rows.length ? ' - ' + rows.length + ' records' : ''}`;
+  wrap.appendChild(title);
+
+  if (fetchError) {
+    const errEl = document.createElement('div');
+    errEl.className = 'db-workspace-empty';
+    errEl.textContent = `Archive could not be loaded: ${fetchError}`;
+    wrap.appendChild(errEl);
+  } else if (rows.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'db-workspace-empty';
+    empty.textContent = 'Archive is empty.';
+    wrap.appendChild(empty);
+  } else {
+    const rowsWrap = document.createElement('div');
+    rowsWrap.className = 'db-workspace-rows';
+    rows.forEach(a => {
+      let fields = {};
+      try { fields = typeof a.fields_json === 'string' ? JSON.parse(a.fields_json) : (a.fields_json || {}); } catch (e) { fields = {}; }
+      const row = {
+        entry_id: Number(a.entry_id), r1: a.r1, fields_json: fields,
+        entry_date: a.entry_date, username: a.username, updated_at: a.updated_at, is_trashed: true
+      };
+      const meta = document.createElement('div');
+      meta.style.cssText = 'font-size:8px;font-weight:700;color:#374151;padding:2px 4px;';
+      const at = a.trashed_at ? new Date(a.trashed_at).toLocaleString() : '?';
+      meta.textContent = `#${a.entry_id} - deleted: ${at}`;
+      rowsWrap.appendChild(meta);
+      rowsWrap.appendChild(zzz4_0_build_entry_row(row));
+    });
+    wrap.appendChild(rowsWrap);
+  }
+
+  zzz10t2_hide_m4a_template();
+  workspace.innerHTML = '';
+  workspace.appendChild(wrap);
+}
+
+(function bindZzz6F12ArchiveButton() {
+  const archiveBtn = document.getElementById('versoArchieveButton'); // Zzz2-R25
+  if (!archiveBtn) return;
+  archiveBtn.addEventListener('click', () => {
+    zzz6f22EntryIdFilter = null;
+    open_archive_workspace();
+    zzz6f40_workspaceOpener = () => open_archive_workspace(); // [Zzz6-F40:WORKSPACE-CAPTURE]
+  });
+})();
+// === [/Zzz6-F12:ARCHIVE-WORKSPACE] ===
 
 // === [Zzz6-F10:ORGANIZER-WORKSPACE] Vrso 2026-09-20, doslovne: "workspace umiestni do 2-layout sekcie 3 ako
 // vedla trash...urob novy button zzz2-R* (najvyssie volne) Organizer button...viac sa mi ale pozdava nazov
