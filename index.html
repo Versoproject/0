@@ -4497,6 +4497,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-X:NATIVE-PASTE-IN-FIELDS - trvale pravidlo: v kazdom textovom poli (input/textarea) musi fungovat nativne vlozenie/kopirovanie z telefonu; blokovanie nativneho menu/vyberu nikdy neplati pre textove polia</span>
   <span class="module-tag">Zzz6-X:DEV-TEST-ACCOUNT - QUICK LOGIN (TEST) prihlasi na testovaci ucet "Verso1" (rezervovane meno, heslo v zdrojaku - len testovacie data), bez resetu; ODSTRANIT pred verejnym spustenim</span>
   <span class="module-tag">Zzz6-X:DELETE-CONFIRM-SIMPLE - potvrdenie mazania z kosa = len 3 polia (MV fraza, token, heslo) + CONFIRM, bez potvrdzovacej frazy</span>
+  <span class="module-tag">Zzz13-MV:CONSENT-PERMANENT - CONSENT a PERMANENT (len Final) su samostatne riadky v tabulke verso_consents, davaju sa v USER bunke ulozeneho zaznamu; aktivny PERMANENT clena chrani zaznam pred zmazanim aj nahradenim</span>
+  <span class="module-tag">Zzz6-F14:BIG-ENTRY-NUMBER - dvojtuk na ENTRY NUMBER bunku kdekolvek (workspace, pripnute, hlavna CL, templates, PRESET) ukaze cislo velkym pismom; pri ulozenych zaznamoch ako hlavicka logu</span>
   <span class="module-tag">Zzz4-0:LINE-ACTIVE-GOLD - aktivny riadok (klik na ENTRY NUMBER pripnuteho riadku alebo SELECT) ma zlatu vypln ATTACH/ENTRY tlacidla, ohranicenie ostava podla druhu zapisu</span>
   <span class="module-tag">Zzz4-0:RECORD-TYPE-BORDER - druh zapisu podla farby ohranicenia ENTRY/ATTACH tlacidla: CL zlata, ulozeny zaznam zelena, kos cervena, archiv cierna</span>
   <span class="module-tag">Zzz6-F2:ENTER-CONFIRM-WINDOW - ENTER (3s) pri pripnutych draftoch otvori okno: zaskrtnut ktore zapisat (predvolene oznacene cez SELECT) alebo potvrdit vsetky</span>
@@ -6481,8 +6483,10 @@ async function zzz6f34_move_row_to_trash(row, silent = false) {
   // owner! Nemali by ist iba tie kde su v users uvedene ine usernames!" - Final je zamknuty LEN ked su v USER (R17)
   // aj INI useri nez vlastnik (vtedy treba ich suhlas). Final, kde si sam, smie vlastnik zmazat ako kazdy iny.
   // Rovnaka podmienka plati v DB (verso_final_needs_consent) aj v Edge Function. | Vrso -> Claude AI | 2026-09-21
-  if (zzz1r5_is_final(row) && zzz1r5_final_has_other_users(row)) {
-    zzz6f2_show_toast('Final entry with other users in USER cannot be moved to Trash - it needs their consent.');
+  // [Zzz13-MV:CONSENT-PERMANENT] 2026-09-21 - pravidlo pre Final uz NIE JE "ini useri v USER", ale AKTIVNY PERMANENT clenov
+  // (tabulka verso_consents). O tom rozhoduje databaza (trigger verso_entries_restrict_update) - pri odmietnuti
+  // appka ukaze jej presny dovod ([Zzz6-F34:VISIBLE-ERROR]). Klientska kontrola sa tu preto uz nerobi. | Vrso -> Claude AI | 2026-09-21
+  if (false) {
     return false;
   }
   // === [Zzz10-V1:REGISTER-LOCK] (SYSTEM FUNCTION) - Vrso 2026-08-28: registracne zaznamy nikdy nesmu
@@ -7971,7 +7975,7 @@ function zzz1_context_get_consent_map(consentKey) {
 // (fieldId "17" alebo "18"). Vsetko - consent bar, price/share, contacts, chat/poznamky, quickchips,
 // final-lock, ENTRY/DELETE - je IDENTICKE pre obe polia, len cielia na svoje VLASTNE hidden polia
 // (fieldId+"c"/"d"/"e"/"f") a svoj VLASTNY tag-list (entryData[fieldId]). | Vrso -> Claude AI | 2026-08-25 ===
-function zzz1_build_context_chat_window(fieldId) {
+function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRow [Zzz13-MV:CONSENT-PERMANENT] 2026-09-21
   const consentKey = fieldId + "c";
   const notesKey = fieldId + "d";
   const priceKey = fieldId + "e";
@@ -7979,6 +7983,8 @@ function zzz1_build_context_chat_window(fieldId) {
 
   const { box, removeBox } = zzz6f41_create_context_window(); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] dokovane pod CL
   box.appendChild(zzz_build_context_header(fieldId)); // [Zzz6-F23:CONTEXT-HEADER]
+  // [Zzz13-MV:CONSENT-PERMANENT] otvorene z ULOZENEHO zaznamu (USER bunka v Database) -> skutocny consent panel
+  if (fieldId === '17' && sourceRow) box.appendChild(zzz13mv_build_consent_panel(sourceRow));
 
   const canEdit = zzz1_context_can_edit(consentKey);
   const current = zzz0r1_get_current_username();
@@ -8003,7 +8009,10 @@ function zzz1_build_context_chat_window(fieldId) {
   const isConsentOn = () => workingConsentMap[current] === true;
   const renderConsentToggle = () => consentToggle.classList.toggle('is-on', isConsentOn());
   renderConsentToggle();
-  const canToggleOwnConsent = zzz1r5_is_final() ? false : (workingTags.length === 0 ? true : workingTags.includes(current));
+  // [Zzz13-MV:CONSENT-PERMANENT] 2026-09-21 - v CL (neulozeny koncept) sa consent UZ NEDAVA: patri k ULOZENEMU zaznamu
+  // (Database -> USER bunka zaznamu). Zapis do skryteho pola 17c by vytvaral duplicitne zaznamy. | Vrso -> Claude AI | 2026-09-21
+  const canToggleOwnConsent = false;
+  consentLabel.textContent = sourceRow ? 'CONSENT - see the panel above' : 'CONSENT - give it on the saved entry (Database -> USER cell)';
   if (canToggleOwnConsent) {
     consentToggle.addEventListener('click', () => {
       workingConsentMap[current] = !isConsentOn();
@@ -8102,7 +8111,7 @@ function zzz1_build_context_chat_window(fieldId) {
   // cez overeny submit_entries_to_db(). ===
   function persistLocal() {
     write_to_entry(fieldId, workingTags.join(', '));
-    write_to_entry(consentKey, JSON.stringify(workingConsentMap));
+    // [Zzz13-MV:CONSENT-PERMANENT] consent sa uz do zaznamu nezapisuje (tabulka verso_consents)
     write_to_entry(notesKey, workingNotes);
     write_to_entry(priceKey, workingPriceShare);
     write_to_entry(unitKey, workingPriceUnit);
@@ -8193,7 +8202,7 @@ function zzz1_build_context_chat_window(fieldId) {
 }
 // === [/Zzz1-CONTEXT-CHAT-WINDOW] ===
 
-function zzz6f17_open_context_select_modal() { zzz1_build_context_chat_window(ZZZ6_F17_ENTRY_ID); }
+function zzz6f17_open_context_select_modal(sourceRow) { zzz1_build_context_chat_window(ZZZ6_F17_ENTRY_ID, (sourceRow && typeof sourceRow.entry_id === 'number') ? sourceRow : null); } // [Zzz13-MV:CONSENT-PERMANENT] + zdrojovy ulozeny zaznam
 function zzz6f18_open_context_select_modal() { zzz1_build_context_chat_window("18"); }
 
 // === [Zzz6-F17-context-a:BUTTON-CELL-BIND] dedicated binding - klik na Zzz1-R17a (USER button) aj na Zzz1-R17 (cell)
@@ -9827,14 +9836,18 @@ function zzz6f17_build_attached_cl_grid_row(item) {
       numberCell.className = 'entry-cell entry-cell-readonly';
       if (item.entryNumber) numberCell.textContent = item.entryNumber;
       if (zzzLinkedRow || zzzDraftRow) { // [Zzz6-F29:SELECT-LINKED] v select mode = oznacit cely zaznam (ako ENTRY NUMBER v Database)
-        numberCell.addEventListener('click', (e) => {
-          e.stopPropagation();
+        // [Zzz6-F14:BIG-ENTRY-NUMBER] 1x tuk = vyber (select mode) / zlate vyznacenie riadku, 2x tuk = velke cislo
+        // (ulozeny zaznam -> log okno s velkym cislom, neulozeny draft -> len oznacenie) | Vrso -> Claude AI | 2026-09-21
+        zzz6f14_bind_tap_double(numberCell, () => {
           if (zzz6f29SelectMode) {
             zzz6f29_toggle_el_row(zzzLinkedRow || zzzDraftRow, rowEl);
             return;
           }
           // [Zzz4-0:LINE-ACTIVE-GOLD] mimo select mode: klik na ENTRY NUMBER prepne zlate vyznacenie tohto riadku
           zzz6f29_set_line_button_active([rowEl], !item.lineActive);
+        }, () => {
+          if (zzzLinkedRow) zzz6f14_open_entry_log_window(zzzLinkedRow);
+          else zzz6f14_show_big_number(item.label || '-', 'Attached draft - not saved yet');
         });
       }
       wrapEl.appendChild(numberCell);
@@ -14824,14 +14837,77 @@ function zzz4_0_get_field_value(row, field) {
 // databaze je - nic sa kvoli nemu nikam nezapisuje: superseded_by (nahradene), copied_from (povod), CONTENT
 // s prefixom MOVE (presun) a is_trashed. Cisla su tukatelne rovnako ako predtym v hlavicke.
 // | Vrso -> Claude AI | 2026-09-20 ===
+// === [Zzz6-F14:BIG-ENTRY-NUMBER] Vrso 2026-09-21, doslovne: "Vsade aj do templates treba zadat ze ak 2x tuknem na
+// entry number bunku tak ukaze vacsimi pismenami cislo entry number" - bunka cisla je uzka a cislo sa v nej
+// ureze. Dvojtuk na ENTRY NUMBER bunku KDEKOLVEK (workspace riadky, pripnute riadky, hlavna CL, templates/M4a,
+// PRESET) ukaze cislo VELKYM pismom. Pri ulozenych zaznamoch je to zaroven hlavicka log okna
+// (Zzz6-F14:ENTRY-LOG-WINDOW) - dvojtuk tam uz otvaral log, teraz ma log velke cislo navrchu. | Vrso -> Claude AI | 2026-09-21 ===
+function zzz6f14_build_big_number(text, subtitle) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'text-align:center;padding:6px 0 8px;';
+  const big = document.createElement('div');
+  big.style.cssText = 'font-size:44px;font-weight:800;line-height:1.1;color:#171717;letter-spacing:1px;word-break:break-all;';
+  big.textContent = text;
+  wrap.appendChild(big);
+  if (subtitle) {
+    const sub = document.createElement('div');
+    sub.style.cssText = 'font-size:10px;font-weight:700;color:#6b7280;margin-top:2px;';
+    sub.textContent = subtitle;
+    wrap.appendChild(sub);
+  }
+  return wrap;
+}
+function zzz6f14_show_big_number(text, subtitle) {
+  const { box, removeBox } = zzz6f41_create_context_window();
+  box.appendChild(zzz6f14_build_big_number(text, subtitle));
+  zzz6f41_bind_outside_click(box, () => removeBox());
+  box.addEventListener('click', () => removeBox());
+}
+// dvojtuk si meriame sami (dva tuky do 400ms) - rovnako ako Zzz6-F14:ENTRY-LOG-WINDOW; onSingle sa vykona az
+// po uplynuti okna, aby pri dvojtuku neprebehol aj jednotuk
+function zzz6f14_bind_tap_double(el, onSingle, onDouble) {
+  let lastTap = 0;
+  let singleTimer = null;
+  el.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const now = Date.now();
+    if (now - lastTap < 400) {
+      if (singleTimer) { clearTimeout(singleTimer); singleTimer = null; }
+      lastTap = 0;
+      onDouble(e);
+      return;
+    }
+    lastTap = now;
+    singleTimer = setTimeout(() => { singleTimer = null; if (onSingle) onSingle(e); }, 400);
+  });
+}
+// ostatne ENTRY NUMBER bunky (hlavna CL, templates/M4a, PRESET klony) - jeden delegovany posluchac; workspace a
+// pripnute riadky maju vlastne handlery so stopPropagation, sem sa preto nedostanu
+(function bindZzz6F14BigNumberDelegated() {
+  let lastEl = null;
+  let lastAt = 0;
+  document.addEventListener('click', (e) => {
+    const cell = e.target && e.target.closest ? e.target.closest('.entry-number-wrap .entry-cell') : null;
+    if (!cell) return;
+    if (typeof zzz6f29SelectMode !== 'undefined' && zzz6f29SelectMode) return;
+    const now = Date.now();
+    if (lastEl === cell && now - lastAt < 400) {
+      lastEl = null; lastAt = 0;
+      const txt = (cell.textContent || '').trim();
+      if (txt && txt !== '-') zzz6f14_show_big_number(`#${txt}`, 'Entry number');
+      else zzz6f14_show_big_number('-', 'No entry number yet (not saved)');
+      return;
+    }
+    lastEl = cell; lastAt = now;
+  });
+})();
+// === [/Zzz6-F14:BIG-ENTRY-NUMBER] ===
+
 function zzz6f14_open_entry_log_window(row) {
   if (!row) return;
   const { box, removeBox } = zzz6f41_create_context_window();
 
-  const head = document.createElement('div');
-  head.style.cssText = 'font-size:10px;font-weight:700;color:#171717;';
-  head.textContent = `ENTRY #${row.entry_id} - log`;
-  box.appendChild(head);
+  box.appendChild(zzz6f14_build_big_number(`#${row.entry_id}`, 'Entry number - log')); // [Zzz6-F14:BIG-ENTRY-NUMBER]
 
   const list = document.createElement('div');
   list.style.cssText = 'font-size:9px;margin:4px 0;line-height:1.6;';
@@ -14895,6 +14971,115 @@ function zzz6f14_open_entry_log_window(row) {
   zzz6f41_bind_outside_click(box, removeBox);
 }
 
+// === [Zzz13-MV:CONSENT-PERMANENT] Vrso 2026-09-21 - CONSENT a PERMANENT sa UZ NEUKLADAJU do zaznamu (skryte pole 17c):
+// zaznamy su needitovatelne, takze zaskrtnutie sa pokusalo zapisat NOVY zaznam s rovnakym obsahom a databaza ho
+// odmietla ako duplikat. Suhlas je teraz samostatny riadok v tabulke verso_consents, viazany na ULOZENY zaznam:
+//  - kazde zaskrtnutie/odskrtnutie = novy riadok (nic sa neprepisuje ani nemaze - uplna historia suhlasov)
+//  - meno, ownera aj rozsah (Project Name/Number/Category/Owner) doplna DATABAZA, appka ich nemoze podvrhnut
+//  - suhlasit smie len user uvedeny v USER toho zaznamu; PERMANENT len pri kategorii Final a len s aktivnym
+//    CONSENT; odskrtnuty CONSENT rusi aj PERMANENT
+//  - zaznam s aktivnym PERMANENT niektoreho clena sa neda trashnut, zmazat ani nahradit novou verziou
+//    (Vrso: po Final su clenovia "trvali clenovia" projektu - napr. vydana piesen, podiely/tantiemy; ked treba
+//    vynimocnu zmenu, VSETCI odskrtnu PERMANENT a tym ju ownerovi uvolnia)
+//  - owner vidi stav vsetkych clenov, clen len svoj (RLS) | Vrso -> Claude AI | 2026-09-21 ===
+function zzz13mv_build_consent_panel(row) {
+  const panel = document.createElement('div');
+  panel.style.cssText = 'border:1px solid #e5e5e5;border-radius:8px;padding:8px;margin:6px 0;font-size:12px;';
+  const title = document.createElement('div');
+  title.style.cssText = 'font-weight:800;margin-bottom:6px;';
+  title.textContent = `CONSENT - entry #${row.entry_id}`;
+  panel.appendChild(title);
+  const body = document.createElement('div');
+  body.textContent = 'Loading...';
+  panel.appendChild(body);
+
+  const me = zzz10v1_normalize(zzz_sessionUsername || '');
+  let fields = row.fields_json;
+  if (typeof fields === 'string') { try { fields = JSON.parse(fields); } catch (e) { fields = {}; } }
+  fields = fields || {};
+  const isFinal = zzz1r5_is_final_text(fields.r5 || '');
+  const members = zzz6f21_parse_tags(fields.r17 || '').map(u => zzz10v1_normalize(u)).filter(u => u && u !== '-');
+  const isMember = !!me && members.includes(me);
+  const isOwner = !!me && zzz10v1_normalize(row.username || '') === me;
+
+  const render = async () => {
+    body.textContent = 'Loading...';
+    const { data, error } = await sb.from('verso_consents').select('username, kind, active, id')
+      .eq('entry_id', row.entry_id).order('id', { ascending: false });
+    body.innerHTML = '';
+    if (error) { body.textContent = `Consent could not be loaded: ${error.message}`; return; }
+    const state = {}; // username -> { consent, permanent } podla posledneho riadku
+    (data || []).forEach(r => {
+      state[r.username] = state[r.username] || {};
+      if (state[r.username][r.kind] === undefined) state[r.username][r.kind] = r.active;
+    });
+    const effPermanent = (u) => !!(state[u] && state[u].permanent && state[u].consent);
+
+    if (isMember) {
+      const mine = state[me] || {};
+      const mkToggle = (label, on, enabled, kind, hint) => {
+        const line = document.createElement('label');
+        line.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = !!on;
+        cb.disabled = !enabled;
+        const txt = document.createElement('span');
+        txt.textContent = hint ? `${label} - ${hint}` : label;
+        cb.addEventListener('change', async () => {
+          cb.disabled = true;
+          const { error: insErr } = await sb.from('verso_consents').insert({ entry_id: row.entry_id, kind, active: cb.checked });
+          if (insErr) zzz6f2_show_toast(`Consent was not saved: ${insErr.message}`);
+          else zzz6f2_show_toast(`${label} ${cb.checked ? 'given' : 'withdrawn'} (entry #${row.entry_id}).`);
+          render();
+        });
+        line.appendChild(cb);
+        line.appendChild(txt);
+        body.appendChild(line);
+      };
+      mkToggle('CONSENT', mine.consent, true, 'consent', 'your agreement / access to this project');
+      if (isFinal) {
+        mkToggle('PERMANENT', mine.permanent && mine.consent, !!mine.consent, 'permanent',
+          mine.consent ? 'you stay a permanent member; the owner cannot delete or replace it while you hold it' : 'give CONSENT first');
+      }
+    } else if (!isOwner) {
+      const note = document.createElement('div');
+      note.textContent = 'Only users listed in USER of this entry can give consent.';
+      body.appendChild(note);
+    }
+
+    if (isOwner) {
+      const head = document.createElement('div');
+      head.style.cssText = 'font-weight:700;margin-top:6px;';
+      head.textContent = 'Members:';
+      body.appendChild(head);
+      if (members.length === 0) {
+        const none = document.createElement('div');
+        none.textContent = 'No users listed in USER.';
+        body.appendChild(none);
+      }
+      members.forEach(u => {
+        const st = state[u] || {};
+        const lineEl = document.createElement('div');
+        lineEl.textContent = `${u}: consent ${st.consent ? 'YES' : 'no'}${isFinal ? `, permanent ${effPermanent(u) ? 'YES' : 'no'}` : ''}`;
+        body.appendChild(lineEl);
+      });
+      if (isFinal) {
+        const lock = document.createElement('div');
+        lock.style.cssText = 'margin-top:4px;font-weight:700;';
+        const anyPermanent = members.some(effPermanent);
+        lock.textContent = anyPermanent
+          ? 'Protected: a member holds PERMANENT - it cannot be deleted or replaced until all release it.'
+          : 'Not protected: no member holds PERMANENT.';
+        body.appendChild(lock);
+      }
+    }
+  };
+  render();
+  return panel;
+}
+// === [/Zzz13-MV:CONSENT-PERMANENT] ===
+
 function zzz6f6_open_el_cell_context_modal(field, val, row) {
   if (!field.key) return; // ENTRY NUMBER/ENTRY DATE - automaticke, nekopirovatelne
   const match = ZZZ_CL_FIELDS.find(([, rowKey]) => rowKey === field.key);
@@ -14907,6 +15092,10 @@ function zzz6f6_open_el_cell_context_modal(field, val, row) {
   // zdielaju TUTO JEDNU funkciu (zzz4_0_build_entry_row), takze oprava plati automaticky pre obe.
   const { box, removeBox } = zzz6f41_create_context_window();
   box.appendChild(zzz_build_context_header(clId)); // [Zzz6-F23:CONTEXT-HEADER]
+  // [Zzz13-MV:CONSENT-PERMANENT] USER bunka ULOZENEHO zaznamu = miesto, kde clen dava CONSENT/PERMANENT a owner vidi stav
+  if (clId === '17' && row && row.entry_id !== undefined && !row.zzz_archived && typeof row.entry_id === 'number') {
+    box.appendChild(zzz13mv_build_consent_panel(row));
+  }
 
   const textarea = document.createElement('textarea');
   textarea.className = 'entry-modal-textarea';
@@ -15321,7 +15510,7 @@ function zzz4_0_build_entry_row(row) {
           // viz zjednodusenie pri Zzz1-R17b:CHAT-WINDOW). | Vrso -> Claude AI | 2026-08-25
           if (field.key === 'r17' || field.key === 'r18') {
             zzz1r17b_silent_copy_row_to_cl(row);
-            if (field.key === 'r17') zzz6f17_open_context_select_modal();
+            if (field.key === 'r17') zzz6f17_open_context_select_modal(row); // [Zzz13-MV:CONSENT-PERMANENT] uloženy zaznam pre consent panel
             else zzz6f18_open_context_select_modal();
             return;
           }
@@ -15526,7 +15715,8 @@ async function zzz4_0_delete_all_entries(token, mvPhrase, entryIds = null, passw
     });
     const result = await resp.json().catch(() => ({}));
     if (result && result.success) {
-      zzz6f2_show_toast(`Deleted ${result.deleted} entries from Trash (archived). A new recovery token was sent to your email.`);
+      const zzzSkipped = result.skippedPermanent ? ` ${result.skippedPermanent} kept - members hold PERMANENT.` : ''; // [Zzz13-MV:CONSENT-PERMANENT]
+      zzz6f2_show_toast(`Deleted ${result.deleted} entries from Trash (archived).${zzzSkipped} A new recovery token was sent to your email.`);
     } else {
       const reason = (result && (result.reason || result.error)) || `HTTP ${resp.status}`;
       const msg = {
