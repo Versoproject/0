@@ -10778,9 +10778,34 @@ let zzz0r1_lastKnownConnectionState = null;
 // poucha) uz NEZOBRAZUJU vizualny toast vobec - LEN sa naďalej zapisuju do console.warn/error (nic sa
 // nestraca pre debugging). Ine typy DB chyb (nie timeout) toast stale dostavaju, ako predtym. | Vrso ->
 // Claude AI | 2026-09-12 ===
+// === [Zzz0-R1:DB-STATE-RECOVERY] 2026-09-21 - Vrso: "Stale oranzova" - oprava cez heartbeat nestacila: heartbeat bezi
+// LEN so skutocnou session (po beznom logine), NIE pri autologine "Verso" - a vtedy oranzova neprestala nikdy.
+// Preto: kym je oranzovy stav zapnuty, appka kazdych 20 s sama skusi najlacnejsi mozny dopyt do databazy
+// (pocet riadkov bez stahovania dat). Ked prejde, oranzova zhasne a skusanie sa zastavi. Nezavisle od prihlasenia.
+// Posledny dovod oranzovej sa uklada do zzz0r1LastDbError - toast pri timeoutoch ostava zamerne potlaceny. | Vrso -> Claude AI | 2026-09-21 ===
+var zzz0r1DbProbeTimer = null; // var (nie let) - hoisting, bez TDZ ak by sa stav menil este pocas nacitania skriptu
+var zzz0r1LastDbError = '';
+function zzz0r1_start_db_recovery_probe() {
+  if (zzz0r1DbProbeTimer) return;
+  zzz0r1DbProbeTimer = setInterval(async () => {
+    try {
+      const probe = sb.from('verso_entries').select('entry_id', { count: 'exact', head: true }).limit(1);
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('probe timeout (8s)')), 8000));
+      const { error } = await Promise.race([probe, timeout]);
+      if (!error) zzz0r1_set_db_connection_state(true);
+    } catch (e) { /* stale nedostupne - skusi znova o 20 s */ }
+  }, 20000);
+}
+function zzz0r1_stop_db_recovery_probe() {
+  if (zzz0r1DbProbeTimer) { clearInterval(zzz0r1DbProbeTimer); zzz0r1DbProbeTimer = null; }
+}
+// === [/Zzz0-R1:DB-STATE-RECOVERY] ===
+
 function zzz0r1_set_db_connection_state(isConnected, errorDetail, suppressToast = false) {
   const label = document.getElementById('zzz6f7UsernameLabel');
   if (label) label.classList.toggle('zzz0r1-db-disconnected', !isConnected);
+  if (!isConnected) { if (errorDetail) zzz0r1LastDbError = String(errorDetail); zzz0r1_start_db_recovery_probe(); } // [Zzz0-R1:DB-STATE-RECOVERY]
+  else zzz0r1_stop_db_recovery_probe();
   if (typeof zzz_recompute_logo_status === 'function') zzz_recompute_logo_status(); // Zzz-LOGO-STATUS
   // OPRAVA (Vrso 2026-09-12, "aj tieto pripadne ine messages ktore nie su nutne minimalizuj/schovaj"):
   // rozsirene aj o DataCloneError/postMessage (Headers object could not be cloned) - ZNAMY, uz zdokumentovany
