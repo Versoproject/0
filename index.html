@@ -4475,6 +4475,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-F34 Move (interna funkcia, presun EL riadku z verso_entries do verso_trash)</span>
   <span class="module-tag">Zzz6-F35 Trash Workspace (Zzz2-R24, versoTrashButton - zobrazenie verso_trash)</span>
   <span class="module-tag">Zzz6-F12:ARCHIVE-WORKSPACE (Zzz2-R25, versoArchieveButton) - nezmazatelny archiv fyzicky zmazanych zaznamov (verso_trash), len na citanie, vlastne riadky</span>
+  <span class="module-tag">Zzz6-X:DEV-TEST-ACCOUNT - QUICK LOGIN (TEST) prihlasi na testovaci ucet "Verso1" (rezervovane meno, heslo v zdrojaku - len testovacie data), bez resetu; ODSTRANIT pred verejnym spustenim</span>
   <span class="module-tag">Zzz6-X:DELETE-CONFIRM-SIMPLE - potvrdenie mazania z kosa = len 3 polia (MV fraza, token, heslo) + CONFIRM, bez potvrdzovacej frazy</span>
   <span class="module-tag">Zzz6-F29:SELECT-ALL - SELECT podrzat 3s = oznacit vsetky viditelne riadky v otvorenej utilite (Database/Trash/Archive/Organizer), druhe podrzanie zrusi vyber</span>
   <span class="module-tag">Zzz6-X:DELETE-SELECTED-FROM-TRASH - v TRASH sa daju natrvalo zmazat aj jednotlive riadky: SELECT + DELETE (5s) otvori to iste potvrdenie (fraza + token + MV fraza) len pre vybrane</span>
@@ -17669,7 +17670,7 @@ function open_settings_workspace() {
     // templaty, tento cely bod sa zase uzavrie (viz aj gate v zzz10t2_show_m4a_template() vyssie v
     // subore). | Vrso -> Claude AI | 2026-09-19 ===
     tabBtn.addEventListener('click', () => {
-      if (tab.key === 'multi-verification' && zzz10v1_normalize(zzz_sessionUsername) === 'verso') { // [Zzz0-R2:USERNAME-CASE] BUG 2026-09-21: zzz_sessionUsername je uz normalizovany ('verso'), porovnanie s 'Verso' nikdy neplatilo -> tab sa nikdy neotvoril | Vrso -> Claude AI | 2026-09-21
+      if (tab.key === 'multi-verification' && zzz6x_is_reserved_username(zzz_sessionUsername || '')) { // [Zzz6-X:DEV-TEST-ACCOUNT] Vrso 2026-09-21: "verso1 ako test ... rovnakymi pravidlami/nastaveniami" - plati pre VSETKY systemove (rezervovane) ucty, teda Verso aj Verso1 | Vrso -> Claude AI | 2026-09-21 // [Zzz0-R2:USERNAME-CASE] BUG 2026-09-21: zzz_sessionUsername je uz normalizovany ('verso'), porovnanie s 'Verso' nikdy neplatilo -> tab sa nikdy neotvoril | Vrso -> Claude AI | 2026-09-21
         if (zzz2r38_handle_special_tab_click('Multi Verification', 'Multi Verification', tabBtn, 'zzz10t2-multi-verification')) {
           return; // SELECT/MOVE spracovane, NEROB normalny tab-switch
         }
@@ -19464,25 +19465,23 @@ function zzz6f36_render_login(body) {
     quickLoginBtn.type = 'button';
     quickLoginBtn.className = 'zzz10dev-quick-login-button';
     quickLoginBtn.id = 'versoQuickLoginButton';
-    quickLoginBtn.textContent = 'QUICK LOGIN (DEV)';
-    quickLoginBtn.addEventListener('click', async () => {
-      quickLoginBtn.disabled = true;
-      quickLoginBtn.textContent = 'RESETUJEM...';
-      try {
-        await zzz6x_dev_reset_and_reregister_verso(); // Zzz6-X:DEV-FULL-RESET-LOGIN - zmaze + znovu zaregistruje "Verso" pri kazdom kliku
-      } catch (err) {
-        zzz6f2_show_toast(`Zzz6-X:DEV-FULL-RESET-LOGIN - reset/registracia zlyhala: ${err.message || err}`);
-        quickLoginBtn.disabled = false;
-        quickLoginBtn.textContent = 'QUICK LOGIN (DEV)';
-        return;
-      }
-      quickLoginBtn.textContent = 'QUICK LOGIN (DEV)';
+    quickLoginBtn.textContent = 'QUICK LOGIN (TEST)';
+    // === [Zzz6-X:DEV-TEST-ACCOUNT] Vrso 2026-09-21, doslovne: "Neurobis devlogin aspon na test konto? ... Dost
+    // nerealne sa stale prihlasovat" - Quick Login sa UZ NEPRIHLASUJE ako hlavny ucet "Verso" a UZ NIC NERESETUJE
+    // (dev_reset_verso bola diera - ktokolvek mohol zmazat a prevziat "verso", vypnute na serveri). Namiesto toho
+    // bezne prihlasenie na TESTOVACI ucet "Verso1" s pevnym heslom. "verso1" je rezervovane meno
+    // (Zzz6-X:USERNAME-EXCEPTIONS), takze si ho nikto iny nezaregistruje. Ucet sa zaklada JEDNORAZOVO cez SQL
+    // (verso-test-konto-verso1.sql). POZOR: heslo je v zdrojovom kode, takze sa na "Verso1" moze prihlasit
+    // ktokolvek - ucet je len na testovacie data, NIKDY tam nedavat nic skutocne. ODSTRANIT pred verejnym
+    // spustenim. zzz6x_dev_reset_and_reregister_verso() uz nie je volana. | Vrso -> Claude AI | 2026-09-21 ===
+    quickLoginBtn.addEventListener('click', () => {
       const userInput = document.getElementById('versoLoginUserCell');
       const contentInput = document.getElementById('versoLoginContentCell');
-      if (userInput) userInput.value = 'Verso';
+      if (userInput) userInput.value = 'Verso1';
       if (contentInput) contentInput.value = 'devquicklogin';
-      zzz6f36_submit_login(); // UZ BEZ skipVerification - ide cez skutocne overenie, viz komentar vyssie. Vyzaduje, aby "Verso" mal registrovane heslo "devquicklogin".
+      zzz6f36_submit_login();
     });
+    // === [/Zzz6-X:DEV-TEST-ACCOUNT] ===
     row.appendChild(quickLoginBtn);
   }
   // === [/Zzz6-X:VERSO-DEV-LOGIN-SECRET] ===
@@ -20206,7 +20205,7 @@ function zzz10r1_check_and_flag_username_mismatch(username) {
 function zzz10r2_logout(reason = 'manual') {
   const label = document.getElementById('zzz6f7UsernameLabel');
   // === [Zzz10-R2:PERMANENT-VERSO] viz UPDATE komentar vyssie ===
-  if (reason !== 'manual' && label && label.textContent.trim() === 'Verso') {
+  if (reason !== 'manual' && label && zzz6x_is_reserved_username(label.textContent)) { // [Zzz6-X:DEV-TEST-ACCOUNT] Verso aj Verso1 (rovnake pravidla) | Vrso -> Claude AI | 2026-09-21
     console.warn('Zzz10-R2 Log Out: preskocene (dovod != manual) - "Verso" ma trvale prihlasenie, viz [Zzz10-R2:PERMANENT-VERSO].');
     return;
   }
