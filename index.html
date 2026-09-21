@@ -4497,6 +4497,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-X:NATIVE-PASTE-IN-FIELDS - trvale pravidlo: v kazdom textovom poli (input/textarea) musi fungovat nativne vlozenie/kopirovanie z telefonu; blokovanie nativneho menu/vyberu nikdy neplati pre textove polia</span>
   <span class="module-tag">Zzz6-X:DEV-TEST-ACCOUNT - QUICK LOGIN (TEST) prihlasi na testovaci ucet "Verso1" (rezervovane meno, heslo v zdrojaku - len testovacie data), bez resetu; ODSTRANIT pred verejnym spustenim</span>
   <span class="module-tag">Zzz6-X:DELETE-CONFIRM-SIMPLE - potvrdenie mazania z kosa = len 3 polia (MV fraza, token, heslo) + CONFIRM, bez potvrdzovacej frazy</span>
+  <span class="module-tag">Zzz6-F34:RULE-REFUSAL - odmietnutie presunu do kosa pravidlom databazy (Verso zaznam, PERMANENT) nie je vypadok: bez oranzovej, bez nekonecneho opakovania, dovod raz v toaste</span>
   <span class="module-tag">Zzz13-MV:CONSENT-PERMANENT - CONSENT a PERMANENT (len Final) su samostatne riadky v tabulke verso_consents, davaju sa v USER bunke ulozeneho zaznamu; aktivny PERMANENT clena chrani zaznam pred zmazanim aj nahradenim</span>
   <span class="module-tag">Zzz6-F14:BIG-ENTRY-NUMBER - dvojtuk na ENTRY NUMBER bunku kdekolvek (workspace, pripnute, hlavna CL, templates, PRESET) ukaze cislo velkym pismom; pri ulozenych zaznamoch ako hlavicka logu</span>
   <span class="module-tag">Zzz4-0:LINE-ACTIVE-GOLD - aktivny riadok (klik na ENTRY NUMBER pripnuteho riadku alebo SELECT) ma zlatu vypln ATTACH/ENTRY tlacidla, ohranicenie ostava podla druhu zapisu</span>
@@ -6524,6 +6525,19 @@ async function zzz6f34_move_row_to_trash(row, silent = false) {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
+  // === [Zzz6-F34:RULE-REFUSAL] 2026-09-21 - Vrso: "stale oranzova" -> diagnostika ukazala "verso_entries: zaznamy
+  // vlastnene Verso sa nesmu trashnut ani zmazat". PRICINA: databaza zaznam ZAMERNE odmietla (pravidlo v triggeri -
+  // Verso zaznam / aktivny PERMANENT), ale appka to brala ako VYPADOK spojenia: zapla oranzovu a zaradila presun do
+  // fronty "skusit znova" (ulozenej v telefone) - a tak ho donekonecna opakovala a oranzova sa stale vracala.
+  // ODMIETNUTIE PRAVIDLOM (spravy z nasich triggerov zacinaju "verso_entries:") nie je vypadok: oranzova sa NEZAPNE,
+  // do fronty sa NEZARADI (a ak tam uz bol, vypadne), user dostane dovod raz. Vypadky spojenia sa spravaju ako doteraz. | Vrso -> Claude AI | 2026-09-21 ===
+  if (!updateOk && /verso_entries:/i.test(lastErrDetail)) {
+    delete zzz6f34_pendingMoves[row.entry_id];
+    zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_MOVES_KEY, zzz6f34_pendingMoves);
+    zzz6f2_show_toast(`#${row.entry_id} cannot be moved to Trash: ${lastErrDetail.replace(/^.*verso_entries:\s*/i, '')}`);
+    return false;
+  }
+  // === [/Zzz6-F34:RULE-REFUSAL] ===
   if (!updateOk) {
     console.error(`Zzz6-F34 Move (UPDATE is_trashed=true) zlyhal AJ po 2. pokuse (#${row.entry_id}). DOVOD: ${lastErrDetail}`);
     zzz0r1_set_db_connection_state(false, lastErrDetail, true);
