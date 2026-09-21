@@ -4479,6 +4479,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-X:NATIVE-PASTE-IN-FIELDS - trvale pravidlo: v kazdom textovom poli (input/textarea) musi fungovat nativne vlozenie/kopirovanie z telefonu; blokovanie nativneho menu/vyberu nikdy neplati pre textove polia</span>
   <span class="module-tag">Zzz6-X:DEV-TEST-ACCOUNT - QUICK LOGIN (TEST) prihlasi na testovaci ucet "Verso1" (rezervovane meno, heslo v zdrojaku - len testovacie data), bez resetu; ODSTRANIT pred verejnym spustenim</span>
   <span class="module-tag">Zzz6-X:DELETE-CONFIRM-SIMPLE - potvrdenie mazania z kosa = len 3 polia (MV fraza, token, heslo) + CONFIRM, bez potvrdzovacej frazy</span>
+  <span class="module-tag">Zzz6-F29:SELECT-LINKED - SELECT funguje aj na pripnutom (ATTACH) riadku; vyber je viazany na cislo zaznamu a prejavi sa na vsetkych jeho zobrazeniach naraz</span>
   <span class="module-tag">Zzz6-F29:SELECT-ALL - SELECT podrzat 3s = oznacit vsetky viditelne riadky v otvorenej utilite (Database/Trash/Archive/Organizer), druhe podrzanie zrusi vyber</span>
   <span class="module-tag">Zzz6-X:DELETE-SELECTED-FROM-TRASH - v TRASH sa daju natrvalo zmazat aj jednotlive riadky: SELECT + DELETE (5s) otvori to iste potvrdenie (fraza + token + MV fraza) len pre vybrane</span>
   <span class="module-tag">Zzz13-MV:MV-PHRASE - trvala multiverifikacna fraza zvolena userom (napr. prve slovo obľúbenej piesne, min. 4 pismena), ulozena LEN ako hash na serveri, nastavenie v Login setup pod CHANGE PASSWORD</span>
@@ -6208,10 +6209,28 @@ function zzz6f29_reset_cl_part() {
 }
 
 // reset LEN EL casti (CL ostava nedotknuty) - cisti AJ viacnasobne oznacene cele riadky (rows[])
+// === [Zzz6-F29:SELECT-LINKED] Vrso 2026-09-21, doslovne: "Nejde select na attachovanu cl/entry...zapracuj aby to
+// islo a samozrejme attachovane su prepojene na cl/el" - ten isty zaznam moze byt na obrazovke VIACKRAT naraz
+// (riadok v Database/Trash/ORG workspace + pripnuty ATTACH riadok pod CL). Vyber je viazany na CISLO ZAZNAMU, nie
+// na jeden konkretny element: oznacenie jedneho sa prejavi na VSETKYCH jeho zobrazeniach a zrusenie tiez.
+// Do vyberu ide zaznam vzdy len RAZ (mazanie/kopirovanie ho teda nespracuje dvakrat). | Vrso -> Claude AI | 2026-09-21 ===
+function zzz6f29_linked_row_els(entryId, extraEl) {
+  const els = [];
+  if (entryId !== undefined && entryId !== null && entryId !== '') {
+    document.querySelectorAll(`.db-workspace-entry-row[data-entry-id="${entryId}"], .zzz1m5-cl-row[data-entry-id="${entryId}"]`)
+      .forEach(el => els.push(el));
+  }
+  if (extraEl && !els.includes(extraEl)) els.push(extraEl);
+  return els;
+}
+const ZZZ6F29_ROW_CELL_SELECTOR = '.entry-cell, .priority-dot-button, .privacy-dot-button, .status-dot-button';
+// === [/Zzz6-F29:SELECT-LINKED] ===
+
 function zzz6f29_reset_el_part() {
   zzz6f29_selection.el.cells.forEach(c => c.el && c.el.classList.remove('zzz6f28-selected'));
   zzz6f29_selection.el.rows.forEach(r => {
-    if (r.rowEl) r.rowEl.querySelectorAll('.zzz6f28-selected').forEach(el => el.classList.remove('zzz6f28-selected'));
+    zzz6f29_linked_row_els(r.row && r.row.entry_id, r.rowEl) // [Zzz6-F29:SELECT-LINKED] zrusit aj na pripnutych kopiach
+      .forEach(rowEl => rowEl.querySelectorAll('.zzz6f28-selected').forEach(el => el.classList.remove('zzz6f28-selected')));
   });
   zzz6f28_clear_el_selection();
   zzz6f29_selection.el = { type: null, cells: [], rowKey: null, rows: [] };
@@ -6243,11 +6262,12 @@ function zzz6f29_toggle_el_row(row, rowEl) {
   if (zzz6f29_selection.el.type === 'el-cells') zzz6f29_reset_el_part();
   zzz6f29_selection.el.type = 'rows';
   const idx = zzz6f29_selection.el.rows.findIndex(r => r.row.entry_id === row.entry_id);
+  const linkedEls = zzz6f29_linked_row_els(row.entry_id, rowEl); // [Zzz6-F29:SELECT-LINKED] vsetky zobrazenia toho isteho zaznamu
   if (idx >= 0) {
-    rowEl.querySelectorAll('.entry-cell, .priority-dot-button, .privacy-dot-button, .status-dot-button').forEach(el => el.classList.remove('zzz6f28-selected'));
+    linkedEls.forEach(el => el.querySelectorAll(ZZZ6F29_ROW_CELL_SELECTOR).forEach(c => c.classList.remove('zzz6f28-selected')));
     zzz6f29_selection.el.rows.splice(idx, 1);
   } else {
-    rowEl.querySelectorAll('.entry-cell, .priority-dot-button, .privacy-dot-button, .status-dot-button').forEach(el => el.classList.add('zzz6f28-selected'));
+    linkedEls.forEach(el => el.querySelectorAll(ZZZ6F29_ROW_CELL_SELECTOR).forEach(c => c.classList.add('zzz6f28-selected')));
     zzz6f29_selection.el.rows.push({ row, rowEl });
   }
   zzz6f6_lastEntryLineRow = row;
@@ -9660,6 +9680,13 @@ ZZZ_CL_FIELDS.forEach(([entryKey, rKey]) => { ZZZ1R37_ENTRYKEY_TO_RKEY[entryKey]
 function zzz6f17_build_attached_cl_grid_row(item) {
   const rowEl = document.createElement('div');
   rowEl.className = 'numbers-row zzz1m5-cl-row';
+  // [Zzz6-F29:SELECT-LINKED] pripnuty EL riadok nesie cislo aj data zaznamu - SELECT ho tak spoji s tym istym
+  // riadkom vo workspace (a SELECT ALL / DELETE s nim pracuju ako s beznym riadkom) | Vrso -> Claude AI | 2026-09-21
+  const zzzLinkedRow = (item.source === 'el' && item.sourceRow && item.sourceRow.entry_id !== undefined) ? item.sourceRow : null;
+  if (zzzLinkedRow) {
+    rowEl.setAttribute('data-entry-id', String(zzzLinkedRow.entry_id));
+    rowEl.zzzRowData = zzzLinkedRow;
+  }
 
   // OPRAVA (Vrso 2026-09-05, "treba zosuladit cl/crm buniek... adaptivne prisposobovanie"): hlavny CRM riadok
   // (#versoCLNumbersRow) ma NAVYSE prvy .mini-wrap ovladaci stlpec (Zzz6-R48 MINI button), ktory attachnute
@@ -9713,6 +9740,13 @@ function zzz6f17_build_attached_cl_grid_row(item) {
       const numberCell = document.createElement('div');
       numberCell.className = 'entry-cell entry-cell-readonly';
       if (item.entryNumber) numberCell.textContent = item.entryNumber;
+      if (zzzLinkedRow) { // [Zzz6-F29:SELECT-LINKED] v select mode = oznacit cely zaznam (ako ENTRY NUMBER v Database)
+        numberCell.addEventListener('click', (e) => {
+          if (!zzz6f29SelectMode) return;
+          e.stopPropagation();
+          zzz6f29_toggle_el_row(zzzLinkedRow, rowEl);
+        });
+      }
       wrapEl.appendChild(numberCell);
     } else if (ZZZ1M5_DOT_WRAPS[field.wrap]) {
       const dot = document.createElement('div');
@@ -9739,7 +9773,14 @@ function zzz6f17_build_attached_cl_grid_row(item) {
       const clickable = item.source === 'el' ? !!field.key : (item.source === 'preset' ? false : !!entryKey);
       if (clickable) {
         cellEl.className = 'entry-cell zzz6f6-el-cell-copyable'; // DRY - existujuca "klikatelna bunka" vizualna trieda
-        cellEl.addEventListener('click', () => zzz6f17_context_attachment_open_source(item, field.key));
+        cellEl.addEventListener('click', (e) => {
+          if (zzz6f29SelectMode && zzzLinkedRow) { // [Zzz6-F29:SELECT-LINKED] v select mode = oznacit bunku, nie otvorit zdroj
+            e.stopPropagation();
+            zzz6f29_toggle_el_cell(field, val || '-', zzzLinkedRow, cellEl);
+            return;
+          }
+          zzz6f17_context_attachment_open_source(item, field.key);
+        });
       } else {
         // Vrso 2026-09-01 (bod 2: "entry date by mal byt aj po attachovani needitovatelny") - polia BEZ
         // entryKey (ENTRY DATE, ACKNOWLEDGEMENT - auto-generovane, mimo ZZZ_CL_FIELDS) dostavaju VIZUALNE
