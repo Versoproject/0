@@ -4479,6 +4479,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-X:NATIVE-PASTE-IN-FIELDS - trvale pravidlo: v kazdom textovom poli (input/textarea) musi fungovat nativne vlozenie/kopirovanie z telefonu; blokovanie nativneho menu/vyberu nikdy neplati pre textove polia</span>
   <span class="module-tag">Zzz6-X:DEV-TEST-ACCOUNT - QUICK LOGIN (TEST) prihlasi na testovaci ucet "Verso1" (rezervovane meno, heslo v zdrojaku - len testovacie data), bez resetu; ODSTRANIT pred verejnym spustenim</span>
   <span class="module-tag">Zzz6-X:DELETE-CONFIRM-SIMPLE - potvrdenie mazania z kosa = len 3 polia (MV fraza, token, heslo) + CONFIRM, bez potvrdzovacej frazy</span>
+  <span class="module-tag">Zzz6-F29:ATTACH-FINGERPRINT - pripnuta CL sa rozlisuje podla odtlacku obsahu (nie Project Name); totozna CL sa nepripne dvakrat</span>
   <span class="module-tag">Zzz6-F29:SELECT-LINKED - SELECT funguje aj na pripnutom (ATTACH) riadku; vyber je viazany na cislo zaznamu a prejavi sa na vsetkych jeho zobrazeniach naraz</span>
   <span class="module-tag">Zzz6-F29:SELECT-ALL - SELECT podrzat 3s = oznacit vsetky viditelne riadky v otvorenej utilite (Database/Trash/Archive/Organizer), druhe podrzanie zrusi vyber</span>
   <span class="module-tag">Zzz6-X:DELETE-SELECTED-FROM-TRASH - v TRASH sa daju natrvalo zmazat aj jednotlive riadky: SELECT + DELETE (5s) otvori to iste potvrdenie (fraza + token + MV fraza) len pre vybrane</span>
@@ -6648,13 +6649,21 @@ async function zzz6f33_trash_selected_records() {
   // workspace), DELETE (5s) ich NEPOSIELA znova do kosa, ale otvori to iste potvrdenie ako VYMAZAT VSETKY ENTRIES
   // (fraza + token + MV fraza), obmedzene LEN na tieto riadky. Archivne riadky (ARCHIVE workspace) su len na
   // citanie - nezmazu sa nikdy. | Vrso -> Claude AI | 2026-09-21 ===
-  const zzz6xSelectedRows = hasElRows
+  let zzz6xSelectedRows = hasElRows
     ? sel.el.rows.map(r => r.row).filter(Boolean)
     : (sel.el.cells[0] && sel.el.cells[0].row ? [sel.el.cells[0].row] : []);
   if (zzz6xSelectedRows.some(r => r.zzz_archived)) {
     zzz6f2_show_toast('The Archive is read-only - archived entries cannot be deleted.', 'warn');
     zzz6f29_reset_selection();
     return;
+  }
+  // [Zzz6-F29:SELECT-LINKED] 2026-09-21 - vybrane NEULOZENE pripnute riadky (CL/PRESET) sa len ODOPNU, nic sa nemaze
+  const zzzDrafts = zzz6xSelectedRows.filter(r => r.zzz_attachment_id !== undefined);
+  if (zzzDrafts.length > 0) {
+    zzzDrafts.forEach(r => zzz6f17_context_attachment_remove(r.zzz_attachment_id));
+    zzz6f2_show_toast(`Detached ${zzzDrafts.length} attachment${zzzDrafts.length === 1 ? '' : 's'} (nothing deleted).`);
+    if (zzzDrafts.length === zzz6xSelectedRows.length) { zzz6f29_reset_selection(); return; }
+    zzz6xSelectedRows = zzz6xSelectedRows.filter(r => r.zzz_attachment_id === undefined);
   }
   const zzz6xTrashedIds = zzz6xSelectedRows.filter(r => r.is_trashed === true).map(r => r.entry_id);
   if (zzz6xTrashedIds.length > 0 && zzz6xTrashedIds.length === zzz6xSelectedRows.length) {
@@ -9465,13 +9474,27 @@ let zzz6f17AttachClCounter = 0;
 // (fields.r3) medzi VSETKYMI uz pripnutymi 'cl' zaznamami - rozne rozpracovane draft CL (rozny project name)
 // sa daju pripnut VEDLA SEBA, rovnaky project name prepise existujuci zaznam (nie duplicitu). EL (source:'el')
 // ma svoj vlastny realny entry_id dedup nizsie, nedotknute. | Vrso -> Claude AI | 2026-09-11 ===
+// === [Zzz6-F29:ATTACH-FINGERPRINT] Vrso 2026-09-21, doslovne: "Odtlacok! Len vkladat sa nemozu totozne 2 cl ale
+// tak to asi je...to project name by som aj vyhodil ako vobec podmienku pri cl" - identita pripnutej CL je
+// ODTLACOK OBSAHU (vsetky polia CL v pevnom poradi ZZZ_CL_FIELDS), NIE Project Name. Predtym sa dve rozne CL s
+// rovnakym Project Name pri pripnuti prepisali do jednej. Teraz: rovnaky obsah = ta ista CL (druhy raz sa
+// nepripne), iny obsah = nova CL, aj keby mala rovnaky Project Name. | Vrso -> Claude AI | 2026-09-21 ===
+function zzz6f17_cl_fingerprint(fields) {
+  return JSON.stringify(ZZZ_CL_FIELDS.map(([, rKey]) => ((fields && fields[rKey]) || '').trim()));
+}
+// kratky stabilny kluc do HTML atributu (FNV-1a 32-bit) - na prepojenie vyberu, nie na bezpecnost
+function zzz6f17_short_key(text) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, '0');
+}
+// === [/Zzz6-F29:ATTACH-FINGERPRINT] ===
+
 function zzz6f17_context_attachment_add_cl(fieldId, closeAfter) {
   const fields = {};
   ZZZ_CL_FIELDS.forEach(([entryKey, rKey]) => { fields[rKey] = entryData[entryKey] || ''; });
-  const projectName = (fields['r3'] || '').trim();
-  let item = projectName
-    ? zzz6f17Attachments.find(a => a.source === 'cl' && (a.fields['r3'] || '').trim() === projectName)
-    : (fieldId ? zzz6f17Attachments.find(a => a.source === 'cl' && a.fieldId === fieldId) : null); // prazdny project name - fallback na povodny fieldId dedup, aby sa nehromadili nekonecne prazdne duplicity
+  const fingerprint = zzz6f17_cl_fingerprint(fields); // [Zzz6-F29:ATTACH-FINGERPRINT] namiesto Project Name
+  let item = zzz6f17Attachments.find(a => a.source === 'cl' && zzz6f17_cl_fingerprint(a.fields) === fingerprint);
   const wasExisting = !!item;
 
   if (item) {
@@ -9687,6 +9710,18 @@ function zzz6f17_build_attached_cl_grid_row(item) {
     rowEl.setAttribute('data-entry-id', String(zzzLinkedRow.entry_id));
     rowEl.zzzRowData = zzzLinkedRow;
   }
+  // [Zzz6-F29:SELECT-LINKED] 2026-09-21 - aj neulozene pripnute riadky maju identitu: PRESET = ID riadku v PRESET
+  // okne, CL = odtlacok obsahu ([Zzz6-F29:ATTACH-FINGERPRINT]). Do vyberu idu ako "pseudo-riadok" s tymto klucom,
+  // DELETE ich len ODOPNE (nie su to zaznamy v databaze, nic sa nemaze). | Vrso -> Claude AI | 2026-09-21
+  let zzzDraftRow = null;
+  if (!zzzLinkedRow && (item.source === 'cl' || item.source === 'preset')) {
+    const draftKey = item.source === 'preset'
+      ? `preset:${item.sourceEntryId}`
+      : `cl:${zzz6f17_short_key(zzz6f17_cl_fingerprint(item.fields))}`;
+    zzzDraftRow = { entry_id: draftKey, zzz_attachment_id: item.id, zzz_attachment_kind: item.source };
+    rowEl.setAttribute('data-entry-id', draftKey);
+    rowEl.zzzRowData = zzzDraftRow;
+  }
 
   // OPRAVA (Vrso 2026-09-05, "treba zosuladit cl/crm buniek... adaptivne prisposobovanie"): hlavny CRM riadok
   // (#versoCLNumbersRow) ma NAVYSE prvy .mini-wrap ovladaci stlpec (Zzz6-R48 MINI button), ktory attachnute
@@ -9740,11 +9775,11 @@ function zzz6f17_build_attached_cl_grid_row(item) {
       const numberCell = document.createElement('div');
       numberCell.className = 'entry-cell entry-cell-readonly';
       if (item.entryNumber) numberCell.textContent = item.entryNumber;
-      if (zzzLinkedRow) { // [Zzz6-F29:SELECT-LINKED] v select mode = oznacit cely zaznam (ako ENTRY NUMBER v Database)
+      if (zzzLinkedRow || zzzDraftRow) { // [Zzz6-F29:SELECT-LINKED] v select mode = oznacit cely zaznam (ako ENTRY NUMBER v Database)
         numberCell.addEventListener('click', (e) => {
           if (!zzz6f29SelectMode) return;
           e.stopPropagation();
-          zzz6f29_toggle_el_row(zzzLinkedRow, rowEl);
+          zzz6f29_toggle_el_row(zzzLinkedRow || zzzDraftRow, rowEl);
         });
       }
       wrapEl.appendChild(numberCell);
@@ -9771,6 +9806,14 @@ function zzz6f17_build_attached_cl_grid_row(item) {
       // Zzz1-R37 PRESET (2026-09-05): 'preset' zdroj je VZDY needitovatelny/readonly display - je to STATICKY
       // snapshot z tabu, klikatelnost by omylom otvarala ZIVY entryData editor namiesto ulozenej hodnoty.
       const clickable = item.source === 'el' ? !!field.key : (item.source === 'preset' ? false : !!entryKey);
+      if (zzzDraftRow) { // [Zzz6-F29:SELECT-LINKED] neulozeny riadok - v select mode kazda bunka oznaci CELY riadok
+        cellEl.addEventListener('click', (e) => {
+          if (!zzz6f29SelectMode) return;
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          zzz6f29_toggle_el_row(zzzDraftRow, rowEl);
+        }, true);
+      }
       if (clickable) {
         cellEl.className = 'entry-cell zzz6f6-el-cell-copyable'; // DRY - existujuca "klikatelna bunka" vizualna trieda
         cellEl.addEventListener('click', (e) => {
@@ -13171,6 +13214,7 @@ function zzz1r37_build_editable_cl_row(entry, onRemoved) {
   const rowEl = source.cloneNode(true);
   rowEl.removeAttribute('id');
   rowEl.classList.add('zzz1m5-cl-row');
+  if (entry && entry.id !== undefined && entry.id !== null) rowEl.setAttribute('data-entry-id', `preset:${entry.id}`); // [Zzz6-F29:SELECT-LINKED] 2026-09-21 - riadok v PRESET okne sa rozsvieti spolu s jeho pripnutou kopiou
 
   // UPDATE (Vrso 2026-09-08, "mini button by mal byt rovnako funkcny, dufam ze to mas zapracovane aj v 1-M1
   // cl module"): MINI button v klone JE TERAZ PLNE FUNKCNY - vlastny 1s (otvor checklist) / 3s (reset) per
