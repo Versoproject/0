@@ -20213,6 +20213,22 @@ function zzz10r1_check_and_flag_username_mismatch(username) {
   if (label) label.classList.toggle('zzz0r1-username-mismatch', mismatch);
   if (mismatch) {
     zzz6f2_show_toast(`Zzz10-R1 POZOR: login pod "${username}", predtym na tomto zariadeni "${expected}" (oznacene cervenym)`);
+    // [Zzz10-R1:USERNAME-GUARD] DOPLNENE 2026-09-21 (Vrso: "Verso cervenym" opakovane - zariadenie si pamatalo
+    // "Vrso", ktory uz NEEXISTUJE, a pri nesulade sa nove meno nikdy neulozilo = cervene navzdy). Straz ma
+    // upozornit, ze zariadenie pouziva INY SKUTOCNY user. Ak si zapamatany ucet uz nie je registrovany, nie je
+    // co chranit - zariadenie sa prepise na aktualny ucet a cervena zmizne. Ak zapamatany ucet stale existuje,
+    // cervena ostava ako doteraz. Pri chybe spojenia sa nerobi nic (radsej falosne cervene ako falosne zelene). | Vrso -> Claude AI | 2026-09-21
+    (async () => {
+      try {
+        const known = await zzz10v1_fetch_known_registrations_once(4000);
+        const stillExists = (known.usernames || []).some(u => zzz10v1_normalize(u) === normalizedExpected);
+        if (!stillExists) {
+          try { localStorage.setItem(ZZZ10R1_EXPECTED_USERNAME_KEY, username); } catch (e) { /* localStorage nedostupne */ }
+          if (label) label.classList.remove('zzz0r1-username-mismatch');
+          zzz6f2_show_toast(`Zzz10-R1: previous account "${expected}" no longer exists - this device is now bound to "${username}".`);
+        }
+      } catch (e) { /* bez spojenia nerozhodujeme - cervena ostava */ }
+    })();
   } else {
     try { localStorage.setItem(ZZZ10R1_EXPECTED_USERNAME_KEY, username); } catch (e) { /* localStorage nedostupne - preskocit ulozenie */ }
   }
