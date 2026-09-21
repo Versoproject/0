@@ -10793,8 +10793,18 @@ function zzz0r1_start_db_recovery_probe() {
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('probe timeout (8s)')), 8000));
       const { error } = await Promise.race([probe, timeout]);
       if (!error) zzz0r1_set_db_connection_state(true);
-    } catch (e) { /* stale nedostupne - skusi znova o 20 s */ }
+    } catch (e) { zzz0r1LastDbError = `recovery probe: ${(e && e.message) || e}`; zzz0r1_show_orange_reason(); }
   }, 20000);
+}
+// [Zzz0-R1:ORANGE-REASON] DIAGNOSTIKA 2026-09-21 - Vrso: oranzova nezhasla ani so sondou. Ukaze PRESNY dovod oranzovej
+// (aj pri timeoutoch, ktorych bezny toast je potlaceny), najviac raz za 60 s, aby neotravovala. Po vyrieseni
+// sa da zmazat. | Vrso -> Claude AI | 2026-09-21
+var zzz0r1LastOrangeReasonAt = 0;
+function zzz0r1_show_orange_reason() {
+  const now = Date.now();
+  if (now - zzz0r1LastOrangeReasonAt < 60000) return;
+  zzz0r1LastOrangeReasonAt = now;
+  zzz6f2_show_toast(`ORANGE reason: ${zzz0r1LastDbError || 'unknown (no error detail)'}`);
 }
 function zzz0r1_stop_db_recovery_probe() {
   if (zzz0r1DbProbeTimer) { clearInterval(zzz0r1DbProbeTimer); zzz0r1DbProbeTimer = null; }
@@ -10804,7 +10814,7 @@ function zzz0r1_stop_db_recovery_probe() {
 function zzz0r1_set_db_connection_state(isConnected, errorDetail, suppressToast = false) {
   const label = document.getElementById('zzz6f7UsernameLabel');
   if (label) label.classList.toggle('zzz0r1-db-disconnected', !isConnected);
-  if (!isConnected) { if (errorDetail) zzz0r1LastDbError = String(errorDetail); zzz0r1_start_db_recovery_probe(); } // [Zzz0-R1:DB-STATE-RECOVERY]
+  if (!isConnected) { if (errorDetail) zzz0r1LastDbError = String(errorDetail); zzz0r1_start_db_recovery_probe(); zzz0r1_show_orange_reason(); } // [Zzz0-R1:DB-STATE-RECOVERY]
   else zzz0r1_stop_db_recovery_probe();
   if (typeof zzz_recompute_logo_status === 'function') zzz_recompute_logo_status(); // Zzz-LOGO-STATUS
   // OPRAVA (Vrso 2026-09-12, "aj tieto pripadne ine messages ktore nie su nutne minimalizuj/schovaj"):
