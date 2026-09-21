@@ -4553,6 +4553,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz10-R3 Register button (Zzz10-M1 Login tab) - fialovy ramcek, zatial bez funkcie (cakam na upresnenie)</span>
   <span class="module-tag">Zzz6-X:VERSO-DEV-LOGIN-SECRET - jednoklikove prihlasenie ako Verso v Login module (vyvojova pomocka, ODSTRANIT pred verejnym spustenim)</span>
   <span class="module-tag">Zzz6-X:HIDE-VERSO-DEV-LOGIN - tlacidlo viditelne LEN na zariadeniach s historiou skutocneho prihlasenia (nechrani heslo samotne, len znizuje nahodne objavenie)</span>
+  <span class="module-tag">Zzz6-X:USERNAME-EXCEPTIONS - rezervovane systemove username "verso", "verso1", "verso2" ... (verso + lubovolne cislo) - bezna registracia ich odmietne; ine mena obsahujuce "verso" (universo, reverso...) su povolene</span>
   <span class="module-tag">Zzz2-R6/R7:GENERIC-CLIPBOARD-COPY-PASTE - dlhe podrzanie COPY = skopiruje fokusovane pole do internej Verso schranky, PASTE (predtym EDIT) = vlozi ho + zaznamena acknowledgement (Zzz6-F22-paste-credit)</span>
   <span class="module-tag">Zzz6-R:COPY-PASTE-EXCEPTIONS - centralny katalog vynimiek pre Zzz2-R6/R7 (aktualne: type=password polia zakazane pre COPY aj PASTE, bezpecnost)</span>
   <span class="module-tag">Zzz10-R7:PASSWORD-HASH - PREDCHADZAJUCA client-side verzia, SUPERSEDED Zzz0Auth-Gate (2026-09-02), utility funkcie ponechane bez pouzitia v realnej ceste</span>
@@ -15102,7 +15103,7 @@ function zzz4_0_open_delete_all_confirm() {
   const { box, removeBox } = zzz6f41_create_context_window();
   const warn = document.createElement('div');
   warn.className = 'zzz-context-header';
-  warn.textContent = 'POZOR: nevratne vymaze VSETKY zaznamy z databazy (verso_entries AJ verso_trash). Toto sa NEDA vratit spat.';
+  warn.textContent = 'POZOR: nevratne vymaze VSETKY TVOJE zaznamy v TRASH. Aktivne zaznamy ani archiv sa nemenia. Toto sa NEDA vratit spat.'; // [Zzz6-X:DELETE-ONLY-FROM-TRASH] | Vrso -> Claude AI | 2026-09-21
   warn.style.color = '#dc2626';
   box.appendChild(warn);
 
@@ -15200,14 +15201,17 @@ async function zzz4_0_delete_all_entries() {
     // OPRAVA (Vrso 2026-09-13, Zzz1-D2:SOFT-DELETE): po Kroku 2 (obmedzena DELETE politika) DELETE na
     // verso_entries prejde LEN na is_trashed=true riadkoch. Preto sa VSETKO najprv oznaci ako trashnute
     // (UPDATE), az POTOM sa maze (DELETE teraz uspeje na vsetkom, kedze uz je vsetko is_trashed=true).
-    const { error: updateError } = await sb.from('verso_entries').update({ is_trashed: true }).eq('is_trashed', false);
-    if (updateError) throw updateError;
-    // .neq('entry_id', 0) - Supabase vyzaduje WHERE podmienku aj pre "vsetko", entry_id je vzdy > 0.
-    const { error, count } = await sb.from('verso_entries').delete({ count: 'exact' }).neq('entry_id', 0);
+    // === [Zzz6-X:DELETE-ONLY-FROM-TRASH] OPRAVA 2026-09-21 - Vrso, doslovne: "Delete bude mozne iba z trash" a
+    // k archivu: "Tajne kopie deleted dat ... To skor asi ano". ODSTRANENE dva kroky:
+    //  (1) UPDATE is_trashed=true na VSETKOM aktivnom - UPDATE politika na verso_entries je otvorena, takze tento
+    //      krok trashoval AKTIVNE zaznamy VSETKYCH userov (DELETE ich potom pre RLS nezmazal, ale v Database
+    //      Workspace zmizli). Mazat sa ma len to, co uz v trash JE.
+    //  (2) DELETE z verso_trash - verso_trash je odteraz nezmazatelny archiv (plni ho trigger
+    //      verso_entries_archive_on_delete pri kazdom fyzickom DELETE, anon DELETE politika zatvorena).
+    // Maze sa LEN is_trashed=true; RLS (verso_entries_delete_own_trashed) navyse pusti len VLASTNE riadky. | Vrso -> Claude AI | 2026-09-21 ===
+    const { error, count } = await sb.from('verso_entries').delete({ count: 'exact' }).eq('is_trashed', true);
     if (error) throw error;
-    const { error: trashError, count: trashCount } = await sb.from('verso_trash').delete({ count: 'exact' }).neq('entry_id', 0);
-    if (trashError) throw trashError;
-    zzz6f2_show_toast(`Vymazane: ${count !== null && count !== undefined ? count : '?'} entries + ${trashCount !== null && trashCount !== undefined ? trashCount : '?'} archiv zaznamov.`);
+    zzz6f2_show_toast(`Deleted ${count !== null && count !== undefined ? count : '?'} entries from Trash (archived copy kept).`);
     zzz4_0_workspacePageCursor = null;
     zzz4_0_workspaceLoadedRows = [];
     zzz4_0_workspaceHasMore = false;
@@ -17816,6 +17820,23 @@ function zzz10v1_normalize(str) {
     .trim().toLowerCase();
 }
 
+// === [Zzz6-X:USERNAME-EXCEPTIONS] Vrso 2026-09-21, doslovne: "rozmyslam ci nezablokujeme akekolvek ine verso
+// nazvy ako username. Mozno sa to zide neskor (mozno na skutocne vynimky alebo nejake systemove alternativne
+// riesenia (ak niekto naozaj strati pristup a pod) alebo to bude aspon akesi copyright aby to nikto nezneuzil" a
+// nasledne: "Pravda vselikto ma verso v nazve a bude sa tak chciet registrovat....Tak do vynimiek daj verso1,
+// verso2,...az nekonecno." - REZERVOVANE su LEN presne tvary "verso" a "verso"+cislo (verso1, verso2, verso99...),
+// NIE akykolvek nazov obsahujuci "verso" (universo, reverso, controverso ostavaju povolene). Porovnava sa po
+// zzz10v1_normalize (pravidlo Zzz0-R2:USERNAME-CASE) - "VERSO2" aj "Verso2" su rovnako rezervovane.
+// POZOR: toto je LEN klientska kontrola v REGISTER formulari - Edge Function verso-auth-gate (akcia register) ju
+// zatial NEPOZNA, takze priamym volanim API sa da obist. Skutocne vynutenie patri na server (backlog).
+// Dev Quick Login (Zzz6-X:VERSO-DEV-LOGIN-SECRET) registruje "verso" priamo cez Edge Function, NIE cez tento
+// formular - funguje dalej. | Vrso -> Claude AI | 2026-09-21 ===
+const ZZZ6X_RESERVED_USERNAME_PATTERN = /^verso\d*$/;
+function zzz6x_is_reserved_username(name) {
+  return ZZZ6X_RESERVED_USERNAME_PATTERN.test(zzz10v1_normalize(name));
+}
+// === [/Zzz6-X:USERNAME-EXCEPTIONS] ===
+
 // === [Zzz10-DEV:REUSABLE-TEST-EMAIL] Vrso 2026-09-02 ziadost: "nedalo by sa zatial iba naprogramovat ze
 // the.verso.project bude opakovatelny pre rozne registracie? Aspon sa tak da overit noveho usera a
 // aktivacny kod je jednorazovy aj tak!!!" - VYVOJOVA VYNIMKA: presne TENTO email (jediny, ktory Vrso ma
@@ -18102,7 +18123,7 @@ async function zzz10v1_get_own_reservation(normalizedUsername, normalizedEmail) 
 function zzz10v1_render_username_highlight(mirrorEl, value, takenUsernamesNormalized) {
   mirrorEl.innerHTML = '';
   if (!value) return;
-  const isExactTaken = takenUsernamesNormalized.includes(zzz10v1_normalize(value));
+  const isExactTaken = takenUsernamesNormalized.includes(zzz10v1_normalize(value)) || zzz6x_is_reserved_username(value); // [Zzz6-X:USERNAME-EXCEPTIONS] rezervovane = cervene ako obsadene | Vrso -> Claude AI | 2026-09-21
   const span = document.createElement('span');
   span.className = isExactTaken ? 'zzz10v1-char-taken' : 'zzz10v1-char-free';
   span.textContent = value;
@@ -18126,7 +18147,7 @@ function zzz10v1_update_send_button_state(btn, username, takenUsernamesNormalize
     btn.disabled = true; // prazdne pole = este nie je co posielat
     return;
   }
-  const taken = takenUsernamesNormalized.includes(zzz10v1_normalize(trimmed));
+  const taken = takenUsernamesNormalized.includes(zzz10v1_normalize(trimmed)) || zzz6x_is_reserved_username(trimmed); // [Zzz6-X:USERNAME-EXCEPTIONS] | Vrso -> Claude AI | 2026-09-21
   btn.classList.add(taken ? 'zzz10v1-btn-taken' : 'zzz10v1-btn-available');
   btn.disabled = taken; // stlacitelne LEN ked je presne tento username volny
 }
@@ -18587,6 +18608,11 @@ async function zzz10v1_submit_register() {
   const known = await zzz10v1_fetch_known_registrations();
   zzz10v1CachedRegistrations = known;
 
+  // [Zzz6-X:USERNAME-EXCEPTIONS] rezervovany systemovy tvar (verso / verso+cislo) - finalna klientska brana | Vrso -> Claude AI | 2026-09-21
+  if (zzz6x_is_reserved_username(username)) {
+    zzz6f2_show_toast(`Zzz10-V1 Register: username "${username}" is reserved by the system - please choose another one.`);
+    return;
+  }
   if (known.usernames.includes(normalizedUsername)) {
     zzz6f2_show_toast(`Zzz10-V1 Register: username "${username}" je uz zaregistrovany - registracia zamietnuta.`);
     return;
