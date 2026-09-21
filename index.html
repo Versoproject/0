@@ -15040,7 +15040,7 @@ function zzz13mv_build_consent_panel(row) {
       mkToggle('CONSENT', mine.consent, true, 'consent', 'your agreement / access to this project');
       if (isFinal) {
         mkToggle('PERMANENT', mine.permanent && mine.consent, !!mine.consent, 'permanent',
-          mine.consent ? 'you stay a permanent member; the owner cannot delete or replace it while you hold it' : 'give CONSENT first');
+          mine.consent ? 'possible once ALL members have consented; while you hold it, the owner cannot delete or replace it' : 'give CONSENT first');
       }
     } else if (!isOwner) {
       const note = document.createElement('div');
@@ -15065,12 +15065,37 @@ function zzz13mv_build_consent_panel(row) {
         body.appendChild(lineEl);
       });
       if (isFinal) {
+        // [Zzz13-MV:CONSENT-PERMANENT] bod (d) 2026-09-21 - owner si moze zapnut VLASTNY PERMANENT az po consente
+        // VSETKYCH clenov (finalizacia). Owner consent nedava - jeho PERMANENT plati sam o sebe. Ak ho po Final
+        // odskrtne, zmazat aj tak nemoze, kym PERMANENT drzi niektory clen (bod e: potom len skryt). | Vrso -> Claude AI | 2026-09-21
+        const allConsented = members.length > 0 && members.every(u => state[u] && state[u].consent);
+        const ownerLine = document.createElement('label');
+        ownerLine.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;margin-top:4px;';
+        const ownerCb = document.createElement('input');
+        ownerCb.type = 'checkbox';
+        ownerCb.checked = !!(state[me] && state[me].permanent);
+        ownerCb.disabled = !allConsented && !ownerCb.checked;
+        const ownerTxt = document.createElement('span');
+        ownerTxt.textContent = allConsented
+          ? 'Your PERMANENT (owner) - the project is finalised by all members'
+          : 'Your PERMANENT (owner) - possible once ALL members have given consent';
+        ownerCb.addEventListener('change', async () => {
+          ownerCb.disabled = true;
+          const { error: insErr } = await sb.from('verso_consents').insert({ entry_id: row.entry_id, kind: 'permanent', active: ownerCb.checked });
+          if (insErr) zzz6f2_show_toast(`PERMANENT was not saved: ${insErr.message}`);
+          else zzz6f2_show_toast(`Owner PERMANENT ${ownerCb.checked ? 'on' : 'off'} (entry #${row.entry_id}).`);
+          render();
+        });
+        ownerLine.appendChild(ownerCb);
+        ownerLine.appendChild(ownerTxt);
+        body.appendChild(ownerLine);
+
         const lock = document.createElement('div');
         lock.style.cssText = 'margin-top:4px;font-weight:700;';
-        const anyPermanent = members.some(effPermanent);
+        const anyPermanent = members.some(effPermanent) || !!(state[me] && state[me].permanent);
         lock.textContent = anyPermanent
-          ? 'Protected: a member holds PERMANENT - it cannot be deleted or replaced until all release it.'
-          : 'Not protected: no member holds PERMANENT.';
+          ? 'Protected: PERMANENT is held - it cannot be deleted or replaced until all release it.'
+          : 'Not protected: nobody holds PERMANENT.';
         body.appendChild(lock);
       }
     }
