@@ -8617,12 +8617,20 @@ async function zzz6f8_compute_request_number(projectOwner, projectNumber) {
 // obsadene az od F10). | Vrso -> Claude AI | 2026-09-20 ===
 const ZZZ_CATEGORY_BASE_CATS_KEY = 'zzz_category_base_cats';
 const ZZZ_CATEGORY_CUSTOM_CATS_KEY = 'zzz_category_custom_cats';
-const ZZZ_CATEGORY_BASE_CATS_DEFAULT = ['System', 'Templates', 'Project'];
+const ZZZ_CATEGORY_BASE_CATS_DEFAULT = ['System', 'Templates', 'Project', 'Final']; // + 'Final' 2026-09-21 - Vrso: "nastav permanentne v cats aj Final kategoriu" (Final je zaklad pravidiel CONSENT/PERMANENT) | Vrso -> Claude AI | 2026-09-21
 
 function zzz_load_category_base_cats() {
   try {
     const raw = localStorage.getItem(ZZZ_CATEGORY_BASE_CATS_KEY);
-    if (raw) { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) return parsed; }
+    // [Zzz6-F9:CATS-PERSISTENCE] 2026-09-21 - trvale kategorie sa VZDY doplnia, aj ked uz mas ulozeny starsi zoznam
+    // (inak by nova trvala kategoria, napr. Final, nikdy nepribudla na zariadeni s ulozenymi cats) | Vrso -> Claude AI | 2026-09-21
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const missing = ZZZ_CATEGORY_BASE_CATS_DEFAULT.filter(c => !parsed.some(p => String(p).toLowerCase() === c.toLowerCase()));
+        return [...missing, ...parsed];
+      }
+    }
   } catch (e) {}
   return [...ZZZ_CATEGORY_BASE_CATS_DEFAULT];
 }
@@ -20810,6 +20818,11 @@ async function zzz_session_heartbeat_tick() {
     const result = await resp.json();
 
     zzz_exit_offline_mode(); // spojenie uspesne prebehlo - urcite nie sme offline (aj ked mozno v standby, viz nizsie)
+    // [Zzz0-R1:DB-STATE-RECOVERY] 2026-09-21 - Vrso: "stale svieti na oranzovo". Oranzovy stav (zzz0r1-db-disconnected)
+    // zapne kazde zlyhanie citania/zapisu (aj obycajny timeout na pomalom 5G, ktoreho toast je zamerne potlaceny), ale
+    // vypinal ho LEN dalsi uspesny zapis - pri samotnom prezerani preto svietil donekonecna. Heartbeat prechadza cez
+    // Edge Function az do databazy, takze jeho uspech = databaza odpoveda: oranzova teraz zmizne najneskor do 35 s. | Vrso -> Claude AI | 2026-09-21
+    zzz0r1_set_db_connection_state(true);
 
     if (result.active === false) {
       zzz_enter_standby_mode(); // VYSLOVNA odpoved servera "niekto iny prevzal"
