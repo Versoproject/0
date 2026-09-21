@@ -4475,6 +4475,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-F34 Move (interna funkcia, presun EL riadku z verso_entries do verso_trash)</span>
   <span class="module-tag">Zzz6-F35 Trash Workspace (Zzz2-R24, versoTrashButton - zobrazenie verso_trash)</span>
   <span class="module-tag">Zzz6-F12:ARCHIVE-WORKSPACE (Zzz2-R25, versoArchieveButton) - nezmazatelny archiv fyzicky zmazanych zaznamov (verso_trash), len na citanie, vlastne riadky</span>
+  <span class="module-tag">Zzz6-X:DELETE-SELECTED-FROM-TRASH - v TRASH sa daju natrvalo zmazat aj jednotlive riadky: SELECT + DELETE (5s) otvori to iste potvrdenie (fraza + token + MV fraza) len pre vybrane</span>
+  <span class="module-tag">Zzz13-MV:MV-PHRASE - trvala multiverifikacna fraza zvolena userom (napr. prve slovo obľúbenej piesne, min. 4 pismena), ulozena LEN ako hash na serveri, nastavenie v Login setup pod CHANGE PASSWORD</span>
+  <span class="module-tag">Zzz6-X:DELETE-BY-TOKEN - vyprazdnenie vlastneho kosa overene jednorazovym recovery tokenom na serveri (verso-auth-gate, empty_trash_with_token), po pouziti pride novy</span>
   <span class="module-tag">Zzz6-X:DELETE-ONLY-FROM-TRASH - VYMAZAT VSETKY ENTRIES je LEN v Trash Workspace, maze len vlastne trashnute zaznamy, archiv sa nemaze</span>
   <span class="module-tag">Zzz10-0 Settings Workspace (Zzz1-R24, versoSettingsButton)</span>
   <span class="module-tag">Zzz10-0:CL command line (placeholder)</span>
@@ -6563,6 +6566,26 @@ async function zzz6f33_trash_selected_records() {
     zzz6f2_show_toast('DELETE (5s): nothing selected in the database - SELECT the record rows first.', 'warn');
     return;
   }
+  // === [Zzz6-X:DELETE-SELECTED-FROM-TRASH] Vrso 2026-09-21, doslovne: "v trash by sa malo dat vymazavat aj
+  // jednotlivo oznacenim select!" - ak su vybrane riadky UZ v kosi (is_trashed=true, t.j. SELECT v TRASH
+  // workspace), DELETE (5s) ich NEPOSIELA znova do kosa, ale otvori to iste potvrdenie ako VYMAZAT VSETKY ENTRIES
+  // (fraza + token + MV fraza), obmedzene LEN na tieto riadky. Archivne riadky (ARCHIVE workspace) su len na
+  // citanie - nezmazu sa nikdy. | Vrso -> Claude AI | 2026-09-21 ===
+  const zzz6xSelectedRows = hasElRows
+    ? sel.el.rows.map(r => r.row).filter(Boolean)
+    : (sel.el.cells[0] && sel.el.cells[0].row ? [sel.el.cells[0].row] : []);
+  if (zzz6xSelectedRows.some(r => r.zzz_archived)) {
+    zzz6f2_show_toast('The Archive is read-only - archived entries cannot be deleted.', 'warn');
+    zzz6f29_reset_selection();
+    return;
+  }
+  const zzz6xTrashedIds = zzz6xSelectedRows.filter(r => r.is_trashed === true).map(r => r.entry_id);
+  if (zzz6xTrashedIds.length > 0 && zzz6xTrashedIds.length === zzz6xSelectedRows.length) {
+    zzz6f29_reset_selection();
+    zzz4_0_open_delete_all_confirm(zzz6xTrashedIds);
+    return;
+  }
+  // === [/Zzz6-X:DELETE-SELECTED-FROM-TRASH] ===
   if (hasElRows) {
     for (const { row, rowEl } of sel.el.rows) {
       const rowEls = rowEl ? Array.from(rowEl.querySelectorAll('.entry-cell, .priority-dot-button, .privacy-dot-button, .status-dot-button')) : [];
@@ -15099,13 +15122,18 @@ function zzz4_0_apply_mini_visibility_to_row(rowEl) {
 const ZZZ4_0_DELETE_ALL_PHRASE = 'VYMAZAT VSETKO';
 // Kod je ZAMERNE hardcoded (rovnaky duch ako existujuci ZZZ6X_MULTIVERIFICATION_SECRET_CODE pri multiverification) - buduci
 // realny/dynamicky kod (napr. viazany na skutocny credential system) je len planovany.
-const ZZZ6X_DELETE_SECRET_CODE = '19284';
+// [Zzz6-X:DELETE-BY-TOKEN] 2026-09-21 - ZZZ6X_DELETE_SECRET_CODE ODSTRANENY: bol v zdrojovom kode stranky (citatelny pre
+// kazdeho) - nahradeny jednorazovym recovery tokenom overovanym SERVER-SIDE vo verso-auth-gate (akcia
+// empty_trash_with_token), ktory sa po pouziti automaticky obmeni. | Vrso -> Claude AI | 2026-09-21
 
-function zzz4_0_open_delete_all_confirm() {
+function zzz4_0_open_delete_all_confirm(entryIds = null) { // [Zzz6-X:DELETE-SELECTED-FROM-TRASH] entryIds = len vybrane riadky, null = cely vlastny kos | Vrso -> Claude AI | 2026-09-21
+  const selectedOnly = Array.isArray(entryIds) && entryIds.length > 0;
   const { box, removeBox } = zzz6f41_create_context_window();
   const warn = document.createElement('div');
   warn.className = 'zzz-context-header';
-  warn.textContent = 'POZOR: nevratne vymaze VSETKY TVOJE zaznamy v TRASH. Aktivne zaznamy ani archiv sa nemenia. Toto sa NEDA vratit spat.'; // [Zzz6-X:DELETE-ONLY-FROM-TRASH] | Vrso -> Claude AI | 2026-09-21
+  warn.textContent = selectedOnly
+    ? `WARNING: permanently deletes the ${entryIds.length} SELECTED entr${entryIds.length === 1 ? 'y' : 'ies'} (#${entryIds.join(', #')}) from your Trash. A copy is kept in the Archive. This CANNOT be undone.`
+    : 'WARNING: permanently deletes ALL YOUR entries in Trash. Active entries and the Archive are not touched. This CANNOT be undone.'; // [Zzz6-X:DELETE-ONLY-FROM-TRASH] + [Zzz6-X:DELETE-SELECTED-FROM-TRASH] | Vrso -> Claude AI | 2026-09-21
   warn.style.color = '#dc2626';
   box.appendChild(warn);
 
@@ -15130,22 +15158,41 @@ function zzz4_0_open_delete_all_confirm() {
   input.setAttribute('spellcheck', 'false');
   box.appendChild(input);
 
-  // NOVE (Vrso 2026-09-13) - druhe, oddelene pole pre tajny kod.
+  // [Zzz6-X:DELETE-BY-TOKEN] 2026-09-21 - Vrso: "Nema tam uz ist jednorazovy token?" - namiesto tajneho kodu (bol
+  // citatelny v zdrojaku) sa zadava JEDNORAZOVY recovery token z emailu; overuje ho server, po pouziti pride novy. | Vrso -> Claude AI | 2026-09-21
   const codeInstructions = document.createElement('div');
   codeInstructions.style.fontSize = '11px';
   codeInstructions.style.padding = '6px 2px';
-  codeInstructions.textContent = 'A zadaj tajny kod:';
+  codeInstructions.textContent = 'Paste your recovery token from email (one-time - a new one is sent after use):';
   box.appendChild(codeInstructions);
 
   const codeInput = document.createElement('input');
   codeInput.type = 'password'; // maskovane pisanie, rovnaky princip ako CONTENT/tajny kod inde v appke
   codeInput.className = 'zzz6f48-mini-row-value-input';
-  codeInput.placeholder = 'sem napis tajny kod...';
+  codeInput.placeholder = 'recovery token...';
   codeInput.autocapitalize = 'off';
   codeInput.autocomplete = 'off';
   codeInput.setAttribute('autocorrect', 'off');
   codeInput.setAttribute('spellcheck', 'false');
   box.appendChild(codeInput);
+
+  // [Zzz13-MV:MV-PHRASE] Vrso 2026-09-21: "Snad uz multi-frazove heslo sa bude vyplnat aj v trash na vymaz vsetko"
+  // - tretie pole: MV fraza, overuje ju server spolu s tokenom. | Vrso -> Claude AI | 2026-09-21
+  const phraseInstructions = document.createElement('div');
+  phraseInstructions.style.fontSize = '11px';
+  phraseInstructions.style.padding = '6px 2px';
+  phraseInstructions.textContent = 'And your MV phrase:';
+  box.appendChild(phraseInstructions);
+
+  const phraseInput = document.createElement('input');
+  phraseInput.type = 'password';
+  phraseInput.className = 'zzz6f48-mini-row-value-input';
+  phraseInput.placeholder = 'MV phrase...';
+  phraseInput.autocapitalize = 'off';
+  phraseInput.autocomplete = 'off';
+  phraseInput.setAttribute('autocorrect', 'off');
+  phraseInput.setAttribute('spellcheck', 'false');
+  box.appendChild(phraseInput);
 
   const matchStatus = document.createElement('div');
   matchStatus.style.fontSize = '10px';
@@ -15160,29 +15207,31 @@ function zzz4_0_open_delete_all_confirm() {
 
   function checkMatch() {
     return input.value.trim().toUpperCase() === ZZZ4_0_DELETE_ALL_PHRASE
-      && codeInput.value.trim() === ZZZ6X_DELETE_SECRET_CODE;
+      && codeInput.value.trim().length > 0 // [Zzz6-X:DELETE-BY-TOKEN] spravnost tokenu overi az server
+      && phraseInput.value.trim().length > 0; // [Zzz13-MV:MV-PHRASE] spravnost frazy overi az server
   }
 
   const confirmBtn = document.createElement('button');
   confirmBtn.type = 'button';
   confirmBtn.className = 'entry-modal-delete';
-  confirmBtn.textContent = 'VYMAZAT VSETKO NATRVALO';
+  confirmBtn.textContent = selectedOnly ? 'DELETE SELECTED PERMANENTLY' : 'DELETE ALL PERMANENTLY';
   confirmBtn.disabled = true;
   confirmBtn.style.opacity = '0.4';
   function refreshMatchState() {
     const matches = checkMatch();
     confirmBtn.disabled = !matches;
     confirmBtn.style.opacity = matches ? '1' : '0.4';
-    matchStatus.textContent = matches ? '✓ zhoda - tlacidlo je teraz aktivne' : 'Caka sa na presnu zhodu (fraza + tajny kod)...';
+    matchStatus.textContent = matches ? '✓ ready - token and MV phrase are verified by the server' : 'Waiting for the exact confirm phrase + token + MV phrase...';
     matchStatus.style.color = matches ? '#16a34a' : '#999';
   }
   input.addEventListener('input', refreshMatchState);
   codeInput.addEventListener('input', refreshMatchState);
+  phraseInput.addEventListener('input', refreshMatchState); // [Zzz13-MV:MV-PHRASE]
   confirmBtn.onclick = async () => {
     if (!checkMatch()) return; // dvojita poistka, aj keby disabled atribut zlyhal
     confirmBtn.disabled = true;
     confirmBtn.textContent = 'Mazem...';
-    await zzz4_0_delete_all_entries();
+    await zzz4_0_delete_all_entries(codeInput.value.trim(), phraseInput.value.trim(), selectedOnly ? entryIds : null); // [Zzz6-X:DELETE-BY-TOKEN] + [Zzz13-MV:MV-PHRASE] + [Zzz6-X:DELETE-SELECTED-FROM-TRASH]
     removeBox();
   };
 
@@ -15198,31 +15247,40 @@ function zzz4_0_open_delete_all_confirm() {
   zzz6f41_bind_outside_click(box, () => removeBox());
 }
 
-async function zzz4_0_delete_all_entries() {
+async function zzz4_0_delete_all_entries(token, mvPhrase, entryIds = null) {
+  // === [Zzz6-X:DELETE-BY-TOKEN] 2026-09-21 - mazanie uz NEROBI appka priamo (RLS), ale Edge Function
+  // verso-auth-gate (akcia empty_trash_with_token): overi jednorazovy recovery token, zmaze LEN vlastne
+  // trashnute zaznamy (archivuje ich DB trigger do verso_trash), token zrusi a posle novy. Plati aj
+  // [Zzz6-X:DELETE-ONLY-FROM-TRASH] - aktivne zaznamy ani archiv sa nemenia. | Vrso -> Claude AI | 2026-09-21 ===
+  const username = zzz10v1_normalize(zzz_sessionUsername || ''); // [Zzz0-R2:USERNAME-CASE]
+  if (!username) {
+    zzz6f2_show_toast('Emptying the trash requires being logged in.');
+    return;
+  }
   try {
-    // OPRAVA (Vrso 2026-09-13, Zzz1-D2:SOFT-DELETE): po Kroku 2 (obmedzena DELETE politika) DELETE na
-    // verso_entries prejde LEN na is_trashed=true riadkoch. Preto sa VSETKO najprv oznaci ako trashnute
-    // (UPDATE), az POTOM sa maze (DELETE teraz uspeje na vsetkom, kedze uz je vsetko is_trashed=true).
-    // === [Zzz6-X:DELETE-ONLY-FROM-TRASH] OPRAVA 2026-09-21 - Vrso, doslovne: "Delete bude mozne iba z trash" a
-    // k archivu: "Tajne kopie deleted dat ... To skor asi ano". ODSTRANENE dva kroky:
-    //  (1) UPDATE is_trashed=true na VSETKOM aktivnom - UPDATE politika na verso_entries je otvorena, takze tento
-    //      krok trashoval AKTIVNE zaznamy VSETKYCH userov (DELETE ich potom pre RLS nezmazal, ale v Database
-    //      Workspace zmizli). Mazat sa ma len to, co uz v trash JE.
-    //  (2) DELETE z verso_trash - verso_trash je odteraz nezmazatelny archiv (plni ho trigger
-    //      verso_entries_archive_on_delete pri kazdom fyzickom DELETE, anon DELETE politika zatvorena).
-    // Maze sa LEN is_trashed=true; RLS (verso_entries_delete_own_trashed) navyse pusti len VLASTNE riadky. | Vrso -> Claude AI | 2026-09-21 ===
-    const { error, count } = await sb.from('verso_entries').delete({ count: 'exact' }).eq('is_trashed', true);
-    if (error) throw error;
-    zzz6f2_show_toast(`Deleted ${count !== null && count !== undefined ? count : '?'} entries from Trash (archived copy kept).`);
-    zzz4_0_workspacePageCursor = null;
-    zzz4_0_workspaceLoadedRows = [];
-    zzz4_0_workspaceHasMore = false;
-    await open_trash_workspace(); // [Zzz6-X:DELETE-ONLY-FROM-TRASH] tlacidlo je v Trash - obnovit Trash, nie Database | Vrso -> Claude AI | 2026-09-21
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ action: 'empty_trash_with_token', username, token, mvPhrase, ...(entryIds ? { entryIds } : {}) })
+    });
+    const result = await resp.json().catch(() => ({}));
+    if (result && result.success) {
+      zzz6f2_show_toast(`Deleted ${result.deleted} entries from Trash (archived). A new recovery token was sent to your email.`);
+    } else {
+      const reason = (result && (result.reason || result.error)) || `HTTP ${resp.status}`;
+      const msg = {
+        invalid_token: 'Token does not match (or was already used) - nothing was deleted.',
+        wrong_mv_phrase: 'MV phrase does not match - nothing was deleted (the token is still valid).',
+        mv_phrase_not_set: 'Set your MV phrase first (Login setup -> CHANGE PASSWORD -> MV PHRASE) - nothing was deleted.'
+      }[reason] || `Emptying the trash failed: ${reason}${result && result.detail ? ' - ' + result.detail : ''}`;
+      zzz6f2_show_toast(msg);
+    }
   } catch (err) {
     const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
     console.error('zzz4_0_delete_all_entries zlyhalo:', errDetail);
-    zzz6f2_show_toast(`Vymazanie zlyhalo: ${errDetail}`);
+    zzz6f2_show_toast(`Emptying the trash failed: ${errDetail}`);
   }
+  await open_trash_workspace(); // tlacidlo je v Trash - obnovit Trash
 }
 // === [/Zzz6-X:DELETE-USERNAME-DATABASE] ===
 
@@ -16048,7 +16106,8 @@ async function open_archive_workspace() {
       try { fields = typeof a.fields_json === 'string' ? JSON.parse(a.fields_json) : (a.fields_json || {}); } catch (e) { fields = {}; }
       const row = {
         entry_id: Number(a.entry_id), r1: a.r1, fields_json: fields,
-        entry_date: a.entry_date, username: a.username, updated_at: a.updated_at, is_trashed: true
+        entry_date: a.entry_date, username: a.username, updated_at: a.updated_at, is_trashed: true,
+        zzz_archived: true // [Zzz6-X:DELETE-SELECTED-FROM-TRASH] archivny riadok - SELECT+DELETE ho nesmie poslat na mazanie
       };
       const meta = document.createElement('div');
       meta.style.cssText = 'font-size:8px;font-weight:700;color:#374151;padding:2px 4px;';
@@ -20846,10 +20905,102 @@ function zzz10m2_render_login_setup(body) {
     });
     changePwRow.appendChild(confirmBtn);
 
+    // === [Zzz13-MV:MV-PHRASE] Vrso 2026-09-21, doslovne: "frazu nech si zvoli konkretne username. Zatial mozes
+    // pridat do change password nejako podobne aby tam bol aj view button tej frazy" - DRUHY riadok pod NEW
+    // PASSWORD, presne ten isty format (spacer + pole s VIEW + CONFIRM), zobrazuje sa tym istym CHANGE PASSWORD
+    // klikom. VIEW odhaluje LEN prave pisanu frazu - ulozena fraza sa NEDA zobrazit spat, server drzi len jej hash
+    // (verso-auth-gate, akcia set_mv_phrase). Overenie pouziva aktualne heslo z [Zzz6-F36:LAST-CREDENTIALS] cache
+    // (rovnako ako CHANGE PASSWORD). | Vrso -> Claude AI | 2026-09-21 ===
+    const phraseRow = document.createElement('div');
+    phraseRow.className = 'zzz10r4-changepw-row';
+    phraseRow.style.display = 'none';
+
+    const phraseSpacer = document.createElement('div');
+    phraseSpacer.className = 'zzz10r4-changepw-spacer';
+    phraseRow.appendChild(phraseSpacer);
+
+    const phraseWrap = document.createElement('div');
+    phraseWrap.className = 'zzz6f36-login-field-wrap';
+    const phraseLabel = document.createElement('button');
+    phraseLabel.type = 'button';
+    phraseLabel.className = 'entry-number-button';
+    phraseLabel.disabled = true;
+    phraseLabel.textContent = 'MV PHRASE';
+    phraseWrap.appendChild(phraseLabel);
+
+    const phraseInputWrap = document.createElement('div');
+    phraseInputWrap.className = 'zzz10m2-prefilled-input-wrap';
+    const phraseInput = document.createElement('input');
+    phraseInput.type = 'password';
+    phraseInput.className = 'entry-cell zzz6f36-login-local-input';
+    phraseInput.id = 'versoMvPhraseInput';
+    phraseInput.autocomplete = 'off';
+    phraseInput.setAttribute('autocapitalize', 'off');
+    phraseInput.setAttribute('spellcheck', 'false');
+    phraseInput.placeholder = 'min. 4 letters';
+    phraseInputWrap.appendChild(phraseInput);
+
+    const phraseViewBtn = document.createElement('button');
+    phraseViewBtn.type = 'button';
+    phraseViewBtn.className = 'zzz10m2-reveal-button';
+    phraseViewBtn.setAttribute('aria-label', 'Hold to view phrase');
+    phraseViewBtn.textContent = 'VIEW';
+    const zzz13mv_reveal = () => { phraseInput.type = 'text'; phraseViewBtn.classList.add('zzz10m2-active'); };
+    const zzz13mv_hide = () => { phraseInput.type = 'password'; phraseViewBtn.classList.remove('zzz10m2-active'); };
+    phraseViewBtn.addEventListener('mousedown', zzz13mv_reveal);
+    phraseViewBtn.addEventListener('touchstart', (e) => { e.preventDefault(); zzz13mv_reveal(); }, { passive: false });
+    phraseViewBtn.addEventListener('mouseup', zzz13mv_hide);
+    phraseViewBtn.addEventListener('mouseleave', zzz13mv_hide);
+    phraseViewBtn.addEventListener('touchend', zzz13mv_hide);
+    phraseViewBtn.addEventListener('touchcancel', zzz13mv_hide);
+    phraseInputWrap.appendChild(phraseViewBtn);
+    phraseWrap.appendChild(phraseInputWrap);
+    phraseRow.appendChild(phraseWrap);
+
+    const phraseConfirmBtn = document.createElement('button');
+    phraseConfirmBtn.type = 'button';
+    phraseConfirmBtn.className = 'zzz10r4-confirm-button';
+    phraseConfirmBtn.textContent = 'SAVE MV PHRASE';
+    phraseConfirmBtn.addEventListener('click', async () => {
+      const mvPhrase = phraseInput.value.trim();
+      if (zzz10v1_normalize(mvPhrase).length < 4) { zzz6f2_show_toast('Zzz13-MV: the phrase must have at least 4 letters.'); return; }
+      phraseConfirmBtn.disabled = true;
+      try {
+        const resp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+          body: JSON.stringify({ action: 'set_mv_phrase', username: zzz10v1_normalize(zzz6f36LastLoginUsername), password: zzz6f36LastLoginPassword, mvPhrase })
+        });
+        const result = await resp.json().catch(() => ({}));
+        if (result.success) {
+          phraseInput.value = '';
+          phraseRow.style.display = 'none';
+          zzz6f2_show_toast('Zzz13-MV: phrase saved. SAVE AND KEEP IT SAFE - it can never be shown again.');
+        } else {
+          const reasonText = {
+            wrong_password: 'the cached current password does not match (log in again and try right after)',
+            not_registered: 'account is not registered',
+            phrase_too_short: 'the phrase must have at least 4 letters',
+            password_and_phrase_required: 'missing password or phrase'
+          }[result.reason] || result.reason || result.error || `HTTP ${resp.status}`;
+          zzz6f2_show_toast(`Zzz13-MV: saving failed - ${reasonText}.`);
+        }
+      } catch (err) {
+        zzz6f2_show_toast(`Zzz13-MV: request failed. REASON: ${(err && err.message) || String(err)}`);
+      } finally {
+        phraseConfirmBtn.disabled = false;
+      }
+    });
+    phraseRow.appendChild(phraseConfirmBtn);
+    // === [/Zzz13-MV:MV-PHRASE] ===
+
     changePwBtn.addEventListener('click', () => {
-      changePwRow.style.display = changePwRow.style.display === 'none' ? 'flex' : 'none';
+      const show = changePwRow.style.display === 'none';
+      changePwRow.style.display = show ? 'flex' : 'none';
+      phraseRow.style.display = show ? 'flex' : 'none'; // [Zzz13-MV:MV-PHRASE] zobrazuje sa spolu
     });
     row.appendChild(changePwRow);
+    row.appendChild(phraseRow); // [Zzz13-MV:MV-PHRASE]
   }
   // === [/Zzz10-R4:CHANGE-PASSWORD] ===
 
