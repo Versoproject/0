@@ -8422,7 +8422,17 @@ function zzz1r17b_consent_model(sourceRow) {
 // (17e JSON {user: hodnota}, 17f jednotka) a meni ich len project owner, kym zaznam nie je ulozeny Final.
 // | Vrso -> Claude AI | 2026-09-21 ===
 var zzz6f57LastSourceRow = null;
+// [Zzz6-F57] 2026-09-21 - Vrso: "staci ked sa raz otvori consent okno a rovnakym povelom zavriet" - vzdy NAJVIAC JEDNO
+// consent okno; ten isty povel (rovnaky user / rovnaky zoznam) ho zavrie, iny povel ho vymeni. | Vrso -> Claude AI | 2026-09-21
+var zzz6f57Open = null; // { key, close }
 function zzz6f57_open_consent_window(sourceRow = null, onlyUser = null, readOnly = false) {
+  const zzzKey = (onlyUser ? 'user:' + zzz10v1_normalize(onlyUser) : 'all') + (readOnly ? ':ro' : '');
+  if (zzz6f57Open) {
+    const same = zzz6f57Open.key === zzzKey;
+    zzz6f57Open.close();
+    zzz6f57Open = null;
+    if (same) return; // rovnaky povel = zavriet
+  }
   if (sourceRow === null) sourceRow = zzz6f57LastSourceRow;
   const openedAt = Date.now(); // [Zzz6-F57] pozri nizsie - ochrana pred okamzitym zatvorenim
   const { box, removeBox } = zzz6f41_create_context_window();
@@ -8446,7 +8456,13 @@ function zzz6f57_open_consent_window(sourceRow = null, onlyUser = null, readOnly
     // [Zzz6-F57] 2026-09-21 - Vrso: CONTACTS okno = "zoznam vsetkych users v danej entry/projekte (toggle buttons iba
     // viditelne ale needitovatelne!!)" - readOnly vypne vsetky prepinace aj podiely; menit sa da len v okne jedneho usera
     const ro = (cfg) => readOnly ? Object.assign(cfg, { consentEnabled: false, permEnabled: false, shareEnabled: false, unitEnabled: false }) : cfg;
-    if (!onlyUser && m.ownerDefined) list.appendChild(zzz1r17b_build_consent_line(ro(m.lineFor(m.ownerRaw, true, render))));
+    // PROJECT OWNER vzdy hore a so ZLATYM ohranicenim (Vrso 2026-09-21: "musi byt project owner vzdy hore a zvyrazni
+    // zlatym ohranicenim") | Vrso -> Claude AI | 2026-09-21
+    if (!onlyUser && m.ownerDefined) {
+      const ownerLine = zzz1r17b_build_consent_line(ro(m.lineFor(m.ownerRaw, true, render)));
+      ownerLine.style.border = '2px solid #d4af37';
+      list.appendChild(ownerLine);
+    }
     const ms = onlyUser ? m.members().filter(u => zzz10v1_normalize(u) === zzz10v1_normalize(onlyUser)) : m.members();
     if (ms.length === 0) {
       const none = document.createElement('div');
@@ -8460,7 +8476,8 @@ function zzz6f57_open_consent_window(sourceRow = null, onlyUser = null, readOnly
   m.load().then(render);
   const actions = document.createElement('div');
   actions.className = 'entry-modal-actions';
-  const close = () => { if (!readOnly) m.saveShares(); removeBox(); };
+  const close = () => { if (!readOnly) m.saveShares(); removeBox(); if (zzz6f57Open && zzz6f57Open.key === zzzKey) zzz6f57Open = null; };
+  zzz6f57Open = { key: zzzKey, close };
   const closeBtn = document.createElement('button');
   closeBtn.className = 'entry-modal-delete zzz1r17b-close-btn';
   closeBtn.textContent = '✕';
@@ -8533,10 +8550,11 @@ function zzz1_build_user_window(sourceRow = null) {
   const contactsBtn = document.createElement('button');
   contactsBtn.type = 'button';
   contactsBtn.className = 'zzz1r17b-contacts-button';
-  contactsBtn.textContent = 'CONTACTS';
-  contactsBtn.title = 'Tap = contacts window (not ready yet) / hold 1.5s = consent window';
-  contactsBtn.addEventListener('click', () => zzz6f2_show_toast('CONTACTS window is not ready yet - hold 1.5s for the CONSENT window.'));
-  zzz_bind_long_press(contactsBtn, 1500, () => { persistLocal(); zzz6f57_open_consent_window(sourceRow, null, true); }); // readOnly - len prehlad
+  // 2026-09-21 - Vrso: "contacts premenuj na consent" - tlacidlo CONSENT: tuk otvori/zavrie consent okno so vsetkymi
+  // usermi (len na pozretie); contacts okno sa otvara podrzanim bunky "+" (nizsie) | Vrso -> Claude AI | 2026-09-21
+  contactsBtn.textContent = 'CONSENT';
+  contactsBtn.title = 'Tap = consent of all users (view only) / tap again = close';
+  contactsBtn.addEventListener('click', () => { persistLocal(); zzz6f57_open_consent_window(sourceRow, null, true); });
 
   function renderChips() {
     chipsRow.innerHTML = '';
@@ -8572,6 +8590,18 @@ function zzz1_build_user_window(sourceRow = null) {
       };
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
       input.addEventListener('blur', commit);
+      // [Zzz1-R17b:CONTACTS-HOLD] 2026-09-21 - Vrso: "+bunka (co pridava contacts) urob tak aby sa dalo do nej vpisovat ako
+      // teraz ale podrzanim bunky sa bude dat otvorit contact window (uz na tom robim tak len spojime)" - podrzanie 1,5 s
+      // zavola zzz_open_contacts_window (Vrso ho dorobi); kym neexistuje, ukaze toast. Natívne menu (Citat nahlas /
+      // Prilepit) je na TEJTO bunke vypnute, inak by podrzanie prebilo - meno sa sem aj tak pise. | Vrso -> Claude AI | 2026-09-21
+      input.addEventListener('contextmenu', (e) => e.preventDefault());
+      zzz_bind_long_press(input, 1500, () => {
+        input.blur();
+        if (typeof zzz_open_contacts_window === 'function') zzz_open_contacts_window({ onPick: (name) => {
+          if (name && !workingTags.some(t => zzz10v1_normalize(t) === zzz10v1_normalize(name))) { workingTags.push(name); persistLocal(); renderChips(); }
+        } });
+        else zzz6f2_show_toast('CONTACTS window is not ready yet.');
+      });
       chipsRow.appendChild(input);
     }
   }
