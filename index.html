@@ -8262,6 +8262,7 @@ function zzz1r17b_parse_share_map(raw) {
 function zzz1_build_user_window(sourceRow = null) {
   const fieldId = '17', notesKey = '17d', priceKey = '17e', unitKey = '17f';
   const { box, removeBox } = zzz6f41_create_context_window();
+  box.style.color = '#171717'; // [Zzz1-R17b:USER-WINDOW] OPRAVA 2026-09-21 - text bez vlastnej farby dedil bielu = mena a nadpisy boli neviditelne
   box.appendChild(zzz_build_context_header(fieldId));
 
   const meRaw = (zzz0r1_get_current_username() || '').trim();
@@ -8326,6 +8327,20 @@ function zzz1_build_user_window(sourceRow = null) {
     return l;
   };
   const members = () => workingTags.filter(u => zzz10v1_normalize(u) !== ownerN && u.trim() && u.trim() !== '-');
+  // [Zzz1-R17b:USER-WINDOW] PRICE / % SHARE priamo v riadku kazdeho usera - pevna sirka (trieda inak roztiahla pole na celu sirku)
+  const mkShare = (user) => {
+    const share = document.createElement('input');
+    share.type = 'text';
+    share.className = 'zzz1r17b-price-share';
+    share.style.setProperty('width', '72px', 'important');
+    share.style.setProperty('min-width', '72px', 'important');
+    share.style.setProperty('flex', '0 0 72px', 'important');
+    share.placeholder = 'share';
+    share.value = shareMap[user] !== undefined ? shareMap[user] : (shareMap['*'] !== undefined ? shareMap['*'] : '');
+    share.disabled = !canEditList;
+    share.addEventListener('input', () => { shareMap[user] = share.value; delete shareMap['*']; });
+    return share;
+  };
 
   function render() {
     // OWNER
@@ -8333,15 +8348,20 @@ function zzz1_build_user_window(sourceRow = null) {
     const oRow = document.createElement('div');
     oRow.style.cssText = rowStyle;
     const oName = document.createElement('span');
-    oName.style.cssText = 'font-weight:700;flex:1;';
+    oName.style.cssText = 'font-weight:700;flex:1;min-width:70px;';
     oName.textContent = ownerRaw || '-';
     oRow.appendChild(oName);
+    // [Zzz1-R17b:USER-WINDOW] 2026-09-21 - Vrso: "chyba consent pre ownera ... ktory by mal byt zaciarknuty, ved owner musi
+    // suhlasit s navrhom co sam posiela" - ownerov CONSENT je IMPLICITNY: poslanim zaznamu s nim suhlasi, preto je
+    // vzdy zaciarknuty a neda sa odskrtnut (v databaze sa na neho ani nepyta - rozhoduje jeho PERMANENT). | Vrso -> Claude AI | 2026-09-21
+    oRow.appendChild(mkCheck('consent', true, false, () => {}));
     if (isSaved && isFinal) {
       const allConsented = members().length > 0 && members().every(u => (consentState[zzz10v1_normalize(u)] || {}).consent);
       const ownPerm = !!(consentState[ownerN] || {}).permanent;
       oRow.appendChild(mkCheck(allConsented || ownPerm ? 'PERMANENT' : 'PERMANENT (after all consent)', ownPerm,
         isOwner && (allConsented || ownPerm), (v) => insertConsent('permanent', v)));
     }
+    oRow.appendChild(mkShare(ownerRaw)); // [Zzz1-R17b:USER-WINDOW] podiel aj pre ownera, v jeho riadku
     ownerWrap.appendChild(oRow);
 
     // CONTACTS
@@ -8376,15 +8396,7 @@ function zzz1_build_user_window(sourceRow = null) {
         const hint = document.createElement('span'); hint.style.cssText = 'font-size:10px;color:#9ca3af;'; hint.textContent = 'consent after saving'; row.appendChild(hint);
       }
 
-      const share = document.createElement('input');
-      share.type = 'text';
-      share.className = 'zzz1r17b-price-share';
-      share.style.cssText = 'width:64px;min-width:64px;';
-      share.placeholder = 'share';
-      share.value = shareMap[user] !== undefined ? shareMap[user] : (shareMap['*'] !== undefined ? shareMap['*'] : '');
-      share.disabled = !canEditList;
-      share.addEventListener('input', () => { shareMap[user] = share.value; delete shareMap['*']; });
-      row.appendChild(share);
+      row.appendChild(mkShare(user));
 
       if (canEditList) {
         const x = document.createElement('button');
@@ -8450,6 +8462,12 @@ function zzz1_build_user_window(sourceRow = null) {
   else {
     notesArea.addEventListener('input', () => { workingNotes = notesArea.value; });
     notesArea.addEventListener('blur', () => persistLocal());
+    // [Zzz1-R17b:USER-WINDOW] 2026-09-21 - Vrso: "Nad notes add chip/s pre potreby ale notes" - rychle chipy nad
+    // poznamkami (rovnake QuickChips ako v povodnom okne) | Vrso -> Claude AI | 2026-09-21
+    box.appendChild(zzz1_build_quickchips_row(
+      () => workingNotes,
+      (val) => { workingNotes = val; notesArea.value = val; persistLocal(); }
+    ));
   }
   box.appendChild(notesArea);
 
@@ -8462,8 +8480,23 @@ function zzz1_build_user_window(sourceRow = null) {
     box.appendChild(notice);
   }
 
+  // [Zzz1-R17b:USER-WINDOW] 2026-09-21 - Vrso: "Kontext okno ako napr. tie s attach vsetky v rovnakom style grafiky" -
+  // rovnake tlacidla a triedy ako ostatne kontextove okna: DELETE (cervene), ATTACH (zlate), ENTRY, ZATVORIT (sive). | Vrso -> Claude AI | 2026-09-21
   const actions = document.createElement('div');
   actions.className = 'entry-modal-actions';
+  const closeModal = () => { persistLocal(); removeBox(); };
+  if (!locked) {
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'entry-modal-delete';
+    deleteBtn.textContent = 'DELETE';
+    deleteBtn.onclick = () => { workingNotes = ''; notesArea.value = ''; persistLocal(); zzz6f2_show_toast('Notes cleared (local).'); };
+    actions.appendChild(deleteBtn);
+  }
+  const attachBtn = document.createElement('button');
+  attachBtn.className = 'zzz1m5-attach-btn';
+  attachBtn.textContent = 'ATTACH';
+  attachBtn.onclick = () => { persistLocal(); zzz6f17_context_attachment_add_cl(fieldId); removeBox(); };
+  actions.appendChild(attachBtn);
   if (canEditList) {
     const entryBtn = document.createElement('button');
     entryBtn.className = 'entry-modal-copy zzz1r17b-entry-btn';
@@ -8476,14 +8509,13 @@ function zzz1_build_user_window(sourceRow = null) {
     actions.appendChild(entryBtn);
   }
   const closeBtn = document.createElement('button');
-  closeBtn.className = 'entry-modal-delete zzz1r17b-close-btn';
-  closeBtn.textContent = '✕';
-  closeBtn.setAttribute('aria-label', 'Close');
-  const closeModal = () => { persistLocal(); removeBox(); };
+  closeBtn.className = 'entry-modal-close';
+  closeBtn.textContent = 'ZATVORIT';
   closeBtn.onclick = closeModal;
   actions.appendChild(closeBtn);
   box.appendChild(actions);
   zzz6f41_bind_outside_click(box, closeModal);
+  box.scrollTop = 0; // okno vzdy od zaciatku (hlavicka + OWNER), nie odscrollovane
 }
 // === [/Zzz1-R17b:USER-WINDOW] ===
 function zzz6f17_open_context_select_modal(sourceRow) { zzz1_build_user_window((sourceRow && typeof sourceRow.entry_id === 'number') ? sourceRow : null); } // [Zzz1-R17b:USER-WINDOW] 2026-09-21 - nove okno USER (predtym zzz1_build_context_chat_window)
