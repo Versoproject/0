@@ -4539,6 +4539,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz10-R1:USERNAME-GUARD - cerveny ram na Zzz0-R1, ak login username nesedi s poslednym znamym na zariadeni</span>
   <span class="module-tag">Zzz6-X:AUTOLOGIN-VERSO - "Verso" sa VZDY automaticky prihlasi pri nacitani stranky (bez localStorage podmienky, kvoli rychlosti vyvoja) - vedomy docasny kompromis, viz komentar</span>
   <span class="module-tag">Zzz6-X:VERSO-NO-DELETE - TRVALA (nie dev-only) ochrana: DELETE politika + UPDATE trigger na verso_entries teraz zabranuju zmazaniu/trashnutiu akehokolvek zaznamu s Project Owner="Verso" - kod zije VYLUCNE v Supabase SQL, tento riadok je len odkaz</span>
+  <span class="module-tag">Zzz6-X:CL-PREFILLING - po kazdom vycisteni CL a po kazdom prihlaseni: Project Owner + User = prihlaseny user, Project Number = 1 pre systemove ucty (Verso/Verso1), Privacy prazdna = sukromna; doplna len prazdne polia</span>
   <span class="module-tag">Zzz6-X:VERSO-ENTRY-DEFAULTS - cerstva CL dostava PROJECT NUMBER=1 predvyplnene, LEN ked je prihlaseny presne "Verso" (Project Owner/User uz predtym cez Zzz1-DEFAULT-OWNER-USER)</span>
   <span class="module-tag">Zzz10-R2 Log Out button (Zzz10-0 Settings Workspace, branch 1) - odhlasi, vrati na Zzz6-F36 Login</span>
   <span class="module-tag">Zzz10-M2 Login Setup module - USER/CONTENT su LOKALNE inputy (nie entryData), CONTENT je natívny type="password" (SHOW PASSWORD odstranene 2026-09-02)</span>
@@ -6602,8 +6603,32 @@ function zzz6f33_write_entry_silent(id, text) {
 
 function zzz6f33_clear_whole_cl() {
   Object.keys(entryData).forEach(id => zzz6f33_write_entry_silent(id, ''));
+  zzz6x_apply_cl_prefill(); // [Zzz6-X:CL-PREFILLING] cerstva CL hned dostane predvyplnene hodnoty prihlaseneho usera
   refresh_database_workspace_if_open(); // JEDEN refresh na konci, nie 21x pocas cyklu
 }
+
+// === [Zzz6-X:CL-PREFILLING] Vrso 2026-09-21, doslovne: "Verso by mal mat vzdy predvyplneneho project owner ako verso.
+// Project number 1. Privacy (nezaciarknute cize privatne (dufam ze tak je) takze v databaze inym nepristupne (okrem
+// oznacenych users!" - predtym sa to dialo LEN raz pri nacitani stranky (autologin Verso), nie po beznom logine ani
+// po vycisteni CL (ENTER, DELETE 3s reset). Teraz jedna funkcia, volana po KAZDOM vycisteni celej CL a po kazdom
+// uspesnom prihlaseni. Dopĺna LEN prazdne polia (nikdy neprepise, co si uz napisal):
+//  - PROJECT OWNER (R4) a USER (R17) = prihlaseny username (povodne Zzz1-DEFAULT-OWNER-USER, teraz pre kazdeho)
+//  - PROJECT NUMBER (R2) = "1" LEN pre systemove (rezervovane) ucty Verso/Verso1 (Zzz6-X:VERSO-ENTRY-DEFAULTS)
+//  - PRIVACY (R7) sa zamerne NEDOTYKA: prazdna = SUKROMNA (Zzz6-F45:PRIVACY-FUNCTION - verejne je LEN vyslovne
+//    zaciarknute "ano"), takze kazda nova CL je sukromna uz dnes. POZOR: zatial len v appke - skutocne skrytie pred
+//    inymi v databaze zavisi od zatvorenia citania verso_entries (backlog [17]). | Vrso -> Claude AI | 2026-09-21 ===
+function zzz6x_apply_cl_prefill() {
+  let user = '';
+  try { user = (zzz0r1_get_current_username() || '').trim(); } catch (e) { user = ''; }
+  if (!user || user.toLowerCase() === 'username') return;
+  const setIfEmpty = (id, val) => {
+    if (!String(entryData[id] || '').trim()) zzz6f33_write_entry_silent(id, val);
+  };
+  setIfEmpty('4', user);
+  setIfEmpty('17', user);
+  if (zzz6x_is_reserved_username(user)) setIfEmpty('2', '1');
+}
+// === [/Zzz6-X:CL-PREFILLING] ===
 
 // OPRAVA (2026-08-23, Vrso ziadost: "chcem aby delete dokazal naraz vyriesit aj move EL do trash A CL
 // iba vymazat - vsak su to rozne moduly, tak by to mal zvladnut"): DELETE teraz spracuje CL cast AJ EL
@@ -21165,6 +21190,7 @@ async function zzz6f36_submit_login(options = {}) {
   }
 
   zzz6f7_set_login_state(true); // Zzz6-F7:LOGIN-STATE - zlate pozadie (prihlaseny)
+  setTimeout(() => zzz6x_apply_cl_prefill(), 0); // [Zzz6-X:CL-PREFILLING] po prihlaseni dopln prazdne polia CL pre tohto usera
   zzz6f36LastLoginUsername = username; // Zzz6-F36:LAST-CREDENTIALS - cache pre Login Setup redisplay
   zzz6f36LastLoginPassword = enteredPassword; // vratene 2026-09-02 (druha sprava) - viz komentar pri cache deklaracii vyssie v subore
   zzz6f37_write_audit_log('user_login', { username }); // Zzz6-F37:AUDIT-LOG (2026-08-29)
