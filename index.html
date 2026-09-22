@@ -4539,6 +4539,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz10-R1:USERNAME-GUARD - cerveny ram na Zzz0-R1, ak login username nesedi s poslednym znamym na zariadeni</span>
   <span class="module-tag">Zzz6-X:AUTOLOGIN-VERSO - "Verso" sa VZDY automaticky prihlasi pri nacitani stranky (bez localStorage podmienky, kvoli rychlosti vyvoja) - vedomy docasny kompromis, viz komentar</span>
   <span class="module-tag">Zzz6-X:VERSO-NO-DELETE - TRVALA (nie dev-only) ochrana: DELETE politika + UPDATE trigger na verso_entries teraz zabranuju zmazaniu/trashnutiu akehokolvek zaznamu s Project Owner="Verso" - kod zije VYLUCNE v Supabase SQL, tento riadok je len odkaz</span>
+  <span class="module-tag">Zzz1-R17b:USER-WINDOW - okno USER: OWNER hore (+ jeho PERMANENT), CONTACTS ako zoznam s CONSENT/PERMANENT a vlastnym podielom pri kazdom; podiely v zazname (17e JSON), consent v tabulke; Final zamyka az ulozeny zaznam</span>
   <span class="module-tag">Zzz6-X:CL-PREFILLING - po kazdom vycisteni CL a po kazdom prihlaseni: Project Owner + User = prihlaseny user, Project Number = 1 pre systemove ucty (Verso/Verso1), Privacy prazdna = sukromna; doplna len prazdne polia</span>
   <span class="module-tag">Zzz6-X:VERSO-ENTRY-DEFAULTS - cerstva CL dostava PROJECT NUMBER=1 predvyplnene, LEN ked je prihlaseny presne "Verso" (Project Owner/User uz predtym cez Zzz1-DEFAULT-OWNER-USER)</span>
   <span class="module-tag">Zzz10-R2 Log Out button (Zzz10-0 Settings Workspace, branch 1) - odhlasi, vrati na Zzz6-F36 Login</span>
@@ -8241,7 +8242,251 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
 }
 // === [/Zzz1-CONTEXT-CHAT-WINDOW] ===
 
-function zzz6f17_open_context_select_modal(sourceRow) { zzz1_build_context_chat_window(ZZZ6_F17_ENTRY_ID, (sourceRow && typeof sourceRow.entry_id === 'number') ? sourceRow : null); } // [Zzz13-MV:CONSENT-PERMANENT] + zdrojovy ulozeny zaznam
+
+// === [Zzz1-R17b:USER-WINDOW] Vrso 2026-09-21, doslovne: "Chyba tam consent vzdy vedla user (vedla nich price/share...
+// Contacts bude list ludi moze oddelovat owner hornu cast a spodnu pod contacts" a k navrhu (owner hore, contacts ako
+// zoznam s consent/permanent/podielom pri kazdom, podiely v zazname a consent v tabulke, Final zamyka az ulozeny
+// zaznam): "Ano". Nove okno USER (len R17 - COMMUNICATION R18 ostava na povodnom zzz1_build_context_chat_window):
+//  - OWNER hore, oddeleny; pri ulozenom Final zazname aj ownerov PERMANENT
+//  - CONTACTS = zoznam ludi; pri kazdom CONSENT, pri Final aj PERMANENT, a vlastny PRICE / % SHARE
+//  - PODIELY patria do ZAZNAMU (17e = JSON {user: hodnota}, 17f = jednotka) - owner ich urci pred ENTER a clenovia
+//    svojim consentom suhlasia prave s nimi; CONSENT/PERMANENT su v tabulke verso_consents (Zzz13-MV:CONSENT-PERMANENT)
+//  - FINAL zamyka az ULOZENY zaznam: v neulozenej CL moze owner pridavat userov aj podiely aj pri kategorii Final
+//    (predtym zalezalo na poradi - kto zvolil Final skor, uz userov nepridal = "+chip raz je raz nie je")
+//  - clen prepina len svoj riadok, owner vidi stav vsetkych a upravuje zoznam aj podiely | Vrso -> Claude AI | 2026-09-21 ===
+function zzz1r17b_parse_share_map(raw) {
+  if (!raw) return {};
+  try { const p = JSON.parse(raw); if (p && typeof p === 'object' && !Array.isArray(p)) return p; } catch (e) {}
+  return { '*': String(raw) }; // stary format = jedno cislo pre vsetkych
+}
+function zzz1_build_user_window(sourceRow = null) {
+  const fieldId = '17', notesKey = '17d', priceKey = '17e', unitKey = '17f';
+  const { box, removeBox } = zzz6f41_create_context_window();
+  box.appendChild(zzz_build_context_header(fieldId));
+
+  const meRaw = (zzz0r1_get_current_username() || '').trim();
+  const me = zzz10v1_normalize(meRaw);
+  const ownerRaw = (entryData['4'] || '').trim() || meRaw;
+  const ownerN = zzz10v1_normalize(ownerRaw);
+  const isOwner = !!me && me === ownerN;
+  const isSaved = !!(sourceRow && typeof sourceRow.entry_id === 'number');
+  const isFinal = zzz1r5_is_final();
+  const locked = isSaved && isFinal;        // Final zamyka AZ ulozeny zaznam
+  const canEditList = isOwner && !locked;   // zoznam a podiely upravuje len owner
+
+  let workingTags = zzz6f21_parse_tags(entryData[fieldId]);
+  let workingNotes = entryData[notesKey] || '';
+  let shareMap = zzz1r17b_parse_share_map(entryData[priceKey]);
+  let workingUnit = entryData[unitKey] || '%';
+  let consentState = {}; // username(normalized) -> {consent, permanent} z tabulky (len pri ulozenom zazname)
+
+  const section = (label) => {
+    const h = document.createElement('div');
+    h.style.cssText = 'font-size:11px;font-weight:800;margin:8px 0 4px;letter-spacing:.5px;';
+    h.textContent = label;
+    return h;
+  };
+  const rowStyle = 'display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #eee;font-size:12px;flex-wrap:wrap;';
+
+  const ownerWrap = document.createElement('div');
+  box.appendChild(section('OWNER'));
+  box.appendChild(ownerWrap);
+
+  const contactsHead = document.createElement('div');
+  contactsHead.style.cssText = 'display:flex;align-items:center;gap:6px;';
+  const contactsTitle = section('CONTACTS');
+  contactsTitle.style.flex = '1';
+  contactsHead.appendChild(contactsTitle);
+  const unitSelect = document.createElement('select');
+  unitSelect.className = 'zzz1r17b-price-unit';
+  ['%', '€', '$', 'USD', 'EUR'].forEach(u => {
+    const o = document.createElement('option'); o.value = u; o.textContent = u; if (u === workingUnit) o.selected = true; unitSelect.appendChild(o);
+  });
+  unitSelect.disabled = !canEditList;
+  unitSelect.addEventListener('change', () => { workingUnit = unitSelect.value; });
+  contactsHead.appendChild(unitSelect);
+  box.appendChild(contactsHead);
+  const listWrap = document.createElement('div');
+  box.appendChild(listWrap);
+
+  const insertConsent = async (kind, active) => {
+    const { error } = await sb.from('verso_consents').insert({ entry_id: sourceRow.entry_id, kind, active });
+    if (error) zzz6f2_show_toast(`${kind.toUpperCase()} was not saved: ${error.message}`);
+    else zzz6f2_show_toast(`${kind.toUpperCase()} ${active ? 'on' : 'off'} (entry #${sourceRow.entry_id}).`);
+    await loadConsents();
+  };
+  const mkCheck = (label, on, enabled, onChange) => {
+    const l = document.createElement('label');
+    l.style.cssText = 'display:inline-flex;align-items:center;gap:3px;font-size:11px;';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = !!on; cb.disabled = !enabled;
+    if (enabled) cb.addEventListener('change', () => { cb.disabled = true; onChange(cb.checked); });
+    l.appendChild(cb);
+    const t = document.createElement('span'); t.textContent = label; l.appendChild(t);
+    return l;
+  };
+  const members = () => workingTags.filter(u => zzz10v1_normalize(u) !== ownerN && u.trim() && u.trim() !== '-');
+
+  function render() {
+    // OWNER
+    ownerWrap.innerHTML = '';
+    const oRow = document.createElement('div');
+    oRow.style.cssText = rowStyle;
+    const oName = document.createElement('span');
+    oName.style.cssText = 'font-weight:700;flex:1;';
+    oName.textContent = ownerRaw || '-';
+    oRow.appendChild(oName);
+    if (isSaved && isFinal) {
+      const allConsented = members().length > 0 && members().every(u => (consentState[zzz10v1_normalize(u)] || {}).consent);
+      const ownPerm = !!(consentState[ownerN] || {}).permanent;
+      oRow.appendChild(mkCheck(allConsented || ownPerm ? 'PERMANENT' : 'PERMANENT (after all consent)', ownPerm,
+        isOwner && (allConsented || ownPerm), (v) => insertConsent('permanent', v)));
+    }
+    ownerWrap.appendChild(oRow);
+
+    // CONTACTS
+    listWrap.innerHTML = '';
+    const list = members();
+    if (list.length === 0) {
+      const none = document.createElement('div');
+      none.style.cssText = 'font-size:11px;color:#6b7280;padding:4px 0;';
+      none.textContent = canEditList ? 'No contacts yet - add users below.' : 'No contacts.';
+      listWrap.appendChild(none);
+    }
+    list.forEach(user => {
+      const uN = zzz10v1_normalize(user);
+      const st = consentState[uN] || {};
+      const row = document.createElement('div');
+      row.style.cssText = rowStyle;
+      const name = document.createElement('span');
+      name.style.cssText = 'font-weight:700;min-width:70px;flex:1;';
+      name.textContent = user;
+      row.appendChild(name);
+
+      if (isSaved) {
+        const itsMe = uN === me;
+        const canSee = itsMe || isOwner; // clen vidi len svoj stav (RLS), owner vsetkych
+        if (canSee) {
+          row.appendChild(mkCheck('consent', st.consent, itsMe, (v) => insertConsent('consent', v)));
+          if (isFinal) row.appendChild(mkCheck('permanent', st.consent && st.permanent, itsMe && !!st.consent, (v) => insertConsent('permanent', v)));
+        } else {
+          const hid = document.createElement('span'); hid.style.cssText = 'font-size:10px;color:#9ca3af;'; hid.textContent = '(private)'; row.appendChild(hid);
+        }
+      } else {
+        const hint = document.createElement('span'); hint.style.cssText = 'font-size:10px;color:#9ca3af;'; hint.textContent = 'consent after saving'; row.appendChild(hint);
+      }
+
+      const share = document.createElement('input');
+      share.type = 'text';
+      share.className = 'zzz1r17b-price-share';
+      share.style.cssText = 'width:64px;min-width:64px;';
+      share.placeholder = 'share';
+      share.value = shareMap[user] !== undefined ? shareMap[user] : (shareMap['*'] !== undefined ? shareMap['*'] : '');
+      share.disabled = !canEditList;
+      share.addEventListener('input', () => { shareMap[user] = share.value; delete shareMap['*']; });
+      row.appendChild(share);
+
+      if (canEditList) {
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'zzz1r17b-chip-close';
+        x.textContent = '×';
+        x.setAttribute('aria-label', `Remove ${user}`);
+        x.onclick = () => { workingTags = workingTags.filter(t => t !== user); delete shareMap[user]; render(); };
+        row.appendChild(x);
+      }
+      listWrap.appendChild(row);
+    });
+
+    if (canEditList) {
+      const add = document.createElement('input');
+      add.type = 'text';
+      add.className = 'zzz1r17b-chip-input';
+      add.placeholder = '+ add user';
+      add.style.marginTop = '6px';
+      const commit = () => {
+        const v = add.value.trim();
+        if (v && !workingTags.some(t => zzz10v1_normalize(t) === zzz10v1_normalize(v))) { workingTags.push(v); render(); }
+        else add.value = '';
+      };
+      add.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
+      add.addEventListener('blur', commit);
+      listWrap.appendChild(add);
+    }
+  }
+
+  async function loadConsents() {
+    if (!isSaved) return;
+    const { data, error } = await sb.from('verso_consents').select('username, kind, active, id')
+      .eq('entry_id', sourceRow.entry_id).order('id', { ascending: false });
+    if (error) { zzz6f2_show_toast(`Consent could not be loaded: ${error.message}`); return; }
+    consentState = {};
+    (data || []).forEach(r => {
+      consentState[r.username] = consentState[r.username] || {};
+      if (consentState[r.username][r.kind] === undefined) consentState[r.username][r.kind] = r.active;
+    });
+    render();
+  }
+
+  function persistLocal() {
+    if (!locked) {
+      if (!workingTags.some(t => zzz10v1_normalize(t) === ownerN) && ownerRaw) workingTags.unshift(ownerRaw);
+      write_to_entry(fieldId, workingTags.join(', '));
+      write_to_entry(priceKey, Object.keys(shareMap).length ? JSON.stringify(shareMap) : '');
+      write_to_entry(unitKey, workingUnit);
+    }
+    write_to_entry(notesKey, workingNotes);
+  }
+
+  render();
+  loadConsents();
+
+  const notesArea = document.createElement('textarea');
+  notesArea.className = 'zzz1r17b-notes-area';
+  notesArea.value = workingNotes;
+  notesArea.placeholder = 'Chat-Notes...';
+  notesArea.style.marginTop = '8px';
+  if (locked) notesArea.disabled = true;
+  else {
+    notesArea.addEventListener('input', () => { workingNotes = notesArea.value; });
+    notesArea.addEventListener('blur', () => persistLocal());
+  }
+  box.appendChild(notesArea);
+
+  if (locked || !isOwner) {
+    const notice = document.createElement('div');
+    notice.className = 'zzz1r17b-readonly-notice';
+    notice.textContent = locked
+      ? 'FINAL (saved) - the list and shares are locked. Members give CONSENT / PERMANENT on their own line.'
+      : 'Only the project owner edits the list and shares. You set your own CONSENT on your line (on a saved entry).';
+    box.appendChild(notice);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'entry-modal-actions';
+  if (canEditList) {
+    const entryBtn = document.createElement('button');
+    entryBtn.className = 'entry-modal-copy zzz1r17b-entry-btn';
+    entryBtn.textContent = 'ENTRY';
+    entryBtn.onclick = async () => {
+      persistLocal();
+      const ok = await submit_entries_to_db({ skipDuplicateCheck: true });
+      if (ok) { box.classList.add('zzz1r17b-success-border'); setTimeout(() => removeBox(), 600); }
+    };
+    actions.appendChild(entryBtn);
+  }
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'entry-modal-delete zzz1r17b-close-btn';
+  closeBtn.textContent = '✕';
+  closeBtn.setAttribute('aria-label', 'Close');
+  const closeModal = () => { persistLocal(); removeBox(); };
+  closeBtn.onclick = closeModal;
+  actions.appendChild(closeBtn);
+  box.appendChild(actions);
+  zzz6f41_bind_outside_click(box, closeModal);
+}
+// === [/Zzz1-R17b:USER-WINDOW] ===
+function zzz6f17_open_context_select_modal(sourceRow) { zzz1_build_user_window((sourceRow && typeof sourceRow.entry_id === 'number') ? sourceRow : null); } // [Zzz1-R17b:USER-WINDOW] 2026-09-21 - nove okno USER (predtym zzz1_build_context_chat_window)
 function zzz6f18_open_context_select_modal() { zzz1_build_context_chat_window("18"); }
 
 // === [Zzz6-F17-context-a:BUTTON-CELL-BIND] dedicated binding - klik na Zzz1-R17a (USER button) aj na Zzz1-R17 (cell)
