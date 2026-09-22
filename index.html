@@ -8293,7 +8293,11 @@ function zzz1r17b_build_consent_line(o) {
   }
   const toggles = document.createElement('div');
   toggles.style.cssText = 'display:flex;gap:6px;align-items:center;flex-shrink:0;';
-  const mkToggle = (on, enabled, title, onChange, gold) => {
+  const mkToggle = (on, enabled, title, onChange, gold, caption) => {
+    // [Zzz1-R17b:CONSENT-LINE] 2026-09-21 - Vrso: "oznac ale nejako esteticky co je consent a co permanent" - drobny
+    // popis pod kazdym prepinacom (CONSENT / PERMANENT), sivy, velkymi pismenami, aby lista ostala nizka | Vrso -> Claude AI | 2026-09-21
+    const w = document.createElement('div');
+    w.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:1px;flex-shrink:0;';
     const t = document.createElement('button');
     t.type = 'button';
     t.className = 'zzz1r17b-consent-toggle';
@@ -8303,10 +8307,15 @@ function zzz1r17b_build_consent_line(o) {
     t.title = title;
     t.setAttribute('aria-label', title);
     t.addEventListener('click', () => { if (t.disabled) return; t.disabled = true; onChange(!t.classList.contains('is-on')); });
-    return t;
+    const cap = document.createElement('span');
+    cap.style.cssText = `font-size:7px;font-weight:700;letter-spacing:.4px;color:${gold ? '#a8841f' : '#6b7280'};line-height:1;`;
+    cap.textContent = caption;
+    w.appendChild(t);
+    w.appendChild(cap);
+    return w;
   };
-  toggles.appendChild(mkToggle(o.consentOn, o.consentEnabled, o.consentTitle || 'CONSENT', o.onConsent || (() => {}), false));
-  toggles.appendChild(mkToggle(o.permOn, o.permEnabled, o.permTitle || 'PERMANENT', o.onPerm || (() => {}), true));
+  toggles.appendChild(mkToggle(o.consentOn, o.consentEnabled, o.consentTitle || 'CONSENT', o.onConsent || (() => {}), false, 'CONSENT'));
+  toggles.appendChild(mkToggle(o.permOn, o.permEnabled, o.permTitle || 'PERMANENT', o.onPerm || (() => {}), true, 'PERMANENT'));
   bar.appendChild(toggles);
 
   const priceRow = document.createElement('div');
@@ -8413,8 +8422,9 @@ function zzz1r17b_consent_model(sourceRow) {
 // (17e JSON {user: hodnota}, 17f jednotka) a meni ich len project owner, kym zaznam nie je ulozeny Final.
 // | Vrso -> Claude AI | 2026-09-21 ===
 var zzz6f57LastSourceRow = null;
-function zzz6f57_open_consent_window(sourceRow = null, onlyUser = null) {
+function zzz6f57_open_consent_window(sourceRow = null, onlyUser = null, readOnly = false) {
   if (sourceRow === null) sourceRow = zzz6f57LastSourceRow;
+  const openedAt = Date.now(); // [Zzz6-F57] pozri nizsie - ochrana pred okamzitym zatvorenim
   const { box, removeBox } = zzz6f41_create_context_window();
   box.style.color = '#171717';
   const header = document.createElement('div');
@@ -8433,7 +8443,10 @@ function zzz6f57_open_consent_window(sourceRow = null, onlyUser = null) {
         : (m.isFinal ? `Final - entry #${sourceRow.entry_id}` : `Entry #${sourceRow.entry_id}`));
     note.style.color = (!m.ownerDefined || !m.isSaved) ? '#b45309' : '#171717';
     list.innerHTML = '';
-    if (!onlyUser && m.ownerDefined) list.appendChild(zzz1r17b_build_consent_line(m.lineFor(m.ownerRaw, true, render)));
+    // [Zzz6-F57] 2026-09-21 - Vrso: CONTACTS okno = "zoznam vsetkych users v danej entry/projekte (toggle buttons iba
+    // viditelne ale needitovatelne!!)" - readOnly vypne vsetky prepinace aj podiely; menit sa da len v okne jedneho usera
+    const ro = (cfg) => readOnly ? Object.assign(cfg, { consentEnabled: false, permEnabled: false, shareEnabled: false, unitEnabled: false }) : cfg;
+    if (!onlyUser && m.ownerDefined) list.appendChild(zzz1r17b_build_consent_line(ro(m.lineFor(m.ownerRaw, true, render))));
     const ms = onlyUser ? m.members().filter(u => zzz10v1_normalize(u) === zzz10v1_normalize(onlyUser)) : m.members();
     if (ms.length === 0) {
       const none = document.createElement('div');
@@ -8441,13 +8454,13 @@ function zzz6f57_open_consent_window(sourceRow = null, onlyUser = null) {
       none.textContent = 'No users added.';
       list.appendChild(none);
     }
-    ms.forEach(u => list.appendChild(zzz1r17b_build_consent_line(m.lineFor(u, false, render))));
+    ms.forEach(u => list.appendChild(zzz1r17b_build_consent_line(ro(m.lineFor(u, false, render)))));
   }
   render();
   m.load().then(render);
   const actions = document.createElement('div');
   actions.className = 'entry-modal-actions';
-  const close = () => { m.saveShares(); removeBox(); };
+  const close = () => { if (!readOnly) m.saveShares(); removeBox(); };
   const closeBtn = document.createElement('button');
   closeBtn.className = 'entry-modal-delete zzz1r17b-close-btn';
   closeBtn.textContent = '✕';
@@ -8455,7 +8468,10 @@ function zzz6f57_open_consent_window(sourceRow = null, onlyUser = null) {
   closeBtn.onclick = close;
   actions.appendChild(closeBtn);
   box.appendChild(actions);
-  zzz6f41_bind_outside_click(box, close);
+  // OPRAVA 2026-09-21 - Vrso: "ked podrzim 1-2s neotvori sa consent window". Okno sa OTVORILO, ale hned zaniklo:
+  // po podrzani prehliadac pri pusteni prsta posle 'click' na chip - ten je MIMO noveho okna, takze ho zatvaranie
+  // klikom mimo okamzite zavrelo. Klik v prvych 700 ms po otvoreni sa preto ignoruje. | Vrso -> Claude AI | 2026-09-21
+  zzz6f41_bind_outside_click(box, () => { if (Date.now() - openedAt > 700) close(); });
   box.scrollTop = 0;
 }
 // === [/Zzz6-F57:CONSENT-WINDOW] ===
@@ -8520,7 +8536,7 @@ function zzz1_build_user_window(sourceRow = null) {
   contactsBtn.textContent = 'CONTACTS';
   contactsBtn.title = 'Tap = contacts window (not ready yet) / hold 1.5s = consent window';
   contactsBtn.addEventListener('click', () => zzz6f2_show_toast('CONTACTS window is not ready yet - hold 1.5s for the CONSENT window.'));
-  zzz_bind_long_press(contactsBtn, 1500, () => { persistLocal(); zzz6f57_open_consent_window(sourceRow); });
+  zzz_bind_long_press(contactsBtn, 1500, () => { persistLocal(); zzz6f57_open_consent_window(sourceRow, null, true); }); // readOnly - len prehlad
 
   function renderChips() {
     chipsRow.innerHTML = '';
