@@ -9,6 +9,11 @@
      Toto zapina spravne mobilne skalovanie vsade | Vrso -> Claude AI | 2026-08-19 -->
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <!-- <<< Zzz0-O1 END -->
+<!-- [Zzz0-O2:PRELOAD-BG] Vrso 2026-09-23 ("Daj prednacitat versochain"): prehliadac zacne stahovat pozadie
+     hned na zaciatku parsovania <head>, nie az ked narazi na CSS pravidlo background-image nizsie v subore.
+     Skracuje to ten tmavy snimok na zaciatku (najma ked prehliadac tab medzitym zahodil z pamate).
+     Ziadna vizualna zmena - len poradie stahovania. | Vrso -> Claude AI | 2026-09-23 -->
+<link rel="preload" as="image" href="verso-chain.jpg" fetchpriority="high" />
 <title>Verso Entry</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -5478,7 +5483,13 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
     z-index: 400;
     isolation: isolate;
     display: grid;
-    grid-template-columns: auto 1fr;
+    /* [Zzz5-W5:BAR-SYMMETRY] Vrso 2026-09-23: "Symetricky uprav contacts module tak aby contacts button
+       pokryval/bol vedla 3 riadkov users... Moze zuzit cely modul (pismo v bunkach moze byt vacsie...)" -
+       modul uz nie je roztiahnuty na celu sirku: je siroky presne tak, ako jeho obsah (kocka + najsirsi rad),
+       kocka je vysoka ako vsetky tri rady dokopy a taby maju vacsie pismo. */
+    width: fit-content;
+    max-width: 100%;
+    grid-template-columns: auto auto;
     grid-template-rows: auto auto auto;
     column-gap: 6px;
     row-gap: 6px;
@@ -5500,9 +5511,9 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
   .zzz5w5cm-cube {
     grid-row: 1 / 4;
     grid-column: 1;
-    width: 62px;
-    height: 62px;
-    align-self: center;
+    width: 86px;
+    height: auto;          /* [Zzz5-W5:BAR-SYMMETRY] vyska = vsetky tri rady */
+    align-self: stretch;
     border-radius: 8px;
     background-color: #171717;
     border: 1px solid #333;
@@ -5516,12 +5527,18 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
     -webkit-touch-callout: none;
     touch-action: none;
   }
+  .zzz5w5cm-cube { font-size: 11px; }
   .zzz5w5cm-cube.zzz5w5cm-cube-current {
     background-color: #D4AF37;
     border-color: #D4AF37;
     color: #0a0a0a;
   }
-  .zzz5w5cm-bar .zzz5t0-tabs-row { min-height: 28px; }
+  .zzz5w5cm-bar .zzz5t0-tabs-row { min-height: 34px; }
+  .zzz5w5cm-bar .zzz5t0-tab {
+    font-size: 12px;
+    padding: 8px 16px;
+  }
+  .zzz5w5cm-bar .zzz5t0-tab-add { min-width: 30px; min-height: 30px; }
   /* [Zzz5-W5:ONE-ROW-TABS] Vrso 2026-09-23: "Tieto actual moduly/taby zmesti do jedneho riadku aj s + add tab"
      - taby modulu sa uz NEZALAMUJU do viacerych riadkov, ale su v JEDNOM riadku, ktory sa vodorovne scrolluje;
      "+" ide s nimi na konci toho isteho riadku. Scoped LEN na moduly communication workspace - tab rady v
@@ -5601,6 +5618,11 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
   /* [Zzz5-W5:PAIR-RELOAD] Vrso 2026-09-23: "tak ci tak ho ohranic zlatou a zvacsi! Aj vnutri moze byt symbol
      zlatou" - tlacidlo znovu nacita pairing data z databazy (verso_entries + verso_consents + placements),
      NIE je to reload stranky/internetu. */
+  /* Vrso 2026-09-23: "Zvacsi trochu pairing, paired, unpaired tabs" */
+  .zzz5w5cm-tab-big {
+    padding: 9px 16px;
+    font-size: 12px;
+  }
   .zzz5w5cm-reload {
     min-width: 48px;
     height: 48px;
@@ -11321,11 +11343,45 @@ let zzz_isInStandby = false; // TRUE po EXPLICITNEJ {active:false} odpovedi zo s
 let zzz_isOffline = false; // TRUE ked appka NEVIE overit spojenie so serverom (vypadok siete/server nedostupny)
 // === [/Zzz-LOGO-STATUS:TDZ-FIX] ===
 
+// === [Zzz0-R1:USERNAME-IN-CL] Vrso 2026-09-23, doslovne: "Prihlaseny user ma mat v akejkolvek 1-m4* crm v
+// bunke user aj communication svoje vlastne username!!! Napriklad som prihlaseny ako verso1 ale vidim tam
+// verso. Treba opravit aj toto v devlogin!" - PRICINA: predvyplnenie R4/R17 robil VYLUCNE
+// [Zzz6-X:AUTOLOGIN-VERSO] blok, a to HARDCODED hodnotou "Verso" pri nacitani stranky. Ked sa potom niekto
+// prihlasil pod inym menom (Verso1, dev login, Multiverification...), bunky uz nikto neprepisal - a
+// COMMUNICATION (R18) sa nepredvyplnala nikdy.
+// TERAZ: jedna spolocna funkcia, ktora po KAZDEJ zmene prihlaseneho username doplni aktualne meno do
+// R4 (Project Owner), R17 (User) aj R18 (Communication) - a to v hlavnej CL aj v Zzz1-M4a2 template.
+// BEZPECNOSTNA POISTKA: prepisuje LEN prazdnu bunku alebo bunku, v ktorej je este PRESNE to meno, ktore tam
+// predtym doplnila ona sama (zzz0r1LastAutoUsername) - cokolvek, co user napisal rucne, ostava nedotknute.
+// | Vrso -> Claude AI | 2026-09-23 ===
+let zzz0r1LastAutoUsername = '';
+function zzz0r1_should_overwrite(current) {
+  const val = String(current || '').trim();
+  if (!val) return true;
+  if (!zzz0r1LastAutoUsername) return false;
+  return zzz10v1_normalize(val) === zzz10v1_normalize(zzz0r1LastAutoUsername); // [Zzz0-R2:USERNAME-CASE]
+}
+function zzz0r1_sync_username_into_cl() {
+  const username = (zzz0r1_get_current_username() || '').trim();
+  if (!username || username === 'username') return;
+  ['4', '17', '18'].forEach(id => {
+    if (zzz0r1_should_overwrite(entryData[id])) write_to_entry(id, username);
+    // Zzz1-M4a2 template - rovnake bunky, vlastny izolovany stav. try/catch preto, lebo pri prvom
+    // (autologin) volani este zzz1m4aFields NEMUSI byt inicializovane - const nizsie v subore je v TDZ a
+    // aj samotne `typeof` na nom hodi ReferenceError (najdene pri teste).
+    try {
+      if (zzz0r1_should_overwrite(zzz1m4aFields[id])) zzz1m4a_write_field(id, username);
+    } catch (e) { /* M4a2 este neexistuje - doplni sa pri najblizsom prihlaseni/otvoreni */ }
+  });
+  zzz0r1LastAutoUsername = username;
+}
+
 function zzz6f7_set_login_state(isLoggedIn) {
   const label = document.getElementById('zzz6f7UsernameLabel');
   if (!label) return;
   zzz6f7_isLoggedIn = isLoggedIn;
   label.classList.toggle('zzz6-f7-active', !!isLoggedIn);
+  if (isLoggedIn) zzz0r1_sync_username_into_cl(); // [Zzz0-R1:USERNAME-IN-CL] jedno miesto pre VSETKY sposoby prihlasenia
   if (typeof zzz_recompute_logo_status === 'function') zzz_recompute_logo_status(); // Zzz-LOGO-STATUS
 }
 
@@ -11369,8 +11425,10 @@ function zzz6f7_set_login_state(isLoggedIn) {
   // cerstva/prazdna CL sa pri nacitani strany automaticky predvyplni - R4 (Project Owner) aj R17 (User)
   // dostanu aktualne prihlaseny username ako start hodnotu. Owner ich moze pred odoslanim upravit/rozsirit
   // (napr. pridat dalsich userov do R17 cez R17b, viz nizsie). | Vrso -> Claude AI | 2026-08-25 ===
-  write_to_entry("4", zzz6xAutologinUsername);
-  write_to_entry("17", zzz6xAutologinUsername);
+  // OPRAVA (Vrso 2026-09-23, [Zzz0-R1:USERNAME-IN-CL]): uz sa NEZAPISUJE hardcoded "Verso", ale AKTUALNE
+  // prihlaseny username - a cez spolocnu funkciu, ktora to iste urobi aj po realnom prihlaseni pod inym
+  // menom (Verso1, dev login...) a doplni aj COMMUNICATION (R18).
+  zzz0r1_sync_username_into_cl();
   // === [/Zzz1-DEFAULT-OWNER-USER] ===
 
   // === [Zzz6-X:VERSO-ENTRY-DEFAULTS] Vrso 2026-09-17, doslovne: "pridaj k verso ked logged in ze vzdy cl
@@ -14780,6 +14838,7 @@ function zzz1m4a_clear_local_attachments() {
 // Claude AI | 2026-09-19 ===
 function zzz1m4a_reset_template() {
   Object.keys(zzz1m4aFields).forEach(k => { delete zzz1m4aFields[k]; });
+  zzz0r1LastAutoUsername = ''; // [Zzz0-R1:USERNAME-IN-CL] po resete su bunky prazdne - meno sa smie doplnit znova
 
   const row = document.getElementById('versoM4aCLNumbersRow');
   if (row) {
@@ -18000,6 +18059,101 @@ function zzz5w5cm_restore_attachments() {
   zzz1m4a_render_local_attachments();
 }
 
+// === [Zzz5-W5:PAIR-FILTER] Vrso 2026-09-23: "Pairing comm modules m4a pre kazdy tab by sa mal filtrovat
+// podla buniek ktore boli vyplnene" - to, co je NAPISANE v bunkach sablonovej M4a CL (zzz1m4aFields), sluzi
+// ako FILTER zoznamu v danom tabe: kazda vyplnena bunka musi byt obsiahnuta v rovnakej bunke zaznamu
+// (nezavisle na velkosti pismen). Prazdne bunky sa ignoruju. Filter sa prepocita po opusteni bunky (change),
+// takze pisanie neprerusuje prekreslenie a nestraca sa focus. | Vrso -> Claude AI | 2026-09-23 ===
+function zzz5w5cm_pair_rows_for_tab() {
+  const inTab = zzz5w5cmPairing.rows.filter(r => zzz5w5cm_pair_tab_of(r.entry_id) === zzz5w5cmPairTab);
+  const filter = (typeof zzz1m4a_snapshot_local_fields === 'function') ? zzz1m4a_snapshot_local_fields() : {};
+  const active = Object.keys(filter).filter(k => String(filter[k] || '').trim() !== '');
+  if (!active.length) return inTab;
+  return inTab.filter(row => {
+    const f = row.fields_json || {};
+    return active.every(k => {
+      const want = String(filter[k]).trim().toLowerCase();
+      const have = String((k === 'entryNumber' ? row.entry_id : f[k]) || '').toLowerCase();
+      return have.includes(want);
+    });
+  });
+}
+let zzz5w5cmPairFilterBound = false;
+function zzz5w5cm_bind_pair_filter() {
+  const stack = document.getElementById('versoM4aTemplateStack');
+  if (!stack || zzz5w5cmPairFilterBound) return;
+  zzz5w5cmPairFilterBound = true;
+  stack.addEventListener('change', () => {
+    if (!zzz5w5cm_is_open() || zzz5w5cmCurrent !== 'pairing') return;
+    zzz5w5cm_fill_pair_attachments(zzz5w5cm_pair_rows_for_tab());
+    zzz5w5cm_apply_row_scope(ZZZ5W5CM_PAIR_SCOPE);
+  }, true);
+}
+
+// === [Zzz5-W5:ATTACH-TO-CONTACTS] Vrso 2026-09-23: "dorob v pravej hornej casti tlacitko attach to contacts
+// (ktore attachne tuto entry po prompte ci do users/groups/project crm)" - berie riadky, ktore su v zozname
+// OZNACENE (modra .zzz6f28-selected - podrzanie ENTRY NUMBER 1.2s, viz [Zzz6-F29:HOLD-SELECT]), opyta sa na
+// cielovy contacts CRM a pripne ich tam cez zdielane zzz5w5cm_attach_to_tab() (takze plati aj prepojene
+// odopnutie). | Vrso -> Claude AI | 2026-09-23 ===
+function zzz5w5cm_pair_selected_items() {
+  const list = document.getElementById('versoM4aLocalAttachList');
+  if (!list) return [];
+  const out = [];
+  Array.from(list.querySelectorAll(':scope > .zzz1m5-cl-row')).forEach((rowEl, i) => {
+    if (rowEl.querySelector('.zzz6f28-selected')) {
+      const item = zzz1m4aLocalAttachments[i];
+      if (item) out.push(item);
+    }
+  });
+  return out;
+}
+function zzz5w5cm_attach_to_contacts(anchorEl) {
+  const items = zzz5w5cm_pair_selected_items();
+  if (!items.length) {
+    zzz6f2_show_toast('Najprv oznac riadok (podrz ENTRY NUMBER 1-2s).', 'warn');
+    return;
+  }
+  document.querySelectorAll('.zzz5t0-tab-window').forEach(m => m.remove());
+  const win = document.createElement('div');
+  win.className = 'zzz5t0-tab-window';
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:9px;color:#999;padding:2px 4px 6px;';
+  title.textContent = `ATTACH TO CONTACTS (${items.length}) - do ktorej CRM?`;
+  win.appendChild(title);
+  [['users', 'USERS'], ['groups', 'GROUPS'], ['projects', 'PROJECTS']].forEach(([kind, label]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.addEventListener('click', () => {
+      win.remove();
+      items.forEach(item => {
+        const row = item.zzz5w5cmRow || {};
+        const fields = Object.assign({}, row.fields_json || item.fields || {});
+        const tags = zzz6f21_parse_tags(fields.tags || '');
+        if (!tags.some(t => zzz10v1_normalize(t) === kind)) tags.push(label.charAt(0) + label.slice(1).toLowerCase());
+        fields.tags = tags.join(', ');
+        zzz5w5cm_attach_to_tab(kind, {
+          key: 'el#' + (item.sourceEntryId || row.entry_id),
+          fields,
+          sourceEntryId: item.sourceEntryId || row.entry_id || '',
+          entryDate: (row.entry_date) || item.entryDate || ''
+        });
+      });
+      zzz_haptic_pulse(30);
+      zzz6f2_show_toast(`${items.length} entry line(s) pripnute do ${label}.`);
+      zzz5w5cm_render();
+    });
+    win.appendChild(b);
+  });
+  document.body.appendChild(win);
+  const rect = anchorEl.getBoundingClientRect();
+  const h = win.offsetHeight;
+  win.style.top = (window.innerHeight - rect.bottom < h + 12) ? `${Math.max(6, rect.top - h - 6)}px` : `${rect.bottom + 6}px`;
+  win.style.left = `${Math.min(Math.max(6, rect.left - 80), window.innerWidth - win.offsetWidth - 6)}px`;
+  const outside = (e) => { if (!win.contains(e.target)) { win.remove(); document.removeEventListener('click', outside, true); } };
+  setTimeout(() => document.addEventListener('click', outside, true), 0);
+}
+
 function zzz5w5cm_build_pairing() {
   const mod = document.createElement('div');
   mod.className = 'zzz5w5cm-module';
@@ -18010,13 +18164,22 @@ function zzz5w5cm_build_pairing() {
   const tabDef = ZZZ5W5CM_PAIR_TABS.find(t => t.key === zzz5w5cmPairTab) || ZZZ5W5CM_PAIR_TABS[0];
   labelText.textContent = tabDef.module;
   label.appendChild(labelText);
+  const acts = document.createElement('span');
+  acts.style.cssText = 'display:flex;align-items:center;gap:6px;';
+  const toContacts = document.createElement('button'); // [Zzz5-W5:ATTACH-TO-CONTACTS]
+  toContacts.type = 'button';
+  toContacts.className = 'zzz5w5cm-chip';
+  toContacts.textContent = 'ATTACH TO CONTACTS';
+  toContacts.addEventListener('click', () => zzz5w5cm_attach_to_contacts(toContacts));
+  acts.appendChild(toContacts);
   const x = document.createElement('button');
   x.type = 'button';
   x.className = 'zzz5w5cm-close';
   x.setAttribute('aria-label', 'Close');
   x.textContent = '\u00d7';
   x.addEventListener('click', () => zzz5w5cm_show('contacts'));
-  label.appendChild(x);
+  acts.appendChild(x);
+  label.appendChild(acts);
   mod.appendChild(label);
 
   // taby Pairing / Paired / Unpaired (rovnaky vzhlad ako ostatne taby)
@@ -18029,20 +18192,25 @@ function zzz5w5cm_build_pairing() {
   ZZZ5W5CM_PAIR_TABS.forEach(t => {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'zzz5t0-tab' + (zzz5w5cmPairTab === t.key ? ' zzz5t0-tab-active zzz5t0-tab-current' : '');
+    b.className = 'zzz5t0-tab zzz5w5cm-tab-big' // Vrso 2026-09-23: "Zvacsi trochu pairing, paired, unpaired tabs"
+      + (zzz5w5cmPairTab === t.key ? ' zzz5t0-tab-active zzz5t0-tab-current' : '');
     b.textContent = `${t.label} (${counts[t.key]})`;
     b.addEventListener('click', () => { zzz5w5cmPairTab = t.key; zzz5w5cmM4aOwner = 'module'; zzz5w5cm_render(); });
     inner.appendChild(b);
   });
   row.appendChild(inner);
-  const reload = document.createElement('button');
-  reload.type = 'button';
-  reload.className = 'zzz5w5cm-reload'; // [Zzz5-W5:PAIR-RELOAD]
-  reload.setAttribute('aria-label', 'Znovu nacitat pairing data z databazy');
-  reload.title = 'Znovu nacitat pairing data z databazy';
-  reload.textContent = '\u21bb';
-  reload.addEventListener('click', () => zzz5w5cm_load_pairing());
-  row.appendChild(reload);
+  // [Zzz5-W5:PAIR-RELOAD] Vrso 2026-09-23: "Refresh button zrus a ked tak daj do pairing tabu" - je LEN v tabe
+  // Pairing, v Paired/Unpaired uz nie je vobec.
+  if (zzz5w5cmPairTab === 'pairing') {
+    const reload = document.createElement('button');
+    reload.type = 'button';
+    reload.className = 'zzz5w5cm-reload';
+    reload.setAttribute('aria-label', 'Znovu nacitat pairing data z databazy');
+    reload.title = 'Znovu nacitat pairing data z databazy';
+    reload.textContent = '\u21bb';
+    reload.addEventListener('click', () => zzz5w5cm_load_pairing());
+    row.appendChild(reload);
+  }
   mod.appendChild(row);
 
   if (zzz5w5cmPairing.loading || zzz5w5cmPairing.error) {
@@ -18183,6 +18351,9 @@ function zzz5w5cm_cw_tabs() {
   return out;
 }
 function zzz5w5cm_cw_scope_for() { return ZZZ5W5CM_CW_SCOPE; }
+// Vrso 2026-09-23: "Kazdy z nich ma byt definovany (cez mini/attach) iba s entry number/communication bunka/
+// tag (bude dopisovatelny)" - rovnaky zuzeny rozsah ako contacts window, plati pre Pairing/Paired/Unpaired.
+const ZZZ5W5CM_PAIR_SCOPE = ['mini-wrap', 'entry-number-wrap', 'info-wrap', 'tag-wrap'];
 // === [Zzz5-W5:CONTACT-PICK] Vrso 2026-09-23, doslovne: "ked sa otvori prislusny contacts tab podrzanim entry
 // number sa oznaci cela el a skopiruje user/s (ktory su v communication bunke uvedeny) sa tagovany nazov do
 // tabu odkial bol prompt a zaroven sa do actual comm modulu do prislusneho tabu attachuje k crm cl/el tak ako
@@ -18294,31 +18465,94 @@ function zzz5w5cm_cw_toggle_select(item, rowEl) {
   rowEl.querySelectorAll('.entry-cell, .priority-dot-button, .privacy-dot-button, .status-dot-button')
     .forEach(c => c.classList.toggle('zzz6f28-selected', on));
 }
+// === [Zzz5-W5:CW-UNIQUE] Vrso 2026-09-23, doslovne: "v users bude user/name mozne pridat iba 1x; v groups
+// nebude mozne pridat 2krat oznacenu tagom communication skupinu a ked tak treba do existujucej pridat usera;
+// projects tam zas nemozu byt viacere zaznamy ak uz je definovany project number/owner/name/subs/description/
+// privacy" - jednoznacnost sa kontroluje PRI POTVRDENI vyberu v contacts window, kazda CRM ma vlastne
+// pravidlo:
+//   USERS    - identita je MENO z COMMUNICATION bunky (fallback USER/vlastnik). Meno, ktore uz v Users CRM je,
+//              sa druhy raz neprida; ak su vsetky mena zaznamu uz pritomne, zaznam sa preskoci.
+//   GROUPS   - identita je SKUPINA oznacena tagmi v COMMUNICATION bunke. Ak uz existuje riadok, ktory ma s
+//              novym zaznamom spolocne aspon jedno meno, NEVZNIKNE druhy riadok - chybajuci user/i sa DOPLNIA
+//              do COMMUNICATION bunky uz existujuceho riadku (presne "do existujucej pridat usera").
+//   PROJECTS - identita je sestica PROJECT NUMBER (r2) / OWNER (r4) / NAME (r3) / SUBS (r8) / DESCRIPTION (r9)
+//              / PRIVACY (r7). Ak uz taky projekt v Projects CRM je, druhy zaznam sa neprida.
+// | Vrso -> Claude AI | 2026-09-23 ===
+const ZZZ5W5CM_PROJECT_IDENTITY = ['r2', 'r4', 'r3', 'r8', 'r9', 'r7'];
+function zzz5w5cm_names_of(fields) {
+  const raw = (fields && (fields.r18 || fields.r17)) || '';
+  return zzz6f21_parse_tags(raw).filter(Boolean);
+}
+function zzz5w5cm_project_key(fields) {
+  return ZZZ5W5CM_PROJECT_IDENTITY.map(k => zzz10v1_normalize(String((fields && fields[k]) || '').trim())).join('|');
+}
+// vrati { ok, reason, mergedInto } - ci sa zaznam smie pridat do danej contacts CRM
+function zzz5w5cm_cw_uniqueness(kind, fields) {
+  const list = zzz5w5cm_tab_list(kind);
+  if (kind === 'users') {
+    const names = zzz5w5cm_names_of(fields);
+    if (!names.length) return { ok: true };
+    const taken = new Set();
+    list.forEach(it => zzz5w5cm_names_of(it.fields).forEach(n => taken.add(zzz10v1_normalize(n))));
+    const fresh = names.filter(n => !taken.has(zzz10v1_normalize(n)));
+    if (!fresh.length) return { ok: false, reason: `${names.join(', ')} uz v USERS je (user sa da pridat len raz)` };
+    return { ok: true };
+  }
+  if (kind === 'groups') {
+    const names = zzz5w5cm_names_of(fields);
+    if (!names.length) return { ok: true };
+    const existing = list.find(it => zzz5w5cm_names_of(it.fields)
+      .some(n => names.some(m => zzz10v1_normalize(m) === zzz10v1_normalize(n))));
+    if (!existing) return { ok: true };
+    const have = zzz5w5cm_names_of(existing.fields);
+    const missing = names.filter(n => !have.some(h => zzz10v1_normalize(h) === zzz10v1_normalize(n)));
+    if (missing.length) {
+      existing.fields.r18 = have.concat(missing).join(', '); // user sa prida do UZ EXISTUJUCEJ skupiny
+      return { ok: false, reason: `skupina uz existuje - doplnene do nej: ${missing.join(', ')}`, mergedInto: existing };
+    }
+    return { ok: false, reason: 'skupina uz v GROUPS je (aj s tymito usermi)' };
+  }
+  if (kind === 'projects') {
+    const key = zzz5w5cm_project_key(fields);
+    if (!key.replace(/\|/g, '')) return { ok: true }; // ziadne z definujucich poli nie je vyplnene
+    if (list.some(it => zzz5w5cm_project_key(it.fields) === key)) {
+      return { ok: false, reason: 'tento projekt (number/owner/name/subs/description/privacy) uz v PROJECTS je' };
+    }
+  }
+  return { ok: true };
+}
+
 function zzz5w5cm_cw_confirm() {
   const tab = zzz5w5cm_cw_tabs().find(t => t.id === zzz5w5cmContactsWinTab);
   if (!tab) return;
   const picked = zzz5w5cmCwRows.filter(it => zzz5w5cmCwSelected[String(it.sourceEntryId)]);
   if (!picked.length) { zzz6f2_show_toast('Najprv oznac entry number(y).', 'warn'); return; }
   const tags = zzz5w5cm_contact_tags(zzz5w5cmContactsWinTab);
+  let added = 0;
+  const skipped = [];
   picked.forEach(item => {
     const fields = Object.assign({}, item.fields);
     // "tagnutie" - riadok dostava tag podla tabu, do ktoreho sa prida (TAG je zatial vzdy privatny)
     const existing = zzz6f21_parse_tags(fields.tags || '');
     if (!existing.some(t => zzz10v1_normalize(t) === zzz10v1_normalize(tab.label))) existing.push(tab.label);
     fields.tags = existing.join(', ');
+    const unique = zzz5w5cm_cw_uniqueness(tab.kind, fields); // [Zzz5-W5:CW-UNIQUE]
+    if (!unique.ok) { skipped.push(`#${item.sourceEntryId}: ${unique.reason}`); return; }
     zzz5w5cm_attach_to_tab(tab.kind, {
       key: item.zzz5w5cmKey,
       fields,
       sourceEntryId: item.sourceEntryId,
       entryDate: item.entryDate
     });
+    added += 1;
     zzz6f21_parse_tags(fields.r18 || '').forEach(n => {
       if (!tags.some(t => zzz10v1_normalize(t) === zzz10v1_normalize(n))) tags.push(n);
     });
   });
   zzz5w5cmCwSelected = {};
   zzz_haptic_pulse(30);
-  zzz6f2_show_toast(`${picked.length} entry line(s) pridane do "${tab.label}" (a do M4a ${tab.kind}).`);
+  if (added) zzz6f2_show_toast(`${added} entry line(s) pridane do "${tab.label}" (a do M4a ${tab.kind}).`);
+  skipped.forEach(msg => zzz6f2_show_toast(msg, 'warn'));
   zzz5w5cm_render();
 }
 // zoznam na vyber sa kresli do M4a rovnakym zdielanym rendererom ako pripnute riadky
@@ -18370,13 +18604,6 @@ function zzz5w5cm_build_contacts_window() {
   confirmBtn.textContent = 'POTVRDIT';
   confirmBtn.addEventListener('click', () => zzz5w5cm_cw_confirm());
   actions.appendChild(confirmBtn);
-  const reloadBtn = document.createElement('button');
-  reloadBtn.type = 'button';
-  reloadBtn.className = 'zzz5w5cm-reload'; // [Zzz5-W5:PAIR-RELOAD] rovnake tlacidlo aj tu
-  reloadBtn.title = 'Znovu nacitat zoznam entry lines z databazy';
-  reloadBtn.textContent = '\u21bb';
-  reloadBtn.addEventListener('click', () => zzz5w5cm_cw_load(true));
-  actions.appendChild(reloadBtn);
   const closeX = document.createElement('button');
   closeX.type = 'button';
   closeX.className = 'zzz5w5cm-close';
@@ -18395,8 +18622,8 @@ function zzz5w5cm_build_contacts_window() {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'zzz5t0-tab' + (zzz5w5cmContactsWinTab === t.id ? ' zzz5t0-tab-active zzz5t0-tab-current' : '');
-    const count = zzz5w5cm_tab_list('cw:' + t.id).length;
-    b.textContent = t.label + (count ? ` (${count})` : '');
+    // pocet zaznamov priradenych do tohto contacts CRM (to iste pole, do ktoreho pridava POTVRDIT)
+    b.textContent = `${t.label} (${zzz5w5cm_tab_list(t.kind).length})`;
     b.addEventListener('click', () => {
       zzz5w5cmContactsWinTab = t.id;
       zzz5w5cmM4aOwner = 'contactswin';
@@ -18478,8 +18705,8 @@ function zzz5w5cm_build_module() {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'zzz5t0-tab' + (zzz5w5cmContactsTab === t.key ? ' zzz5t0-tab-active zzz5t0-tab-current' : '');
-      const count = zzz5w5cm_tab_list(t.key).length;
-      b.textContent = t.label + (count ? ` (${count})` : '');
+      // Vrso 2026-09-23: rovnake pocitadlo ako v pairing - cislo = kolko zaznamov je v tomto tabe
+      b.textContent = `${t.label} (${zzz5w5cm_tab_list(t.key).length})`;
       b.addEventListener('click', () => {
         zzz5w5cmContactsTab = t.key;
         zzz5w5cmM4aOwner = 'module'; // klik na tab actual modulu si vypyta M4a2 spat sem
@@ -18620,15 +18847,16 @@ function zzz5w5cm_render() {
     // [Zzz5-W5:SAME-CRM] Actual aj Pairing = plny CRM vzor; contacts window ma lokalne zuzeny rozsah buniek
     // [Zzz5-W5:SAME-CRM] Actual aj Pairing = plny CRM ako Important (stlpce riadi zdielany MINI checklist);
     // contacts window ma podla zadania LEN entry number / communication / tag (+ MINI).
-    zzz5w5cm_borrow_m4a(slot, isCw ? zzz5w5cm_cw_scope_for() : null);
+    zzz5w5cm_borrow_m4a(slot, (isCw || isPair) ? (isCw ? zzz5w5cm_cw_scope_for() : ZZZ5W5CM_PAIR_SCOPE) : null);
     if (isCw) {
       zzz5w5cm_cw_use_candidates(); // [Zzz5-W5:CW-PICK] zoznam ulozenych entry lines na vyber
       zzz5w5cm_cw_load(false);
     } else if (isPair) {
       // [Zzz5-W5:PAIR-ATTACH] riadky tohto tabu sa pripnu do M4a automaticky (Vrso: "kde sa budu attachovat
       // automaticky vsetky el z db ktore boli triggerovane v r* communication bunke")
-      const rowsForTab = zzz5w5cmPairing.rows.filter(r => zzz5w5cm_pair_tab_of(r.entry_id) === zzz5w5cmPairTab);
-      zzz5w5cm_fill_pair_attachments(rowsForTab);
+      zzz5w5cm_fill_pair_attachments(zzz5w5cm_pair_rows_for_tab());
+      zzz5w5cm_apply_row_scope(ZZZ5W5CM_PAIR_SCOPE);
+      zzz5w5cm_bind_pair_filter(); // [Zzz5-W5:PAIR-FILTER]
     } else {
       // [Zzz5-W5:TAB-ATTACHMENTS] M4a v tomto tabe pracuje s attach zoznamom TOHTO tabu
       zzz5w5cm_use_tab_attachments(zzz5w5cmContactsTab);
@@ -23255,6 +23483,7 @@ async function zzz6f36_submit_login(options = {}) {
   // ked to vyzadoval odstraneny Zzz4-1 heslo-gate - momentalne uz nema funkcny dovod, ale neskodi).
   const label = document.getElementById('zzz6f7UsernameLabel');
   if (label) label.textContent = username;
+  zzz0r1_sync_username_into_cl(); // [Zzz0-R1:USERNAME-IN-CL] meno sa v CL/M4a2 zmeni hned pri prihlaseni
 
   const enteredPassword = (contentInput ? contentInput.value : '').trim(); // lokalny CONTENT input (nie entryData["10"])
 
