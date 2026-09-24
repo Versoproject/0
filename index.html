@@ -2255,6 +2255,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     margin-bottom: 8px;
   }
   .zzz1cn-note {
+    flex: 0 0 auto;
     border: 1px solid #d4d4c8;
     border-radius: 8px;
     padding: 6px 8px;
@@ -2309,6 +2310,20 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     user-select: text;        /* text sa da oznacit a skopirovat rucne */
   }
   .zzz1cn-empty { font-size: 10px; color: #6b7280; }
+  /* [Zzz1-CN:FEED] predosle chatnotes nad vstupom - vidno aspon 3, dalsie sa scrolluju */
+  .zzz1cn-feed {
+    /* kontextove okno je flex-column, takze feed musi mat vlastnu min/zakladnu vysku - inak ho flex zmackne
+       na par pixelov (najdene pri teste). min-height = priblizne tri chatnoty. */
+    flex: 0 0 auto;
+    min-height: 150px;
+    max-height: 150px;
+    overflow-y: auto;
+    padding: 4px 2px;
+    margin-bottom: 4px;
+    border-radius: 8px;
+    background-color: #f5f5f0;
+  }
+  .zzz1cn-save-btn span { line-height: 1.05; }
   /* === [/Zzz1-CN:CHAT-NOTES] (CSS cast) === */
   .zzz1r17b-notes-area {
     width: 100%;
@@ -8807,13 +8822,33 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   // stvorcove tlacidlo 76x76 px (~2x2 cm). KLIK = ulozi ako PRIVATNY chatnote, PODRZANIE 2s = otvori zoznam
   // ulozenych chatnotes (kopirovanie aj mazanie vlastnych). ZDIELANY chatnote vznikne cez ENTER (nizsie).
   const cnEntryKey = String(entryData['1'] || '').trim() || 'draft';
+  // [Zzz1-CN:FEED] Vrso 2026-09-24: "po zapise by sa mal objavit dalsi novy chatnote prilepeny k predoslym
+  // vlastnym/cudzim (oznacenym vzdy ale chatnote number a userom kto pisal/vlozil)... aby boli vzdy vidiet
+  // aspon 3 predosle chatnoty nad novym a tie budu scrollovatelne"
+  const cnFeed = document.createElement('div');
+  cnFeed.className = 'zzz1cn-feed';
+  box.appendChild(cnFeed);
+  const cnRefreshFeed = async () => {
+    cnFeed.innerHTML = '';
+    const notes = await zzz1cn_load(cnEntryKey);
+    if (!notes.length) {
+      const empty = document.createElement('div');
+      empty.className = 'zzz1cn-empty';
+      empty.textContent = 'Zatial ziadne chatnotes.';
+      cnFeed.appendChild(empty);
+      return;
+    }
+    notes.forEach(n => cnFeed.appendChild(zzz1cn_build_note(cnEntryKey, n, cnRefreshFeed)));
+    cnFeed.scrollTop = cnFeed.scrollHeight; // najnovsi je vzdy dolu, nad vstupom
+  };
+
   const cnRow = document.createElement('div');
   cnRow.className = 'zzz1cn-row';
   cnRow.appendChild(notesArea);
   const cnSave = document.createElement('button');
   cnSave.type = 'button';
   cnSave.className = 'zzz1cn-save-btn';
-  cnSave.innerHTML = '<span>PRIVATE</span><span>SAVE</span>';
+  cnSave.innerHTML = '<span>SAVE</span><span>CHATNOTE</span><span>PRIVATELY</span>'; // Vrso 2026-09-24
   cnSave.title = 'Klik = ulozit privatny chatnote, podrzanie 2s = otvorit ulozene chatnotes';
   let cnHoldAt = 0;
   let cnFired = false;
@@ -8838,10 +8873,12 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
       notesArea.value = '';
       workingNotes = '';
       persistLocal();
+      cnRefreshFeed();
     }
   });
   cnRow.appendChild(cnSave);
   box.appendChild(cnRow);
+  cnRefreshFeed();
 
   // [Zzz1-CN:PUBLIC-BORDER] "ak bude verejna entry tak ohranic chatnotes zlatou s cervenou na striedacku" -
   // PRIVACY bunka (r7) prazdna/nie private = verejny zaznam v databaze
@@ -8923,6 +8960,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
           notesArea.value = '';
           workingNotes = '';
           persistLocal();
+          cnRefreshFeed(); // novy chatnote sa "prilepi" k predoslym
           zzz6f2_show_toast(`Chatnote #${saved.note_number} ulozeny k zaznamu.`);
         }
         box.classList.add('zzz1r17b-success-border');
@@ -8975,11 +9013,15 @@ function zzz1r17b_build_consent_line(o) {
   //      onConsent(bool), onPerm(bool), shareValue, shareEnabled, onShare(str), unit, unitEnabled, onUnit(str), privateView }
   const bar = document.createElement('div');
   bar.className = 'zzz1r17b-consent-bar';
-  bar.style.cssText = 'flex-wrap:nowrap;gap:6px;justify-content:flex-start;';
+  // Vrso 2026-09-24: "toggle buttons consent/per tiez zarovnaj celu tu hornu cast poriadne a symetricky"
+  bar.style.cssText = 'flex-wrap:nowrap;gap:8px;justify-content:flex-start;align-items:center;';
   const label = document.createElement('div');
   label.className = 'zzz1r17b-consent-label';
-  label.style.flex = '0 1 auto';
-  label.style.maxWidth = '40%';
+  label.style.flex = '1 1 auto';
+  label.style.maxWidth = 'none';
+  label.style.display = 'flex';
+  label.style.flexDirection = 'column';
+  label.style.justifyContent = 'center';
   label.style.minWidth = '0';
   if (o.labelColor) label.style.color = o.labelColor;
   // Vrso 2026-09-24: "zapracovat do neho z user window username (pripadne NAD NIM oznacit ak je project
@@ -9008,7 +9050,9 @@ function zzz1r17b_build_consent_line(o) {
   }
   const mkToggle = (on, enabled, title, onChange, text) => {
     const w = document.createElement('div');
-    w.style.cssText = 'display:flex;flex-direction:column;align-items:center;flex:0 0 auto;';
+    // rovnaka sirka oboch prepinacov = symetricky riadok, popis pod nimi vycentrovany
+    w.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;'
+      + 'flex:0 0 auto;width:74px;';
     const t = document.createElement('button');
     t.type = 'button';
     t.className = 'zzz1r17b-consent-toggle';
@@ -9034,9 +9078,15 @@ function zzz1r17b_build_consent_line(o) {
   price.type = 'text';
   price.className = 'zzz1r17b-price-share';
   price.placeholder = 'PRICE / % SHARE';
-  price.style.setProperty('flex', '1 1 auto', 'important');
-  price.style.setProperty('min-width', '40px', 'important');
+  // Vrso 2026-09-24: "Price cast nie je uzatvorena bunka. Mohla byt aj menej siroka s viac miestom pre
+  // username a toggle buttons" - PRICE je teraz uzatvorena bunka (ram dookola) a uzsia; uvolnene miesto ide
+  // menu usera a togglom.
+  price.style.setProperty('flex', '0 1 34%', 'important');
+  price.style.setProperty('min-width', '70px', 'important');
   price.style.setProperty('width', 'auto', 'important');
+  price.style.setProperty('border', '1px solid #171717', 'important');
+  price.style.setProperty('border-radius', '6px', 'important');
+  price.style.setProperty('padding', '4px 6px', 'important');
   price.value = o.shareValue || '';
   price.disabled = !o.shareEnabled;
   price.addEventListener('input', () => { if (o.onShare) o.onShare(price.value); });
@@ -19913,7 +19963,11 @@ async function zzz1cn_add(entryKey, text, isPrivate) {
   const row = { entry_key: String(entryKey), username, note_number: nextNumber, note_text: clean, is_private: !!isPrivate };
   if (zzz1cnTableAvailable) {
     try {
-      const { data, error } = await sb.from(ZZZ1CN_TABLE).insert(row).select().single();
+      // OPRAVA (Vrso 2026-09-24, "new row violates row-level security policy"): username sa do INSERTU
+      // NEPOSIELA - doplni si ho databaza sama (rovnako ako pri verso_consents). Ked ho poslal klient, RLS
+      // kontrola `username = auth...` neprechadzala, lebo appove username (Verso1) nie je to, co vidi databaza.
+      const payload = { entry_key: row.entry_key, note_number: row.note_number, note_text: row.note_text, is_private: row.is_private };
+      const { data, error } = await sb.from(ZZZ1CN_TABLE).insert(payload).select().single();
       if (error) throw error;
       return data;
     } catch (e) {
