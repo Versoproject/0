@@ -2332,10 +2332,23 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     border: 2px solid #27ae60 !important;
     color: #ffffff !important;
   }
-  /* "Ohranic zlatou nove +added contacts bunky" - kazdy pridany kontakt-chip ma zlaty ram */
+  /* "Ohranic zlatou nove +added contacts bunky" - kazdy kontakt-chip AJ prazdna "+" bunka maju zlaty ram
+     (2px, aby bol na ciernom chipe naozaj vidno - 1px sa stracal). Vrso 2026-09-24 */
   .zzz1r17b-chips-row .zzz6-f21-tags-chip,
   .zzz1r17b-chips-row .zzz1r17b-chip {
-    border: 1px solid #D4AF37 !important;
+    border: 2px solid #D4AF37 !important;
+  }
+  .zzz1r17b-chips-row .zzz1r17b-chip-input {
+    border: 2px dashed #D4AF37 !important;
+  }
+  /* to iste aj pre osobne QuickChips - jeden vizualny jazyk v celom okne */
+  .zzz1-quickchips-row .zzz1-quickchip,
+  .zzz1-quickchips-row .zzz1-quickchip-input {
+    border: 2px solid #D4AF37 !important;
+  }
+  .zzz1-quickchips-row .zzz1-quickchip-add,
+  .zzz1-quickchips-row .zzz1-quickchip-input {
+    border-style: dashed !important;
   }
   /* === [/Zzz1-CN:CHAT-NOTES] (CSS cast) === */
   .zzz1r17b-notes-area {
@@ -8592,10 +8605,16 @@ function zzz1_build_quickchips_row(getVal, setVal, fixedValues = []) {
   let hasLocalEdit = false;
 
   function renderChips() {
-    // [Zzz6-F26:ONE-CHIP-ROW] fixne chipy (napr. "Notes") prezivaju prekreslenie - mazu sa len nacitane chipy
+    // === [Zzz1-QUICKCHIPS:ADD-FIX] Vrso 2026-09-24, doslovne: "Ked som zadal novy chip a potvrdil tak zmizol.
+    // Ked som otvoril comm bunku tak uz bol ulozeny" - PRICINA: "+chip" nahradzal sam seba inputom
+    // (addBtn.replaceWith(input)), cim sa addBtn ODPOJIL z DOM. renderChips() potom volal
+    // row.insertBefore(chip, addBtn) s odpojenou referenciou -> DOMException a cely riadok ostal prazdny
+    // (chip sa pritom ulozil, takze po znovuotvoreni okna uz tam bol). TERAZ: pred prekreslenim sa addBtn VZDY
+    // vrati do riadku, takze insertBefore ma o co oprieť. | Vrso -> Claude AI | 2026-09-24 ===
     Array.from(row.children).forEach(el => {
       if (el !== addBtn && !el.classList.contains('zzz1-quickchip-fixed')) el.remove();
     });
+    if (addBtn.parentNode !== row) row.appendChild(addBtn); // poistka po replaceWith(input)
     myChips.forEach((text, idx) => {
       const chip = document.createElement('span');
       chip.className = 'zzz1-quickchip';
@@ -8630,8 +8649,14 @@ function zzz1_build_quickchips_row(getVal, setVal, fixedValues = []) {
     input.type = 'text';
     input.className = 'zzz1-quickchip-input';
     input.placeholder = 'napis a stlac Enter...';
+    // [Zzz1-QUICKCHIPS:ADD-FIX] Enter aj blur volali commit, takze sa chip pridal DVAKRAT (a druhy beh navyse
+    // padal na uz odstranenom inpute) - jednorazova poistka.
+    let committed = false;
     const commit = async () => {
+      if (committed) return;
+      committed = true;
       const val = input.value.trim();
+      if (input.parentNode === row) row.replaceChild(addBtn, input); // vrat "+chip" na miesto inputu
       if (val) {
         hasLocalEdit = true;
         myChips.push(val);
@@ -8963,7 +8988,8 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     entrySaveBtn.textContent = 'ENTER';
     entrySaveBtn.onclick = async () => {
       persistLocal(); // vsetko (tagy/consent/poznamky/price-share) najprv do entryData
-      const ok = await submit_entries_to_db({ skipDuplicateCheck: true }); // silent-copy zamerne mirroruje existujuci zaznam
+      // [Zzz1-CN:ENTER-ALLOW-EXISTING] allowExisting: uz-ulozeny zaznam nie je chyba, chatnote sa ulozi tak ci tak
+      const ok = await submit_entries_to_db({ skipDuplicateCheck: true, allowExisting: true }); // silent-copy zamerne mirroruje existujuci zaznam
       if (ok) {
         // [Zzz1-CN:CHAT-NOTES] Vrso 2026-09-24: "Po stlaceni enter sa procesuje dany zaznam ale nema zmiznut
         // cela cl ale v pripade communication window sa ulozi v tom okne" - rozpisany chatnote sa ulozi ako
@@ -12409,6 +12435,13 @@ async function submit_entries_to_db(options = {}) {
   // existujucim zaznamom, co by normalny duplicate-check nespravne zablokoval (kedze tie male zmeny nie su
   // sucastou clSummary porovnania). skipDuplicateCheck umoznuje R17b tento konkretny pripad obojst.
   const skipDuplicateCheck = !!options.skipDuplicateCheck;
+  // === [Zzz1-CN:ENTER-ALLOW-EXISTING] (Vrso 2026-09-24: "Zaznam existuje co je blbost") - v communication
+  // window ENTER neslúzi na zalozenie NOVEHO zaznamu, ale na PROCESOVANIE uz existujuceho + ulozenie
+  // chatnote. Obsah CL sa pritom nemeni, takze DB UNIQUE index na content_hash (kod 23505) zakazdym
+  // vyhodil "Zaznam s rovnakym obsahom uz existuje (DB kontrola)" a chatnote sa NIKDY neulozil (bol
+  // schovany za "if (ok)"). allowExisting znamena: uz-existujuci zaznam NIE JE chyba - nekric toastom,
+  // vrat 'duplicate' (truthy), aby volajuci mohol pokracovat (ulozit chatnote).
+  const allowExisting = !!options.allowExisting;
 
   // === [Zzz1-M22/Zzz6-F2] STARE BLANKET GATE ODSTRANENE (Vrso 2026-08-25 restart): predtym tu boli DVE
   // brany - (1) R31 Consent Toggle musel byt "on" pre KAZDY zapis, (2) Zzz6-F2 vyzadovalo owner-a zapnut
@@ -12539,8 +12572,11 @@ async function submit_entries_to_db(options = {}) {
         delete submittedEntriesCache[payload.entry_id];
         delete submittedEntriesOwnerCache[payload.entry_id];
         delete submittedEntriesFullCache[payload.entry_id];
-        zzz6f2_show_toast('Zaznam s rovnakym obsahom uz existuje (DB kontrola)');
         refresh_database_workspace_if_open();
+        // [Zzz1-CN:ENTER-ALLOW-EXISTING] comm/chatnote flow: zaznam UZ v DB je - presne to, co sme chceli.
+        // Ziadny error toast, vrat truthy 'duplicate' aby volajuci mohol ulozit chatnote.
+        if (allowExisting) return 'duplicate';
+        zzz6f2_show_toast('Zaznam s rovnakym obsahom uz existuje (DB kontrola)');
         return false; // NEZAPISALO sa - realna duplicita zachytena az na urovni databazy
       }
       // Zzz1-D1 FIX (2026-08-20, Vrso: "chybu nevidiem"): detail (napr. "column fields_json does not exist",
