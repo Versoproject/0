@@ -2324,6 +2324,19 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     background-color: #f5f5f0;
   }
   .zzz1cn-save-btn span { line-height: 1.05; }
+  /* Vrso 2026-09-24: "Comm window sme urobili enter button. Vypln zelenou. Rovnako aj v user window ale nemen
+     funkcie" - iba vzhlad, spravanie tlacidla ostava nedotknute */
+  /* poradie v subore: .zzz1r17b-entry-btn ma tiez !important, preto zvysena specificita (dve triedy) */
+  .zzz1r17b-entry-btn.zzz1cn-enter-green {
+    background-color: #1e7e34 !important;
+    border: 2px solid #27ae60 !important;
+    color: #ffffff !important;
+  }
+  /* "Ohranic zlatou nove +added contacts bunky" - kazdy pridany kontakt-chip ma zlaty ram */
+  .zzz1r17b-chips-row .zzz6-f21-tags-chip,
+  .zzz1r17b-chips-row .zzz1r17b-chip {
+    border: 1px solid #D4AF37 !important;
+  }
   /* === [/Zzz1-CN:CHAT-NOTES] (CSS cast) === */
   .zzz1r17b-notes-area {
     width: 100%;
@@ -8830,7 +8843,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   box.appendChild(cnFeed);
   const cnRefreshFeed = async () => {
     cnFeed.innerHTML = '';
-    const notes = await zzz1cn_load(cnEntryKey);
+    const notes = await zzz1cn_load_for_feed(cnEntryKey);
     if (!notes.length) {
       const empty = document.createElement('div');
       empty.className = 'zzz1cn-empty';
@@ -8838,7 +8851,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
       cnFeed.appendChild(empty);
       return;
     }
-    notes.forEach(n => cnFeed.appendChild(zzz1cn_build_note(cnEntryKey, n, cnRefreshFeed)));
+    notes.forEach(n => cnFeed.appendChild(zzz1cn_build_note(n.entry_key || cnEntryKey, n, cnRefreshFeed)));
     cnFeed.scrollTop = cnFeed.scrollHeight; // najnovsi je vzdy dolu, nad vstupom
   };
 
@@ -8945,7 +8958,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
 
   if (canEdit) { // canToggleOwnConsent bol vzdy false (consent sa dava na ulozenom zazname) - viz consent line vyssie
     const entrySaveBtn = document.createElement('button');
-    entrySaveBtn.className = 'entry-modal-copy zzz1r17b-entry-btn';
+    entrySaveBtn.className = 'entry-modal-copy zzz1r17b-entry-btn zzz1cn-enter-green'; // Vrso 2026-09-24: zelena vypln, funkcia bez zmeny
     // Vrso 2026-09-24: "treba premenovat ENTRY na ENTER lebo uz nejaky cas sa takto vklada do databazy"
     entrySaveBtn.textContent = 'ENTER';
     entrySaveBtn.onclick = async () => {
@@ -9394,7 +9407,7 @@ function zzz1_build_user_window(sourceRow = null) {
   actions.appendChild(attachBtnU);
   if (canEditList) {
     const entryBtn = document.createElement('button');
-    entryBtn.className = 'entry-modal-copy zzz1r17b-entry-btn';
+    entryBtn.className = 'entry-modal-copy zzz1r17b-entry-btn zzz1cn-enter-green'; // to iste v USER okne
     entryBtn.textContent = 'ENTER'; // [Zzz1-M4:ENTER] rovnake premenovanie ako v COMMUNICATION okne
     entryBtn.onclick = async () => {
       persistLocal();
@@ -19939,6 +19952,15 @@ function zzz1cn_local_load(entryKey) {
 function zzz1cn_local_save(entryKey, notes) {
   try { localStorage.setItem(zzz1cn_local_key(entryKey), JSON.stringify(notes)); } catch (e) {}
 }
+// [Zzz1-CN:KEY] Vrso 2026-09-24 ("chn uz existuje ale nevidim ho v poli") - PRICINA: kluc sa pocitat z
+// ENTRY NUMBER bunky, takze poznamky napisane PRED jej vyplnenim ostali pod 'draft' a po vyplneni uz feed
+// hladal iny kluc. Feed preto vzdy zobrazi aj 'draft' poznamky k rozpisanej CL.
+async function zzz1cn_load_for_feed(entryKey) {
+  const own = await zzz1cn_load(entryKey);
+  if (String(entryKey) === 'draft') return own;
+  const drafts = await zzz1cn_load('draft');
+  return own.concat(drafts).sort((a, b) => (Number(a.note_number) || 0) - (Number(b.note_number) || 0));
+}
 async function zzz1cn_load(entryKey) {
   if (zzz1cnTableAvailable !== false) {
     try {
@@ -20080,7 +20102,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   win.appendChild(listBox);
   const render = async () => {
     listBox.innerHTML = '';
-    const notes = await zzz1cn_load(entryKey);
+    const notes = await zzz1cn_load_for_feed(entryKey);
     if (!notes.length) {
       const empty = document.createElement('div');
       empty.className = 'zzz1cn-empty';
@@ -20088,7 +20110,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       listBox.appendChild(empty);
       return;
     }
-    notes.forEach(n => listBox.appendChild(zzz1cn_build_note(entryKey, n, render)));
+    notes.forEach(n => listBox.appendChild(zzz1cn_build_note(n.entry_key || entryKey, n, render)));
   };
   await render();
   document.body.appendChild(win);
