@@ -2379,6 +2379,60 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     border: 1px solid #171717;
     font-size: clamp(7px, 2vw, 10px);
   }
+  /* [Zzz1-CN:OWN-NOTE] vlastny chatnote - cislo-bunka zlata (Vrso 2026-09-25) */
+  .zzz1cn-note-number-own {
+    background-color: #D4AF37 !important;
+    color: #171717 !important;
+  }
+  .zzz1cn-note-btn-save { border-color: #D4AF37 !important; color: #8a6d1f !important; }
+
+  /* === [Zzz5-W7:CHATNOTE-WORKSPACE] uzky stlpik cisel (filter) + suvisly text vpravo === */
+  .zzz5w7-body { display: flex; gap: 6px; align-items: stretch; min-height: 0; flex: 1 1 auto; }
+  .zzz5w7-nums {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    overflow-y: auto;
+    padding-right: 4px;
+    border-right: 1px solid #d4d4d4;
+  }
+  .zzz5w7-num {
+    min-width: 24px;
+    padding: 2px 4px;
+    border-radius: 6px;
+    border: 1px solid #171717;
+    background-color: #171717;
+    color: #f5f5f0;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .zzz5w7-num-own { background-color: #D4AF37; color: #171717; }
+  .zzz5w7-num.is-on { outline: 2px solid #1e7e34; outline-offset: 1px; }
+  .zzz5w7-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 180px;
+    box-sizing: border-box;
+    padding: 6px;
+    border-radius: 8px;
+    border: 1px solid #171717;
+    background-color: #ffffff;
+    color: #171717;
+    font-size: 12px;
+    line-height: 1.35;
+    resize: vertical;
+    white-space: pre-wrap;
+  }
+  .zzz5w7-hint {
+    font-size: clamp(6px, 1.8vw, 8px);
+    font-weight: 700;
+    color: #6b7280;
+    margin-top: 4px;
+  }
+  .zzz5w7-ws { display: flex; flex-direction: column; }
+
   /* === [Zzz1-R17b:CONTACTS-GOLD] Vrso 2026-09-25: "Contacts pridane (napr Verso1) ohranicit zlatou a aj
      pridat dalsie contacts co su vybodkovane zlatou. CHIPOV SA NEDOTYKAJ." - tyka sa VYLUCNE riadku CONTACTS
      (.zzz1r17b-chips-row): uz pridane kontakty + prazdna "+" bunka na dalsi. Osobne QuickChips
@@ -20708,8 +20762,12 @@ function zzz1cn_build_note(entryKey, note, onChanged) {
   wrap.className = 'zzz1cn-note';
   const head = document.createElement('div');
   head.className = 'zzz1cn-note-head';
+  const meN0 = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+  const isMine = !!meN0 && zzz10v1_normalize(note.username || '') === meN0;
   const num = document.createElement('span');
-  num.className = 'zzz1cn-note-number';
+  // [Zzz1-CN:OWN-NOTE] Vrso 2026-09-25: "vlastny chatnote number bunku vypln zlatou" - na prvy pohlad vidno,
+  // ktore poznamky su moje, bez citania mena.
+  num.className = 'zzz1cn-note-number' + (isMine ? ' zzz1cn-note-number-own' : '');
   num.textContent = String(note.note_number);
   num.title = 'Chatnote number (needitovatelne)';
   head.appendChild(num);
@@ -20754,6 +20812,29 @@ function zzz1cn_build_note(entryKey, note, onChanged) {
   });
   head.appendChild(copyBtn);
   const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+  // === [Zzz1-CN:SAVE-OTHERS] Vrso 2026-09-25: "pri inych useroch co budu v chatnotes pisat pridaj save
+  // chatnote privately" - cudziu poznamku si viem odlozit ako VLASTNY privatny chatnote k tej istej entry.
+  // Original ostava nedotknuty (a zmazat ho aj tak nemozem), vznika moja privatna kopia. Zapisuje sa aj
+  // acknowledgement, rovnako ako pri COPY - je to prevzatie cudzieho obsahu. ===
+  if (!!me && zzz10v1_normalize(note.username || '') !== me) {
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'zzz1cn-note-btn zzz1cn-note-btn-save';
+    saveBtn.textContent = 'SAVE PRIVATELY';
+    saveBtn.title = 'SAVE CHATNOTE PRIVATELY - odlozi si cudziu poznamku ako tvoju privatnu';
+    saveBtn.addEventListener('click', async () => {
+      saveBtn.disabled = true;
+      const author = (note.username || '').trim();
+      const saved = await zzz1cn_add(entryKey, `${author}: ${note.note_text}`, true);
+      if (saved) {
+        if (author) zzz6f22_record_copy_credit(`${entryKey}/chatnote-${note.note_number}`, author, `Chatnote #${note.note_number}`);
+        zzz6f2_show_toast(`Chatnote #${note.note_number} ulozeny privatne + acknowledgement (${author}).`);
+        if (onChanged) await onChanged();
+      }
+      saveBtn.disabled = false;
+    });
+    head.appendChild(saveBtn);
+  }
   if (zzz10v1_normalize(note.username || '') === me) {
     const delBtn = document.createElement('button');
     delBtn.type = 'button';
@@ -20773,13 +20854,42 @@ function zzz1cn_build_note(entryKey, note, onChanged) {
 }
 
 // zoznam ulozenych chatnotes (otvara sa podrzanim SAVE tlacidla 2s)
+// =====================================================================================================
+// === [Zzz5-W7:CHATNOTE-WORKSPACE] CHATNOTES AKO SUVISLY TEXT, NIE AKO ZOZNAM ZAZNAMOV
+// -----------------------------------------------------------------------------------------------------
+// Vrso 2026-09-25, doslovne: "private chatnotes nepridavaj jednotlive chaty ako rovnaky zaznam ale vloz
+// akoby do bezneho textu na stranke... princip ide o to aby som vedel lahko nakopirovat tieto chaty a potom
+// vedel bud skopirovat cely text alebo editovat. Chatnotes number mozes tam kludne uviest ale skor ako
+// filtracnu funkciu (cize akymsi oddelenym stlpikom)."
+//
+// PRETO: ziadne kartcicky s tlacidlami. Vlavo UZKY STLPIK cisel (filter), vpravo JEDNO textove pole so
+// vsetkymi poznamkami za sebou - da sa oznacit, skopirovat vcelku aj prepisat.
+//
+// EDITACIA JE PRACOVNA KOPIA, NIE ZAPIS SPAT. Chatnote je v databaze nemenny - tabulka zamerne NEMA UPDATE
+// policy (kazda zmena by prepisala cudzi zaznam). Text sa teda da upravit a skopirovat, ale povodne poznamky
+// ostavaju nedotknute. Je to napisane aj v okne, nech to nie je prekvapenie.
+//
+// FILTER: klik na cislo ukaze len tu poznamku, dalsi klik filter zrusi. Cisla su tym padom to, co Vrso
+// chcel - orientacny/filtracny stlpik, nie sucast textu. | Vrso -> Claude AI | 2026-09-25 ===
+function zzz5w7_format_notes(notes) {
+  return notes.map(n => `#${n.note_number} ${n.username || '-'}${n.is_private ? ' (private)' : ''}\n${n.note_text}`)
+    .join('\n\n');
+}
 async function zzz1cn_open_list(entryKey, anchorEl) {
   document.querySelectorAll('.zzz1cn-list-window').forEach(w => w.remove());
   const win = document.createElement('div');
-  win.className = 'zzz1cn-list-window';
+  win.className = 'zzz1cn-list-window zzz5w7-ws';
+
   const head = document.createElement('div');
   head.className = 'zzz1cn-list-head';
-  head.textContent = `CHATNOTES (${entryKey})`;
+  head.textContent = `CHATNOTE WORKSPACE (${entryKey})`;
+
+  const copyAll = document.createElement('button');
+  copyAll.type = 'button';
+  copyAll.className = 'zzz1cn-note-btn';
+  copyAll.textContent = 'COPY ALL';
+  head.appendChild(copyAll);
+
   const close = document.createElement('button');
   close.type = 'button';
   close.className = 'zzz1cn-note-btn';
@@ -20787,23 +20897,84 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   close.addEventListener('click', () => win.remove());
   head.appendChild(close);
   win.appendChild(head);
-  const listBox = document.createElement('div');
-  win.appendChild(listBox);
+
+  const body = document.createElement('div');
+  body.className = 'zzz5w7-body';
+  const numsCol = document.createElement('div');
+  numsCol.className = 'zzz5w7-nums';
+  const area = document.createElement('textarea');
+  area.className = 'zzz5w7-text';
+  area.spellcheck = false;
+  body.appendChild(numsCol);
+  body.appendChild(area);
+  win.appendChild(body);
+
+  const note = document.createElement('div');
+  note.className = 'zzz5w7-hint';
+  note.textContent = 'Text sa da upravit a skopirovat - je to pracovna kopia, ulozene chatnotes sa nemenia.';
+  win.appendChild(note);
+
+  let allNotes = [];
+  let filter = null; // null = vsetko, inak note_number
+
+  const paint = () => {
+    const shown = filter === null ? allNotes : allNotes.filter(n => Number(n.note_number) === filter);
+    area.value = zzz5w7_format_notes(shown);
+    Array.from(numsCol.children).forEach(el => {
+      el.classList.toggle('is-on', filter !== null && Number(el.dataset.num) === filter);
+    });
+  };
+
   const render = async () => {
-    listBox.innerHTML = '';
-    const notes = await zzz1cn_load_for_feed(entryKey);
-    if (!notes.length) {
-      const empty = document.createElement('div');
-      empty.className = 'zzz1cn-empty';
-      empty.textContent = 'Ziadne ulozene chatnotes.';
-      listBox.appendChild(empty);
+    allNotes = await zzz1cn_load_for_feed(entryKey);
+    numsCol.innerHTML = '';
+    if (!allNotes.length) {
+      area.value = '';
+      area.placeholder = 'Ziadne ulozene chatnotes.';
       return;
     }
-    notes.forEach(n => listBox.appendChild(zzz1cn_build_note(n.entry_key || entryKey, n, render)));
+    allNotes.forEach(n => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'zzz5w7-num';
+      b.dataset.num = String(n.note_number);
+      b.textContent = String(n.note_number);
+      b.title = `Chatnote #${n.note_number} (${n.username || '-'}) - klik filtruje`;
+      // [Zzz1-CN:OWN-NOTE] vlastne poznamky su zlate aj tu, rovnako ako vo feede
+      const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+      if (meN && zzz10v1_normalize(n.username || '') === meN) b.classList.add('zzz5w7-num-own');
+      b.addEventListener('click', () => {
+        filter = (filter === Number(n.note_number)) ? null : Number(n.note_number);
+        paint();
+      });
+      numsCol.appendChild(b);
+    });
+    paint();
   };
+
+  copyAll.addEventListener('click', () => {
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(area.value);
+    // acknowledgement za KAZDEHO cudzieho autora, ktoreho text prave odchadza do schranky - rovnake
+    // pravidlo ako pri kopirovani jednej poznamky, len hromadne (deduplikaciu riesi zzz6f22 sama)
+    const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+    const shown = filter === null ? allNotes : allNotes.filter(n => Number(n.note_number) === filter);
+    const authors = [];
+    shown.forEach(n => {
+      const a = (n.username || '').trim();
+      if (a && zzz10v1_normalize(a) !== meN) {
+        zzz6f22_record_copy_credit(`${entryKey}/chatnote-${n.note_number}`, a, `Chatnote #${n.note_number}`);
+        if (!authors.includes(a)) authors.push(a);
+      }
+    });
+    zzz6f2_show_toast(authors.length
+      ? `Text skopirovany + acknowledgement (${authors.join(', ')}).`
+      : 'Text skopirovany.');
+  });
+
   await render();
   document.body.appendChild(win);
 }
+
 // === [/Zzz1-CN:CHAT-NOTES] ===
 // === [/Zzz5-W5:COMMUNICATION-WORKSPACE] ===
 // === [Zzz6-F29:HOLD-SELECT] Vrso 2026-09-23: "vsade kde je entry number ... 1-2s = zvyrazni cely riadok,
