@@ -2499,6 +2499,43 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     border: 2px dashed #ea8c00 !important;
     color: #8a5200 !important;
   }
+
+  /* === [Zzz1-R17b:CONTACT-MATCH] Vrso 2026-09-25: "ked som dopisoval do neho mal by zelenym vypisat
+     pismena usera ktore su v databaze contacts a cervene pismena ktore uz nie su... cely cas by tato add
+     bunka mala byt oranzovou farbou ohranicena, nech je jasne ze vyhladava"
+     Input sam o sebe NEVIE zafarbit jednotlive pismena - text v <input> je jedna farba. Preto ZRKADLO:
+     pod priehladnym textom inputu lezi div, ktory to iste vypise po castiach (zelena = este sedi s niekym
+     v contacts, cervena = uz nie). Input ostava obycajny input - pisanie, caret, Enter aj podrzanie
+     funguju presne ako doteraz. Oranzovy prerusovany ram drzi OBAL, takze je tam stale. */
+  .zzz1r17b-chipfind {
+    position: relative;
+    display: inline-flex;
+    align-items: stretch;
+  }
+  .zzz1r17b-chipfind .zzz1r17b-chip-input {
+    position: relative;
+    z-index: 1;
+    background-color: transparent;
+    caret-color: #171717;
+  }
+  /* pisemo je priehladne LEN ked zrkadlo naozaj nieco kresli - prazdna bunka si tak nechava placeholder "+" */
+  .zzz1r17b-chipfind.has-mirror .zzz1r17b-chip-input { color: transparent !important; }
+  .zzz1r17b-chipfind-mirror {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 0;
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    border: 2px solid transparent;   /* rovnaky ram ako input, aby text sedel na pixel */
+    font-size: 11px;
+    line-height: 1;
+    white-space: pre;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .zzz1r17b-chipfind-ok  { color: #1e7e34; font-weight: 700; }   /* este sedi s niekym v contacts */
+  .zzz1r17b-chipfind-bad { color: #c0392b; font-weight: 700; }   /* od tohto pismena uz nie */
   .zzz1r17b-userfilter {
     position: absolute;
     z-index: 3000;
@@ -9348,6 +9385,10 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
       input.className = 'zzz1r17b-chip-input';
       input.placeholder = '+';
       const commit = () => {
+        // [Zzz1-R17b:CONTACT-MATCH] kym je otvoreny zoznam contacts, blur NIE JE potvrdenie - user prave
+        // klika na meno v nom. Bez tejto poistky by sa pridali DVE veci: rozpisana "Ver" z bunky aj
+        // "Verso1" z vyberu. Enter potvrdzuje napisany text dalej kedykolvek.
+        if (document.querySelector('.zzz1r17b-userfilter')) return;
         const val = input.value.trim();
         if (val && !workingTags.includes(val)) {
           workingTags.push(val);
@@ -9358,42 +9399,81 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
       };
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
       input.addEventListener('blur', commit);
-      // === [Zzz1-R17b:USERNAME-FILTER] Vrso 2026-09-25: "vedla co je vybodkovana bunka pridat by som ju
-      // nechal oranzovou ako filtrovaciu podla username z databazy... podrzanim 1-2s proste".
-      // PISANIE ostava ako doteraz (vypisem meno + Enter). PODRZANIE 1.5s vytiahne mena zo zaznamov, ktore
-      // VIDIM v databaze (uz odfiltrovane cez RLS - ziadny novy pristup tym nevznika) a ponukne ich na vyber.
-      // Filtruje sa aj podla toho, co je uz v bunke napisane, takze sa da najprv zacat pisat. ===
+
+      // === [Zzz1-R17b:CONTACT-MATCH] Vrso 2026-09-25: "ked som dopisoval do neho mal by zelenym vypisat
+      // pismena usera ktore su v databaze contacts a cervene pismena ktore uz nie su" + "lepsie ak sa
+      // nepouzije search z command line ale automaticky".
+      // ZRKADLO: input ma priehladny text a pod nim lezi div, ktory to iste vypise po castiach.
+      // Input sam farbit po pismenach nevie - text v <input> je vzdy jedna farba. ===
+      const find = document.createElement('span');
+      find.className = 'zzz1r17b-chipfind';
+      const mirror = document.createElement('span');
+      mirror.className = 'zzz1r17b-chipfind-mirror';
+      find.appendChild(mirror);
+      find.appendChild(input);
+
+      let knownNames = zzz1r17bNamesCache || [];
+      const paintMirror = () => {
+        const val = input.value;
+        mirror.textContent = '';
+        if (!val) { find.classList.remove('has-mirror'); return; }
+        const { okLen } = zzz1r17b_match_prefix(val, knownNames);
+        const ok = document.createElement('span');
+        ok.className = 'zzz1r17b-chipfind-ok';
+        ok.textContent = val.slice(0, okLen);
+        const bad = document.createElement('span');
+        bad.className = 'zzz1r17b-chipfind-bad';
+        bad.textContent = val.slice(okLen);
+        mirror.appendChild(ok);
+        mirror.appendChild(bad);
+        find.classList.add('has-mirror');
+      };
+
+      // zoznam sa tiahne RAZ (a potom z kesu), nie pri kazdom pismene
+      zzz1r17b_load_contact_names().then(list => { knownNames = list; paintMirror(); })
+        .catch(() => { /* bez zoznamu sa proste nefarbi - pisanie tym netrpi */ });
+
+      // AUTOMATICKY, bez command-line searchu: pri pisani sa rovno ponuknu zhody z contacts
+      let findTimer = 0;
+      input.addEventListener('input', () => {
+        paintMirror();
+        clearTimeout(findTimer);
+        findTimer = setTimeout(() => {
+          const val = input.value.trim();
+          document.querySelectorAll('.zzz1r17b-userfilter').forEach(el => el.remove());
+          if (!val) return;
+          const { okLen, matches } = zzz1r17b_match_prefix(val, knownNames);
+          // ponuka sa ukaze LEN ked sedi CELY napisany text. Ked je uz nejake pismeno cervene, zoznam by
+          // tvrdil opak toho, co hovoria farby ("Verx" a pod tym ponuka Verso1) - cervena je odpoved.
+          if (!matches.length || okLen < zzz10v1_normalize(val).length) return;
+          zzz1r17b_open_username_filter(input, matches.map(x => x.name), (picked) => {
+            if (picked && !workingTags.includes(picked)) { workingTags.push(picked); renderChips(); }
+          });
+          input.focus();
+        }, 180);   // kratke ticho po pisani, aby okno neposkakovalo pri kazdom pismene
+      });
+
+      // === [Zzz1-R17b:USERNAME-FILTER] PODRZANIE 1.5s = cely zoznam (aj ked v bunke nic nie je) a zoznam
+      // sa pritom vytiahne NANOVO - je to jedine miesto, kde si user vyslovne pyta cerstvy stav. ===
       zzz_bind_long_press(input, 1500, async () => {
         zzz_haptic_pulse(30);
         const q = zzz10v1_normalize(input.value.trim());
-        let names = [];
+        let list = [];
         try {
-          // zzz6f2_get_known_entries() sa tu POUZIT NEDA - vracia len {entry_id, summary}, mena v tom nie su.
-          // Vlastny, uzky dopyt: LEN dva stlpce, ktore na mena treba.
-          const { data: rows, error } = await sb.from('verso_entries')
-            .select('username, fields_json').eq('is_trashed', false).limit(500);
-          if (error) throw error;
-          const seen = {};
-          (rows || []).forEach(r => {
-            const f = r.fields_json || {};
-            [f.r17, f.r18].forEach(cell => zzz6f21_parse_tags(cell || '').forEach(u => {
-              const t = String(u).trim();
-              if (t && t !== '-') seen[zzz10v1_normalize(t)] = t;
-            }));
-            const own = String(r.username || '').trim();
-            if (own) seen[zzz10v1_normalize(own)] = own;
-          });
-          names = Object.keys(seen).filter(k => !q || k.includes(q)).map(k => seen[k]).sort();
+          list = await zzz1r17b_load_contact_names(true);
+          knownNames = list;
+          paintMirror();
         } catch (e) {
           zzz6f2_show_toast(`Zoznam username sa nepodarilo nacitat: ${(e && e.message) || e}`, 'warn');
           return;
         }
+        const names = list.filter(x => !q || x.norm.includes(q)).map(x => x.name);
         if (!names.length) { zzz6f2_show_toast('Ziadny username nevyhovuje.', 'warn'); return; }
         zzz1r17b_open_username_filter(input, names, (picked) => {
           if (picked && !workingTags.includes(picked)) { workingTags.push(picked); renderChips(); }
         });
       });
-      chipsRow.appendChild(input);
+      chipsRow.appendChild(find);
     }
   }
   renderChips();
@@ -20427,6 +20507,58 @@ function zzz5w5cm_close_part(part) {
 
 // [Zzz1-R17b:USERNAME-FILTER] male vyberove okienko nad "+" bunkou. Ziadny novy zdroj dat - len zoznam
 // mien, ktore uz vidno v databaze; klik vlozi meno ako chip.
+// === [Zzz1-R17b:CONTACT-MATCH] (SYSTEM FUNCTION) ZOZNAM CONTACTS PRE ZIVE VYHLADAVANIE ===============
+// Vrso 2026-09-25: "+add contact... lepsie ak sa nepouzije search z command line ale automaticky, lebo
+// ide nie o klasicky search ale len specializovany na contacts"
+//
+// Preto VLASTNY, uzky dopyt - NIE SEARCH z command line (Zzz2-R*). Ten hlada v celej databaze zaznamov
+// a otvara vysledkovy modul; tu ide o jedinu vec: ktore USERNAME poznam. Dopyt tahá len dva stlpce.
+//
+// Mena pochadzaju zo zaznamov, ktore uzivatel UZ VIDI - RLS rozhoduje, takze zive vyhladavanie NEOTVARA
+// ziadny novy pristup k datam. Vysledok sa KESUJE (pri kazdom pismene dopyt do DB by bol nezmysel);
+// kes sa zahadzuje po ZZZ1R17B_NAMES_TTL_MS a pri kazdom podrzani bunky, ktore si mena pyta nanovo.
+let zzz1r17bNamesCache = null;
+let zzz1r17bNamesAt = 0;
+const ZZZ1R17B_NAMES_TTL_MS = 5 * 60 * 1000;
+async function zzz1r17b_load_contact_names(force) {
+  if (!force && zzz1r17bNamesCache && (Date.now() - zzz1r17bNamesAt) < ZZZ1R17B_NAMES_TTL_MS) {
+    return zzz1r17bNamesCache;
+  }
+  // zzz6f2_get_known_entries() sa tu POUZIT NEDA - vracia len {entry_id, summary}, mena v tom nie su.
+  const { data: rows, error } = await sb.from('verso_entries')
+    .select('username, fields_json').eq('is_trashed', false).limit(500);
+  if (error) throw error;
+  const seen = {};
+  (rows || []).forEach(r => {
+    const f = r.fields_json || {};
+    [f.r17, f.r18].forEach(cell => zzz6f21_parse_tags(cell || '').forEach(u => {
+      const t = String(u).trim();
+      if (t && t !== '-') seen[zzz10v1_normalize(t)] = t;
+    }));
+    const own = String(r.username || '').trim();
+    if (own) seen[zzz10v1_normalize(own)] = own;
+  });
+  zzz1r17bNamesCache = Object.keys(seen).sort().map(k => ({ norm: k, name: seen[k] }));
+  zzz1r17bNamesAt = Date.now();
+  return zzz1r17bNamesCache;
+}
+// Najdlhsia predpona napisaneho textu, ktora je este predponou NIEKOHO zo zoznamu.
+// Vrati { okLen, matches } - okLen pismen je zelenych, zvysok cerveny.
+function zzz1r17b_match_prefix(value, list) {
+  const q = zzz10v1_normalize(String(value || ''));
+  if (!q) return { okLen: 0, matches: [] };
+  let okLen = 0;
+  let matches = [];
+  for (let i = 1; i <= q.length; i++) {
+    const part = q.slice(0, i);
+    const hit = (list || []).filter(x => x.norm.indexOf(part) === 0);
+    if (!hit.length) break;
+    okLen = i;
+    matches = hit;
+  }
+  return { okLen, matches };
+}
+
 function zzz1r17b_open_username_filter(anchorEl, names, onPick) {
   document.querySelectorAll('.zzz1r17b-userfilter').forEach(el => el.remove());
   const box = document.createElement('div');
@@ -20961,11 +21093,33 @@ async function zzz1cn_promote_draft(entryId) {
   if (!draftId) return;
   try {
     const notes = await zzz1cn_load(draftId);
-    for (const n of (notes || [])) {
-      if (String(n.id).indexOf('local-') === 0) continue; // lokalny fallback riesi zzz1cn_local_save nizsie
+    // === [Zzz5-W7:NOTE-PART] PRESUN MUSI PREČISLOVAT. Odkedy cislo prideluje trigger v databaze, poznamka
+    // presunuta pod skutocny zaznam dostane cislo VOLNE TAM, nie to, ktore mala v drafte (pod #500 uz moze
+    // byt #1 obsadena niekym inym). Preto:
+    //   1. najprv HLAVNE poznamky - a zapamata sa, ake cislo im DB pridelila
+    //   2. potom SUB-poznamky, uz pod NOVYM cislom svojho rodica
+    // Bez toho by sa sub-poznamka pripojila k cudzej poznamke, alebo by ju trigger odmietol s
+    // "poznamka #N v zazname X neexistuje". ===
+    const list = (notes || []).filter(n => String(n.id).indexOf('local-') !== 0); // lokalny fallback riesi zzz1cn_local_save nizsie
+    const mains = list.filter(n => !zzz5w7_sub_of(n));
+    const subs  = list.filter(n => !!zzz5w7_sub_of(n));
+    const remap = {};   // stare cislo v drafte -> nove cislo pridelene databazou
+    for (const n of mains) {
       const payload = {
         entry_key: String(id), username: n.username,
-        note_number: n.note_number, note_text: n.note_text, is_private: n.is_private
+        note_number: n.note_number, note_part: '', note_text: n.note_text, is_private: n.is_private
+      };
+      const { data, error } = await sb.from(ZZZ1CN_TABLE).insert(payload).select().single();
+      if (error) throw error;
+      if (data && data.note_number) remap[String(n.note_number)] = data.note_number;
+      await sb.from(ZZZ1CN_TABLE).delete().eq('id', n.id);
+    }
+    for (const n of subs) {
+      const s = zzz5w7_sub_of(n);
+      const payload = {
+        entry_key: String(id), username: n.username,
+        note_number: remap[String(s.base)] || s.base, note_part: s.letter,
+        note_text: zzz5w7_body_of(n), is_private: n.is_private   // zbavi sa aj starej znacky "[#1-a]", ak tam este je
       };
       const { error } = await sb.from(ZZZ1CN_TABLE).insert(payload);
       if (error) throw error;
@@ -21011,8 +21165,17 @@ function zzz1cn_draft_key_peek() {
 // Netreba to: poznamky sa pri ulozeni PRESUNU (zzz1cn_promote_draft). Ked presun zlyha, ostanu pod draftom -
 // teda vo feede TEJ CL, kde ich user napisal - a skusi sa znova pri dalsom ulozeni.
 async function zzz1cn_load_for_feed(entryKey) {
+  // [Zzz5-W7:NOTE-PART] radenie podla DVOCH hodnot, presne ako index verso_chat_notes_order_idx:
+  // najprv cislo, potom pismeno - takze 1, 1-a, 1-b, 2, 2-a. Pismeno sa porovnava najprv podla DLZKY,
+  // inak by 'b' vyslo nad 'aa'.
+  const key = (n) => {
+    const s = zzz5w7_sub_of(n);
+    return s ? s.letter : '';
+  };
   return (await zzz1cn_load(entryKey)).concat(zzz1cn_pending_for(entryKey))
-    .sort((a, b) => (Number(a.note_number) || 0) - (Number(b.note_number) || 0));
+    .sort((a, b) => (Number(a.note_number) || 0) - (Number(b.note_number) || 0)
+      || (key(a).length - key(b).length)
+      || key(a).localeCompare(key(b)));
 }
 // [Zzz0-OB:CLIENT-CHATNOTE] zzz1cnTableAvailable bol PRILEPENY natrvalo: staci, ze prvy dopyt zlyhal (offline
 // pri starte, vypadok siete) a flag ostal false do konca session - odvtedy vsetky chatnotes ticho padali do
@@ -21022,9 +21185,12 @@ function zzz1cn_reset_availability() { zzz1cnTableAvailable = null; }
 async function zzz1cn_load(entryKey) {
   if (zzz1cnTableAvailable !== false) {
     try {
+      // [Zzz5-W7:NOTE-PART] note_part sa cita aj radi ako VLASTNY stlpec - "1", "1-a", "1-b", "2"
       const { data, error } = await sb.from(ZZZ1CN_TABLE)
-        .select('id, entry_key, username, note_number, note_text, is_private')
-        .eq('entry_key', String(entryKey)).order('note_number', { ascending: true });
+        .select('id, entry_key, username, note_number, note_part, note_text, is_private')
+        .eq('entry_key', String(entryKey))
+        .order('note_number', { ascending: true })
+        .order('note_part', { ascending: true });
       if (error) throw error;
       zzz1cnTableAvailable = true;
       return data || [];
@@ -21034,22 +21200,32 @@ async function zzz1cn_load(entryKey) {
   }
   return zzz1cn_local_load(entryKey);
 }
-async function zzz1cn_add(entryKey, text, isPrivate) {
+// [Zzz5-W7:NOTE-PART] subOf = { base: <cislo poznamky, ku ktorej patri> } zalozi SUB-POZNAMKU. Pismeno sa
+// NEPOSIELA ako pravda - posiela sa len odhad, aby trigger vedel, ze ide o sub-poznamku; skutocne pismeno
+// pridelí databaza a appka si ho precita z vrateneho riadku.
+async function zzz1cn_add(entryKey, text, isPrivate, subOf) {
   const clean = (text || '').trim();
   if (!clean) { zzz6f2_show_toast('Chatnote je prazdny.', 'warn'); return null; }
   const username = (zzz0r1_get_current_username() || '').trim();
   // [Zzz0-OB:CLIENT-CHATNOTE] do cislovania sa MUSIA zapocitat aj cakajuce zapisy z outboxu - inak by dva
   // chatnotes napisane offline dostali rovnake cislo a po odoslani by sa v DB pobili.
+  // [Zzz5-W7:NOTE-PART] ONLINE je toto uz len DOCASNE cislo pre okamzite zobrazenie - definitivne prideli
+  // trigger v databaze (klient navyse nevidi cudzie privatne poznamky, takze jeho MAX je systematicky
+  // prinizky). OFFLINE je to jedina moznost, tam plati dalej.
   const existing = (await zzz1cn_load(entryKey)).concat(zzz1cn_pending_for(entryKey));
-  const nextNumber = existing.reduce((max, n) => Math.max(max, Number(n.note_number) || 0), 0) + 1;
-  const row = { entry_key: String(entryKey), username, note_number: nextNumber, note_text: clean, is_private: !!isPrivate };
+  const base = subOf && Number(subOf.base) > 0 ? Number(subOf.base) : 0;
+  const nextNumber = base
+    ? base
+    : existing.reduce((max, n) => Math.max(max, Number(n.note_number) || 0), 0) + 1;
+  const notePart = base ? zzz5w7_next_letter(existing, base) : '';
+  const row = { entry_key: String(entryKey), username, note_number: nextNumber, note_part: notePart, note_text: clean, is_private: !!isPrivate };
   // OPRAVA v2 (Vrso 2026-09-24, RLS chyba sa vratila): predchadzajuci pokus "neposielat username a nechat
   // to na databazu" bol ZLY - stal na predpoklade Supabase Auth (auth.jwt() ->> 'email'), ktoru Verso
   // VOBEC nepouziva. Verso ma vlastny [Zzz0Auth-Gate:JWT-BRIDGE] most a KAZDA RLS policy porovnava
   // lower(username) = verso_jwt_username() (viz [Zzz0-R2:USERNAME-CASE] PRAVIDLO). Username teda klient
   // posielat MUSI - presne v registrovanom tvare, DB si ho porovna lowercase.
   // [Zzz0-OB:CLIENT-CHATNOTE] payload sa stavia PRED try - potrebuje ho aj catch vetva (odovzdanie outboxu).
-  const payload = { entry_key: row.entry_key, username: row.username, note_number: row.note_number, note_text: row.note_text, is_private: row.is_private };
+  const payload = { entry_key: row.entry_key, username: row.username, note_number: row.note_number, note_part: row.note_part, note_text: row.note_text, is_private: row.is_private };
   if (zzz1cnTableAvailable) {
     try {
       const { data, error } = await sb.from(ZZZ1CN_TABLE).insert(payload).select().single();
@@ -21210,13 +21386,25 @@ function zzz1cn_build_note(entryKey, note, onChanged) {
 //
 // FILTER: klik na cislo ukaze len tu poznamku, dalsi klik filter zrusi. Cisla su tym padom to, co Vrso
 // chcel - orientacny/filtracny stlpik, nie sucast textu. | Vrso -> Claude AI | 2026-09-25 ===
-// [Zzz5-W7:CHATNOTES] sub-poznamka: vlastny komentar k cudzej (alebo vlastnej) poznamke. V DB je to bezny
-// privatny chatnote, ktoreho text ZACINA znackou "[#<cislo>-<pismeno>]". Preco takto a nie vlastnym stlpcom:
-// note_number je integer, "1-a" sa don nezmesti - a Vrso vyslovne povedal "ak moc komplikovane tak to proste
-// urob jednoduchsie ale funkcne". Znacka sa parsuje spat pri zobrazeni aj pri hladani volneho pismena.
-const ZZZ5W7_SUB_RE = /^\[#(\d+)-([a-z])\]\s*/;
+// === [Zzz5-W7:NOTE-PART] (SYSTEM FUNCTION) SUB-OZNACENIE VO VLASTNOM STLPCI ==========================
+// Vrso 2026-09-25: "cislovanie a vlastna extra poznamka je proste dolezita" + "subs uz pouzivam, da sa to
+// nazvat nejako inak" -> stlpec sa vola note_part (SUBS je stlpec v CL, kolidovalo by to pri citani).
+//
+// PREDTYM (a preco sa to menilo): "1-a" zilo ako znacka "[#1-a]" PRIAMO V TEXTE poznamky. Fungovalo to
+// hned a bez migracie, ale VERSO-CISLOVANIE.md pravom hovori, ze oznacenie sa nema schovavat do obsahu -
+// obsah je to, co pise user. Hlavny dovod ale nie je estetika: acknowledgement kluc sa z toho retazca
+// skladal, takze DOKAZ stal na texte, ktory si user mohol napisat sam. Teraz sa sklada z
+// entry_key + note_number + note_part, teda z hodnot, ktore zapisala DATABAZA (trigger
+// verso_chat_notes_before_insert, verso_chat_notes_v4_note_part.sql).
+//
+// ZNACKA SA EŠTE STALE VIE PRECITAT - ako zaloha pre riadky, ktore este nepresli migraciou, a pre polozky,
+// ktore medzitym cakaju v outboxe v starom tvare. Nova sa uz nikdy nezapisuje.
+// | Vrso -> Claude AI | 2026-09-25 ===
+const ZZZ5W7_SUB_RE = /^\[#(\d+)-([a-z]+)\]\s*/;
 function zzz5w7_sub_of(note) {
-  const m = ZZZ5W7_SUB_RE.exec(String(note.note_text || ''));
+  const part = String((note && note.note_part) || '').trim();
+  if (part) return { base: Number(note.note_number) || 0, letter: part };
+  const m = ZZZ5W7_SUB_RE.exec(String((note && note.note_text) || ''));   // zaloha: stary tvar v texte
   return m ? { base: Number(m[1]), letter: m[2] } : null;
 }
 function zzz5w7_label_of(note) {
@@ -21224,16 +21412,17 @@ function zzz5w7_label_of(note) {
   return sub ? `${sub.base}-${sub.letter}` : String(note.note_number);
 }
 function zzz5w7_body_of(note) {
-  return String(note.note_text || '').replace(ZZZ5W7_SUB_RE, '');
+  return String((note && note.note_text) || '').replace(ZZZ5W7_SUB_RE, '');
 }
-// dalsie volne pismeno pre sub-poznamky daneho cisla (a, b, c...)
+// Dalsie volne pismeno. Pouziva sa UZ LEN na ODHAD v texte otazky - skutocne pismeno pridelí databaza
+// a appka ho precita z vrateneho riadku. Preto tu nesmie byt ziadne "a musi vyjst to iste" ocakavanie.
 function zzz5w7_next_letter(notes, baseNumber) {
   const used = notes.map(zzz5w7_sub_of).filter(x => x && x.base === Number(baseNumber)).map(x => x.letter);
   for (let i = 0; i < 26; i++) {
     const ch = String.fromCharCode(97 + i);
     if (!used.includes(ch)) return ch;
   }
-  return 'z';
+  return 'aa';   // po 'z' nasleduje 'aa', nie '{' - rovnako ako verso_next_letter() v DB
 }
 
 // =====================================================================================================
@@ -21336,19 +21525,26 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
     const sub = zzz5w7_sub_of(n);
     const base = sub ? sub.base : Number(n.note_number);
-    const letter = zzz5w7_next_letter(allNotes, base);
-    const text = window.prompt(`Vlastna poznamka k chatnote #${base} (ulozi sa ako #${base}-${letter}):`, '');
+    // [Zzz5-W7:NOTE-PART] otazka uz NESLUBUJE konkretne pismeno - prideli ho databaza a moze byt ine,
+    // ak medzitym pridal sub-poznamku niekto iny. Skutocny nazov sa povie az v potvrdeni nizsie.
+    const text = window.prompt(`Vlastna poznamka k chatnote #${base}:`, '');
     if (text === null || !text.trim()) return;
-    const saved = await zzz1cn_add(entryKey, `[#${base}-${letter}] ${text.trim()}`, true);
+    const saved = await zzz1cn_add(entryKey, text.trim(), true, { base });
     if (!saved) return;
     // === [Zzz6-F22-copy-credit:SUB-NOTE] jedinecny zaznam presne ako ziadal Vrso: <entry>/<chatnote>/<sub>
     // - takze je vzdy jasne, ku ktoremu zaznamu, ktorej poznamke a ktorej sub-poznamke sa acknowledgement
-    // viaze. Pise sa LEN pri CUDZEJ poznamke - komentovat vlastnu nie je co priznavat. ===
+    // viaze. Pise sa LEN pri CUDZEJ poznamke - komentovat vlastnu nie je co priznavat.
+    // [Zzz5-W7:NOTE-PART] kluc sa sklada z toho, CO VRATILA DATABAZA (note_number + note_part), nie
+    // z retazca v texte - to bol cely dovod migracie. VYNIMKA, ktora este nie je doriesena: pri zapise
+    // do outboxu (offline) zatial ziadny vrateny riadok neexistuje, takze kluc stoji na klientskom
+    // odhade pismena a po odoslani sa moze rozist - viditelne ako zzz0ob_pending. ===
+    const label = zzz5w7_label_of(saved);
+    const part = String(saved.note_part || '').trim() || (zzz5w7_sub_of(saved) || {}).letter || '';
     const author = (n.username || '').trim();
     if (author && zzz10v1_normalize(author) !== meN) {
-      zzz6f22_record_copy_credit(`${entryKey}/${base}/${letter}`, author, `Chatnote #${base}-${letter}`);
+      zzz6f22_record_copy_credit(`${entryKey}/${saved.note_number}/${part}`, author, `Chatnote #${label}`);
     }
-    zzz6f2_show_toast(`Poznamka #${base}-${letter} ulozena.`);
+    zzz6f2_show_toast(`Poznamka #${label} ulozena.`);
     await render();
   };
 
