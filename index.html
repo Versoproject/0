@@ -2290,6 +2290,16 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     font-weight: 700;
     color: #6b7280;
   }
+  /* [Zzz0-OB:OUTBOX] chatnote, ktory je zatial LEN lokalne (caka vo fronte) - odlisit, ale nekricat */
+  .zzz0ob-pending { opacity: 0.72; }
+  .zzz0ob-pending-badge {
+    font-size: 8px;
+    font-weight: 700;
+    color: #b45309;
+    border: 1px dashed #b45309;
+    border-radius: 5px;
+    padding: 0 4px;
+  }
   .zzz1cn-note-btn {
     margin-left: auto;
     padding: 2px 8px;
@@ -6247,6 +6257,8 @@ document.addEventListener('click', (e) => {
 // Predtym Database workspace citala priamo z entryData -> ked si vyprazdnil/prepisal R1 (napr. kvoli hladaniu),
 // zmizol aj samotny "ulozeny" zaznam, lebo bol to isty field. Teraz: R1 = LEN filter/live editacia,
 // submittedEntriesCache = to, co bolo skutocne odoslane cez submit_entries_to_db (Enter mimo textarea / podrzanie loga).
+// [Zzz0-OB:MIGRATION-CANDIDATE] FAZA 2 - zije LEN v pamati, po refreshi je prec. Presunut do spolocnej
+// lokalnej vrstvy (viz [Zzz0-OB:OUTBOX]) az vtedy, ked sa tejto casti budeme aj tak dotykat.
 const submittedEntriesCache = {};
 
 function render_entry_cell(id) {
@@ -8029,15 +8041,98 @@ function zzz1_r26f1_is_multiuser_project() {
   return zzz6f21_parse_tags(entryData["17"] || '').length > 1;
 }
 
-// VSETCI R17 tagovani useri musia mat consent === true (entryData["17c"] mapa, rovnaka ako R17b consent bar)
-function zzz1_r26f1_all_users_consented() {
-  const tags = zzz6f21_parse_tags(entryData["17"] || '');
-  if (tags.length === 0) return false;
-  const map = zzz1_context_get_consent_map(ZZZ1_R17_CONSENT_KEY);
-  return tags.every(u => map[u] === true);
+// =====================================================================================================
+// === [Zzz13-MV:CONSENT-SOURCE] (SYSTEM FUNCTION) JEDINY AUTORITATIVNY ZDROJ STAVU SUHLASOV
+// -----------------------------------------------------------------------------------------------------
+// KROK 1 z dohodnuteho poradia (Vrso 2026-09-25, "podme vsetko zapracovat krok za krokom").
+//
+// CO TU BOLO ZLE: zzz1_r26f1_all_users_consented() - jedina brana, ktora ma vynutit pravidlo "pri Final
+// treba consent VSETKYCH userov bez vynimky" - citala STARU JSON mapu entryData["17c"] v zazname, NIE
+// tabulku verso_consents. Tu mapu ale uz NIC nezapisuje (nahradila ju tabulka, viz [Zzz13-MV:CONSENT-PERMANENT]
+// 2026-09-21), takze brana bola pre realne zaznamy PRAKTICKY VZDY nepravdiva. Chyba sa nikdy neprejavila ako
+// hlaska - len sa nedalo prepnut na CONFIRMED a nebolo zrejme preco (presne trieda chyby z [Zzz0-R2:USERNAME-CASE]).
+//
+// AKO SA STAV SKLADA: verso_consents je append-only event log - kazde zaskrtnutie/odskrtnutie je NOVY riadok,
+// nic sa neprepisuje ani nemaze (odvolanie = riadok s active=false). Platny stav dvojice (username, kind) je
+// preto riadok s NAJVYSSIM id. Rovnaka skladacka ako v zzz1r17b_consent_model a zzz5w5cm_load_pairing - tu je
+// vytiahnuta do jednej zdielanej funkcie, aby sa dalsie brany uz nemuseli pisat znova.
+//
+// FAIL-CLOSED: ked sa stav NEPODARI nacitat, vracia null (nie {}). Brana musi rozlisit "viem, ze suhlas nie je"
+// od "neviem" - a pri "neviem" NESMIE pustit dalej. Inak by vypadok siete odomkol CONFIRMED.
+// | Vrso -> Claude AI | 2026-09-25 ===
+async function zzz1cons_load_state(entryId) {
+  const id = Number(entryId);
+  if (!id) return {};
+  try {
+    const { data, error } = await sb.from('verso_consents')
+      .select('username, kind, active, id')
+      .eq('entry_id', id)
+      .order('id', { ascending: false }); // najvyssie id = platny stav, preto zostupne
+    if (error) throw error;
+    const state = {};
+    (data || []).forEach(r => {
+      const u = zzz10v1_normalize(r.username || ''); // [Zzz0-R2:USERNAME-CASE] - VZDY cez normalize
+      state[u] = state[u] || {};
+      // drzi sa AJ id, nie len active - [Zzz13-MV:OWNER-LAST-CONSENT] potrebuje PORADIE suhlasov
+      if (state[u][r.kind] === undefined) state[u][r.kind] = { active: r.active, id: Number(r.id) || 0 };
+    });
+    return state;
+  } catch (e) {
+    zzz6f2_show_toast(`Stav consentov sa nepodarilo nacitat: ${(e && e.message) || e}`, 'warn');
+    return null; // null = NEVIEME (odlisene od {} = viem, ze tam nic nie je)
+  }
+}
+// === [/Zzz13-MV:CONSENT-SOURCE] ===
+
+// pomocnici nad stavom zo zzz1cons_load_state - drzia [Zzz0-R2:USERNAME-CASE] na jednom mieste
+function zzz1cons_active(state, username, kind) {
+  const u = zzz10v1_normalize(username || '');
+  return !!(state && state[u] && state[u][kind] && state[u][kind].active === true);
+}
+function zzz1cons_id(state, username, kind) {
+  const u = zzz10v1_normalize(username || '');
+  return (state && state[u] && state[u][kind]) ? (state[u][kind].id || 0) : 0;
 }
 
-function zzz1_r26f1_toggle_status() {
+// === VSETCI R17 tagovani useri musia mat consent === true - TERAZ z tabulky verso_consents (viz vyssie).
+// [Zzz13-MV:OWNER-LAST-CONSENT] Vrso 2026-09-25: pri Final musi suhlasit AJ owner, a to ako POSLEDNY.
+// Poradie sa overuje priamo event logom: ownerov consent riadok musi mat VYSSIE id nez consent riadky
+// vsetkych ostatnych clenov. Ziadny novy stlpec na to netreba - append-only log poradie uz nesie.
+// Kazdy dovod zamietnutia ma VLASTNU hlasku, aby sa nehladalo, ktora z podmienok padla. ===
+async function zzz1_r26f1_all_users_consented() {
+  const tags = zzz6f21_parse_tags(entryData["17"] || '');
+  if (tags.length === 0) return false;
+  const entryId = Number(String(entryData["1"] || '').trim());
+  if (!entryId) {
+    zzz6f2_show_toast('Consent sa da overit az na ULOZENOM zazname (chyba entry number).', 'warn');
+    return false;
+  }
+  const state = await zzz1cons_load_state(entryId);
+  if (!state) return false; // FAIL-CLOSED - neviem, teda nepustam dalej
+  const owner = zzz10v1_normalize((entryData["4"] || '').trim());
+  const members = tags.map(u => zzz10v1_normalize(u)).filter(n => n && n !== owner);
+
+  const missing = members.filter(n => !zzz1cons_active(state, n, 'consent'));
+  if (missing.length) {
+    zzz6f2_show_toast(`Chyba consent: ${missing.join(', ')}`);
+    return false;
+  }
+  if (!owner) return true; // bez definovaneho ownera sa owner-last pravidlo nema o co opriet
+
+  if (!zzz1cons_active(state, owner, 'consent')) {
+    zzz6f2_show_toast('Pri Final musi dat consent aj PROJECT OWNER - a to ako posledny.');
+    return false;
+  }
+  const ownerId = zzz1cons_id(state, owner, 'consent');
+  const lastMemberId = members.reduce((max, n) => Math.max(max, zzz1cons_id(state, n, 'consent')), 0);
+  if (ownerId <= lastMemberId) {
+    zzz6f2_show_toast('Consent PROJECT OWNERA musi byt POSLEDNY - niekto suhlasil az po nom. Owner musi potvrdit znova.');
+    return false;
+  }
+  return true;
+}
+
+async function zzz1_r26f1_toggle_status() {
   const current = (entryData["26"] || '').trim();
 
   if (current === '') { write_to_entry("26", "pending"); return; }
@@ -8073,7 +8168,7 @@ function zzz1_r26f1_toggle_status() {
       zzz6f2_show_toast('Status "CONFIRMED" moze nastavit iba Project Owner (delegate rola zatial nie je definovana).');
       return;
     }
-    if (!zzz1_r26f1_all_users_consented()) {
+    if (!await zzz1_r26f1_all_users_consented()) { // [Zzz13-MV:CONSENT-SOURCE] teraz z verso_consents
       zzz6f2_show_toast('Status "CONFIRMED" vyzaduje consent VSETKYCH tagovanych R17 users.');
       return;
     }
@@ -8506,6 +8601,7 @@ async function zzz1_get_my_quickchips() {
   return chips;
 }
 
+// [Zzz0-OB:MIGRATION-CANDIDATE] FAZA 2 - vlastny localStorage tvar bez retry; po migracii pojde cez outbox.
 async function zzz1_save_my_quickchips(chips) {
   const current = zzz0r1_get_current_username();
   if (!current) return false;
@@ -9167,8 +9263,25 @@ function zzz1r17b_consent_model(sourceRow) {
     const saveNote = m.isSaved ? '' : ' - after saving (ENTER)';
     if (!isOwnerLine && !itsMe && !m.isOwner && m.isSaved) return { name: userRaw, privateView: true };
     let consentOn, consentEnabled, permOn, permEnabled, permTitle;
+    let consentTitle = isOwnerLine ? 'CONSENT - owner (implicit)' : 'CONSENT' + saveNote;
     if (isOwnerLine) {
-      consentOn = true; consentEnabled = false;
+      // === [Zzz13-MV:OWNER-LAST-CONSENT] (SYSTEM FUNCTION) Vrso 2026-09-25, doslovne: "Pri final owner musi
+      // mat POSLEDNY consent! Zaznamy budu tak ci tak ale bude to mat aj vyznam pri acknowledgement a pod."
+      // MIMO Final ostava ownerov consent IMPLICITNY (tak to bolo doteraz - nikdy sa neukladal, owner pisal
+      // len 'permanent' riadky). PRI Final ho owner musi dat EXPLICITNE a az PO vsetkych ostatnych: jeho
+      // suhlas je zaroven UZATVARAJUCE acknowledgement diela. Poradie sa neoveruje novym stlpcom, ale
+      // priamo event logom - ownerov consent riadok musi mat vyssie id nez consent riadky vsetkych clenov
+      // (viz zzz1_r26f1_all_users_consented). Tu v UI je to len brana: kym nemaju consent vsetci clenovia,
+      // ownerov prepinac sa neda zapnut. ===
+      if (m.isFinal) {
+        consentOn = !!st.consent;
+        consentEnabled = m.isSaved && itsMe && (allConsented || consentOn);
+        consentTitle = (allConsented || consentOn)
+          ? 'CONSENT - owner (posledny, uzatvara zaznam)'
+          : 'CONSENT - az po suhlase VSETKYCH clenov';
+      } else {
+        consentOn = true; consentEnabled = false;
+      }
       permOn = !!st.permanent;
       permEnabled = m.isSaved && m.isFinal && itsMe && (allConsented || permOn);
       permTitle = !m.isFinal ? 'PERMANENT - only for category Final' : (!allConsented && !permOn ? 'PERMANENT - after ALL members consent' : 'PERMANENT');
@@ -9181,7 +9294,7 @@ function zzz1r17b_consent_model(sourceRow) {
     return {
       name: userRaw,
       labelSuffix: isOwnerLine ? '(PROJECT OWNER)' : '',
-      consentOn, consentEnabled, consentTitle: isOwnerLine ? 'CONSENT - owner (implicit)' : 'CONSENT' + saveNote,
+      consentOn, consentEnabled, consentTitle,
       permOn, permEnabled, permTitle: permTitle + (m.isSaved ? '' : saveNote),
       onConsent: async (v) => { await m.insert('consent', v); await m.load(); rerender(); },
       onPerm: async (v) => { await m.insert('permanent', v); await m.load(); rerender(); },
@@ -12123,10 +12236,14 @@ function zzz0r1_set_db_connection_state(isConnected, errorDetail, suppressToast 
   // verso_entries (nie len potvrdenie cisla, ktore uz riesi zzz4f1_sync_pending_confirmations vyssie).
   // ROZSIRENE (Zzz6-F34:RETRY-SYNC, Vrso 2026-08-28 "Trash musi byt zapracovany vsetko vzdy"): ROVNAKY
   // trigger teraz VOLA AJ zzz6f34_sync_pending_trash() - dokonci nedokoncene presuny do Trash.
+  // ROZSIRENE (Zzz0-OB:OUTBOX, Vrso 2026-09-25): ROVNAKY trigger teraz VOLA AJ zzz0ob_flush() - jedna
+  // spolocna fronta zapisov (zatial chatnotes, dalsie klienty pribudnu vo FAZE 2, viz [Zzz0-OB:OUTBOX]).
   if (isConnected && zzz0r1_lastKnownConnectionState !== true) {
     zzz4f1_sync_pending_confirmations();
     zzz4_0_sync_pending_entries();
     zzz6f34_sync_pending_trash();
+    try { zzz1cn_reset_availability(); } catch (e) {} // [Zzz0-OB] chatnotes: znova over dostupnost tabulky
+    zzz0ob_flush('reconnect');
   }
   zzz0r1_lastKnownConnectionState = isConnected;
 }
@@ -12256,6 +12373,8 @@ function zzz4_0_save_unsynced_entries_to_storage() {
 }
 
 // entry_id -> true = tento zaznam este NIKDY neprebehol uspesne do verso_entries, caka na retry
+// [Zzz0-OB:MIGRATION-CANDIDATE] FAZA 2 - vlastna retry slucka s vlastnym tvarom ulozenia; po migracii ju
+// nahradi jeden zzz0ob_register('entry', ...) handler a spolocna fronta (viz [Zzz0-OB:OUTBOX]).
 const zzz4_0_unsyncedEntryIds = zzz4_0_load_unsynced_entries_from_storage();
 let zzz4_0_entriesSyncInProgress = false; // zabrani sucasnemu bezaniu viacerych retry-behov naraz
 
@@ -19955,6 +20074,115 @@ zzz1m4a_detach_local = function (itemId) {
 };
 // === [/Zzz5-W5:ATTACH-TARGET] ===
 
+// =====================================================================================================
+// === [Zzz0-OB:OUTBOX] (SYSTEM FUNCTION) LOKALNA ZAPISOVA VRSTVA - 1. CAST PWA
+// -----------------------------------------------------------------------------------------------------
+// POZIADAVKA (Vrso 2026-09-25, doslovne): "bolo by idealne mat proces co funguje 100%... otazka ci to bude
+// pouzitelne neskor ked bude pwa" a nasledne "zapracuj ako chces, aby to fungovalo, hlavne dobre oznac".
+//
+// PRECO VZNIKA (analyza stavu, na ktorej sme sa zhodli): Verso DNES nema lokalnu vrstvu - ma STYRI
+// nezavisle polepene fallbacky s roznym tvarom, klucom aj zivotnostou:
+//   1. submittedEntriesCache        - LEN v pamati, po refreshi je prec          [Zzz0-OB:MIGRATION-CANDIDATE]
+//   2. zzz4_0_unsyncedEntryIds      - localStorage, vlastna retry slucka          [Zzz0-OB:MIGRATION-CANDIDATE]
+//   3. zzz1cn:<entryKey>            - localStorage, vlastny tvar (chatnotes)      -> MIGROVANE TU, 1. klient
+//   4. zzz1_save_my_quickchips      - localStorage, vlastny tvar                  [Zzz0-OB:MIGRATION-CANDIDATE]
+//
+// CIELOVY TVAR (local-first): JEDNO lokalne ulozisko ako zdroj pravdy pre citanie + OUTBOX (fronta zapisov,
+// ktore este nepresli). UI cita lokalne a NIKDY necaka na siet; siet je len synchronizator na pozadi.
+// Service worker (appka offline) a datova vrstva (data offline) su DVE nezavisle veci - PWA potrebuje obe.
+//
+// POSTUP, NA KTOROM SME SA DOHODLI (zamerne NIE velky refactor naraz - jeden subor, ziadne testy, rozrobeny
+// communication workspace; prepisat naraz styri uloziska = riziko TICHEJ straty dat, presne tej triedy chyby,
+// ktora nikdy nevyhodi hlasku - viz [Zzz0-R2:USERNAME-CASE]):
+//   FAZA 1 (TERAZ)  - outbox ako samostatny modul + naviazane LEN chatnotes (najmensi, prave rozrobeny klient)
+//   FAZA 2 (NESKOR) - migrovat oznacene [Zzz0-OB:MIGRATION-CANDIDATE] vzdy vtedy, ked sa ich aj tak dotkneme
+//   FAZA 3 (PWA)    - ulozisko presunut z localStorage do IndexedDB + citacia cache vlastnych dat
+//
+// PRECO ESTE localStorage a nie rovno IndexedDB: outbox drzi LEN nepotvrdene zapisy (radovo jednotky az
+// desiatky poloziek), nie dataset. Na CRM objem je localStorage zla volba (~5MB strop + synchronny =
+// zasekne UI), preto je cely pristup k ulozisku schovany za zzz0ob_read_queue/zzz0ob_write_queue - vymena
+// za IndexedDB vo FAZE 3 sa dotkne TYCHTO DVOCH funkcii a nicoho ineho.
+//
+// PRAVIDLO CACHE vs CONSENT (Vrso 2026-09-25, doriesene v diskusii): cachovat sa smie FAKT, ze consent bol
+// dany (zaznam o rozhodnuti - to uz je verso_consents), NIKDY nie data, ktore ten consent odomyka. Consent
+// je odvolatelny: server prestane posielat, ale to, co je v telefone, sa odvolat neda. A cachovany consent
+// flag NIKDY nesmie sam povolit zobrazenie - sluzi len na to, aby sa user nemusel k rozhodnutiu vracat;
+// povoluje VZDY server. | Vrso -> Claude AI | 2026-09-25 ===
+const ZZZ0OB_STORAGE_KEY = 'zzz0ob:queue';
+const ZZZ0OB_MAX_TRIES = 25;        // po tolkych neuspechoch sa polozka uz neskusa automaticky (ostava ulozena)
+const zzz0obHandlers = {};          // kind -> async (payload) => row   (hodi vynimku = neuspech, skusi sa znova)
+let zzz0obFlushInProgress = false;  // rovnaky princip ako zzz4f1_syncInProgress - zabrani sucasnym flushom
+
+function zzz0ob_read_queue() { // [Zzz0-OB:STORAGE] jedine miesto, kde sa cita ulozisko (FAZA 3: IndexedDB)
+  try { return JSON.parse(localStorage.getItem(ZZZ0OB_STORAGE_KEY) || '[]'); } catch (e) { return []; }
+}
+function zzz0ob_write_queue(items) { // [Zzz0-OB:STORAGE] jedine miesto, kde sa zapisuje ulozisko
+  try { localStorage.setItem(ZZZ0OB_STORAGE_KEY, JSON.stringify(items)); return true; } catch (e) { return false; }
+}
+
+// registracia typu zapisu - kazdy klient outboxu (chatnote, neskor entry, quickchip...) sem da svoj handler
+function zzz0ob_register(kind, handler) { zzz0obHandlers[kind] = handler; }
+
+// zaradenie zapisu do fronty. Vracia POLOZKU (nie riadok z DB) - ma docasne id 'ob-<cas>-<n>', podla ktoreho
+// UI pozna, ze zaznam este len caka na odoslanie (viz zzz0ob_is_pending).
+function zzz0ob_enqueue(kind, payload, meta) {
+  const items = zzz0ob_read_queue();
+  const item = {
+    id: 'ob-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+    kind: String(kind),
+    payload: payload,
+    meta: meta || {},
+    username: (zzz0r1_get_current_username() || '').trim(),
+    created_at: new Date().toISOString(),
+    tries: 0,
+    last_error: null
+  };
+  items.push(item);
+  zzz0ob_write_queue(items);
+  return item;
+}
+
+function zzz0ob_is_pending(id) { return String(id || '').indexOf('ob-') === 0; }
+function zzz0ob_list(kind) { return zzz0ob_read_queue().filter(it => !kind || it.kind === kind); }
+function zzz0ob_remove(id) { zzz0ob_write_queue(zzz0ob_read_queue().filter(it => String(it.id) !== String(id))); }
+function zzz0ob_pending_count() { return zzz0ob_read_queue().length; }
+
+// [Zzz0-OB:FLUSH] prejde frontu a skusi kazdu polozku odoslat cez jej registrovany handler. Uspech = polozka
+// sa odstrani. Neuspech = ostava vo fronte s +1 pokusom a poslednou chybou (diagnostika bez konzoly).
+async function zzz0ob_flush(reason) {
+  if (zzz0obFlushInProgress) return { sent: 0, failed: 0, skipped: true };
+  const queue = zzz0ob_read_queue();
+  if (!queue.length) return { sent: 0, failed: 0 };
+  zzz0obFlushInProgress = true;
+  let sent = 0, failed = 0;
+  try {
+    for (const item of queue) {
+      const handler = zzz0obHandlers[item.kind];
+      if (!handler) { continue; }                 // typ este nie je registrovany - necha sa na neskor
+      if (item.tries >= ZZZ0OB_MAX_TRIES) { continue; } // uz sa automaticky neskusa, ale NEZAHADZUJE sa
+      try {
+        await handler(item.payload, item);
+        zzz0ob_remove(item.id);
+        sent++;
+      } catch (e) {
+        failed++;
+        const all = zzz0ob_read_queue();
+        const live = all.find(it => String(it.id) === String(item.id));
+        if (live) { live.tries = (live.tries || 0) + 1; live.last_error = (e && e.message) || String(e); zzz0ob_write_queue(all); }
+      }
+    }
+  } finally {
+    zzz0obFlushInProgress = false;
+  }
+  if (sent) zzz6f2_show_toast(`Zzz0-OB: odoslane ${sent} cakajuce zapisy${reason ? ' (' + reason + ')' : ''}.`);
+  return { sent, failed };
+}
+
+// [Zzz0-OB:TRIGGERS] rovnake spustace ako uz existujuce retry slucky (viz zzz0r1_set_db_connection_state) +
+// nativny 'online' event prehliadaca. Ziadny polling - flush sa deje na udalost.
+window.addEventListener('online', () => { zzz0ob_flush('online'); });
+// === [/Zzz0-OB:OUTBOX] ===
+
 // === [Zzz1-CN:CHAT-NOTES] Vrso 2026-09-24 - chatnotes v COMMUNICATION okne. Rozdelenie ulozeny podla Vrso:
 //   ZDIELANE chatnotes = VLASTNE RIADKY v databaze (tabulka verso_chat_notes), NIE stlpec v zazname. Dovod:
 //     RLS (a teda aj "kazdy si smie zmazat SVOJ chatnote, aj ked nie je project owner") sa da nastavit len na
@@ -19976,12 +20204,24 @@ function zzz1cn_local_save(entryKey, notes) {
 // [Zzz1-CN:KEY] Vrso 2026-09-24 ("chn uz existuje ale nevidim ho v poli") - PRICINA: kluc sa pocitat z
 // ENTRY NUMBER bunky, takze poznamky napisane PRED jej vyplnenim ostali pod 'draft' a po vyplneni uz feed
 // hladal iny kluc. Feed preto vzdy zobrazi aj 'draft' poznamky k rozpisanej CL.
+// [Zzz0-OB:CLIENT-CHATNOTE] este neodoslane chatnotes (outbox) pre dany kluc - aby ich user videl vo feede
+// hned, nie az po uspesnej synchronizacii. Vracia ich v rovnakom tvare ako riadok z DB + zzz0ob_pending.
+function zzz1cn_pending_for(entryKey) {
+  return zzz0ob_list('chatnote')
+    .filter(it => String((it.payload && it.payload.entry_key) || '') === String(entryKey))
+    .map(it => Object.assign({}, it.payload, { id: it.id, zzz0ob_pending: true }));
+}
 async function zzz1cn_load_for_feed(entryKey) {
-  const own = await zzz1cn_load(entryKey);
+  const own = (await zzz1cn_load(entryKey)).concat(zzz1cn_pending_for(entryKey));
   if (String(entryKey) === 'draft') return own;
-  const drafts = await zzz1cn_load('draft');
+  const drafts = (await zzz1cn_load('draft')).concat(zzz1cn_pending_for('draft'));
   return own.concat(drafts).sort((a, b) => (Number(a.note_number) || 0) - (Number(b.note_number) || 0));
 }
+// [Zzz0-OB:CLIENT-CHATNOTE] zzz1cnTableAvailable bol PRILEPENY natrvalo: staci, ze prvy dopyt zlyhal (offline
+// pri starte, vypadok siete) a flag ostal false do konca session - odvtedy vsetky chatnotes ticho padali do
+// stareho lokalneho kluca, nikdy nie do outboxu, a NIKDY sa nesynchronizovali. Pri obnove spojenia sa preto
+// flag vracia na null = "znova over".
+function zzz1cn_reset_availability() { zzz1cnTableAvailable = null; }
 async function zzz1cn_load(entryKey) {
   if (zzz1cnTableAvailable !== false) {
     try {
@@ -20001,29 +20241,45 @@ async function zzz1cn_add(entryKey, text, isPrivate) {
   const clean = (text || '').trim();
   if (!clean) { zzz6f2_show_toast('Chatnote je prazdny.', 'warn'); return null; }
   const username = (zzz0r1_get_current_username() || '').trim();
-  const existing = await zzz1cn_load(entryKey);
+  // [Zzz0-OB:CLIENT-CHATNOTE] do cislovania sa MUSIA zapocitat aj cakajuce zapisy z outboxu - inak by dva
+  // chatnotes napisane offline dostali rovnake cislo a po odoslani by sa v DB pobili.
+  const existing = (await zzz1cn_load(entryKey)).concat(zzz1cn_pending_for(entryKey));
   const nextNumber = existing.reduce((max, n) => Math.max(max, Number(n.note_number) || 0), 0) + 1;
   const row = { entry_key: String(entryKey), username, note_number: nextNumber, note_text: clean, is_private: !!isPrivate };
+  // OPRAVA v2 (Vrso 2026-09-24, RLS chyba sa vratila): predchadzajuci pokus "neposielat username a nechat
+  // to na databazu" bol ZLY - stal na predpoklade Supabase Auth (auth.jwt() ->> 'email'), ktoru Verso
+  // VOBEC nepouziva. Verso ma vlastny [Zzz0Auth-Gate:JWT-BRIDGE] most a KAZDA RLS policy porovnava
+  // lower(username) = verso_jwt_username() (viz [Zzz0-R2:USERNAME-CASE] PRAVIDLO). Username teda klient
+  // posielat MUSI - presne v registrovanom tvare, DB si ho porovna lowercase.
+  // [Zzz0-OB:CLIENT-CHATNOTE] payload sa stavia PRED try - potrebuje ho aj catch vetva (odovzdanie outboxu).
+  const payload = { entry_key: row.entry_key, username: row.username, note_number: row.note_number, note_text: row.note_text, is_private: row.is_private };
   if (zzz1cnTableAvailable) {
     try {
-      // OPRAVA v2 (Vrso 2026-09-24, RLS chyba sa vratila): predchadzajuci pokus "neposielat username a nechat
-      // to na databazu" bol ZLY - stal na predpoklade Supabase Auth (auth.jwt() ->> 'email'), ktoru Verso
-      // VOBEC nepouziva. Verso ma vlastny [Zzz0Auth-Gate:JWT-BRIDGE] most a KAZDA RLS policy porovnava
-      // lower(username) = verso_jwt_username() (viz [Zzz0-R2:USERNAME-CASE] PRAVIDLO). Username teda klient
-      // posielat MUSI - presne v registrovanom tvare, DB si ho porovna lowercase.
-      const payload = { entry_key: row.entry_key, username: row.username, note_number: row.note_number, note_text: row.note_text, is_private: row.is_private };
       const { data, error } = await sb.from(ZZZ1CN_TABLE).insert(payload).select().single();
       if (error) throw error;
       return data;
     } catch (e) {
-      zzz6f2_show_toast(`Chatnote sa nepodarilo ulozit: ${(e && e.message) || e}`, 'warn');
-      return null;
+      // === [Zzz0-OB:CLIENT-CHATNOTE] Vrso 2026-09-25 ("text sa moze stratit... bolo by idealne mat proces
+      // co funguje 100%"). PREDTYM sa tu vratilo null a NAPISANY TEXT SA STRATIL. Teraz sa zapis odovzda
+      // outboxu: user vidi chatnote hned (oznaceny ako cakajuci) a odoslanie sa zopakuje samo pri najblizsom
+      // pripojeni. RLS chyba je jeden z pripadov, ktory tu koncil - a je to presne ten, ktory sa vyriesi az
+      // v databaze, takze zaznam MUSI medzitym niekde prezit. ===
+      const item = zzz0ob_enqueue('chatnote', payload, { entry_key: row.entry_key });
+      zzz6f2_show_toast(`Chatnote ulozeny lokalne, caka na odoslanie (${(e && e.message) || e})`, 'warn');
+      return Object.assign({}, row, { id: item.id, zzz0ob_pending: true });
     }
   }
   row.id = 'local-' + Date.now();
   zzz1cn_local_save(entryKey, existing.concat([row]));
   return row;
 }
+// [Zzz0-OB:CLIENT-CHATNOTE] handler = presne ten isty insert ako v zzz1cn_add vyssie, len volany z fronty.
+// Vynimka = neuspech, polozka ostava vo fronte (viz zzz0ob_flush).
+zzz0ob_register('chatnote', async (payload) => {
+  const { data, error } = await sb.from(ZZZ1CN_TABLE).insert(payload).select().single();
+  if (error) throw error;
+  return data;
+});
 async function zzz1cn_delete(entryKey, note) {
   // Vrso: "user moze vymazat svoj chatnote bez ohladu na to kto je project owner" - maze sa VZDY len vlastny
   const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
@@ -20031,6 +20287,8 @@ async function zzz1cn_delete(entryKey, note) {
     zzz6f2_show_toast('Zmazat sa da len vlastny chatnote.', 'warn');
     return false;
   }
+  // [Zzz0-OB:CLIENT-CHATNOTE] este neodoslany chatnote sa nemaze z DB (tam este nie je) - vyhodi sa z fronty
+  if (zzz0ob_is_pending(note.id)) { zzz0ob_remove(note.id); return true; }
   if (zzz1cnTableAvailable && String(note.id).indexOf('local-') !== 0) {
     try {
       const { error } = await sb.from(ZZZ1CN_TABLE).delete().eq('id', note.id);
@@ -20065,6 +20323,15 @@ function zzz1cn_build_note(entryKey, note, onChanged) {
     priv.className = 'zzz1cn-note-private';
     priv.textContent = 'private';
     head.appendChild(priv);
+  }
+  // [Zzz0-OB:CLIENT-CHATNOTE] viditelne odlisenie "este neodoslane" - user musi vediet, ze zaznam zatial
+  // existuje LEN u neho a ostatni ho nevidia (inak by si myslel, ze je zdielany).
+  if (note.zzz0ob_pending) {
+    wrap.classList.add('zzz0ob-pending');
+    const wait = document.createElement('span');
+    wait.className = 'zzz0ob-pending-badge';
+    wait.textContent = 'caka na odoslanie';
+    head.appendChild(wait);
   }
   const copyBtn = document.createElement('button');
   copyBtn.type = 'button';
