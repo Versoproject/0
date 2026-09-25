@@ -11925,13 +11925,25 @@ function zzz_build_cl_display_from_row(row) {
 async function zzz6f2_get_known_entries() {
   let remoteEntries = [];
   try {
-    const fetchPromise = sb.from('verso_entries').select('*');
+    // === [Zzz10-SCALE] OPRAVA (Vrso 2026-09-25: "tuto select issue chcem doriesit"): bolo tu select('*'),
+    // teda CELA tabulka vratane fields_json - najvacsieho stlpca. Pritom jediny udaj, ktory z toho niekto
+    // naozaj pouzije, je entry_id (zzz6f2_compute_next_entry_id nizsie berie len MAX). Druhe pole 'summary'
+    // sa pocitalo pre kazdy riadok a NIKTO ho necital - overene, v celom subore nie je jediny citatel.
+    // HASHOVANIE na to netreba: duplicity uz riesi content_hash + UNIQUE index v databaze
+    // ([Zzz6-F22:NO-DOUBLE-ENTRIES]), nie tento zoznam.
+    //
+    // Preto sa NETAHA cela tabulka, ale JEDEN RIADOK s najvyssim entry_id - maximum vie databaza najst sama
+    // cez index, nemusi ho pocitat klient z tisicov riadkov. Zoradenie je bezpecne, lebo entry_id je
+    // integer (overene v information_schema 2026-09-25); keby bol text, "9" by sa zoradilo nad "10" a
+    // system by pridelil ZLE cislo - presne to sa tu pred overenim typu robit nesmelo. ===
+    const fetchPromise = sb.from('verso_entries')
+      .select('entry_id').order('entry_id', { ascending: false }).limit(1);
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('zzz6-F2 Supabase fetch timeout (4s)')), 4000)
     );
     const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
     if (error) throw error;
-    remoteEntries = (data || []).map(row => ({ entry_id: row.entry_id, summary: zzz_build_cl_summary_from_row(row) }));
+    remoteEntries = (data || []).map(row => ({ entry_id: row.entry_id }));
     zzz0r1_set_db_connection_state(true); // Zzz6-F7:DB-CONNECTION
   } catch (err) {
     // Zzz6-F2 FIX (2026-08-20, Vrso: "chybu nevidiem"): predtym sa 'err' posielal ako SAMOSTATNY 2. argument
@@ -11942,7 +11954,7 @@ async function zzz6f2_get_known_entries() {
     console.warn(`zzz6-F2 Supabase fetch zlyhal/timeout pri cislovani/duplicite - pouziva sa len lokalna cache. DOVOD: ${errDetail}`);
     zzz0r1_set_db_connection_state(false, errDetail); // Zzz6-F7:DB-CONNECTION
   }
-  const localEntries = Object.values(submittedEntriesFullCache).map(row => ({ entry_id: row.entry_id, summary: zzz_build_cl_summary_from_row(row) }));
+  const localEntries = Object.values(submittedEntriesFullCache).map(row => ({ entry_id: row.entry_id }));
   return remoteEntries.concat(localEntries);
 }
 
