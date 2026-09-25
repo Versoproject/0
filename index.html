@@ -8065,7 +8065,7 @@ async function zzz1cons_load_state(entryId) {
   if (!id) return {};
   try {
     const { data, error } = await sb.from('verso_consents')
-      .select('username, kind, active, id')
+      .select('username, kind, active, id, created_at, scope')
       .eq('entry_id', id)
       .order('id', { ascending: false }); // najvyssie id = platny stav, preto zostupne
     if (error) throw error;
@@ -8073,8 +8073,13 @@ async function zzz1cons_load_state(entryId) {
     (data || []).forEach(r => {
       const u = zzz10v1_normalize(r.username || ''); // [Zzz0-R2:USERNAME-CASE] - VZDY cez normalize
       state[u] = state[u] || {};
-      // drzi sa AJ id, nie len active - [Zzz13-MV:OWNER-LAST-CONSENT] potrebuje PORADIE suhlasov
-      if (state[u][r.kind] === undefined) state[u][r.kind] = { active: r.active, id: Number(r.id) || 0 };
+      // drzi sa AJ id (poradie, [Zzz13-MV:OWNER-LAST-CONSENT]) AJ created_at (platnost, [Zzz13-MV:CONSENT-TTL])
+      if (state[u][r.kind] === undefined) {
+        state[u][r.kind] = {
+          active: r.active, id: Number(r.id) || 0, created_at: r.created_at || null,
+          scope: r.scope || null // [Zzz13-MV:FINAL-RECONFIRM] scope.category = kategoria V CASE ZAPISU riadku
+        };
+      }
     });
     return state;
   } catch (e) {
@@ -8084,11 +8089,101 @@ async function zzz1cons_load_state(entryId) {
 }
 // === [/Zzz13-MV:CONSENT-SOURCE] ===
 
-// pomocnici nad stavom zo zzz1cons_load_state - drzia [Zzz0-R2:USERNAME-CASE] na jednom mieste
-function zzz1cons_active(state, username, kind) {
-  const u = zzz10v1_normalize(username || '');
-  return !!(state && state[u] && state[u][kind] && state[u][kind].active === true);
+// =====================================================================================================
+// === [Zzz13-MV:CONSENT-TTL] (SYSTEM FUNCTION) CASOVA PLATNOST USER CONSENTU
+// -----------------------------------------------------------------------------------------------------
+// Vrso 2026-09-25: "consent asi idealne casovo a prave na to som ho tvoril... zatial daj kludne aj interval
+// mesiac ale nie na communication - na to uz mam ine riesenie cez pairing tabs, ale hlavne na user consent."
+// Rozhodnute: KLZAVO od posledneho pouzitia (vyprsi po mesiaci NECINNOSTI, kazde pouzitie obnovi).
+//
+// KDE SA NEUPLATNUJE - tri vynimky, kazda ma dovod:
+//   1. kind = 'permanent'  - permanent nie je casovo obmedzeny suhlas, je to bud rozsahovy pristup, alebo
+//                            (pri Final) neodvolatelny zavazok. Vyprsat nesmie ani jeden.
+//   2. Final zaznamy       - pri Final je consent DOKAZ, ze suhlas v danom momente existoval. Keby vyprsal,
+//                            zmizol by dokaz a neodvolatelnost finalneho diela by sa dala obist cakanim.
+//   3. communication       - vylucene Vrsom, riesi sa cez pairing taby.
+//
+// FAIL-SAFE SMER: ked riadok nema created_at (stare data), NEPOVAZUJE sa za vyprsany. Expiracia nikdy nesmie
+// odobrat pristup len preto, ze chyba udaj - to by bolo tiche zamknutie uctov. Opacny smer (neviem nacitat
+// stav) je naopak fail-closed, viz zzz1cons_load_state.
+//
+// DOLEZITE: toto je LEN klientska cast. Expiracia sa MUSI vyhodnocovat aj v databaze (RLS/policy), inak sa
+// da obist. SQL je v sprievodnom dokumente VERSO-CONSENT-PWA.md. | Vrso -> Claude AI | 2026-09-25 ===
+const ZZZ1CONS_TTL_DAYS = 30;        // "zatial daj kludne aj interval mesiac"
+const ZZZ1CONS_TOUCH_MIN_HOURS = 24; // obnova zapise novy riadok najviac raz za den (inak by log narastal pri kazdom pouziti)
+// [Zzz13-MV:CONSENT-TTL] PODLAHA NASADENIA - Vrso rozhodol: "existujuce suhlasy dostanu cerstvy mesiac, nic
+// sa nezamkne zo dna na den". POVODNY plan bol dopisat kazdemu obnovovaci riadok, lenze verso_consents ma
+// BEFORE INSERT trigger (verso_consents_before_insert), ktory VYZADUJE PRIHLASENIE - z SQL editora sa teda
+// hromadne vlozit NEDA (overene: "P0001: verso_consents: consent vyzaduje prihlasenie"). Riesi sa to preto
+// BEZ AKEHOKOLVEK ZAPISU: pri vypocte veku sa berie NESKORSI z dvoch casov - skutocny created_at, alebo
+// datum nasadenia. Stare suhlasy tym dostanu plny mesiac, historia ostava nedotknuta.
+// ROVNAKY vzorec MUSI byt aj v DB funkcii verso_consent_active - inak by klient a databaza tvrdili nieco ine.
+const ZZZ1CONS_ROLLOUT_ISO = '2026-09-25T00:00:00Z';
+
+// =====================================================================================================
+// === [Zzz13-MV:FINAL-RECONFIRM] (SYSTEM FUNCTION) POTVRDENIE PERMANENTU PRI PRECHODE NA FINAL
+// -----------------------------------------------------------------------------------------------------
+// RIZIKO, ktore to riesi (Vrso 2026-09-25): permanent dany SKORO ako pohodlie ("neotravuj ma s kazdou
+// castou projektu" = [Zzz13-MV:PERMANENT-SCOPE], odvolatelny) sa NESMIE TICHO PREMENIT na NEODVOLATELNY
+// finalny permanent vo chvili, ked owner oznaci zaznam ako Final. User by bol viazany niecim, s cim v tejto
+// podobe nikdy nesuhlasil. Rozhodnute: pri prechode na Final sa permanent potvrdzuje ZA KAZDEHO USERA
+// ZVLAST, nikdy hromadne.
+//
+// AKO SA TO POZNA, BEZ NOVEHO STLPCA: databaza si ku KAZDEMU riadku verso_consents sama doplna stlpec
+// `scope` (jsonb) a v nom je kategoria V CASE ZAPISU. Overene na realnych datach 2026-09-25:
+//   {"owner":"Verso","category":"Final","project_name":"Test2","project_number":"1"}
+// Permanent zapisany uz POCAS Final ma teda scope.category = "Final"; permanent zapisany PREDTYM ju tam
+// nema. Je to server-side fakt, ktory klient nevie podvrhnut - presne to rozlisenie, ktore potrebujeme.
+//
+// POZOR - DB STRANA: trigger verso_entries_restrict_update dnes o `scope` nevie a chrani zaznam podla
+// NAJNOVSIEHO permanent riadku bez ohladu na to, kedy vznikol. Kym sa neupravi (viz
+// verso_permanent_final_only.sql), appka o potvrdenie poziada, ale databaza by zamkla aj na zaklade
+// stareho rozsahoveho permanentu. | Vrso -> Claude AI | 2026-09-25 ===
+function zzz1cons_scope_is_final(rec) {
+  const cat = rec && rec.scope && rec.scope.category;
+  return zzz1r5_is_final_text(cat || '');
 }
+
+function zzz1cons_is_expired(rec, kind) {
+  if (kind !== 'consent') return false;          // vynimka 1
+  if (!rec || !rec.created_at) return false;     // fail-safe: chybajuci udaj NIE JE vyprsanie
+  const t = Date.parse(rec.created_at);
+  if (!t) return false;
+  const from = Math.max(t, Date.parse(ZZZ1CONS_ROLLOUT_ISO) || 0); // podlaha nasadenia, viz komentar vyssie
+  return (Date.now() - from) > ZZZ1CONS_TTL_DAYS * 24 * 60 * 60 * 1000;
+}
+
+// pomocnici nad stavom zo zzz1cons_load_state - drzia [Zzz0-R2:USERNAME-CASE] na jednom mieste.
+// opts.ignoreExpiry = true pouziva Final brana (vynimka 2 vyssie).
+function zzz1cons_active(state, username, kind, opts) {
+  const u = zzz10v1_normalize(username || '');
+  const rec = state && state[u] && state[u][kind];
+  if (!rec || rec.active !== true) return false;
+  if (opts && opts.ignoreExpiry) return true;
+  return !zzz1cons_is_expired(rec, kind);
+}
+// [Zzz13-MV:CONSENT-TTL] OBNOVA POUZITIM - klzavy model potrebuje, aby sa pri realnom pouziti suhlasu
+// zapisal novy riadok (tym sa posunie created_at). Aby log nenarastal pri kazdom otvoreni okna, obnova
+// prebehne najviac raz za ZZZ1CONS_TOUCH_MIN_HOURS. Obnovuje sa LEN vlastny, LEN uz aktivny suhlas -
+// nikdy sa tym suhlas nevytvara ani neobnovuje cudzi.
+async function zzz1cons_touch(entryId, state) {
+  try {
+    const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+    if (!me || !entryId) return false;
+    const rec = state && state[me] && state[me].consent;
+    if (!rec || rec.active !== true) return false;          // nie je co obnovovat
+    if (zzz1cons_is_expired(rec, 'consent')) return false;  // uz vyprsal - musi sa dat nanovo, nie obnovit
+    const last = rec.created_at ? Date.parse(rec.created_at) : 0;
+    if (last && (Date.now() - last) < ZZZ1CONS_TOUCH_MIN_HOURS * 60 * 60 * 1000) return false;
+    const { error } = await sb.from('verso_consents').insert({ entry_id: Number(entryId), kind: 'consent', active: true });
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.warn('Zzz13-MV:CONSENT-TTL - obnova suhlasu zlyhala (nie je to blokujuce):', (e && e.message) || e);
+    return false; // obnova je best-effort: ked zlyha, suhlas plati dalej az do vyprsania
+  }
+}
+
 function zzz1cons_id(state, username, kind) {
   const u = zzz10v1_normalize(username || '');
   return (state && state[u] && state[u][kind]) ? (state[u][kind].id || 0) : 0;
@@ -8112,14 +8207,15 @@ async function zzz1_r26f1_all_users_consented() {
   const owner = zzz10v1_normalize((entryData["4"] || '').trim());
   const members = tags.map(u => zzz10v1_normalize(u)).filter(n => n && n !== owner);
 
-  const missing = members.filter(n => !zzz1cons_active(state, n, 'consent'));
+  // [Zzz13-MV:CONSENT-TTL] vynimka 2: pri Final sa expiracia NEUPLATNUJE - consent je tu dokaz, nie pristup
+  const missing = members.filter(n => !zzz1cons_active(state, n, 'consent', { ignoreExpiry: true }));
   if (missing.length) {
     zzz6f2_show_toast(`Chyba consent: ${missing.join(', ')}`);
     return false;
   }
   if (!owner) return true; // bez definovaneho ownera sa owner-last pravidlo nema o co opriet
 
-  if (!zzz1cons_active(state, owner, 'consent')) {
+  if (!zzz1cons_active(state, owner, 'consent', { ignoreExpiry: true })) {
     zzz6f2_show_toast('Pri Final musi dat consent aj PROJECT OWNER - a to ako posledny.');
     return false;
   }
@@ -9237,16 +9333,31 @@ function zzz1r17b_consent_model(sourceRow) {
   };
   m.canEdit = m.isOwner && !m.locked;
   m.shareOf = (u) => m.shareMap[u] !== undefined ? m.shareMap[u] : (m.shareMap['*'] !== undefined ? m.shareMap['*'] : '');
+  // [Zzz13-MV:CONSENT-SOURCE] PREROBENE 2026-09-25: vlastna kopia skladania stavu je prec, pouziva sa
+  // zdielana zzz1cons_load_state. Tri zisky naraz:
+  //   - username sa NORMALIZUJE ([Zzz0-R2:USERNAME-CASE]) - predtym sa tu ukladal RAW tvar z DB, zatial co
+  //     lineFor hladal normalizovany kluc. Fungovalo to len vdaka tomu, ze DB uklada lowercase - tichy bug.
+  //   - stav nesie aj id a created_at, takze [Zzz13-MV:OWNER-LAST-CONSENT] aj [Zzz13-MV:CONSENT-TTL] maju
+  //     z coho pocitat (m.raw drzi plny tvar, m.state ostava boolean mapa kvoli spatnej kompatibilite).
+  //   - expiracia sa aplikuje TU, na jednom mieste. Pri Final sa NEAPLIKUJE (consent je tam dokaz, nie pristup).
   m.load = async () => {
     m.state = {};
+    m.raw = null;
     if (!isSaved) return;
-    const { data, error } = await sb.from('verso_consents').select('username, kind, active, id')
-      .eq('entry_id', sourceRow.entry_id).order('id', { ascending: false });
-    if (error) { zzz6f2_show_toast(`Consent could not be loaded: ${error.message}`); return; }
-    (data || []).forEach(r => {
-      m.state[r.username] = m.state[r.username] || {};
-      if (m.state[r.username][r.kind] === undefined) m.state[r.username][r.kind] = r.active;
+    const raw = await zzz1cons_load_state(sourceRow.entry_id);
+    if (!raw) return; // hlaska uz padla v zzz1cons_load_state (fail-closed: prazdny stav = ziadne prava)
+    m.raw = raw;
+    const ignoreExpiry = !!m.isFinal;
+    Object.keys(raw).forEach(u => {
+      m.state[u] = {
+        consent: zzz1cons_active(raw, u, 'consent', { ignoreExpiry }),
+        permanent: zzz1cons_active(raw, u, 'permanent'), // permanent nikdy nevyprsi (viz Zzz13-MV:CONSENT-TTL)
+        // [Zzz13-MV:FINAL-RECONFIRM] bol ten permanent dany UZ POCAS Final, alebo este ako rozsahovy?
+        permanentAtFinal: zzz1cons_scope_is_final(raw[u] && raw[u].permanent)
+      };
     });
+    // klzava obnova vlastneho suhlasu - otvorenie okna JE pouzitie. Best-effort, nikdy neblokuje.
+    zzz1cons_touch(sourceRow.entry_id, raw);
   };
   m.insert = async (kind, active) => {
     if (!isSaved) { zzz6f2_show_toast('Consent is given on the SAVED entry - press ENTER first, then open USER from the Database row.'); return; }
@@ -9286,10 +9397,36 @@ function zzz1r17b_consent_model(sourceRow) {
       permEnabled = m.isSaved && m.isFinal && itsMe && (allConsented || permOn);
       permTitle = !m.isFinal ? 'PERMANENT - only for category Final' : (!allConsented && !permOn ? 'PERMANENT - after ALL members consent' : 'PERMANENT');
     } else {
+      // === [Zzz13-MV:PERMANENT-SCOPE] (SYSTEM FUNCTION) Vrso 2026-09-25, doslovne: "permanent je pristup
+      // podla rozsahu ku projektom v rezime private (aby nemusel owner stale ziadat consent ku kazdej casti
+      // projektu) ale pre final ide o permanent consent k final/emu dielu ktore nemozno len tak odvolat".
+      //
+      // PERMANENT je JEDNA vec s DVOMA vlastnostami:
+      //   ROZSAH        - suhlas na urovni PROJEKTU, nie na kazdu cast zvlast (to je to, co odstranuje
+      //                   opakovane pytanie sa). Databaza si k riadku sama doplna stlpec `scope` (jsonb)
+      //                   a `owner` - appka ich nevie podvrhnut, takze rozsah je server-side fakt.
+      //   ODVOLATELNOST - preklapa sa pri Final: MIMO Final je permanent odvolatelny ako kazdy iny suhlas,
+      //                   len sirsi; PRI Final je neodvolatelny a zamyka hotove dielo (to uz dnes vynucuje
+      //                   DB trigger verso_entries_restrict_update).
+      //
+      // ZMENA OPROTI POVODNEMU STAVU: podmienka bola natvrdo `m.isFinal`, takze permanent sa NEDAL zapnut
+      // mimo Final - co priamo odporovalo rozsahovemu vyznamu vyssie. Teraz je dostupny v oboch rezimoch,
+      // odlisene textom aj triedou, aby user VZDY videl, ci dava odvolatelny alebo neodvolatelny suhlas. ===
       consentOn = !!st.consent; consentEnabled = m.isSaved && itsMe;
       permOn = !!(st.permanent && st.consent);
-      permEnabled = m.isSaved && m.isFinal && itsMe && !!st.consent;
-      permTitle = !m.isFinal ? 'PERMANENT - only for category Final' : (!st.consent ? 'PERMANENT - give CONSENT first' : 'PERMANENT');
+      permEnabled = m.isSaved && itsMe && !!st.consent;
+      permTitle = !st.consent
+        ? 'PERMANENT - give CONSENT first'
+        : (m.isFinal
+            ? 'PERMANENT (Final) - NEODVOLATELNY suhlas k hotovemu dielu'
+            : 'PERMANENT (rozsah projektu) - odvolatelny, plati na cely projekt');
+      // [Zzz13-MV:FINAL-RECONFIRM] zaznam je UZ Final, ale tento permanent bol dany ESTE ako rozsahovy
+      // (scope.category nie je Final) - NESMIE sa tvarit ako potvrdeny. Zobrazi sa VYPNUTY a user ho musi
+      // potvrdit znova; tym vznikne novy riadok, ktoremu uz databaza zapise scope.category = Final.
+      if (m.isFinal && st.permanent && !st.permanentAtFinal) {
+        permOn = false;
+        permTitle = 'PERMANENT - POTVRD ZNOVA: tvoj suhlas bol dany pre rozsah projektu, pri Final je NEODVOLATELNY';
+      }
     }
     return {
       name: userRaw,
