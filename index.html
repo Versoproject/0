@@ -2345,6 +2345,40 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   /* VRATENE SPAT (Vrso 2026-09-24: "Chipy nemaju mat zlate ohranicenie") - zlaty ram na chipoch bol moja
      chybna interpretacia poziadavky "ohranic zlatou nove +added contacts bunky": slo o BUNKY v CL, nie o
      chipy. Chipy ostavaju na povodnom vzhlade, ziadny override tu uz nie je. */
+  /* [Zzz5-W5:PAIR-PRESET] rozsah parovania + toggly v Preset tabe */
+  .zzz5w5cm-preset-toggle { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .zzz5w5cm-preset-toggle-cap {
+    font-size: clamp(5px, 1.6vw, 7px);
+    font-weight: 700;
+    color: #6b7280;
+    text-align: center;
+    line-height: 1.05;
+  }
+  .zzz5w5cm-preset-scope {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px;
+    margin: 4px 0;
+    border: 2px dashed #D4AF37;
+    border-radius: 8px;
+  }
+  .zzz5w5cm-preset-scope-hint {
+    flex: 1 0 100%;
+    font-size: clamp(6px, 1.8vw, 8px);
+    font-weight: 700;
+    color: #6b7280;
+  }
+  .zzz5w5cm-preset-cell { display: flex; flex-direction: column; gap: 2px; flex: 1 1 88px; min-width: 0; }
+  .zzz5w5cm-preset-cell span { font-size: clamp(5px, 1.6vw, 7px); font-weight: 700; color: #171717; }
+  .zzz5w5cm-preset-cell input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 3px 5px;
+    border-radius: 6px;
+    border: 1px solid #171717;
+    font-size: clamp(7px, 2vw, 10px);
+  }
   /* === [/Zzz1-CN:CHAT-NOTES] (CSS cast) === */
   .zzz1r17b-notes-area {
     width: 100%;
@@ -8139,9 +8173,65 @@ const ZZZ1CONS_ROLLOUT_ISO = '2026-09-25T00:00:00Z';
 // NAJNOVSIEHO permanent riadku bez ohladu na to, kedy vznikol. Kym sa neupravi (viz
 // verso_permanent_final_only.sql), appka o potvrdenie poziada, ale databaza by zamkla aj na zaklade
 // stareho rozsahoveho permanentu. | Vrso -> Claude AI | 2026-09-25 ===
+// === [Zzz5-W5:COMM-CONSENT] vlastne kind hodnoty pre COMMUNICATION consent (viz komentar pri
+// zzz1_build_context_chat_window). Zamerne ODDELENE od 'consent'/'permanent', ktore patria USER bunke R17. ===
+const ZZZ1COMM_KIND = 'comm';
+const ZZZ1COMM_KIND_PERM = 'comm_permanent';
+
+// zapis comm consentu + okamzite prehodenie zaznamu medzi Pairing/Paired tabmi. Tie dve veci patria k sebe:
+// zzz5w5cm_on_comm_consent_change() presuva LEN placement (verso_placements), consent riadok zapisuje az toto.
+async function zzz1comm_set(entryId, kind, active, onDone, prev) {
+  if (!entryId) { zzz6f2_show_toast('Communication consent sa da dat az na ULOZENOM zazname.', 'warn'); return false; }
+  try {
+    const { error } = await sb.from('verso_consents').insert({ entry_id: Number(entryId), kind, active: !!active });
+    if (error) throw error;
+    // odobratie comm consentu automaticky rusi aj permanent comm consent - inak by ostal "visiet" aktivny
+    // permanent bez zakladneho suhlasu (rovnaka zavislost ako permanent AND consent pri user consente).
+    if (kind === ZZZ1COMM_KIND && !active) {
+      await sb.from('verso_consents').insert({ entry_id: Number(entryId), kind: ZZZ1COMM_KIND_PERM, active: false });
+    }
+    zzz6f2_show_toast(`${kind === ZZZ1COMM_KIND ? 'COMM CONSENT' : 'PERMANENT COMM CONSENT'} ${active ? 'on' : 'off'} (entry #${entryId}).`);
+    // Vysledny stav sa pocita DETERMINISTICKY z toho, co sme prave zapisali - NIE spatnym citanim z DB.
+    // Spatne citanie sa pri teste ukazalo ako nespolahlive (vracalo stav spred zapisu) a zaznam by skoncil
+    // v nespravnom tabe. Tu vieme presne, co sa stalo: comm off rusi aj permanent, permanent on znamena,
+    // ze comm uz aktivny je (inak by sa prepinac nedal stlacit).
+    const wasPerm = !!(prev && prev.perm);
+    const nextComm = (kind === ZZZ1COMM_KIND) ? !!active : true;
+    const nextPerm = (kind === ZZZ1COMM_KIND) ? (!!active && wasPerm) : !!active;
+    try {
+      await zzz5w5cm_on_comm_consent_change(Number(entryId), nextComm, nextPerm);
+    } catch (e) { console.warn('Zzz5-W5:COMM-CONSENT - presun medzi pairing tabmi zlyhal (nie je to blokujuce):', e); }
+    if (onDone) await onDone();
+    return true;
+  } catch (e) {
+    zzz6f2_show_toast(`Communication consent sa nepodarilo ulozit: ${(e && e.message) || e}`, 'warn');
+    return false;
+  }
+}
+
 function zzz1cons_scope_is_final(rec) {
   const cat = rec && rec.scope && rec.scope.category;
   return zzz1r5_is_final_text(cat || '');
+}
+
+// [Zzz13-MV:CONSENT-TTL] kolko dni este plati dany consent riadok (null = netyka sa ho expiracia).
+// Pocita sa z TEJ ISTEJ podlahy ako zzz1cons_is_expired - inak by text hovoril nieco ine nez brana.
+function zzz1cons_days_left(rec, kind) {
+  if (kind !== 'consent') return null;
+  if (!rec || rec.active !== true || !rec.created_at) return null;
+  const t = Date.parse(rec.created_at);
+  if (!t) return null;
+  const from = Math.max(t, Date.parse(ZZZ1CONS_ROLLOUT_ISO) || 0);
+  const msLeft = (from + ZZZ1CONS_TTL_DAYS * 24 * 60 * 60 * 1000) - Date.now();
+  return Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
+}
+function zzz1cons_validity_note(rec, kind, isFinal) {
+  if (isFinal) return null;            // pri Final expiracia neplati (consent je tam dokaz, nie pristup)
+  const d = zzz1cons_days_left(rec, kind);
+  if (d === null) return null;
+  // slovenske sklonovanie: 1 den / 2-4 dni / 5+ dni
+  const unit = d === 1 ? 'den' : (d < 5 ? 'dni' : 'dni');
+  return { text: d === 0 ? 'consent vyprsal' : `consent plati este ${d} ${unit}`, warn: d <= 5 };
 }
 
 function zzz1cons_is_expired(rec, kind) {
@@ -8491,7 +8581,8 @@ function zzz1_f16_open_schedule_date_modal() {
 // v generic modali. ZZZ6_F17_ENTRY_ID ostava (pouzite aj inde v subore).
 
 const ZZZ6_F17_ENTRY_ID = "17"; // pevne viazane na Zzz1-R17 (User) - dedicated, nie vseobecne pre viac buttonov
-const ZZZ1_R17_CONSENT_KEY = "17c"; // NOVE (Vrso 2026-08-25 restart) - per-user consent mapa {username:true/false} pre R17b
+// [Zzz13-MV:LEGACY-MAP-OUT] ponechane len ako historicka stopa - konstanta uz nema ziadneho pouzivatela
+const ZZZ1_R17_CONSENT_KEY = "17c"; // stara per-user consent mapa, nahradena tabulkou verso_consents
 
 // === [Zzz1-R17b:CHAT-WINDOW] (Vrso 2026-08-25 UPDATE - ZJEDNODUSENE, "seems you or the system is set fixed
 // to number entries always +1. Lets stay with that!... maybe better might be to copy automatically the
@@ -8518,7 +8609,10 @@ function zzz1r17b_silent_copy_row_to_cl(row) {
   // vlastnej CL bunky) - cyklus vyssie ich preto NIKDY nekopiroval, takze kontextove okna citali stare/
   // prazdne entryData namiesto skutocneho ulozeneho stavu z DB riadku. Kopiruju sa TU explicitne, priamo
   // z row.fields_json. | Vrso -> Claude AI | 2026-08-25 ===
-  ['r17c', 'r17d', 'r17e', 'r17f', 'r18c', 'r18d', 'r18e', 'r18f'].forEach(jsonKey => {
+  // [Zzz13-MV:LEGACY-MAP-OUT] 2026-09-25: r17c/r18c (stara consent mapa) uz v zozname NIE SU - nemaju
+  // citatela a kopirovat ich spat do CL znamenalo len udrziavat mrtvy udaj pri zivote. d/e/f (poznamky,
+  // price/share, jednotka) su naopak plne zive a ostavaju.
+  ['r17d', 'r17e', 'r17f', 'r18d', 'r18e', 'r18f'].forEach(jsonKey => {
     write_to_entry(jsonKey.replace('r', ''), zzz4_0_get_field_value(row, { key: jsonKey }));
   });
 }
@@ -8866,24 +8960,28 @@ function zzz1_build_quickchips_row(getVal, setVal, fixedValues = []) {
 // mat uz udeleny consent (per-user mapa, entryData[consentKey]). Zaznamy oznacene "Final" (Zzz1-R5:FINAL-
 // LOCK) su needitovatelne pre KOHOKOLVEK, vratane ownera. Zovseobecnene (Vrso 2026-08-25, "vytvor rovnake
 // nastavenie aj pre 1-R*communication") - parametrizovane podla consentKey, aby ho zdielali R17b aj R18b.
+// [Zzz13-MV:LEGACY-MAP-OUT] krok 7, Vrso 2026-09-25: posledna vetva citala STARU JSON mapu entryData["17c"]
+// / ["18c"], do ktorej uz NIC nezapisuje (nahradila ju tabulka verso_consents, viz [Zzz13-MV:CONSENT-PERMANENT]
+// 2026-09-21). Pre kazdy realny zaznam bola preto VZDY false - editacia chipov, podielu a jednotky v okne
+// bola ticho zablokovana pre kazdeho okrem ownera, hoci to tak nikto nezamyslal.
+// ODSTRANENE bez nahrady, a to ZAMERNE: consent sa da zistit len asynchronne z DB, zatial co tato funkcia sa
+// vola synchronne pri stavbe okna. Navyse editovat zoznam clenov a podiely je prirodzene pravo OWNERA -
+// rovnako to ma aj zzz1r17b_consent_model (m.canEdit = m.isOwner && !m.locked).
+// SPRAVANIE SA DNES NEMENI: ta vetva bola aj tak vzdy false.
+// consentKey uz nie je potrebny, ponechany kvoli volajucim (parameter sa ignoruje).
 function zzz1_context_can_edit(consentKey) {
-  if (zzz1r5_is_final()) return false;
+  if (zzz1r5_is_final()) return false; // [Zzz1-R5:FINAL-LOCK] Final je needitovatelny pre KOHOKOLVEK, aj ownera
   const current = zzz0r1_get_current_username();
   if (!current) return false;
   const owner = (entryData["4"] || '').trim();
-  if (!owner || owner === current) return true;
-  const map = zzz1_context_get_consent_map(consentKey);
-  return map[current] === true;
+  // bez definovaneho ownera = cerstva CL, editacia volna (composer sa STAVA ownerom)
+  return !owner || zzz10v1_normalize(owner) === zzz10v1_normalize(current);
 }
 
-function zzz1_context_get_consent_map(consentKey) {
-  try {
-    const parsed = JSON.parse(entryData[consentKey] || '{}');
-    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
-  } catch (e) {
-    return {};
-  }
-}
+// [Zzz13-MV:LEGACY-MAP-OUT] ODSTRANENE 2026-09-25: parser starej JSON mapy 17c/18c uz nemal ziadneho
+// citatela (zzz1_context_can_edit aj workingConsentMap presli na verso_consents). Samotne kluce r17c/r18c
+// sa este prenasaju do fields_json cez FIELDS_JSON_KEYS - su to uz len prazdne pozostatky, ich odstranenie
+// je samostatny krok (mierne riziko: zzz1r17b_silent_copy_row_to_cl ich kopiruje spat do CL).
 
 // spatna kompatibilita - stare nazvy (R17-specificke), teraz len tenke obalky nad zovseobecnenymi funkciami
 
@@ -8901,14 +8999,15 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
 
   const { box, removeBox } = zzz6f41_create_context_window(); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] dokovane pod CL
   box.appendChild(zzz_build_context_header(fieldId)); // [Zzz6-F23:CONTEXT-HEADER]
-  // [Zzz13-MV:CONSENT-PERMANENT] otvorene z ULOZENEHO zaznamu (USER bunka v Database) -> skutocny consent panel
-  if (fieldId === '17' && sourceRow) box.appendChild(zzz13mv_build_consent_panel(sourceRow));
+  // [Zzz13-MV:CONSENT-PERMANENT] vetva pre '17' ODSTRANENA spolu s panelom - USER bunka sem uz aj tak nechodi,
+  // otvara sa zzz1_build_user_window (toggle okno). Tato funkcia sa dnes vola VYLUCNE s "18" (COMMUNICATION).
 
   const canEdit = zzz1_context_can_edit(consentKey);
   const current = zzz0r1_get_current_username();
 
   let workingTags = zzz6f21_parse_tags(entryData[fieldId]);
-  let workingConsentMap = { ...zzz1_context_get_consent_map(consentKey) };
+  // [Zzz13-MV:LEGACY-MAP-OUT] workingConsentMap (stara JSON mapa 17c/18c) ODSTRANENA - consentOn sa uz cita
+  // z verso_consents, viz [Zzz5-W5:COMM-CONSENT] nizsie. Mapa bola posledny zivy citatel tych klucov.
   let workingNotes = entryData[notesKey] || '';
   let workingPriceShare = entryData[priceKey] || '';
   let workingPriceUnit = entryData[unitKey] || '%';
@@ -8921,26 +9020,79 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   // rovnako ako doteraz: communication consent sa dava na ULOZENOM zazname, nie v neulozenej CL. ===
   const ownerName = (entryData['4'] || '').trim();
   const isOwnerHere = !!current && zzz10v1_normalize(ownerName) === zzz10v1_normalize(current);
-  const consentBar = zzz1r17b_build_consent_line({
-    name: current || '-',
-    labelSuffix: isOwnerHere ? '(PROJECT OWNER)' : '',
-    consentOn: workingConsentMap[current] === true,
-    consentEnabled: false,
-    consentTitle: sourceRow ? 'COMM CONSENT - see the panel above'
-      : 'COMM CONSENT - give it on the saved entry (Database -> USER cell)',
-    consentCaption: 'COMM CONSENT',
-    permOn: false,
-    permEnabled: false,
-    permTitle: 'PERMANENT COMM CONSENT - give it on the saved entry (Database -> USER cell)',
-    permCaption: 'PERMANENT COMM CONSENT',
-    shareValue: workingPriceShare,
-    shareEnabled: canEdit,
-    onShare: (v) => { workingPriceShare = v; },
-    unit: workingPriceUnit,
-    unitEnabled: canEdit,
-    onUnit: (v) => { workingPriceUnit = v; }
-  });
-  box.appendChild(consentBar);
+  // === [Zzz5-W5:COMM-CONSENT] (SYSTEM FUNCTION) NAPOJENIE COMMUNICATION CONSENTU - krok 6, Vrso 2026-09-25
+  // PREDTYM boli oba toggly natvrdo VYPNUTE (consentEnabled:false, permEnabled:false), consentOn sa cital zo
+  // starej JSON mapy 18c (do ktorej uz NIC nezapisuje) a permOn bol doslova literal false. Communication
+  // consent teda NEEXISTOVAL - dal sa nanajvys "kliknut" a nic sa nestalo.
+  //
+  // KDE SA UKLADA: do tej istej tabulky verso_consents, ale pod VLASTNYMI kind hodnotami 'comm' a
+  // 'comm_permanent'. Preco nie pod 'consent'/'permanent': to su USER consenty viazane na R17. Keby sa
+  // communication ukladala pod nimi, suhlas s komunikaciou by sa cital ako suhlas usera so zaznamom - dve
+  // uplne rozne veci by splynuli. Vlastne kind si zachova cely event log, RLS aj scope zadarmo.
+  //
+  // CAS: communication sa ZAMERNE neobmedzuje TTL (Vrso: "nie na communication, na to uz mam ine riesenie
+  // cez pairing tabs") - zzz1cons_is_expired pusti vsetko, co nie je kind='consent'.
+  //
+  // NA ULOZENOM ZAZNAME: consent sa da dat LEN na ulozenom zazname (rovnako ako user consent). Preto sa do
+  // tohto okna teraz posiela sourceRow - predtym sa "18" okno otvaralo VZDY bez neho, takze tu ani nebolo
+  // entry_id, na ktore by sa dal riadok zapisat. ===
+  const commEntryId = (sourceRow && typeof sourceRow.entry_id === 'number') ? sourceRow.entry_id : null;
+  let commState = null; // stav z verso_consents (null = este nenacitane / neulozeny zaznam)
+  let consentBar = null;
+
+  const renderConsentBar = () => {
+    const meN = zzz10v1_normalize(current || '');
+    const hasComm = !!commState && zzz1cons_active(commState, meN, ZZZ1COMM_KIND);
+    const hasPerm = hasComm && !!commState && zzz1cons_active(commState, meN, ZZZ1COMM_KIND_PERM);
+    // [Zzz13-MV:CONSENT-TTL] comm consent NEVYPRSI, ale user tu vidi aj to, ako dlho mu plati USER consent -
+    // je to ten isty zaznam a ked mu ten vyprsi, strati pristup napriek platnej komunikacii.
+    const vNote = zzz1cons_validity_note(commState && commState[meN] && commState[meN].consent, 'consent', zzz1r5_is_final());
+    const bar = zzz1r17b_build_consent_line({
+      name: current || '-',
+      labelSuffix: isOwnerHere ? '(PROJECT OWNER)' : '',
+      validityNote: vNote ? vNote.text : '',
+      validityWarn: !!(vNote && vNote.warn),
+      consentOn: hasComm,
+      consentEnabled: !!commEntryId && !!current,
+      consentTitle: commEntryId
+        ? 'COMM CONSENT - suhlas s komunikaciou k tomuto zaznamu'
+        : 'COMM CONSENT - da sa dat az na ULOZENOM zazname (Database -> COMMUNICATION bunka)',
+      consentCaption: 'COMM CONSENT',
+      permOn: hasPerm,
+      // permanent comm consent az PO comm consente - rovnaka zavislost ako pri user consente
+      permEnabled: !!commEntryId && !!current && hasComm,
+      permTitle: !commEntryId
+        ? 'PERMANENT COMM CONSENT - da sa dat az na ULOZENOM zazname'
+        : (!hasComm ? 'PERMANENT COMM CONSENT - najprv daj COMM CONSENT' : 'PERMANENT COMM CONSENT'),
+      permCaption: 'PERMANENT COMM CONSENT',
+      onConsent: async (v) => { await zzz1comm_set(commEntryId, ZZZ1COMM_KIND, v, refreshConsentBar, { comm: hasComm, perm: hasPerm }); },
+      onPerm: async (v) => { await zzz1comm_set(commEntryId, ZZZ1COMM_KIND_PERM, v, refreshConsentBar, { comm: hasComm, perm: hasPerm }); },
+      shareValue: workingPriceShare,
+      shareEnabled: canEdit,
+      onShare: (v) => { workingPriceShare = v; },
+      unit: workingPriceUnit,
+      unitEnabled: canEdit,
+      onUnit: (v) => { workingPriceUnit = v; }
+    });
+    if (consentBar && consentBar.parentNode) consentBar.parentNode.replaceChild(bar, consentBar);
+    else box.appendChild(bar);
+    consentBar = bar;
+  };
+
+  const refreshConsentBar = async () => {
+    if (commEntryId) {
+      commState = await zzz1cons_load_state(commEntryId);
+      // [Zzz13-MV:CONSENT-TTL] ROZSIRENE POUZITIE (Vrso 2026-09-25): klzava obnova sa doteraz spustala LEN pri
+      // otvoreni USER/CONSENT okna. Otvorenie COMMUNICATION okna je rovnako realne pouzitie zaznamu, takze
+      // obnovuje tiez. Samotna funkcia ma 24h strop a vyprsany suhlas neobnovuje, takze volat ju z viacerych
+      // miest je bezpecne - prave preto sa "pouzitie" da rozsirovat bez rizika.
+      zzz1cons_touch(commEntryId, commState);
+    }
+    renderConsentBar();
+  };
+
+  renderConsentBar();          // vykresli hned (bez cakania na siet)
+  if (commEntryId) refreshConsentBar(); // a doplni skutocny stav, ked dorazi
 
   // === 2) Contacts riadok (CONTACTS tlacidlo - zatial neaktivny placeholder + manualne vpisovatelne bunky) ===
   const chipsRow = document.createElement('div');
@@ -9171,6 +9323,8 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
         // [Zzz1-CN:CHAT-NOTES] Vrso 2026-09-24: "Po stlaceni enter sa procesuje dany zaznam ale nema zmiznut
         // cela cl ale v pripade communication window sa ulozi v tom okne" - rozpisany chatnote sa ulozi ako
         // ZDIELANY (nie privatny), dostane svoje cislo a autora, a okno OSTAVA OTVORENE.
+        // [Zzz13-MV:CONSENT-TTL] zapis chatnote je realne pouzitie zaznamu - obnovi klzavu platnost consentu
+        if (commEntryId) zzz1cons_touch(commEntryId, commState);
         const saved = await zzz1cn_add(cnEntryKey, notesArea.value, false);
         if (saved) {
           notesArea.value = '';
@@ -9254,6 +9408,15 @@ function zzz1r17b_build_consent_line(o) {
     label.appendChild(nm);
   } else {
     label.textContent = o.name;
+  }
+  // [Zzz13-MV:CONSENT-TTL] volitelna poznamka o zostavajucej platnosti - user musi vidiet, ze suhlas ma
+  // koniec, inak je expiracia z jeho pohladu len nahodne "zmizol mi pristup".
+  if (o.validityNote) {
+    const vn = document.createElement('div');
+    vn.style.cssText = 'font-size:clamp(5px,1.6vw,7px);font-weight:700;line-height:1.05;white-space:normal;'
+      + 'color:' + (o.validityWarn ? '#b45309' : '#6b7280') + ';';
+    vn.textContent = o.validityNote;
+    label.appendChild(vn);
   }
   label.title = o.name + (o.labelSuffix ? ` ${o.labelSuffix}` : '');
   bar.appendChild(label);
@@ -9428,9 +9591,13 @@ function zzz1r17b_consent_model(sourceRow) {
         permTitle = 'PERMANENT - POTVRD ZNOVA: tvoj suhlas bol dany pre rozsah projektu, pri Final je NEODVOLATELNY';
       }
     }
+    // [Zzz13-MV:CONSENT-TTL] zostavajuca platnost vlastneho consentu (cudzie riadky ju nepotrebuju ukazovat)
+    const vNote = itsMe ? zzz1cons_validity_note(m.raw && m.raw[uN] && m.raw[uN].consent, 'consent', m.isFinal) : null;
     return {
       name: userRaw,
       labelSuffix: isOwnerLine ? '(PROJECT OWNER)' : '',
+      validityNote: vNote ? vNote.text : '',
+      validityWarn: !!(vNote && vNote.warn),
       consentOn, consentEnabled, consentTitle,
       permOn, permEnabled, permTitle: permTitle + (m.isSaved ? '' : saveNote),
       onConsent: async (v) => { await m.insert('consent', v); await m.load(); rerender(); },
@@ -9690,7 +9857,11 @@ function zzz1_build_user_window(sourceRow = null) {
 
 // === [/Zzz1-R17b:USER-WINDOW] ===
 function zzz6f17_open_context_select_modal(sourceRow) { zzz1_build_user_window((sourceRow && typeof sourceRow.entry_id === 'number') ? sourceRow : null); } // [Zzz1-R17b:USER-WINDOW] 2026-09-21 - nove okno USER (predtym zzz1_build_context_chat_window)
-function zzz6f18_open_context_select_modal() { zzz1_build_context_chat_window("18"); }
+// [Zzz5-W5:COMM-CONSENT] sourceRow sa teraz ODOVZDAVA aj sem - bez neho nemalo "18" okno entry_id, na ktore
+// by sa dal comm consent zapisat (rovnaky princip ako zzz6f17_open_context_select_modal pri USER bunke).
+function zzz6f18_open_context_select_modal(sourceRow) {
+  zzz1_build_context_chat_window("18", (sourceRow && typeof sourceRow.entry_id === 'number') ? sourceRow : null);
+}
 
 // === [Zzz6-F17-context-a:BUTTON-CELL-BIND] dedicated binding - klik na Zzz1-R17a (USER button) aj na Zzz1-R17 (cell)
 // otvara Zzz1-R17b chat okno namiesto genericky textoveho modalu (rovnaky vzor ako Zzz1-F16-date-a) ===
@@ -12165,6 +12336,10 @@ function zzz6f7_set_login_state(isLoggedIn) {
   zzz6f7_isLoggedIn = isLoggedIn;
   label.classList.toggle('zzz6-f7-active', !!isLoggedIn);
   if (isLoggedIn) zzz0r1_sync_username_into_cl(); // [Zzz0-R1:USERNAME-IN-CL] jedno miesto pre VSETKY sposoby prihlasenia
+  // [Zzz5-W5:PAIR-PRESET] preset je ulozeny POD MENOM usera, ale pri nacitani stranky este nikto prihlaseny
+  // NIE JE - vtedy by sa cital pod prazdnym klucom a user by vzdy videl prazdny preset. Nacita sa teda znova
+  // az tu, ked uz vieme KTO je prihlaseny (a pri odhlaseni sa vrati na default, aby cudzi preset nezostal).
+  try { zzz5w5cmPreset = zzz5w5cm_preset_load(); } catch (e) { /* diagnostika nikdy nesmie zhodit login */ }
   if (typeof zzz_recompute_logo_status === 'function') zzz_recompute_logo_status(); // Zzz-LOGO-STATUS
 }
 
@@ -12631,12 +12806,14 @@ const FIELDS_JSON_KEYS = [
   ['34', 'r34'], // Zzz10-V1:REGISTER-SETUP (SYSTEM FUNCTION) - system-generated ACTIVATION CODE (co by sa emailom poslalo)
   ['35', 'r35'], // Zzz10-V1:REGISTER-SETUP (SYSTEM FUNCTION) - USER-TYPED activation code (bunka na zadanie kodu, buduca overovacia logika)
   ['36', 'r36'], // Zzz10-V1:USER-ID (SYSTEM FUNCTION) - stabilne numericke ID prideleneho usera pri registracii (atomicky RPC, Vrso 2026-08-28)
-  ['17c', 'r17c'], // Zzz1-R17b consent mapa (Vrso 2026-08-25 restart) - JSON per-user {username:true/false} pre R17 (User)
+  // [Zzz13-MV:LEGACY-MAP-OUT] 2026-09-25: ['17c','r17c'] a ['18c','r18c'] ODSTRANENE. Boli to stare consent
+  // mapy, ktore od [Zzz13-MV:CONSENT-PERMANENT] (2026-09-21) nahradila tabulka verso_consents. Uz ich nikto
+  // necital ani nezapisoval - len sa pri kazdom ulozeni prenasali prazdne do fields_json. Stare riadky si
+  // svoje hodnoty ponechaju (nic sa nemaze), nove uz tie kluce jednoducho nebudu mat.
   ['17d', 'r17d'], // Zzz1-R17b extra chat/poznamky (Vrso 2026-08-25 UPDATE) - VOLNY TEXT, sucast ulozenej CL, ale
   // NEVIDITELNY/NEFILTROVATELNY kdekolvek inde - zobrazi sa LEN po otvoreni R17b (User) okna.
   ['17e', 'r17e'], // Zzz1-R17b Price/% Share (Vrso 2026-08-25) - zakladne rychle ohodnotenie priamo v consent bare
   ['17f', 'r17f'], // Zzz1-R17b Price/Share jednotka (%/€/$/USD/EUR, Vrso 2026-08-25 "ako excelova filter bunka")
-  ['18c', 'r18c'], // Zzz1-R18b consent mapa (Vrso 2026-08-25 "rovnake nastavenie aj pre communication") - JSON per-user {username:true/false}
   ['18d', 'r18d'], // Zzz1-R18b extra chat/poznamky - VOLNY TEXT, sucast ulozenej CL, ale NEVIDITELNY/NEFILTROVATELNY kdekolvek inde
   ['18e', 'r18e'], // Zzz1-R18b Price/% Share
   ['18f', 'r18f'], // Zzz1-R18b Price/Share jednotka
@@ -16668,138 +16845,23 @@ function zzz6f14_open_entry_log_window(row) {
   zzz6f41_bind_outside_click(box, removeBox);
 }
 
-// === [Zzz13-MV:CONSENT-PERMANENT] Vrso 2026-09-21 - CONSENT a PERMANENT sa UZ NEUKLADAJU do zaznamu (skryte pole 17c):
-// zaznamy su needitovatelne, takze zaskrtnutie sa pokusalo zapisat NOVY zaznam s rovnakym obsahom a databaza ho
-// odmietla ako duplikat. Suhlas je teraz samostatny riadok v tabulke verso_consents, viazany na ULOZENY zaznam:
+// === [Zzz13-MV:CONSENT-PERMANENT] PANEL ODSTRANENY (Vrso 2026-09-25: "Ano") ---------------------------
+// zzz13mv_build_consent_panel() bol STARSIE, checkboxove UI nad tou istou tabulkou verso_consents. Vzniklo
+// vtedy, ked consent dostal vlastnu tabulku; neskor sa USER okno prestavalo na toggle komponent
+// (zzz1r17b_build_consent_line + zzz1r17b_consent_model), ale panel nikto neodstranil, lebo visel na inej
+// ceste. Dve UI nad jednymi datami znamenali, ze kazde pravidlo sa musi opravovat DVAKRAT - a presne to sa
+// aj stalo: [Zzz13-MV:PERMANENT-SCOPE] sa zapracoval do toggle okna a panel zostal pozadu (PERMANENT sa v
+// nom mimo Final vobec nezobrazoval), takze ten isty user videl rozne moznosti podla toho, ktorou cestou
+// okno otvoril. Teraz je jediny zdroj pravdy USER okno.
+//
+// Pravidla, ktore panel niesol, ostavaju v platnosti a su vynucovane v databaze (verso_consents_before_insert):
 //  - kazde zaskrtnutie/odskrtnutie = novy riadok (nic sa neprepisuje ani nemaze - uplna historia suhlasov)
 //  - meno, ownera aj rozsah (Project Name/Number/Category/Owner) doplna DATABAZA, appka ich nemoze podvrhnut
-//  - suhlasit smie len user uvedeny v USER toho zaznamu; PERMANENT len pri kategorii Final a len s aktivnym
-//    CONSENT; odskrtnuty CONSENT rusi aj PERMANENT
-//  - zaznam s aktivnym PERMANENT niektoreho clena sa neda trashnut, zmazat ani nahradit novou verziou
-//    (Vrso: po Final su clenovia "trvali clenovia" projektu - napr. vydana piesen, podiely/tantiemy; ked treba
-//    vynimocnu zmenu, VSETCI odskrtnu PERMANENT a tym ju ownerovi uvolnia)
-//  - owner vidi stav vsetkych clenov, clen len svoj (RLS) | Vrso -> Claude AI | 2026-09-21 ===
-function zzz13mv_build_consent_panel(row) {
-  const panel = document.createElement('div');
-  panel.style.cssText = 'border:1px solid #e5e5e5;border-radius:8px;padding:8px;margin:6px 0;font-size:12px;';
-  const title = document.createElement('div');
-  title.style.cssText = 'font-weight:800;margin-bottom:6px;';
-  title.textContent = `CONSENT - entry #${row.entry_id}`;
-  panel.appendChild(title);
-  const body = document.createElement('div');
-  body.textContent = 'Loading...';
-  panel.appendChild(body);
-
-  const me = zzz10v1_normalize(zzz_sessionUsername || '');
-  let fields = row.fields_json;
-  if (typeof fields === 'string') { try { fields = JSON.parse(fields); } catch (e) { fields = {}; } }
-  fields = fields || {};
-  const isFinal = zzz1r5_is_final_text(fields.r5 || '');
-  const members = zzz6f21_parse_tags(fields.r17 || '').map(u => zzz10v1_normalize(u)).filter(u => u && u !== '-');
-  const isMember = !!me && members.includes(me);
-  const isOwner = !!me && zzz10v1_normalize(row.username || '') === me;
-
-  const render = async () => {
-    body.textContent = 'Loading...';
-    const { data, error } = await sb.from('verso_consents').select('username, kind, active, id')
-      .eq('entry_id', row.entry_id).order('id', { ascending: false });
-    body.innerHTML = '';
-    if (error) { body.textContent = `Consent could not be loaded: ${error.message}`; return; }
-    const state = {}; // username -> { consent, permanent } podla posledneho riadku
-    (data || []).forEach(r => {
-      state[r.username] = state[r.username] || {};
-      if (state[r.username][r.kind] === undefined) state[r.username][r.kind] = r.active;
-    });
-    const effPermanent = (u) => !!(state[u] && state[u].permanent && state[u].consent);
-
-    if (isMember) {
-      const mine = state[me] || {};
-      const mkToggle = (label, on, enabled, kind, hint) => {
-        const line = document.createElement('label');
-        line.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;';
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.checked = !!on;
-        cb.disabled = !enabled;
-        const txt = document.createElement('span');
-        txt.textContent = hint ? `${label} - ${hint}` : label;
-        cb.addEventListener('change', async () => {
-          cb.disabled = true;
-          const { error: insErr } = await sb.from('verso_consents').insert({ entry_id: row.entry_id, kind, active: cb.checked });
-          if (insErr) zzz6f2_show_toast(`Consent was not saved: ${insErr.message}`);
-          else zzz6f2_show_toast(`${label} ${cb.checked ? 'given' : 'withdrawn'} (entry #${row.entry_id}).`);
-          render();
-        });
-        line.appendChild(cb);
-        line.appendChild(txt);
-        body.appendChild(line);
-      };
-      mkToggle('CONSENT', mine.consent, true, 'consent', 'your agreement / access to this project');
-      if (isFinal) {
-        mkToggle('PERMANENT', mine.permanent && mine.consent, !!mine.consent, 'permanent',
-          mine.consent ? 'possible once ALL members have consented; while you hold it, the owner cannot delete or replace it' : 'give CONSENT first');
-      }
-    } else if (!isOwner) {
-      const note = document.createElement('div');
-      note.textContent = 'Only users listed in USER of this entry can give consent.';
-      body.appendChild(note);
-    }
-
-    if (isOwner) {
-      const head = document.createElement('div');
-      head.style.cssText = 'font-weight:700;margin-top:6px;';
-      head.textContent = 'Members:';
-      body.appendChild(head);
-      if (members.length === 0) {
-        const none = document.createElement('div');
-        none.textContent = 'No users listed in USER.';
-        body.appendChild(none);
-      }
-      members.forEach(u => {
-        const st = state[u] || {};
-        const lineEl = document.createElement('div');
-        lineEl.textContent = `${u}: consent ${st.consent ? 'YES' : 'no'}${isFinal ? `, permanent ${effPermanent(u) ? 'YES' : 'no'}` : ''}`;
-        body.appendChild(lineEl);
-      });
-      if (isFinal) {
-        // [Zzz13-MV:CONSENT-PERMANENT] bod (d) 2026-09-21 - owner si moze zapnut VLASTNY PERMANENT az po consente
-        // VSETKYCH clenov (finalizacia). Owner consent nedava - jeho PERMANENT plati sam o sebe. Ak ho po Final
-        // odskrtne, zmazat aj tak nemoze, kym PERMANENT drzi niektory clen (bod e: potom len skryt). | Vrso -> Claude AI | 2026-09-21
-        const allConsented = members.length > 0 && members.every(u => state[u] && state[u].consent);
-        const ownerLine = document.createElement('label');
-        ownerLine.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;margin-top:4px;';
-        const ownerCb = document.createElement('input');
-        ownerCb.type = 'checkbox';
-        ownerCb.checked = !!(state[me] && state[me].permanent);
-        ownerCb.disabled = !allConsented && !ownerCb.checked;
-        const ownerTxt = document.createElement('span');
-        ownerTxt.textContent = allConsented
-          ? 'Your PERMANENT (owner) - the project is finalised by all members'
-          : 'Your PERMANENT (owner) - possible once ALL members have given consent';
-        ownerCb.addEventListener('change', async () => {
-          ownerCb.disabled = true;
-          const { error: insErr } = await sb.from('verso_consents').insert({ entry_id: row.entry_id, kind: 'permanent', active: ownerCb.checked });
-          if (insErr) zzz6f2_show_toast(`PERMANENT was not saved: ${insErr.message}`);
-          else zzz6f2_show_toast(`Owner PERMANENT ${ownerCb.checked ? 'on' : 'off'} (entry #${row.entry_id}).`);
-          render();
-        });
-        ownerLine.appendChild(ownerCb);
-        ownerLine.appendChild(ownerTxt);
-        body.appendChild(ownerLine);
-
-        const lock = document.createElement('div');
-        lock.style.cssText = 'margin-top:4px;font-weight:700;';
-        const anyPermanent = members.some(effPermanent) || !!(state[me] && state[me].permanent);
-        lock.textContent = anyPermanent
-          ? 'Protected: PERMANENT is held - it cannot be deleted or replaced until all release it.'
-          : 'Not protected: nobody holds PERMANENT.';
-        body.appendChild(lock);
-      }
-    }
-  };
-  render();
-  return panel;
-}
+//  - odskrtnuty CONSENT rusi aj PERMANENT
+//  - zaznam s aktivnym FINALNYM PERMANENT niektoreho clena sa neda trashnut, zmazat ani nahradit novou
+//    verziou (po Final su clenovia "trvali clenovia" projektu - napr. vydana piesen, podiely/tantiemy; ked
+//    treba vynimocnu zmenu, VSETCI odskrtnu PERMANENT a tym ju ownerovi uvolnia)
+//  - owner vidi stav vsetkych clenov, clen len svoj (RLS)
 // === [/Zzz13-MV:CONSENT-PERMANENT] ===
 
 function zzz6f6_open_el_cell_context_modal(field, val, row) {
@@ -16814,9 +16876,13 @@ function zzz6f6_open_el_cell_context_modal(field, val, row) {
   // zdielaju TUTO JEDNU funkciu (zzz4_0_build_entry_row), takze oprava plati automaticky pre obe.
   const { box, removeBox } = zzz6f41_create_context_window();
   box.appendChild(zzz_build_context_header(clId)); // [Zzz6-F23:CONTEXT-HEADER]
-  // [Zzz13-MV:CONSENT-PERMANENT] USER bunka ULOZENEHO zaznamu = miesto, kde clen dava CONSENT/PERMANENT a owner vidi stav
+  // [Zzz13-MV:CONSENT-PERMANENT] USER bunka ULOZENEHO zaznamu = miesto, kde clen dava CONSENT/PERMANENT a owner
+  // vidi stav. Doteraz sa sem vkladal stary checkboxovy panel; teraz sa rovno otvori USER okno - to iste, ake
+  // otvara klik na USER bunku v Database riadku. Jedna cesta, jedno UI, jedny pravidla.
   if (clId === '17' && row && row.entry_id !== undefined && !row.zzz_archived && typeof row.entry_id === 'number') {
-    box.appendChild(zzz13mv_build_consent_panel(row));
+    removeBox();
+    zzz6f17_open_context_select_modal(row);
+    return;
   }
 
   const textarea = document.createElement('textarea');
@@ -17233,7 +17299,7 @@ function zzz4_0_build_entry_row(row) {
           if (field.key === 'r17' || field.key === 'r18') {
             zzz1r17b_silent_copy_row_to_cl(row);
             if (field.key === 'r17') zzz6f17_open_context_select_modal(row); // [Zzz13-MV:CONSENT-PERMANENT] uloženy zaznam pre consent panel
-            else zzz6f18_open_context_select_modal();
+            else zzz6f18_open_context_select_modal(row); // [Zzz5-W5:COMM-CONSENT] aj COMMUNICATION potrebuje ulozeny riadok
             return;
           }
           zzz6f6_open_el_cell_context_modal(field, val, row);
@@ -18794,7 +18860,43 @@ const ZZZ5W5CM_PAIR_TABS = [
   { key: 'blocked-project', tabId: 'zzz5w5cm-pair-blocked-project', label: 'Blocked Project', module: 'BLOCKED PROJECT COMM MODULE', target: true }
 ];
 // [Zzz5-W5:PAIR-PRESET] rozsah, ktory si prihlaseny nadefinuje v Preset tabe - je NADRADENY vsetkemu ostatnemu
-let zzz5w5cmPreset = { unlimited: true, fields: {}, consent: false, permanent: false };
+// === [Zzz5-W5:PAIR-PRESET] (SYSTEM FUNCTION) PRESET = HLAVNY PAROVACI PROCES, IBA PRE COMMUNICATION
+// Vrso 2026-09-25, doslovne: "8. Preset (iba comm pairing!)" a "definovat projekt pre ktory sa dava comm
+// consenty je hadam jednoduche, ved staci vyplnit entry podla aspon project ownera/project number/project
+// name/private/... ako si kto nastavi".
+//
+// CO TU CHYBALO: filter zzz5w5cm_preset_allows() bol UZ NAPOJENY na kazdy tab okrem Presetu, ale pole
+// `fields`, podla ktoreho filtruje, NIKDY nikto nenastavil - preto vracal true na vsetko a Pairing tab
+// ukazoval uplne vsetko, kde je prihlaseny menovany v COMMUNICATION. Chybal teda LEN VSTUP. Aj povodny
+// komentar pri filtri hovoril "rozsah nadefinovany v Preset CRM" - ta riadka sa len nikdy nepostavila.
+//
+// PRAVIDLO (Vrso): preset smie OTVARAT KANAL, nikdy nesmie PODPISOVAT DOHODU. Tyka sa VYLUCNE communication
+// pairingu - na user consent nesiaha vobec. Preto su tu len COMM CONSENT / PERMANENT COMM CONSENT.
+// PRAVIDLO: preset je FILTER nad tym, co uz smies vidiet, NIE brana. O pristupe rozhoduje RLS.
+//
+// ULOZENIE: localStorage per username. Je to osobne nastavenie zobrazenia, nie pristupove pravo - preto
+// nepotrebuje vlastnu tabulku ani RLS. Ked bude treba synchronizovat medzi zariadeniami, presunie sa do DB
+// (kandidat na outbox fazu 2). | Vrso -> Claude AI | 2026-09-25 ===
+const ZZZ5W5CM_PRESET_FIELDS = [
+  ['r4', 'PROJECT OWNER'], ['r2', 'PROJECT NUMBER'], ['r3', 'PROJECT NAME'],
+  ['r5', 'CATEGORY'], ['r7', 'PRIVACY'], ['tags', 'TAG']
+];
+function zzz5w5cm_preset_key() {
+  return 'zzz5w5cm:preset:' + zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+}
+function zzz5w5cm_preset_load() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(zzz5w5cm_preset_key()) || 'null');
+    if (raw && typeof raw === 'object') {
+      return { unlimited: raw.unlimited !== false, fields: raw.fields || {}, consent: !!raw.consent, permanent: !!raw.permanent };
+    }
+  } catch (e) {}
+  return { unlimited: true, fields: {}, consent: false, permanent: false };
+}
+function zzz5w5cm_preset_save() {
+  try { localStorage.setItem(zzz5w5cm_preset_key(), JSON.stringify(zzz5w5cmPreset)); } catch (e) {}
+}
+let zzz5w5cmPreset = zzz5w5cm_preset_load();
 // [Zzz5-W5:PAIR-LIMIT] "Limited/Unlimited Pairings" + povoleny pocet parovani na den
 let zzz5w5cmPairLimit = { limited: false, perDay: '' };
 let zzz5w5cmPairTab = 'pairing';
@@ -19142,9 +19244,14 @@ function zzz5w5cm_attach_to_contacts(anchorEl) {
 // | Vrso -> Claude AI | 2026-09-23 ===
 async function zzz5w5cm_clear_consents(entryId) {
   try {
+    // === [Zzz5-W5:BLOCK-CLEARS-COMM-ONLY] (PRAVIDLO) Vrso 2026-09-25, doslovne: "Presun do blocked... len
+    // komunikaciu!" - presun do Trashed/Blocked* odznaci VYLUCNE communication consent. USER consent so
+    // zaznamom ostava NEDOTKNUTY: blokuje sa KANAL, nie suhlas s projektom.
+    // PREDTYM sa tu odznacoval prave len user consent ('consent'/'permanent') a comm kinds vobec
+    // neexistovali - bolo to teda presne naopak, nez pravidlo hovori. ===
     await sb.from('verso_consents').insert([
-      { entry_id: entryId, kind: 'consent', active: false },
-      { entry_id: entryId, kind: 'permanent', active: false }
+      { entry_id: entryId, kind: ZZZ1COMM_KIND, active: false },
+      { entry_id: entryId, kind: ZZZ1COMM_KIND_PERM, active: false }
     ]);
   } catch (e) { zzz6f2_show_toast(`Consent sa nepodarilo odznacit: ${(e && e.message) || e}`, 'warn'); }
 }
@@ -19264,15 +19371,35 @@ function zzz5w5cm_build_pairing() {
     t.className = 'zzz5w5cm-chip';
     if (zzz5w5cmPairTab === 'preset') {
       t.textContent = zzz5w5cmPreset.unlimited ? 'UNLIMITED PRESET PAIRINGS' : 'PRESET';
-      t.addEventListener('click', () => { zzz5w5cmPreset.unlimited = !zzz5w5cmPreset.unlimited; zzz5w5cm_render(); });
+      t.addEventListener('click', () => {
+        zzz5w5cmPreset.unlimited = !zzz5w5cmPreset.unlimited; zzz5w5cm_preset_save(); zzz5w5cm_render();
+      });
       bar.appendChild(t);
+      // [Zzz5-W5:PAIR-PRESET] Vrso 2026-09-25: "chipy consent? tie by mali byt toggle" - rovnaky okruhly
+      // toggle ako v consent riadku, nie pilulka s fajkou. Jeden vizualny jazyk pre vsetko okolo consentu.
       [['consent', 'COMM CONSENT'], ['permanent', 'PERMANENT COMM CONSENT']].forEach(([k, label]) => {
-        const c = document.createElement('button');
-        c.type = 'button';
-        c.className = 'zzz5w5cm-chip' + (zzz5w5cmPreset[k] ? ' zzz5w5cm-chip-on' : '');
-        c.textContent = (zzz5w5cmPreset[k] ? '\u2713 ' : '') + label;
-        c.addEventListener('click', () => { zzz5w5cmPreset[k] = !zzz5w5cmPreset[k]; zzz5w5cm_render(); });
-        bar.appendChild(c);
+        const wrap = document.createElement('div');
+        wrap.className = 'zzz5w5cm-preset-toggle';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'zzz1r17b-consent-toggle'; // ten isty prepinac ako v consent riadku
+        btn.classList.toggle('is-on', !!zzz5w5cmPreset[k]);
+        // PERMANENT COMM CONSENT ma zmysel az s COMM CONSENTOM - rovnaka zavislost ako v comm okne
+        const enabled = (k === 'consent') || !!zzz5w5cmPreset.consent;
+        btn.disabled = !enabled;
+        btn.title = enabled ? label : label + ' - najprv zapni COMM CONSENT';
+        btn.addEventListener('click', () => {
+          if (!enabled) return;
+          zzz5w5cmPreset[k] = !zzz5w5cmPreset[k];
+          if (k === 'consent' && !zzz5w5cmPreset.consent) zzz5w5cmPreset.permanent = false;
+          zzz5w5cm_preset_save(); zzz5w5cm_render();
+        });
+        const cap = document.createElement('span');
+        cap.className = 'zzz5w5cm-preset-toggle-cap';
+        cap.textContent = label;
+        wrap.appendChild(btn);
+        wrap.appendChild(cap);
+        bar.appendChild(wrap);
       });
     } else {
       t.textContent = zzz5w5cmPairLimit.limited ? 'LIMITED PAIRINGS' : 'UNLIMITED PAIRINGS';
@@ -19292,6 +19419,37 @@ function zzz5w5cm_build_pairing() {
       }
     }
     mod.appendChild(bar);
+
+    // === [Zzz5-W5:PAIR-PRESET] ROZSAH - chybajuci VSTUP pre zzz5w5cm_preset_allows(). Vyplnas tie bunky,
+    // podla ktorych sa ma parovat (staci jedna): project owner, number, name, category, privacy, tag.
+    // Prazdna bunka sa ignoruje, vyplnene musia sediet VSETKY (porovnava sa "obsahuje", case-insensitive).
+    // Plati len ked NIE je zapnute UNLIMITED PRESET PAIRINGS. ===
+    if (zzz5w5cmPairTab === 'preset' && !zzz5w5cmPreset.unlimited) {
+      const scope = document.createElement('div');
+      scope.className = 'zzz5w5cm-preset-scope';
+      const hint = document.createElement('div');
+      hint.className = 'zzz5w5cm-preset-scope-hint';
+      hint.textContent = 'ROZSAH PAROVANIA - vypln aspon jednu bunku; prazdne sa ignoruju';
+      scope.appendChild(hint);
+      ZZZ5W5CM_PRESET_FIELDS.forEach(([key, label]) => {
+        const cell = document.createElement('label');
+        cell.className = 'zzz5w5cm-preset-cell';
+        const cap = document.createElement('span');
+        cap.textContent = label;
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.value = zzz5w5cmPreset.fields[key] || '';
+        inp.addEventListener('change', () => {
+          const v = inp.value.trim();
+          if (v) zzz5w5cmPreset.fields[key] = v; else delete zzz5w5cmPreset.fields[key];
+          zzz5w5cm_preset_save(); zzz5w5cm_render();
+        });
+        cell.appendChild(cap);
+        cell.appendChild(inp);
+        scope.appendChild(cell);
+      });
+      mod.appendChild(scope);
+    }
   }
 
   if (zzz5w5cmPairing.loading || zzz5w5cmPairing.error) {
