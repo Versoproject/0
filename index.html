@@ -2544,6 +2544,27 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   }
   .zzz5w7-add:hover { background-color: #222; }
   .zzz5w7-addrow { margin-top: 6px; }
+  /* [Zzz5-W7:NOTE-FILTER] filter + hladanie v hlavicke okna */
+  .zzz5w7-filter {
+    flex: 0 0 auto;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 4px;
+    border-radius: 6px;
+    border: 1px solid #171717;
+    background-color: #f5f5f0;
+    color: #171717;
+  }
+  .zzz5w7-search {
+    flex: 0 1 120px;
+    min-width: 60px;
+    font-size: 10px;
+    padding: 3px 6px;
+    border-radius: 6px;
+    border: 2px dashed #ea8c00;
+    background-color: #f5f5f0;
+    color: #8a5200;
+  }
   /* [Zzz5-W7:INLINE-ADD] jeden riadok namiesto prompt okna: NAME v sirke stlpika, text vedla */
   .zzz5w7-inline { display: flex; align-items: center; gap: 4px; }
   .zzz5w7-inline-tag {
@@ -21618,6 +21639,26 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   const selMode = { on: false };
   const selected = new Set();   // kluc = note.id (stabilny), nie poradie
 
+  // === [Zzz5-W7:NOTE-FILTER] Vrso 2026-09-25: "vytvor filter" + "bol by aj dobry filter podla statusu
+  // (prazdny zadany, oranzovou potvrdzuje oznaceny user/group/project users)" + "treba aj search funkciu
+  // na vyhladavanie aj name k note entries".
+  // FILTER NEMENI CISLA. Cislo je identita a viaze sa nan acknowledgement, takze sa nikdy neprecisluje -
+  // filter len zuzi, CO je v okne vidno. Presne to oddelenie identita/oznacenie z VERSO-CISLOVANIE.md:
+  // #47 ostane #47, aj ked je v zuzenom zozname treti. ===
+  const view = { filter: 'all', q: '' };
+  const filterSel = document.createElement('select');
+  filterSel.className = 'zzz5w7-filter';
+  [['all', 'VSETKY'], ['status', 'STATUS'], ['nostatus', 'BEZ STATUSU'], ['private', 'PRIVATE'], ['mine', 'MOJE']]
+    .forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; filterSel.appendChild(o); });
+  filterSel.title = 'Zuzi zoznam - cisla poznamok sa tym NEMENIA';
+  head.appendChild(filterSel);
+
+  const searchIn = document.createElement('input');
+  searchIn.type = 'text';
+  searchIn.className = 'zzz5w7-search';
+  searchIn.placeholder = 'hladaj (name/text/user)';
+  head.appendChild(searchIn);
+
   const selBtn = document.createElement('button');
   selBtn.type = 'button';
   selBtn.className = 'zzz1cn-note-btn zzz5w7-selbtn';
@@ -21684,8 +21725,8 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   // oznaci ju a odscrolluje k nej. Ziadne filtrovanie: text ostava cely, cislo sluzi na orientaciu.
   const jumpTo = (idx) => {
     let start = 0;
-    for (let i = 0; i < idx; i++) start += zzz5w7_block_of(allNotes[i]).length + 2;   // +2 = oddelovac '\n\n'
-    const n = allNotes[idx];
+    for (let i = 0; i < idx; i++) start += zzz5w7_block_of(viewNotes[i]).length + 2;   // +2 = oddelovac '\n\n'
+    const n = viewNotes[idx];
     const end = start + zzz5w7_block_of(n).length;
     area.focus();
     area.setSelectionRange(start, end);
@@ -21783,6 +21824,27 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   // zapis len vo vlastnom mene, a kopia by bola NEODVOLATELNA - ostala by im aj po odobrani prav.
   // Zdielanie sa odvolat da (toggle spat). Kto si ju chce nechat, da SAVE CHATNOTE PRIVATELY - a prave
   // to zapise acknowledgement, lebo prevzatie ma byt vedomy krok. (Rozhodnute s Vrsom 2026-09-25.) ===
+  // === [Zzz5-W7:NOTE-PRIVACY] vlastna poznamka sukromna / zdielana. Ziadny novy mechanizmus to
+  // nepotrebuje: is_private=true UZ DNES znamena, ze riadok vidi VYLUCNE jeho autor - strazi to RLS
+  // policy verso_chat_notes_select priamo v databaze, nie appka. Chybalo len tlacidlo. ===
+  const zzz5w7_set_private = async (n, on) => {
+    if (zzz0ob_is_pending(n.id) || String(n.id).indexOf('local-') === 0) {
+      zzz6f2_show_toast('Poznamka este nie je odoslana - prepnut sa da az potom.', 'warn');
+      return false;
+    }
+    try {
+      const { error } = await sb.from(ZZZ1CN_TABLE).update({ is_private: !!on }).eq('id', n.id);
+      if (error) throw error;
+      zzz6f2_show_toast(on
+        ? `Note #${zzz5w7_label_of(n)} je PRIVATE - vidis ju len ty.`
+        : `Note #${zzz5w7_label_of(n)} je zas zdielana.`);
+      return true;
+    } catch (e) {
+      zzz6f2_show_toast(`Prepnutie zlyhalo: ${(e && e.message) || e}`, 'warn');
+      return false;
+    }
+  };
+
   const zzz5w7_set_project = async (n, on) => {
     if (zzz0ob_is_pending(n.id) || String(n.id).indexOf('local-') === 0) {
       zzz6f2_show_toast('Poznamka este nie je odoslana - project sa da zapnut az potom.', 'warn');
@@ -21803,11 +21865,26 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     }
   };
 
+  // [Zzz5-W7:NOTE-FILTER] co je PRAVE VIDNO. allNotes ostava uplny zoznam - filter je pohlad, nie zmena dat.
+  let viewNotes = [];
+  const applyFilter = () => {
+    const meF = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+    const q = zzz10v1_normalize(view.q.trim());
+    viewNotes = allNotes.filter(n => {
+      if (view.filter === 'status'   && !n.is_project) return false;
+      if (view.filter === 'nostatus' && n.is_project)  return false;
+      if (view.filter === 'private'  && !n.is_private) return false;
+      if (view.filter === 'mine'     && zzz10v1_normalize(n.username || '') !== meF) return false;
+      if (!q) return true;
+      return zzz10v1_normalize(`${n.note_name || ''} ${n.note_text || ''} ${n.username || ''} ${zzz5w7_label_of(n)}`).includes(q);
+    });
+  };
+
   // [Zzz5-W7:GUTTER] na ktorom RIADKU textu zacina ktora poznamka - z toho sa pocita zvisla poloha
   const startLines = () => {
     const out = [];
     let line = 0;
-    allNotes.forEach(n => {
+    viewNotes.forEach(n => {
       out.push(line);
       line += zzz5w7_block_of(n).split('\n').length + 1;   // +1 = prazdny riadok medzi poznamkami
     });
@@ -21827,10 +21904,15 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
 
   const render = async () => {
     allNotes = await zzz1cn_load_for_feed(entryKey);
+    applyFilter();
     grow.innerHTML = '';
-    area.value = zzz5w7_format_notes(allNotes);
+    area.value = zzz5w7_format_notes(viewNotes);
     const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
-    if (!allNotes.length) area.placeholder = 'Ziadne ulozene notes.';
+    if (!viewNotes.length) {
+      area.placeholder = allNotes.length ? 'Filtru nevyhovuje ziadna poznamka.' : 'Ziadne ulozene notes.';
+    }
+    title.textContent = (/^\d+$/.test(String(entryKey)) ? `NOTES #${entryKey}` : 'NOTES')
+      + (viewNotes.length !== allNotes.length ? ` (${viewNotes.length}/${allNotes.length})` : '');
     const owner = zzz10v1_normalize((entryData['4'] || '').trim());
     const iAmOwner = !!meN && owner === meN;
     // [Zzz5-W7:PROJECT-FLAG] ZELENA ked je owner na projekte sam, ORANZOVA ked su tam aj dalsi useri
@@ -21839,18 +21921,20 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       .map(zzz10v1_normalize).filter(u => u && u !== owner);
     const solo = others.length === 0;
 
-    allNotes.forEach((n, idx) => {
+    viewNotes.forEach((n, idx) => {
       const mine = !!meN && zzz10v1_normalize(n.username || '') === meN;
       const rowEl = document.createElement('div');
       rowEl.className = 'zzz5w7-grow-row';
 
-      // --- project toggle (vlavo od cisla) ---
+      // --- STATUS toggle (vlavo od cisla) - Vrso 2026-09-25: "filter podla statusu (prazdny zadany,
+      //     oranzovou potvrdzuje oznaceny user/group/project users)". Prazdny = nezadany, ORANZOVY =
+      //     zadany pre oznacenych userov projektu, ZELENY = owner je na projekte sam.
       const proj = document.createElement('button');
       proj.type = 'button';
       proj.className = 'zzz5w7-proj' + (n.is_project ? (solo ? ' is-on-solo' : ' is-on-multi') : '');
       proj.title = iAmOwner
-        ? 'Project note - zapnutim ju uvidia vsetci useri projektu vo svojich Notes'
-        : 'Project note oznacuje LEN project owner';
+        ? 'STATUS - zapnutim ju uvidia oznaceni useri projektu vo svojich Notes'
+        : 'STATUS zadava LEN project owner';
       proj.disabled = !iAmOwner || !mine;
       proj.addEventListener('click', async () => {
         proj.disabled = true;
@@ -21865,7 +21949,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       b.type = 'button';
       b.className = 'zzz5w7-num' + (mine ? ' zzz5w7-num-own' : ' zzz5w7-num-foreign');
       b.textContent = zzz5w7_label_of(n);
-      b.title = `#${zzz5w7_label_of(n)} (${n.username || '-'}) - klik skoci na text (v SELECT rezime oznaci), podrzanie 1-2s prida vlastnu poznamku`;
+      b.title = `#${zzz5w7_label_of(n)} (${n.username || '-'}) - klik skoci na text (v SELECT rezime oznaci), podrzanie 1-2s prepne PRIVATE`;
       if (selected.has(n.id)) b.classList.add('zzz5w7-num-sel');
       b.addEventListener('click', () => {
         // [Zzz5-W7:NOTE-SELECT] v oznacovacom rezime klik OZNACUJE, mimo neho robi presne to, co doteraz
@@ -21875,7 +21959,18 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
         copySel.textContent = selected.size ? `COPY (${selected.size})` : 'COPY';
         delSel.classList.toggle('is-armed', selected.size > 0);   // [Zzz5-W7:SEL-DELETE] cervene az ked je co mazat
       });
-      zzz_bind_long_press(b, 1200, () => addSubNote(n));
+      // === [Zzz5-W7:NOTE-PRIVACY] Vrso 2026-09-25: "privacy by som urobil z note number podrzanim 1-2s
+      // ale iba tie ktore nespadaju pod tym co zadal project owner".
+      // Sub-poznamka sa tym z cisla UVOLNILA - zaklada sa uz VYLUCNE podrzanim + ADD NOTE (tam to bolo aj
+      // doteraz). Dve rozne veci na tom istom geste by sa nedali rozlisit.
+      // Kto smie prepnat: LEN autor svojej poznamky (to strazi aj RLS) a LEN ked ju owner nevyhlasil za
+      // projektovu - inak by si user mohol schovat prave to, co ma byt pre projekt viditelne.
+      zzz_bind_long_press(b, 1200, async () => {
+        if (!mine) { zzz6f2_show_toast('Prepnut sa da len vlastna poznamka.', 'warn'); return; }
+        if (n.is_project) { zzz6f2_show_toast('Poznamku so STATUSOM od project ownera sa schovat neda.', 'warn'); return; }
+        zzz_haptic_pulse(30);
+        if (await zzz5w7_set_private(n, !n.is_private)) await render();
+      });
       rowEl.appendChild(b);
 
       // --- oznacenie (name) vpravo od cisla ---
@@ -21952,7 +22047,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       return;
     }
     const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
-    const picked = allNotes.filter(n => selected.has(n.id));
+    const picked = allNotes.filter(n => selected.has(n.id));   // oznacene mozu ostat aj po zmene filtra
     const mine = picked.filter(n => zzz10v1_normalize(n.username || '') === me);
     const others = picked.length - mine.length;
     if (!mine.length) { zzz6f2_show_toast('Zmazat sa da len vlastny note.', 'warn'); return; }
@@ -22002,6 +22097,13 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     zzz6f2_show_toast(authors.length
       ? `Text skopirovany + acknowledgement (${authors.join(', ')}).`
       : 'Text skopirovany.');
+  });
+
+  filterSel.addEventListener('change', () => { view.filter = filterSel.value; render(); });
+  let searchTimer = 0;
+  searchIn.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { view.q = searchIn.value; render(); }, 180);
   });
 
   await render();
