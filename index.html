@@ -9198,7 +9198,9 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   // ownerom alebo prihlasenym username (zaciarknutim private...)". Chatnote pole ide na celu sirku, vpravo je
   // stvorcove tlacidlo 76x76 px (~2x2 cm). KLIK = ulozi ako PRIVATNY chatnote, PODRZANIE 2s = otvori zoznam
   // ulozenych chatnotes (kopirovanie aj mazanie vlastnych). ZDIELANY chatnote vznikne cez ENTER (nizsie).
-  const cnEntryKey = String(entryData['1'] || '').trim() || 'draft';
+  // [Zzz1-CN:DRAFT-KEY] ulozeny zaznam -> jeho entry_id, rozpisana CL -> jej VLASTNY draft kluc.
+  // Je to `let`, nie `const` - po ENTER sa CL stane ulozenou entry a kluc sa musi prepnut.
+  let cnEntryKey = zzz1cn_key_for(commEntryId);
   // [Zzz1-CN:FEED] Vrso 2026-09-24: "po zapise by sa mal objavit dalsi novy chatnote prilepeny k predoslym
   // vlastnym/cudzim (oznacenym vzdy ale chatnote number a userom kto pisal/vlozil)... aby boli vzdy vidiet
   // aspon 3 predosle chatnoty nad novym a tie budu scrollovatelne"
@@ -9333,6 +9335,13 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
       // [Zzz1-CN:ENTER-ALLOW-EXISTING] allowExisting: uz-ulozeny zaznam nie je chyba, chatnote sa ulozi tak ci tak
       const ok = await submit_entries_to_db({ skipDuplicateCheck: true, allowExisting: true }); // silent-copy zamerne mirroruje existujuci zaznam
       if (ok) {
+        // [Zzz1-CN:DRAFT-KEY] CL prave dostala entry number - presun doterajsie (aj privatne) chatnotes
+        // z draftu pod nu a prepni kluc, aby tento aj kazdy dalsi zapis siel uz k SPRAVNEJ entry.
+        // Pri ok === 'duplicate' sa NEROBI: vtedy zaznam vznikol inokedy a jeho skutocne cislo nepozname.
+        if (ok === true && zzz4_0_justInsertedEntryId) {
+          await zzz1cn_promote_draft(zzz4_0_justInsertedEntryId);
+          cnEntryKey = zzz1cn_key_for(zzz4_0_justInsertedEntryId);
+        }
         // [Zzz1-CN:CHAT-NOTES] Vrso 2026-09-24: "Po stlaceni enter sa procesuje dany zaznam ale nema zmiznut
         // cela cl ale v pripade communication window sa ulozi v tom okne" - rozpisany chatnote sa ulozi ako
         // ZDIELANY (nie privatny), dostane svoje cislo a autora, a okno OSTAVA OTVORENE.
@@ -20509,6 +20518,74 @@ window.addEventListener('online', () => { zzz0ob_flush('online'); });
 const ZZZ1CN_TABLE = 'verso_chat_notes';
 let zzz1cnTableAvailable = null; // null = zatial neoverene, false = pouzivame lokalny fallback
 function zzz1cn_local_key(entryKey) { return 'zzz1cn:' + entryKey; }
+
+// =====================================================================================================
+// === [Zzz1-CN:DRAFT-KEY] (SYSTEM FUNCTION) KU KTOREJ ENTRY CHATNOTE PATRI
+// -----------------------------------------------------------------------------------------------------
+// CHYBA, ktoru nasiel Vrso 2026-09-25 ("dufam ze sa to nepletie s inymi entry chatnotes"): pletie.
+// cnEntryKey sa pocital ako `entryData['1'] || 'draft'`, lenze bunka R1 je od 2026-08-18 NEEDITOVATELNA a
+// VZDY PRAZDNA - skutocne entry number zije len v popiske tlacidla a v zzz4_0_justInsertedEntryId. Kluc bol
+// teda VZDY 'draft' a vsetky privatne chatnotes zo vsetkych rozpisanych CL padali do JEDNEHO spolocneho
+// vreca - a k realnej entry sa nikdy nepripojili.
+//
+// RIESENIE: kazda rozpisana CL ma VLASTNY draft kluc ('draft-<nahodne>'), ulozeny v localStorage, aby prezil
+// aj refresh. Ked sa CL ulozi a dostane entry number, poznamky sa PRESUNU pod skutocny kluc a draft sa
+// zahodi - dalsia CL tak zacina cista. Ked je okno otvorene z ULOZENEHO zaznamu, pouzije sa rovno jeho
+// entry_id a ziadny draft nevznika.
+//
+// PRIVATNOST sa tym nemeni: privatny chatnote ma is_private=true a RLS ho ukazuje LEN autorovi
+// (verso_chat_notes_select). Mení sa iba to, KU KTOREJ entry patri. | Vrso -> Claude AI | 2026-09-25 ===
+const ZZZ1CN_DRAFT_ID_KEY = 'zzz1cn:draftid';
+function zzz1cn_draft_key() {
+  try {
+    let id = localStorage.getItem(ZZZ1CN_DRAFT_ID_KEY);
+    if (!id) {
+      id = 'draft-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+      localStorage.setItem(ZZZ1CN_DRAFT_ID_KEY, id);
+    }
+    return id;
+  } catch (e) {
+    return 'draft'; // bez localStorage sa sprava ako doteraz - lepsie nez spadnut
+  }
+}
+// kluc pre okno: ulozeny zaznam -> jeho entry_id, rozpisana CL -> jej vlastny draft
+function zzz1cn_key_for(entryId) {
+  const id = Number(entryId);
+  return id ? String(id) : zzz1cn_draft_key();
+}
+// [Zzz1-CN:DRAFT-KEY] po ulozeni CL: presun poznamok z draftu pod skutocne entry number a novy draft.
+// Presun = insert kopii + delete povodnych (tabulka zamerne NEMA UPDATE policy - chatnote sa neda prepisat).
+async function zzz1cn_promote_draft(entryId) {
+  const id = Number(entryId);
+  if (!id) return;
+  let draftId = null;
+  try { draftId = localStorage.getItem(ZZZ1CN_DRAFT_ID_KEY); } catch (e) {}
+  if (!draftId) return;
+  try {
+    const notes = await zzz1cn_load(draftId);
+    for (const n of (notes || [])) {
+      if (String(n.id).indexOf('local-') === 0) continue; // lokalny fallback riesi zzz1cn_local_save nizsie
+      const payload = {
+        entry_key: String(id), username: n.username,
+        note_number: n.note_number, note_text: n.note_text, is_private: n.is_private
+      };
+      const { error } = await sb.from(ZZZ1CN_TABLE).insert(payload);
+      if (error) throw error;
+      await sb.from(ZZZ1CN_TABLE).delete().eq('id', n.id);
+    }
+    // lokalny fallback (ked tabulka nie je dostupna) - prenes pod novy kluc
+    const local = zzz1cn_local_load(draftId);
+    if (local.length) {
+      zzz1cn_local_save(String(id), zzz1cn_local_load(String(id)).concat(local));
+      zzz1cn_local_save(draftId, []);
+    }
+    if (notes && notes.length) zzz6f2_show_toast(`${notes.length} chatnote(s) presunute k zaznamu #${id}.`);
+  } catch (e) {
+    console.warn('Zzz1-CN:DRAFT-KEY - presun draft chatnotes zlyhal (ostavaju pod draft klucom):', (e && e.message) || e);
+    return; // draft NEROTUJEME, aby sa poznamky nestratili - skusi sa znova pri dalsom ulozeni
+  }
+  try { localStorage.removeItem(ZZZ1CN_DRAFT_ID_KEY); } catch (e) {} // dalsia CL zacina cista
+}
 function zzz1cn_local_load(entryKey) {
   try { return JSON.parse(localStorage.getItem(zzz1cn_local_key(entryKey)) || '[]'); } catch (e) { return []; }
 }
@@ -20525,11 +20602,19 @@ function zzz1cn_pending_for(entryKey) {
     .filter(it => String((it.payload && it.payload.entry_key) || '') === String(entryKey))
     .map(it => Object.assign({}, it.payload, { id: it.id, zzz0ob_pending: true }));
 }
+// [Zzz1-CN:DRAFT-KEY] precita draft kluc BEZ toho, aby ho vytvoril - feed na ulozenej entry nesmie zalozit
+// novy draft len tym, ze sa pozrel, ci nejaky existuje.
+function zzz1cn_draft_key_peek() {
+  try { return localStorage.getItem(ZZZ1CN_DRAFT_ID_KEY); } catch (e) { return null; }
+}
+// [Zzz1-CN:DRAFT-KEY] ZIADNE miesanie klucov. Povodne sa sem primiesaval draft, aby poznamky napisane pred
+// pridelenim entry number nezmizli - lenze to znamenalo, ze AKTUALNY draft (uz inej, novej CL) sa zobrazoval
+// aj vo feede cudzej ulozenej entry. Presne to miesanie, ktoreho sa Vrso obaval; overene testom.
+// Netreba to: poznamky sa pri ulozeni PRESUNU (zzz1cn_promote_draft). Ked presun zlyha, ostanu pod draftom -
+// teda vo feede TEJ CL, kde ich user napisal - a skusi sa znova pri dalsom ulozeni.
 async function zzz1cn_load_for_feed(entryKey) {
-  const own = (await zzz1cn_load(entryKey)).concat(zzz1cn_pending_for(entryKey));
-  if (String(entryKey) === 'draft') return own;
-  const drafts = (await zzz1cn_load('draft')).concat(zzz1cn_pending_for('draft'));
-  return own.concat(drafts).sort((a, b) => (Number(a.note_number) || 0) - (Number(b.note_number) || 0));
+  return (await zzz1cn_load(entryKey)).concat(zzz1cn_pending_for(entryKey))
+    .sort((a, b) => (Number(a.note_number) || 0) - (Number(b.note_number) || 0));
 }
 // [Zzz0-OB:CLIENT-CHATNOTE] zzz1cnTableAvailable bol PRILEPENY natrvalo: staci, ze prvy dopyt zlyhal (offline
 // pri starte, vypadok siete) a flag ostal false do konca session - odvtedy vsetky chatnotes ticho padali do
