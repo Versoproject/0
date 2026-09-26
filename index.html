@@ -2464,9 +2464,34 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     left: 0;
     right: 0;
     display: flex;
-    align-items: center;
-    gap: 3px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
     height: 18px;
+  }
+  .zzz5w7-line1 { display: flex; align-items: center; gap: 3px; }
+  /* [Zzz5-W7:OUTLINE] bez filtra je stlpik osnova: hlavne cislo je nadpis, "@poradie" pod nim,
+     sub-poznamky (a, b, c) odsadene pod svojim cislom. S filtrom sa vracia plochy zoznam. */
+  .zzz5w7-grow-row.is-sub { padding-left: 12px; }
+  .zzz5w7-grow-row.is-outline.is-sub .zzz5w7-num { font-size: 9px; }
+  .zzz5w7-ord2 {
+    font-size: 7px;
+    font-weight: 700;
+    color: #9ca3af;
+    padding-left: 13px;
+    line-height: 1.1;
+  }
+  /* [Zzz5-W7:ORDER-RANGE] "od / do" v filter boxe */
+  .zzz5w7-rangerow { gap: 4px; }
+  .zzz5w7-range {
+    width: 38px;
+    min-width: 0;
+    font-size: 9px;
+    padding: 2px 3px;
+    border-radius: 5px;
+    border: 1px solid #171717;
+    background-color: #f5f5f0;
+    color: #171717;
   }
   /* [Zzz5-W7:WORK-ORDER] pracovne poradie v zobrazenom zozname - zamerne nevyrazne, aby sa nepomylilo
      s cislom poznamky. Cislo je identita, toto je len "kolky je v poradi". Neuklada sa. */
@@ -2626,6 +2651,16 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     font-size: 9px;
     font-weight: 700;
     color: #8a6d1f;
+  }
+  .zzz5w7-inline-tgt {
+    flex: 0 0 42px;
+    min-width: 0;
+    font-size: 10px;
+    padding: 4px 5px;
+    border: 2px dashed #ea8c00;
+    border-radius: 6px;
+    color: #8a5200;
+    text-align: center;
   }
   .zzz5w7-inline-name {
     flex: 0 0 110px;
@@ -21789,7 +21824,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     ['private',  'PRIVATE',  'vidi ju len autor'],
     ['mine',     'MOJE',     'poznamky prihlaseneho usera']
   ];
-  const view = { on: {}, q: '' };
+  const view = { on: {}, q: '', from: 0, to: 0 };
   const filterSel = document.createElement('div');
   filterSel.className = 'zzz5w7-filter';
   const filterBtn = document.createElement('button');
@@ -21813,6 +21848,26 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     lab.appendChild(cb); lab.appendChild(sp);
     filterBox.appendChild(lab);
   });
+  // === [Zzz5-W7:ORDER-RANGE] Vrso 2026-09-26: "filter podla poradia" = "ukaz mi notes 5 az 12".
+  // Rozsah sa vztahuje na poradie v CELOM zozname (allNotes), nie vo vyfiltrovanom - inak by bol vypocet
+  // kruhovy (filter by menil cisla, podla ktorych filtruje). Poradie v celom zozname je urcene radenim
+  // podla note_number, takze je deterministicke a reprodukovatelne bez toho, aby sa ukladalo.
+  const rangeRow = document.createElement('div');
+  rangeRow.className = 'zzz5w7-filteritem zzz5w7-rangerow';
+  const rangeLab = document.createElement('span');
+  rangeLab.textContent = 'PORADIE';
+  const rangeFrom = document.createElement('input');
+  rangeFrom.type = 'number'; rangeFrom.min = '1'; rangeFrom.className = 'zzz5w7-range'; rangeFrom.placeholder = 'od';
+  const rangeTo = document.createElement('input');
+  rangeTo.type = 'number'; rangeTo.min = '1'; rangeTo.className = 'zzz5w7-range'; rangeTo.placeholder = 'do';
+  [rangeFrom, rangeTo].forEach(el => el.addEventListener('input', () => {
+    view.from = parseInt(rangeFrom.value, 10) || 0;
+    view.to   = parseInt(rangeTo.value, 10) || 0;
+    findIdxReset(); render();
+  }));
+  rangeRow.appendChild(rangeLab); rangeRow.appendChild(rangeFrom); rangeRow.appendChild(rangeTo);
+  filterBox.appendChild(rangeRow);
+
   filterBtn.addEventListener('click', () => {
     filterBox.style.display = filterBox.style.display === 'none' ? '' : 'none';
   });
@@ -21941,7 +21996,8 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   // Namiesto systemoveho prompt okna (ktore na mobile prekryje celu stranku a name do neho nedostanem)
   // sa priamo v okne otvori JEDEN riadok: uzke pole NAME v sirke stlpika s cislami a siroke pole TEXT
   // vedla neho. Enter uklada, Escape rusi. ===
-  const inlineAsk = (label, onDone) => new Promise((resolve) => {
+  // targetFixed: ked je zadane (podrzanie na cisle), pole "k #" sa neukazuje - ciel uz je jasny.
+  const inlineAsk = (label, targetFixed) => new Promise((resolve) => {
     addRow.innerHTML = '';
     const bar = document.createElement('div');
     bar.className = 'zzz5w7-inline';
@@ -21957,6 +22013,19 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     textIn.type = 'text';
     textIn.className = 'zzz5w7-inline-text';
     textIn.placeholder = 'text poznamky...';
+    // === [Zzz5-W7:ADD-TARGET] Vrso 2026-09-26: "#13 som chcel cez +addnote pridelit do 4b, ale takto sa to
+    // zobrazilo v texte... lepsie by bolo addnote pouzit iba ako nove cislo, alebo ak sa dopise presne 4b,
+    // tak ho pridelit k #4".
+    // Robim to VYSLOVNE, nie hadanim z textu: pribudlo uzke pole "k #". Prazdne = nova samostatna poznamka,
+    // vyplnene cislo = sub-poznamka toho cisla (pismeno prideli databaza). Parsovanie textu by bolo pasca -
+    // "4b" moze byt aj legitimny obsah poznamky a appka nema co hadat, co user myslel. ===
+    const tgt = document.createElement('input');
+    tgt.type = 'text';
+    tgt.className = 'zzz5w7-inline-tgt';
+    tgt.placeholder = 'k #';
+    tgt.title = 'Prazdne = nova poznamka s novym cislom. Cislo = sub-poznamka k nemu (napr. 4 -> 4-a)';
+    if (targetFixed) tgt.style.display = 'none';
+
     const ok = document.createElement('button');
     ok.type = 'button';
     ok.className = 'zzz1cn-note-btn';
@@ -21966,14 +22035,20 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     cancel.className = 'zzz1cn-note-btn';
     cancel.textContent = '×';
     let closed = false;
-    const finish = (val) => { if (closed) return; closed = true; resolve(val); if (onDone) onDone(); };
-    ok.addEventListener('click', () => finish({ text: textIn.value.trim(), name: nameIn.value.trim() }));
+    const finish = (val) => { if (closed) return; closed = true; resolve(val); };
+    const pick = () => ({
+      text: textIn.value.trim(),
+      name: nameIn.value.trim(),
+      target: targetFixed || (parseInt(tgt.value, 10) || 0)
+    });
+    ok.addEventListener('click', () => finish(pick()));
     cancel.addEventListener('click', () => finish(null));
-    [nameIn, textIn].forEach(el => el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); finish({ text: textIn.value.trim(), name: nameIn.value.trim() }); }
+    [nameIn, textIn, tgt].forEach(el => el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); finish(pick()); }
       if (e.key === 'Escape') { e.preventDefault(); finish(null); }
     }));
-    bar.appendChild(tag); bar.appendChild(nameIn); bar.appendChild(textIn); bar.appendChild(ok); bar.appendChild(cancel);
+    bar.appendChild(tag); bar.appendChild(tgt); bar.appendChild(nameIn); bar.appendChild(textIn);
+    bar.appendChild(ok); bar.appendChild(cancel);
     addRow.appendChild(bar);
     textIn.focus();
   });
@@ -21984,7 +22059,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     const base = sub ? sub.base : Number(n.note_number);
     // [Zzz5-W7:NOTE-PART] riadok uz NESLUBUJE konkretne pismeno - prideli ho databaza a moze byt ine,
     // ak medzitym pridal sub-poznamku niekto iny. Skutocny nazov sa povie az v potvrdeni nizsie.
-    const got = await inlineAsk(`k #${base}`);
+    const got = await inlineAsk(`k #${base}`, base);
     if (!got || !got.text) { await render(); return; }
     const text = got.text;
     const saved = await zzz1cn_add(entryKey, text.trim(), true, { base }, got.name);
@@ -22010,6 +22085,15 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   const addNewNote = async () => {
     const got = await inlineAsk('nova');
     if (!got || !got.text) { await render(); return; }
+    // [Zzz5-W7:ADD-TARGET] vyplnene "k #" -> sub-poznamka toho cisla; prazdne -> nova s novym cislom
+    if (got.target) {
+      const parent = allNotes.find(x => Number(x.note_number) === Number(got.target) && !zzz5w7_sub_of(x));
+      if (!parent) { zzz6f2_show_toast(`Poznamka #${got.target} neexistuje.`, 'warn'); await render(); return; }
+      const saved = await zzz1cn_add(entryKey, got.text, true, { base: Number(got.target) }, got.name);
+      if (saved) zzz6f2_show_toast(`Poznamka #${zzz5w7_label_of(saved)} ulozena.`);
+      await render();
+      return;
+    }
     const saved = await zzz1cn_add(entryKey, got.text, true, null, got.name);
     if (!saved) { await render(); return; }
     zzz6f2_show_toast(`Poznamka #${zzz5w7_label_of(saved)} ulozena.`);
@@ -22091,10 +22175,20 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
 
   // [Zzz5-W7:NOTE-FILTER] co je PRAVE VIDNO. allNotes ostava uplny zoznam - filter je pohlad, nie zmena dat.
   let viewNotes = [];
+  // [Zzz5-W7:OUTLINE] je vobec nejaky filter zapnuty? Ked nie, okno sa kresli ako OSNOVA (viz render).
+  const filterActive = () => !!(view.q.trim() || view.from || view.to
+    || Object.keys(view.on).some(k => view.on[k]));
+
   const applyFilter = () => {
     const meF = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
     const q = zzz10v1_normalize(view.q.trim());
+    // poradie v CELOM zozname - stabilne, lebo allNotes je zoradene podla note_number
+    const pos = new Map();
+    allNotes.forEach((n, i) => pos.set(n.id, i + 1));
     viewNotes = allNotes.filter(n => {
+      const p = pos.get(n.id) || 0;
+      if (view.from && p < view.from) return false;
+      if (view.to   && p > view.to)   return false;
       const st = zzz5w7_status_of(n);
       if (view.on.open     && st !== '')         return false;
       if (view.on.progress && st !== 'progress') return false;
@@ -22124,7 +22218,10 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     const lines = startLines();
     Array.from(grow.children).forEach((el, i) => {
       el.style.top = Math.round(lines[i] * lineH) + 'px';
-      el.style.height = Math.round(lineH) + 'px';
+      // [Zzz5-W7:OUTLINE] hlavna poznamka v osnove zabera dva riadky (#cislo + @poradie); jej blok v texte
+      // ma vzdy aspon dva riadky (hlavicka + telo), takze sa to do neho zmesti bez prekrytia
+      const two = el.classList.contains('is-outline') && !el.classList.contains('is-sub');
+      el.style.height = Math.round(lineH * (two ? 2 : 1)) + 'px';
     });
   };
   area.addEventListener('scroll', alignGutter);
@@ -22143,7 +22240,9 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     findShow();   // [Zzz5-W7:FIND] pocitadlo vyskytov po prekresleni
     // [Zzz5-W7:NOTE-FILTER] na tlacidle musi byt vidno, ze filter BEZI - inak sa user cuduje, preco
     // zoznam nesedi s celkom (presne to Vrso nahlasil: "po filtraciach nesedi ich celkovy pocet")
-    const onCount = Object.keys(view.on).filter(k => view.on[k]).length;
+    const onCount = Object.keys(view.on).filter(k => view.on[k]).length
+      + ((view.from || view.to) ? 1 : 0)
+      + (view.q.trim() ? 1 : 0);
     filterBtn.textContent = onCount ? `FILTER (${onCount})` : 'FILTER';
     filterBtn.classList.toggle('is-on', onCount > 0);
     const owner = zzz10v1_normalize((entryData['4'] || '').trim());
@@ -22154,19 +22253,36 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       .map(zzz10v1_normalize).filter(u => u && u !== owner);
     const solo = others.length === 0;
 
+    // === [Zzz5-W7:OUTLINE] Vrso 2026-09-26: "ak nebude pouzity filter, urob vsetky zaznamy k # chatnote
+    // number v prvom riadku a pod nim iba @ pracovne poradie + vzdy aj abc, ktore su pod danou chatnote
+    // number. Takto vznikne rovno akoby osnova aj cely dokument."
+    // BEZ FILTRA sa teda kresli OSNOVA: hlavne cislo je nadpis, pod nim @poradie, sub-poznamky odsadene.
+    // S FILTROM sa vracia plochy zoznam - filter moze vytrhnut sub-poznamku bez jej rodica a osnova by
+    // vtedy tvrdila strukturu, ktora na obrazovke nie je. ===
+    const outline = !filterActive();
+    const mainPos = new Map();   // poradie len medzi HLAVNYMI poznamkami - to je osnova dokumentu
+    let mainSeen = 0;
+    viewNotes.forEach(n => { if (!zzz5w7_sub_of(n)) mainPos.set(n.id, ++mainSeen); });
+
     viewNotes.forEach((n, idx) => {
       const mine = !!meN && zzz10v1_normalize(n.username || '') === meN;
+      const sub = zzz5w7_sub_of(n);
       const rowEl = document.createElement('div');
-      rowEl.className = 'zzz5w7-grow-row';
+      rowEl.className = 'zzz5w7-grow-row'
+        + (outline ? ' is-outline' : '')
+        + (sub ? ' is-sub' : '');
+      const line1 = document.createElement('div');
+      line1.className = 'zzz5w7-line1';
 
-      // === [Zzz5-W7:WORK-ORDER] Vrso 2026-09-26, rozhodnute: ziadne tretie cislo. Pracovne poradie je
-      // jednoducho poradie v PRAVE ZOBRAZENOM zozname - pocita sa pri vykresleni, nikde sa neuklada, takze
-      // nema s cim kolidovat a nema co zastarat. Cislo poznamky (#47) ostava identitou a nemeni sa. ===
+      // === [Zzz5-W7:WORK-ORDER] ziadne tretie ulozene cislo. Pracovne poradie sa pocita pri vykresleni.
+      // Vrso sa pytal, ci ho neulozit pri save - neulozit: poradie vyplyva z radenia podla note_number,
+      // ktore sa nikdy nemeni, takze je DETERMINISTICKE a reprodukovatelne aj bez ulozenia. Ulozene by
+      // navyse zastaralo pri kazdom zmazani a zaviedlo presne to tretie cislo, ktoremu sa vyhybame. ===
       const ord = document.createElement('span');
       ord.className = 'zzz5w7-ord';
-      ord.textContent = String(idx + 1);
+      ord.textContent = outline ? '' : String(idx + 1);
       ord.title = `${idx + 1}. v zobrazenom poradi (pracovne, neuklada sa) - identita je #${zzz5w7_label_of(n)}`;
-      rowEl.appendChild(ord);
+      line1.appendChild(ord);
 
       // --- STATUS toggle (vlavo od cisla) - Vrso 2026-09-25: "filter podla statusu (prazdny zadany,
       //     oranzovou potvrdzuje oznaceny user/group/project users)". Prazdny = nezadany, ORANZOVY =
@@ -22196,7 +22312,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
           await render();
         } }]);
       }
-      rowEl.appendChild(proj);
+      line1.appendChild(proj);
 
       // --- cislo ---
       const b = document.createElement('button');
@@ -22226,14 +22342,24 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
             if (await zzz5w7_set_private(n, !n.is_private)) await render();
           } }
       ]);
-      rowEl.appendChild(b);
+      line1.appendChild(b);
 
       // --- oznacenie (name) vpravo od cisla ---
       const nm = document.createElement('span');
       nm.className = 'zzz5w7-nm' + (mine ? '' : ' zzz1r17b-foreign');
       nm.textContent = String(n.note_name || '').trim();
       nm.title = nm.textContent;
-      rowEl.appendChild(nm);
+      line1.appendChild(nm);
+      rowEl.appendChild(line1);
+
+      // [Zzz5-W7:OUTLINE] druhy riadok "@poradie" - len v osnove a len pri HLAVNEJ poznamke
+      if (outline && !sub) {
+        const ord2 = document.createElement('div');
+        ord2.className = 'zzz5w7-ord2';
+        ord2.textContent = '@' + (mainPos.get(n.id) || 1);
+        ord2.title = 'pracovne poradie v osnove - neuklada sa, identita je #' + zzz5w7_label_of(n);
+        rowEl.appendChild(ord2);
+      }
 
       grow.appendChild(rowEl);
     });
