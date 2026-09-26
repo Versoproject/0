@@ -2472,7 +2472,22 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     white-space: nowrap;
   }
   /* [Zzz1-CN:HEAD-ACTIONS] DELETE na pravy koniec hlavicky */
-  .zzz1cn-note-btn-right { margin-left: auto !important; }
+  .zzz1cn-note-btn-right { justify-self: end; }
+  /* [Zzz1-CN:HEAD-ALIGN] SAVE v strednom stlpci = rovnaka x-suradnica v kazdom chatnote */
+  .zzz1cn-note-head {
+    display: grid !important;
+    grid-template-columns: 1fr max-content 1fr;
+    align-items: center;
+    gap: 6px;
+  }
+  .zzz1cn-note-headleft {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .zzz1cn-note-head .zzz1cn-note-btn-save { justify-self: center; }
   /* [Zzz1-CN:CHAT-ORDER] pracovne poradie v chate - zamerne nevyrazne, aby sa nepomylilo s cislom */
   .zzz1cn-note-ord {
     font-size: 8px;
@@ -9924,37 +9939,86 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   cnRow.appendChild(notesArea);
   const cnSave = document.createElement('button');
   cnSave.type = 'button';
+  // === [Zzz1-CN:ENTER-BUTTON] Vrso 2026-09-26: "v chatnote line zmen ten button na ENTER/SAVE/OPTIONS
+  // chatnote":
+  //   KLIK          = vlozi spravu IBA DO CHATU s novym chatnote cislom (nie do notes; tam sa da pridat
+  //                   neskor cez SAVE CHATNOTE pri konkretnej sprave)
+  //   PODRZANIE 1-2s = otvori riadkovy editor (name + "to #"), ulozenim ide sprava TIEZ do chatu
+  //   PODRZANIE 3s   = otvori Notes okno
+  // Preto uz nie "SAVE CHATNOTE PRIVATELY" - klik uz nic neuklada privatne, posiela do chatu. ===
   cnSave.className = 'zzz1cn-save-btn';
-  cnSave.innerHTML = '<span>SAVE</span><span>CHATNOTE</span><span>PRIVATELY</span>'; // Vrso 2026-09-24
-  cnSave.title = 'Klik = ulozit privatny chatnote, podrzanie 2s = otvorit ulozene chatnotes';
-  let cnHoldAt = 0;
-  let cnFired = false;
-  const cnStart = () => { cnHoldAt = Date.now(); cnFired = false; };
-  const cnEnd = () => {
-    if (!cnHoldAt) return;
-    const held = Date.now() - cnHoldAt;
-    cnHoldAt = 0;
-    if (held >= 2000) { cnFired = true; zzz_haptic_pulse(30); zzz1cn_open_list(cnEntryKey, cnSave); }
-  };
-  cnSave.addEventListener('touchstart', cnStart, { passive: true });
-  cnSave.addEventListener('mousedown', cnStart);
-  cnSave.addEventListener('touchend', cnEnd);
-  cnSave.addEventListener('touchcancel', cnEnd);
-  cnSave.addEventListener('mouseup', cnEnd);
-  cnSave.addEventListener('mouseleave', cnEnd);
-  cnSave.addEventListener('click', async () => {
-    if (cnFired) { cnFired = false; return; } // podrzanie uz otvorilo zoznam
-    const saved = await zzz1cn_add(cnEntryKey, notesArea.value, true);
+  cnSave.innerHTML = '<span>ENTER</span><span>SAVE</span><span>OPTIONS</span>';
+  cnSave.title = 'Click = send to the chat / hold 1-2s = options (name, to #) / hold 3s = open Notes';
+
+  const cnSendToChat = async (text, name, target) => {
+    const body = String(text || '').trim();
+    if (!body) { zzz6f2_show_toast('Nothing to send.', 'warn'); return null; }
+    // do CHATU = zdielany zaznam (is_private=false), cislo prideli databaza
+    const saved = await zzz1cn_add(cnEntryKey, body, false, target ? { base: Number(target) } : null, name);
     if (saved) {
-      zzz6f2_show_toast(`Privatny chatnote #${saved.note_number} ulozeny.`);
+      zzz6f2_show_toast(`Chatnote #${zzz5w7_label_of(saved)} sent.`);
       notesArea.value = '';
       workingNotes = '';
       persistLocal();
       cnRefreshFeed();
     }
-  });
+    return saved;
+  };
+
+  // riadkovy editor priamo pod vstupom - rovnaky tvar ako v Notes okne (name + "to #" + text)
+  const cnOptionsBar = document.createElement('div');
+  cnOptionsBar.className = 'zzz5w7-addrow zzz1cn-optionsrow';
+  cnOptionsBar.style.display = 'none';
+  const cnOpenOptions = () => {
+    cnOptionsBar.innerHTML = '';
+    cnOptionsBar.style.display = '';
+    const bar = document.createElement('div');
+    bar.className = 'zzz5w7-inline';
+    const tag = document.createElement('span');
+    tag.className = 'zzz5w7-inline-tag';
+    tag.textContent = 'chat';
+    const tgt = document.createElement('input');
+    tgt.type = 'text'; tgt.className = 'zzz5w7-inline-tgt'; tgt.placeholder = 'to #';
+    tgt.title = 'Empty = new number. A number = sub-note of it (e.g. 4 -> 4-a)';
+    const nameIn = document.createElement('input');
+    nameIn.type = 'text'; nameIn.className = 'zzz5w7-inline-name'; nameIn.placeholder = 'NAME (optional)';
+    nameIn.maxLength = 60;
+    const textIn = document.createElement('input');
+    textIn.type = 'text'; textIn.className = 'zzz5w7-inline-text'; textIn.placeholder = 'note text...';
+    textIn.value = notesArea.value || '';
+    const ok = document.createElement('button');
+    ok.type = 'button'; ok.className = 'zzz1cn-note-btn'; ok.textContent = 'OK';
+    const cancel = document.createElement('button');
+    cancel.type = 'button'; cancel.className = 'zzz1cn-note-btn'; cancel.textContent = '\u00d7';
+    const close = () => { cnOptionsBar.style.display = 'none'; cnOptionsBar.innerHTML = ''; zzz1cn_fit_comm_window(box); };
+    const send = async () => {
+      const t = textIn.value.trim();
+      if (!t) { close(); return; }
+      await cnSendToChat(t, nameIn.value.trim(), parseInt(tgt.value, 10) || 0);
+      close();
+    };
+    ok.addEventListener('click', send);
+    cancel.addEventListener('click', close);
+    [tgt, nameIn, textIn].forEach(el => el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); send(); }
+      if (e.key === 'Escape') { e.preventDefault(); close(); }
+    }));
+    bar.appendChild(tag); bar.appendChild(tgt); bar.appendChild(nameIn); bar.appendChild(textIn);
+    bar.appendChild(ok); bar.appendChild(cancel);
+    cnOptionsBar.appendChild(bar);
+    zzz1cn_fit_comm_window(box);
+    textIn.focus();
+  };
+
+  // [Zzz5-W7:TIERED-HOLD] dve dlzky podrzania na jednom tlacidle - rozhoduje sa az pri pusteni
+  zzz5w7_bind_tiered_hold(cnSave, [
+    { ms: 1200, fn: () => cnOpenOptions() },
+    { ms: 3000, fn: () => zzz1cn_open_list(cnEntryKey, cnSave) }
+  ]);
+  cnSave.addEventListener('click', () => { cnSendToChat(notesArea.value); });
   cnRow.appendChild(cnSave);
   box.appendChild(cnRow);
+  box.appendChild(cnOptionsBar);   // [Zzz1-CN:ENTER-BUTTON] riadkovy editor hned pod vstupom
   cnRefreshFeed();
 
   // === [Zzz1-CN:PUBLIC-BORDER] OPRAVA (Vrso 2026-09-25: "cerveno zlatym sa ma ohranicit IBA ak bol project
@@ -21733,6 +21797,12 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   wrap.className = 'zzz1cn-note';
   const head = document.createElement('div');
   head.className = 'zzz1cn-note-head';
+  // === [Zzz1-CN:HEAD-ALIGN] Vrso 2026-09-26: "zarovnaj tie SAVE CHATNOTE v chate... moze byt v strede listy,
+  // ale hlavne vsetky zarovnane". Preto MRIEZKA 1fr | auto | 1fr: lava cast (status, cislo, @, meno,
+  // private) ma svoj stlpec, SAVE je v STREDNOM a tym padom na tej istej x-suradnici v kazdom riadku bez
+  // ohladu na dlzku mena, a DELETE je vpravo. Flexbox by to nezarovnal - tam polohu urcuje sirka obsahu. ===
+  const headLeft = document.createElement('span');
+  headLeft.className = 'zzz1cn-note-headleft';
   const meN0 = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
   const isMine = !!meN0 && zzz10v1_normalize(note.username || '') === meN0;
   // === [Zzz1-CN:CHAT-STATUS] Vrso 2026-09-26: "toggle zapracuj pred chn number tak ako v notes window".
@@ -21765,7 +21835,7 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
       if (await zzz5w7_status_write(note, cnSt === 'done' ? '' : 'done')) { if (onChanged) await onChanged(); }
     } }]);
   }
-  head.appendChild(cnProj);
+  headLeft.appendChild(cnProj);
 
   const num = document.createElement('span');
   // [Zzz1-CN:OWN-NOTE] Vrso 2026-09-25: "vlastny chatnote number bunku vypln zlatou" - na prvy pohlad vidno,
@@ -21774,7 +21844,7 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   num.className = 'zzz1cn-note-number' + (isMine ? ' zzz1cn-note-number-own' : ' zzz1cn-note-number-foreign');
   num.textContent = zzz5w7_label_of(note);
   num.title = 'Chatnote number (not editable)';
-  head.appendChild(num);
+  headLeft.appendChild(num);
 
   // === [Zzz1-CN:CHAT-ORDER] Vrso 2026-09-26: "v chatnotes by mali vsetky chatnotes numbers oznacene
   // dodatocne aj ako @". Rovnake pravidlo ako v osnove Notes okna: @ dostane HLAVNA poznamka, sub-poznamka
@@ -21785,17 +21855,17 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
     cnOrd.className = 'zzz1cn-note-ord';
     cnOrd.textContent = '@' + ordinal;
     cnOrd.title = 'working order (never stored) - the identity is #' + zzz5w7_label_of(note);
-    head.appendChild(cnOrd);
+    headLeft.appendChild(cnOrd);
   }
   const who = document.createElement('span');
   who.className = 'zzz1cn-note-user' + (isMine ? '' : ' zzz1r17b-foreign');
   who.textContent = note.username || '-';
-  head.appendChild(who);
+  headLeft.appendChild(who);
   if (note.is_private) {
     const priv = document.createElement('span');
     priv.className = 'zzz1cn-note-private';
     priv.textContent = 'private';
-    head.appendChild(priv);
+    headLeft.appendChild(priv);
   }
   // [Zzz0-OB:CLIENT-CHATNOTE] viditelne odlisenie "este neodoslane" - user musi vediet, ze zaznam zatial
   // existuje LEN u neho a ostatni ho nevidia (inak by si myslel, ze je zdielany).
@@ -21804,7 +21874,7 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
     const wait = document.createElement('span');
     wait.className = 'zzz0ob-pending-badge';
     wait.textContent = 'caka na odoslanie';
-    head.appendChild(wait);
+    headLeft.appendChild(wait);
   }
   // === [Zzz1-CN:NOTE-ACTIONS] Vrso 2026-09-25: "v chate/chatnote entry odstran copy... vzdy na spodu
   // chatu pridaj delete a pod nim aj save chatnote privately" - COPY je PREC (cely text sa da vziat naraz
@@ -21821,7 +21891,7 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   // listy, skor na stranu ako je chn number" - preto uzky jednoriadkovy tvar hned za cislom, nie stvorec pod
   // textom. Zlato-cierny vzhlad velkeho tlacidla ostava, aby sa dalo spoznat.
   saveBtn.className = 'zzz1cn-note-btn zzz1cn-note-btn-save';
-  saveBtn.textContent = 'SAVE PRIV';
+  saveBtn.textContent = 'SAVE CHATNOTE';
   saveBtn.title = 'Saves this note into your private notes for this entry';
   saveBtn.addEventListener('click', async () => {
     saveBtn.disabled = true;
@@ -21839,6 +21909,7 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
     }
     saveBtn.disabled = false;
   });
+  head.appendChild(headLeft);
   head.appendChild(saveBtn);
 
   // === [Zzz1-CN:HEAD-ACTIONS] DELETE ide TIEZ do hornej listy, ale na jej PRAVY koniec - mazanie je iny
