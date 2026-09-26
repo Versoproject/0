@@ -2483,6 +2483,23 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   }
   /* [Zzz5-W7:ORDER-RANGE] "od / do" v filter boxe */
   .zzz5w7-rangerow { gap: 4px; }
+  .zzz5w7-namefil {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 9px;
+    padding: 2px 4px;
+    border-radius: 5px;
+    border: 1px solid #171717;
+    background-color: #f5f5f0;
+    color: #171717;
+  }
+  .zzz5w7-userswrap {
+    max-height: 96px;
+    overflow-y: auto;
+    border-top: 1px solid #d4d4d4;
+    margin-top: 3px;
+    padding-top: 3px;
+  }
   .zzz5w7-range {
     width: 38px;
     min-width: 0;
@@ -2615,6 +2632,15 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     font-weight: 700;
     color: #171717;
     cursor: pointer;
+  }
+  .zzz5w7-filterclose {
+    float: right;
+    width: 20px;
+    height: 20px;
+    padding: 0 !important;
+    font-size: 13px !important;
+    line-height: 1;
+    margin-bottom: 2px;
   }
   .zzz5w7-filterbtn.is-on { background-color: #171717 !important; color: #D4AF37 !important; }
   /* [Zzz5-W7:FIND] sipky na krokovanie po vyskytoch + pocitadlo "3/11" */
@@ -21564,7 +21590,7 @@ function zzz1cn_build_note(entryKey, note, onChanged) {
   saveBtn.className = 'zzz1cn-note-btn zzz1cn-note-btn-save';
   // [Zzz1-CN:NOTE-SAVE-MINI] rovnake trojriadkove clenenie ako velke .zzz1cn-save-btn - je to jeho zmensenina
   saveBtn.innerHTML = '<span>SAVE</span><span>CHATNOTE</span><span>PRIVATELY</span>';
-  saveBtn.title = 'Odlozi tuto poznamku do privatnych chatnotes tohto zaznamu';
+  saveBtn.title = 'Saves this note into your private notes for this entry';
   saveBtn.addEventListener('click', async () => {
     saveBtn.disabled = true;
     const author = (note.username || '').trim();
@@ -21770,11 +21796,27 @@ function zzz5w7_dock_sync() {
   if (!zzz5w7DockOn || zzz5w7DockRAF) return;
   zzz5w7DockRAF = requestAnimationFrame(() => { zzz5w7DockRAF = 0; zzz5w7_dock_place(); });
 }
+// [Zzz5-W7:NOTES-DOCK] Vrso 2026-09-26: "Notes window ma byt VZDY sticked pod communication chatnote entry".
+// Samotny scroll+resize na to nestacil: ked sa zmeni VYSKA comm okna (pribudol chatnote, narastol feed,
+// otvorila sa klavesnica), chatnote riadok sa posunie BEZ toho, aby ktorakolvek z tych udalosti nastala -
+// a Notes okno ostalo visiet tam, kde bolo. ResizeObserver to chyta priamo.
+let zzz5w7DockRO = null;
+function zzz5w7_dock_watch() {
+  if (typeof ResizeObserver !== 'function') return;
+  const win = document.querySelector('.zzz1r17b-comm-window');
+  if (!win) return;
+  if (zzz5w7DockRO) zzz5w7DockRO.disconnect();
+  zzz5w7DockRO = new ResizeObserver(() => zzz5w7_dock_sync());
+  zzz5w7DockRO.observe(win);
+  const row = win.querySelector('.zzz1cn-row');
+  if (row) zzz5w7DockRO.observe(row);
+}
 function zzz5w7_dock_start() {
-  if (zzz5w7DockOn) { zzz5w7_dock_place(); return; }
+  if (zzz5w7DockOn) { zzz5w7_dock_watch(); zzz5w7_dock_place(); return; }
   zzz5w7DockOn = true;
   window.addEventListener('scroll', zzz5w7_dock_sync, true);
   window.addEventListener('resize', zzz5w7_dock_sync);
+  zzz5w7_dock_watch();
   zzz5w7_dock_place();
 }
 function zzz5w7_dock_stop() {
@@ -21782,6 +21824,7 @@ function zzz5w7_dock_stop() {
   zzz5w7DockOn = false;
   window.removeEventListener('scroll', zzz5w7_dock_sync, true);
   window.removeEventListener('resize', zzz5w7_dock_sync);
+  if (zzz5w7DockRO) { zzz5w7DockRO.disconnect(); zzz5w7DockRO = null; }
 }
 
 async function zzz1cn_open_list(entryKey, anchorEl) {
@@ -21818,23 +21861,47 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   // VIAC ZASKRTNUTYCH = poznamka musi splnat VSETKY (a nie alebo) - inak by "PRIVATE + MOJE" vratilo aj
   // cudzie poznamky a nedalo by sa nim nic zuzit.
   const ZZZ5W7_FILTERS = [
-    ['open',     'OPEN',     'bez statusu - este sa nezacalo'],
-    ['progress', 'PROGRESS', 'user na tom pracuje'],
-    ['done',     'DONE',     'owner potvrdil, ze je hotovo'],
-    ['private',  'PRIVATE',  'vidi ju len autor'],
-    ['mine',     'MOJE',     'poznamky prihlaseneho usera']
+    ['open',     'OPEN',     'no status yet'],
+    ['progress', 'PROGRESS', 'the user is working on it'],
+    ['done',     'DONE',     'confirmed done by the owner'],
+    ['private',  'PRIVATE',  'visible to the author only'],
+    ['mine',     'MY',       'notes by the signed-in user']
   ];
-  const view = { on: {}, q: '', from: 0, to: 0 };
+  const view = { on: {}, q: '', from: 0, to: 0, at: 0, name: '', users: {} };
   const filterSel = document.createElement('div');
   filterSel.className = 'zzz5w7-filter';
   const filterBtn = document.createElement('button');
   filterBtn.type = 'button';
   filterBtn.className = 'zzz1cn-note-btn zzz5w7-filterbtn';
   filterBtn.textContent = 'FILTER';
-  filterBtn.title = 'Zuzi zoznam - cisla poznamok sa tym NEMENIA';
+  filterBtn.title = 'Narrows the list - note numbers do NOT change';
   const filterBox = document.createElement('div');
   filterBox.className = 'zzz5w7-filterbox';
   filterBox.style.display = 'none';
+  // [Zzz5-W7:NOTE-FILTER] zatvaracie x - bez neho sa box da zavriet len opatovnym klikom na FILTER
+  const filterClose = document.createElement('button');
+  filterClose.type = 'button';
+  filterClose.className = 'zzz1cn-note-btn zzz5w7-filterclose';
+  filterClose.textContent = '\u00d7';
+  filterClose.setAttribute('aria-label', 'Close filter');
+  filterClose.addEventListener('click', () => { filterBox.style.display = 'none'; });
+  filterBox.appendChild(filterClose);
+  // === [Zzz5-W7:FILTER-AT] Vrso 2026-09-26: "nad OPEN doplň poradove cislo, aby sa dalo vyfiltrovat iba to
+  // (ako @...) - k nemu by sa mala priradit uzsia specifikacia automaticky a, b..."
+  // Cislo sa zadava ako PORADIE V OSNOVE (@1, @2...), nie ako note_number - lebo prave to je to, co je
+  // v stlpiku vidno. Sub-poznamky sa pritahuju SAMY: filter prepusti hlavnu poznamku aj vsetko, co pod nu
+  // patri, takze "@3" da cely blok 3, 3-a, 3-b. ===
+  const atRow = document.createElement('div');
+  atRow.className = 'zzz5w7-filteritem zzz5w7-rangerow';
+  const atLab = document.createElement('span');
+  atLab.textContent = '@';
+  const atIn = document.createElement('input');
+  atIn.type = 'number'; atIn.min = '1'; atIn.className = 'zzz5w7-range'; atIn.placeholder = 'no.';
+  atIn.title = 'One outline position with all its sub-notes (a, b, ...)';
+  atIn.addEventListener('input', () => { view.at = parseInt(atIn.value, 10) || 0; findIdxReset(); render(); });
+  atRow.appendChild(atLab); atRow.appendChild(atIn);
+  filterBox.appendChild(atRow);
+
   ZZZ5W7_FILTERS.forEach(([v, t, tip]) => {
     const lab = document.createElement('label');
     lab.className = 'zzz5w7-filteritem';
@@ -21855,11 +21922,11 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   const rangeRow = document.createElement('div');
   rangeRow.className = 'zzz5w7-filteritem zzz5w7-rangerow';
   const rangeLab = document.createElement('span');
-  rangeLab.textContent = 'PORADIE';
+  rangeLab.textContent = 'ORDER';
   const rangeFrom = document.createElement('input');
-  rangeFrom.type = 'number'; rangeFrom.min = '1'; rangeFrom.className = 'zzz5w7-range'; rangeFrom.placeholder = 'od';
+  rangeFrom.type = 'number'; rangeFrom.min = '1'; rangeFrom.className = 'zzz5w7-range'; rangeFrom.placeholder = 'from';
   const rangeTo = document.createElement('input');
-  rangeTo.type = 'number'; rangeTo.min = '1'; rangeTo.className = 'zzz5w7-range'; rangeTo.placeholder = 'do';
+  rangeTo.type = 'number'; rangeTo.min = '1'; rangeTo.className = 'zzz5w7-range'; rangeTo.placeholder = 'to';
   [rangeFrom, rangeTo].forEach(el => el.addEventListener('input', () => {
     view.from = parseInt(rangeFrom.value, 10) || 0;
     view.to   = parseInt(rangeTo.value, 10) || 0;
@@ -21867,6 +21934,23 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   }));
   rangeRow.appendChild(rangeLab); rangeRow.appendChild(rangeFrom); rangeRow.appendChild(rangeTo);
   filterBox.appendChild(rangeRow);
+
+  // [Zzz5-W7:FILTER-NAME] Vrso 2026-09-26: "tiez filter by chatnote name"
+  const nameRow = document.createElement('div');
+  nameRow.className = 'zzz5w7-filteritem zzz5w7-rangerow';
+  const nameLab = document.createElement('span');
+  nameLab.textContent = 'NAME';
+  const nameFil = document.createElement('input');
+  nameFil.type = 'text'; nameFil.className = 'zzz5w7-namefil'; nameFil.placeholder = 'note name';
+  nameFil.addEventListener('input', () => { view.name = nameFil.value; findIdxReset(); render(); });
+  nameRow.appendChild(nameLab); nameRow.appendChild(nameFil);
+  filterBox.appendChild(nameRow);
+
+  // [Zzz5-W7:FILTER-USERS] Vrso 2026-09-26: "filter by username/s" - mnozne cislo, takze zaskrtavacie
+  // a viac naraz znamena "ktorykolvek z nich". Zoznam sa plni az z poznamok, preto sa prekresluje v render().
+  const usersWrap = document.createElement('div');
+  usersWrap.className = 'zzz5w7-userswrap';
+  filterBox.appendChild(usersWrap);
 
   filterBtn.addEventListener('click', () => {
     filterBox.style.display = filterBox.style.display === 'none' ? '' : 'none';
@@ -21885,14 +21969,14 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   const searchIn = document.createElement('input');
   searchIn.type = 'text';
   searchIn.className = 'zzz5w7-search';
-  searchIn.placeholder = 'hladaj (name/text/user)';
+  searchIn.placeholder = 'search (name/text/user)';
   head.appendChild(searchIn);
 
   const findPrev = document.createElement('button');
   findPrev.type = 'button';
   findPrev.className = 'zzz1cn-note-btn zzz5w7-findbtn';
   findPrev.textContent = '‹';
-  findPrev.title = 'Predchadzajuci vyskyt';
+  findPrev.title = 'Previous match';
   head.appendChild(findPrev);
 
   const findCount = document.createElement('span');
@@ -21903,14 +21987,14 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   findNext.type = 'button';
   findNext.className = 'zzz1cn-note-btn zzz5w7-findbtn';
   findNext.textContent = '›';
-  findNext.title = 'Dalsi vyskyt';
+  findNext.title = 'Next match';
   head.appendChild(findNext);
 
   const selBtn = document.createElement('button');
   selBtn.type = 'button';
   selBtn.className = 'zzz1cn-note-btn zzz5w7-selbtn';
   selBtn.textContent = 'SELECT';
-  selBtn.title = 'Zapne oznacovanie chatnote cisel - potom COPY skopiruje len oznacene';
+  selBtn.title = 'Turns on number selection - COPY then copies only what is selected';
   head.appendChild(selBtn);
 
   // === [Zzz5-W7:SEL-DELETE] Vrso 2026-09-25: "dorob vedla select vlavo rovnakym stylom delete button.
@@ -21920,14 +22004,14 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   delSel.type = 'button';
   delSel.className = 'zzz1cn-note-btn zzz5w7-delbtn';
   delSel.textContent = 'DELETE';
-  delSel.title = 'Vymaze oznacene notes (len vlastne)';
+  delSel.title = 'Deletes the selected notes (your own only)';
   head.appendChild(delSel);
 
   const copySel = document.createElement('button');
   copySel.type = 'button';
   copySel.className = 'zzz1cn-note-btn';
   copySel.textContent = 'COPY';
-  copySel.title = 'Skopiruje oznacene notes (alebo rucne oznaceny text v poli)';
+  copySel.title = 'Copies the selected notes (or text you marked in the field)';
   head.appendChild(copySel);
 
   const copyAll = document.createElement('button');
@@ -21941,8 +22025,8 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   close.type = 'button';
   close.className = 'zzz1cn-note-btn zzz5w7-closebtn';
   close.textContent = '×';
-  close.setAttribute('aria-label', 'Zavriet Notes');
-  close.title = 'Zavriet';
+  close.setAttribute('aria-label', 'Close Notes');
+  close.title = 'Close';
   close.addEventListener('click', () => { zzz5w7_dock_stop(); win.remove(); });
   head.appendChild(close);
   win.appendChild(head);
@@ -22007,12 +22091,12 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     const nameIn = document.createElement('input');
     nameIn.type = 'text';
     nameIn.className = 'zzz5w7-inline-name';
-    nameIn.placeholder = 'NAME (volitelne)';
+    nameIn.placeholder = 'NAME (optional)';
     nameIn.maxLength = 60;
     const textIn = document.createElement('input');
     textIn.type = 'text';
     textIn.className = 'zzz5w7-inline-text';
-    textIn.placeholder = 'text poznamky...';
+    textIn.placeholder = 'note text...';
     // === [Zzz5-W7:ADD-TARGET] Vrso 2026-09-26: "#13 som chcel cez +addnote pridelit do 4b, ale takto sa to
     // zobrazilo v texte... lepsie by bolo addnote pouzit iba ako nove cislo, alebo ak sa dopise presne 4b,
     // tak ho pridelit k #4".
@@ -22022,8 +22106,8 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     const tgt = document.createElement('input');
     tgt.type = 'text';
     tgt.className = 'zzz5w7-inline-tgt';
-    tgt.placeholder = 'k #';
-    tgt.title = 'Prazdne = nova poznamka s novym cislom. Cislo = sub-poznamka k nemu (napr. 4 -> 4-a)';
+    tgt.placeholder = 'to #';
+    tgt.title = 'Empty = new note with a new number. A number = sub-note of it (e.g. 4 -> 4-a)';
     if (targetFixed) tgt.style.display = 'none';
 
     const ok = document.createElement('button');
@@ -22059,7 +22143,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     const base = sub ? sub.base : Number(n.note_number);
     // [Zzz5-W7:NOTE-PART] riadok uz NESLUBUJE konkretne pismeno - prideli ho databaza a moze byt ine,
     // ak medzitym pridal sub-poznamku niekto iny. Skutocny nazov sa povie az v potvrdeni nizsie.
-    const got = await inlineAsk(`k #${base}`, base);
+    const got = await inlineAsk(`to #${base}`, base);
     if (!got || !got.text) { await render(); return; }
     const text = got.text;
     const saved = await zzz1cn_add(entryKey, text.trim(), true, { base }, got.name);
@@ -22077,26 +22161,26 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     if (author && zzz10v1_normalize(author) !== meN) {
       zzz6f22_record_copy_credit(`${entryKey}/${saved.note_number}/${part}`, author, `Chatnote #${label}`);
     }
-    zzz6f2_show_toast(`Poznamka #${label} ulozena.`);
+    zzz6f2_show_toast(`Note #${label} saved.`);
     await render();
   };
 
   // samostatna NOVA poznamka (dostane dalsie cele cislo, nie je priradena k nicomu)
   const addNewNote = async () => {
-    const got = await inlineAsk('nova');
+    const got = await inlineAsk('new');
     if (!got || !got.text) { await render(); return; }
     // [Zzz5-W7:ADD-TARGET] vyplnene "k #" -> sub-poznamka toho cisla; prazdne -> nova s novym cislom
     if (got.target) {
       const parent = allNotes.find(x => Number(x.note_number) === Number(got.target) && !zzz5w7_sub_of(x));
-      if (!parent) { zzz6f2_show_toast(`Poznamka #${got.target} neexistuje.`, 'warn'); await render(); return; }
+      if (!parent) { zzz6f2_show_toast(`Note #${got.target} does not exist.`, 'warn'); await render(); return; }
       const saved = await zzz1cn_add(entryKey, got.text, true, { base: Number(got.target) }, got.name);
-      if (saved) zzz6f2_show_toast(`Poznamka #${zzz5w7_label_of(saved)} ulozena.`);
+      if (saved) zzz6f2_show_toast(`Note #${zzz5w7_label_of(saved)} saved.`);
       await render();
       return;
     }
     const saved = await zzz1cn_add(entryKey, got.text, true, null, got.name);
     if (!saved) { await render(); return; }
-    zzz6f2_show_toast(`Poznamka #${zzz5w7_label_of(saved)} ulozena.`);
+    zzz6f2_show_toast(`Note #${zzz5w7_label_of(saved)} saved.`);
     await render();
   };
 
@@ -22110,25 +22194,25 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   // policy verso_chat_notes_select priamo v databaze, nie appka. Chybalo len tlacidlo. ===
   const zzz5w7_set_private = async (n, on) => {
     if (zzz0ob_is_pending(n.id) || String(n.id).indexOf('local-') === 0) {
-      zzz6f2_show_toast('Poznamka este nie je odoslana - prepnut sa da az potom.', 'warn');
+      zzz6f2_show_toast('The note has not been sent yet - you can switch it afterwards.', 'warn');
       return false;
     }
     try {
       const { error } = await sb.from(ZZZ1CN_TABLE).update({ is_private: !!on }).eq('id', n.id);
       if (error) throw error;
       zzz6f2_show_toast(on
-        ? `Note #${zzz5w7_label_of(n)} je PRIVATE - vidis ju len ty.`
-        : `Note #${zzz5w7_label_of(n)} je zas zdielana.`);
+        ? `Note #${zzz5w7_label_of(n)} is PRIVATE - only you can see it.`
+        : `Note #${zzz5w7_label_of(n)} is shared again.`);
       return true;
     } catch (e) {
-      zzz6f2_show_toast(`Prepnutie zlyhalo: ${(e && e.message) || e}`, 'warn');
+      zzz6f2_show_toast(`Switch failed: ${(e && e.message) || e}`, 'warn');
       return false;
     }
   };
 
   const zzz5w7_set_status = async (n, st) => {
     if (zzz0ob_is_pending(n.id) || String(n.id).indexOf('local-') === 0) {
-      zzz6f2_show_toast('Poznamka este nie je odoslana - status sa da dat az potom.', 'warn');
+      zzz6f2_show_toast('The note has not been sent yet - the status can be set afterwards.', 'warn');
       return false;
     }
     try {
@@ -22143,14 +22227,14 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
         : `Note #${zzz5w7_label_of(n)} = OPEN.`);
       return true;
     } catch (e) {
-      zzz6f2_show_toast(`Status sa nepodarilo ulozit: ${(e && e.message) || e}`, 'warn');
+      zzz6f2_show_toast(`Could not save the status: ${(e && e.message) || e}`, 'warn');
       return false;
     }
   };
 
   const zzz5w7_set_project = async (n, on) => {
     if (zzz0ob_is_pending(n.id) || String(n.id).indexOf('local-') === 0) {
-      zzz6f2_show_toast('Poznamka este nie je odoslana - project sa da zapnut az potom.', 'warn');
+      zzz6f2_show_toast('The note has not been sent yet - project can be turned on afterwards.', 'warn');
       return false;
     }
     try {
@@ -22176,8 +22260,9 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   // [Zzz5-W7:NOTE-FILTER] co je PRAVE VIDNO. allNotes ostava uplny zoznam - filter je pohlad, nie zmena dat.
   let viewNotes = [];
   // [Zzz5-W7:OUTLINE] je vobec nejaky filter zapnuty? Ked nie, okno sa kresli ako OSNOVA (viz render).
-  const filterActive = () => !!(view.q.trim() || view.from || view.to
-    || Object.keys(view.on).some(k => view.on[k]));
+  const filterActive = () => !!(view.q.trim() || view.from || view.to || view.at || view.name.trim()
+    || Object.keys(view.on).some(k => view.on[k])
+    || Object.keys(view.users).some(k => view.users[k]));
 
   const applyFilter = () => {
     const meF = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
@@ -22185,10 +22270,31 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     // poradie v CELOM zozname - stabilne, lebo allNotes je zoradene podla note_number
     const pos = new Map();
     allNotes.forEach((n, i) => pos.set(n.id, i + 1));
+
+    // [Zzz5-W7:FILTER-AT] @N = N-ta HLAVNA poznamka v osnove; jej sub-poznamky sa pritiahnu samy
+    let atBase = 0;
+    if (view.at) {
+      let k = 0;
+      for (const n of allNotes) {
+        if (zzz5w7_sub_of(n)) continue;
+        if (++k === view.at) { atBase = Number(n.note_number) || 0; break; }
+      }
+      if (!atBase) atBase = -1;   // take poradie neexistuje -> neprejde nic
+    }
+    const nameQ = zzz10v1_normalize(view.name.trim());
+    const userOn = Object.keys(view.users).filter(u => view.users[u]);
+
     viewNotes = allNotes.filter(n => {
       const p = pos.get(n.id) || 0;
       if (view.from && p < view.from) return false;
       if (view.to   && p > view.to)   return false;
+      if (view.at) {
+        const sb = zzz5w7_sub_of(n);
+        const base = sb ? sb.base : Number(n.note_number);
+        if (base !== atBase) return false;
+      }
+      if (nameQ && !zzz10v1_normalize(n.note_name || '').includes(nameQ)) return false;
+      if (userOn.length && !userOn.includes(zzz10v1_normalize(n.username || ''))) return false;
       const st = zzz5w7_status_of(n);
       if (view.on.open     && st !== '')         return false;
       if (view.on.progress && st !== 'progress') return false;
@@ -22233,15 +22339,40 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     area.value = zzz5w7_format_notes(viewNotes);
     const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
     if (!viewNotes.length) {
-      area.placeholder = allNotes.length ? 'Filtru nevyhovuje ziadna poznamka.' : 'Ziadne ulozene notes.';
+      area.placeholder = allNotes.length ? 'No note matches the filter.' : 'No saved notes.';
     }
     title.textContent = (/^\d+$/.test(String(entryKey)) ? `NOTES #${entryKey}` : 'NOTES')
       + (viewNotes.length !== allNotes.length ? ` (${viewNotes.length}/${allNotes.length})` : '');
     findShow();   // [Zzz5-W7:FIND] pocitadlo vyskytov po prekresleni
     // [Zzz5-W7:NOTE-FILTER] na tlacidle musi byt vidno, ze filter BEZI - inak sa user cuduje, preco
     // zoznam nesedi s celkom (presne to Vrso nahlasil: "po filtraciach nesedi ich celkovy pocet")
+    // [Zzz5-W7:FILTER-USERS] zoznam userov sa berie z poznamok, ktore realne su - prekresluje sa pri kazdom
+    // render, ale zaskrtnutie sa zachova (drzi ho view.users, nie DOM)
+    const seenU = {};
+    allNotes.forEach(n => {
+      const u = String(n.username || '').trim();
+      if (u) seenU[zzz10v1_normalize(u)] = u;
+    });
+    usersWrap.innerHTML = '';
+    Object.keys(seenU).sort().forEach(k => {
+      const lab = document.createElement('label');
+      lab.className = 'zzz5w7-filteritem';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!view.users[k];
+      cb.addEventListener('change', () => { view.users[k] = cb.checked; findIdxReset(); render(); });
+      const sp = document.createElement('span');
+      sp.textContent = seenU[k];
+      sp.className = (k === meN ? '' : 'zzz1r17b-foreign');   // cudzi user bronzovou, rovnako ako vsade
+      lab.appendChild(cb); lab.appendChild(sp);
+      usersWrap.appendChild(lab);
+    });
+
     const onCount = Object.keys(view.on).filter(k => view.on[k]).length
       + ((view.from || view.to) ? 1 : 0)
+      + (view.at ? 1 : 0)
+      + (view.name.trim() ? 1 : 0)
+      + Object.keys(view.users).filter(k => view.users[k]).length
       + (view.q.trim() ? 1 : 0);
     filterBtn.textContent = onCount ? `FILTER (${onCount})` : 'FILTER';
     filterBtn.classList.toggle('is-on', onCount > 0);
@@ -22259,7 +22390,10 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     // BEZ FILTRA sa teda kresli OSNOVA: hlavne cislo je nadpis, pod nim @poradie, sub-poznamky odsadene.
     // S FILTROM sa vracia plochy zoznam - filter moze vytrhnut sub-poznamku bez jej rodica a osnova by
     // vtedy tvrdila strukturu, ktora na obrazovke nie je. ===
-    const outline = !filterActive();
+    // [Zzz5-W7:OUTLINE] Vrso 2026-09-26: "SELECT by mal zobrazit poradove cisla". V oznacovacom rezime sa
+    // teda osnova docasne vypne a stlpik ukaze ploche poradie - podla toho, co prave prepustil filter.
+    // Bez cisel sa da pri viacnasobnom oznacovani lahko stratit.
+    const outline = !filterActive() && !selMode.on;
     const mainPos = new Map();   // poradie len medzi HLAVNYMI poznamkami - to je osnova dokumentu
     let mainSeen = 0;
     viewNotes.forEach(n => { if (!zzz5w7_sub_of(n)) mainPos.set(n.id, ++mainSeen); });
@@ -22281,7 +22415,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       const ord = document.createElement('span');
       ord.className = 'zzz5w7-ord';
       ord.textContent = outline ? '' : String(idx + 1);
-      ord.title = `${idx + 1}. v zobrazenom poradi (pracovne, neuklada sa) - identita je #${zzz5w7_label_of(n)}`;
+      ord.title = `position ${idx + 1} in the shown order (working, never stored) - the identity is #${zzz5w7_label_of(n)}`;
       line1.appendChild(ord);
 
       // --- STATUS toggle (vlavo od cisla) - Vrso 2026-09-25: "filter podla statusu (prazdny zadany,
@@ -22296,11 +22430,11 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       proj.className = 'zzz5w7-proj'
         + (st === 'progress' ? ' is-progress' : '')
         + (st === 'done' ? (solo ? ' is-on-solo' : ' is-on-multi') : '');
-      proj.title = (mine ? 'klik = PROGRESS (moja praca)' : 'PROGRESS si oznacuje autor sam')
-        + (iAmOwner ? ' / podrzanie 1-2s = DONE (potvrdenie ownera)' : '');
+      proj.title = (mine ? 'click = PROGRESS (my work)' : 'PROGRESS is set by the author')
+        + (iAmOwner ? ' / hold 1-2s = DONE (owner confirmation)' : '');
       proj.disabled = !mine && !iAmOwner;
       proj.addEventListener('click', async () => {
-        if (!mine) { zzz6f2_show_toast('PROGRESS si oznacuje autor poznamky sam.', 'warn'); return; }
+        if (!mine) { zzz6f2_show_toast('PROGRESS is set by the note author.', 'warn'); return; }
         proj.disabled = true;
         await zzz5w7_set_status(n, st === 'progress' ? '' : 'progress');
         proj.disabled = false;
@@ -22320,7 +22454,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       b.className = 'zzz5w7-num' + (mine ? ' zzz5w7-num-own' : ' zzz5w7-num-foreign')
         + (n.is_private ? ' zzz5w7-num-private' : '');
       b.textContent = zzz5w7_label_of(n);
-      b.title = `#${zzz5w7_label_of(n)} (${n.username || '-'}) - klik skoci na text (v SELECT rezime oznaci), podrzanie 1-2s prepne PRIVATE`;
+      b.title = `#${zzz5w7_label_of(n)} (${n.username || '-'}) - click jumps to the text (marks it in SELECT mode), hold 1-2s = sub-note, hold 3s = PRIVATE`;
       if (selected.has(n.id)) b.classList.add('zzz5w7-num-sel');
       b.addEventListener('click', () => {
         // [Zzz5-W7:NOTE-SELECT] v oznacovacom rezime klik OZNACUJE, mimo neho robi presne to, co doteraz
@@ -22337,8 +22471,8 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       zzz5w7_bind_tiered_hold(b, [
         { ms: 1200, fn: () => addSubNote(n) },                         // 1-2s = sub-poznamka (ako predtym)
         { ms: 3000, fn: async () => {                                   // 3s   = PRIVATE
-            if (!mine) { zzz6f2_show_toast('Prepnut sa da len vlastna poznamka.', 'warn'); return; }
-            if (n.is_project) { zzz6f2_show_toast('Poznamku so STATUSOM od project ownera sa schovat neda.', 'warn'); return; }
+            if (!mine) { zzz6f2_show_toast('You can only switch your own note.', 'warn'); return; }
+            if (n.is_project) { zzz6f2_show_toast('A note with a STATUS set by the project owner cannot be hidden.', 'warn'); return; }
             if (await zzz5w7_set_private(n, !n.is_private)) await render();
           } }
       ]);
@@ -22357,13 +22491,14 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
         const ord2 = document.createElement('div');
         ord2.className = 'zzz5w7-ord2';
         ord2.textContent = '@' + (mainPos.get(n.id) || 1);
-        ord2.title = 'pracovne poradie v osnove - neuklada sa, identita je #' + zzz5w7_label_of(n);
+        ord2.title = 'working order in the outline - never stored, the identity is #' + zzz5w7_label_of(n);
         rowEl.appendChild(ord2);
       }
 
       grow.appendChild(rowEl);
     });
     alignGutter();
+    zzz5w7_dock_sync();   // [Zzz5-W7:NOTES-DOCK] obsah sa zmenil -> preveri, ci okno este sedi pod riadkom
 
     // === [Zzz5-W7:ADD-NOTE] Vrso 2026-09-25: "nevidim zapracovane +add note ... podrzanim 1-2s sa prida
     // novy (idealne ako napr. 1 je note a A je novy chatnote ale priradeny aspon k 1)". Gesto na cisle
@@ -22375,10 +22510,10 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     add.type = 'button';
     add.className = 'zzz5w7-add';
     add.textContent = '+ ADD NOTE';
-    add.title = 'Klik = nova samostatna poznamka / podrzanie 1-2s = poznamka priradena k oznacenej (inak k poslednej), napr. 1-a';
+    add.title = 'Click = new standalone note / hold 1-2s = note attached to the selected one (otherwise the last), e.g. 1-a';
     add.addEventListener('click', () => addNewNote());
     zzz_bind_long_press(add, 1200, () => {
-      if (!allNotes.length) { zzz6f2_show_toast('Najprv musi existovat aspon jedna poznamka.', 'warn'); return; }
+      if (!allNotes.length) { zzz6f2_show_toast('At least one note must exist first.', 'warn'); return; }
       // k comu ju priradit: k PRVEJ oznacenej, inak k poslednej - aby podrzanie nikdy neskoncilo "nikde"
       const target = allNotes.find(n => selected.has(n.id)) || allNotes[allNotes.length - 1];
       addSubNote(target);
@@ -22403,8 +22538,8 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       }
     });
     zzz6f2_show_toast(authors.length
-      ? `${label} skopirovane + acknowledgement (${authors.join(', ')}).`
-      : `${label} skopirovane.`);
+      ? `${label} copied + acknowledgement (${authors.join(', ')}).`
+      : `${label} copied.`);
     return text;
   };
 
@@ -22412,37 +22547,38 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     selMode.on = !selMode.on;
     selBtn.classList.toggle('is-on', selMode.on);
     win.classList.toggle('zzz5w7-selmode', selMode.on);
+    render();   // [Zzz5-W7:OUTLINE] SELECT prepina osnovu na ploche poradie a spat
     if (!selMode.on) {
       selected.clear();
       numsCol.querySelectorAll('.zzz5w7-num-sel').forEach(e => e.classList.remove('zzz5w7-num-sel'));
       copySel.textContent = 'COPY';
       delSel.classList.remove('is-armed');
-      zzz6f2_show_toast('Oznacovanie vypnute - klik na cislo zas skoci na text.');
+      zzz6f2_show_toast('Selection off - clicking a number jumps to the text again.');
     } else {
-      zzz6f2_show_toast('Oznacovanie zapnute - klikaj na cisla, potom COPY.');
+      zzz6f2_show_toast('Selection on - click the numbers, then COPY.');
     }
   });
 
   // === [Zzz5-W7:SEL-DELETE] hromadne mazanie oznacenych ===
   delSel.addEventListener('click', async () => {
     if (!selected.size) {
-      zzz6f2_show_toast(selMode.on ? 'Najprv oznac notes, ktore mam vymazat.' : 'Zapni SELECT a oznac notes.', 'warn');
+      zzz6f2_show_toast(selMode.on ? 'Select the notes to delete first.' : 'Turn on SELECT and mark the notes.', 'warn');
       return;
     }
     const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
     const picked = allNotes.filter(n => selected.has(n.id));   // oznacene mozu ostat aj po zmene filtra
     const mine = picked.filter(n => zzz10v1_normalize(n.username || '') === me);
     const others = picked.length - mine.length;
-    if (!mine.length) { zzz6f2_show_toast('Zmazat sa da len vlastny note.', 'warn'); return; }
+    if (!mine.length) { zzz6f2_show_toast('You can only delete your own note.', 'warn'); return; }
     const labels = mine.map(n => '#' + zzz5w7_label_of(n)).join(', ');
-    if (!window.confirm(`Vymazat ${mine.length} note(s): ${labels}?` + (others ? `\n(${others} cudzich sa preskoci)` : ''))) return;
+    if (!window.confirm(`Delete ${mine.length} note(s): ${labels}?` + (others ? `\n(${others} from others will be skipped)` : ''))) return;
     delSel.disabled = true;
     let done = 0;
     for (const n of mine) {
       if (await zzz1cn_delete(entryKey, n)) { done++; selected.delete(n.id); }
     }
     delSel.disabled = false;
-    zzz6f2_show_toast(`Vymazane: ${done}` + (others ? ` (${others} cudzich preskocenych)` : ''));
+    zzz6f2_show_toast(`Deleted: ${done}` + (others ? ` (${others} from others skipped)` : ''));
     copySel.textContent = selected.size ? `COPY (${selected.size})` : 'COPY';
     delSel.classList.toggle('is-armed', selected.size > 0);
     await render();
@@ -22451,17 +22587,17 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   copySel.addEventListener('click', () => {
     // 1. oznacene cisla maju prednost
     if (selected.size) {
-      copyNotes(allNotes.filter(n => selected.has(n.id)), `Chatnotes (${selected.size})`);
+      copyNotes(allNotes.filter(n => selected.has(n.id)), `Notes (${selected.size})`);
       return;
     }
     // 2. inak rucne oznaceny text v poli - presne to, co sa na mobile nedalo skopirovat cez nativne menu
     const sel = area.value.slice(area.selectionStart || 0, area.selectionEnd || 0);
     if (sel.trim()) {
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(sel);
-      zzz6f2_show_toast('Oznaceny text skopirovany.');
+      zzz6f2_show_toast('Selected text copied.');
       return;
     }
-    zzz6f2_show_toast('Najprv oznac cisla (SELECT) alebo text v poli.', 'warn');
+    zzz6f2_show_toast('Mark numbers (SELECT) or select text in the field first.', 'warn');
   });
 
   copyAll.addEventListener('click', () => {
@@ -22507,7 +22643,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   };
   const findGo = (dir) => {
     const hits = findHits();
-    if (!hits.length) { zzz6f2_show_toast('Ziadny vyskyt v zobrazenom texte.', 'warn'); return; }
+    if (!hits.length) { zzz6f2_show_toast('No match in the visible text.', 'warn'); return; }
     findIdx = (findIdx + dir + hits.length * 2) % hits.length;
     const start = hits[findIdx];
     const len = searchIn.value.trim().length;
