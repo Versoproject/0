@@ -2662,6 +2662,17 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     cursor: pointer;
     flex: 0 0 auto;
   }
+  /* [Zzz1-CN:SAVE-UNDER] popis k checkboxu - rovnaky tvar ako v note line, aby obe miesta hovorili to iste */
+  .zzz1cn-note-privlbl {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    flex: 0 0 auto;
+    font-size: 8px;
+    font-weight: 700;
+    color: #6b7280;
+    cursor: pointer;
+  }
   .zzz1cn-note-head .zzz1cn-note-btn-save { justify-self: center; }
   /* [Zzz1-CN:CHAT-ORDER] pracovne poradie v chate - zamerne nevyrazne, aby sa nepomylilo s cislom */
   .zzz1cn-note-ord {
@@ -10374,11 +10385,14 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     zzz6f2_show_toast(`Reply to #${cnTarget.value}${cnTargetNameVal ? ' ' + cnTargetNameVal : ''}`);
   });
 
-  const cnSendToChat = async (text, name, target, priv) => {
+  // [Zzz1-CN:IS-SAVED] toSaved rozhoduje, ci zaznam ide AJ do Notes okna. Vrso 2026-09-27: "chatnote line
+  // ma enter button, kde entry NEJDE do notes, ale iba do chatu" - preto ENTER posiela false, kym note
+  // line (a SAVE CHATNOTE pri konkretnom chate) posielaju true.
+  const cnSendToChat = async (text, name, target, priv, toSaved) => {
     const body = String(text || '').trim();
     if (!body) { zzz6f2_show_toast('Nothing to send.', 'warn'); return null; }
     // do CHATU = standardne zdielany zaznam (is_private=false); cislo prideli databaza
-    const saved = await zzz1cn_add(cnEntryKey, body, !!priv, target ? { base: Number(target) } : null, name);
+    const saved = await zzz1cn_add(cnEntryKey, body, !!priv, target ? { base: Number(target) } : null, name, !!toSaved);
     if (saved) {
       zzz6f2_show_toast(`Chatnote #${zzz5w7_label_of(saved)} sent.`);
       cnTargetAuto = true;   // [Zzz1-CN:CHL-FOLLOW] dalsia odpoved uz ide za NOVYM poslednym chatom
@@ -10480,7 +10494,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
       if (!t) { close(); return; }
       const tnum = parseInt(tgt.value, 10) || 0;
       if (!cnTargetCheck(tnum)) return;   // [Zzz1-CN:CHL-EXISTS] text ostane v riadku, nech sa neprepise
-      await cnSendToChat(t, nameIn.value.trim(), tnum, privChk.checked);
+      await cnSendToChat(t, nameIn.value.trim(), tnum, privChk.checked, true);  // nl = ULOZENIE do Notes
       close();
     };
     ok.addEventListener('click', send);
@@ -10519,7 +10533,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   cnSave.addEventListener('click', () => {
     const tnum = parseInt(cnTarget.value, 10) || 0;
     if (!cnTargetCheck(tnum)) return;   // [Zzz1-CN:CHL-EXISTS] radsej neposlat nez zaseknut v outboxe
-    cnSendToChat(notesArea.value, cnTargetNameVal, tnum);
+    cnSendToChat(notesArea.value, cnTargetNameVal, tnum, false, false);  // ENTER = iba do chatu
   });
   const cnRowSide = document.createElement('div');
   cnRowSide.className = 'zzz1cn-rowside';
@@ -10620,7 +10634,8 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
         // ZDIELANY (nie privatny), dostane svoje cislo a autora, a okno OSTAVA OTVORENE.
         // [Zzz13-MV:CONSENT-TTL] zapis chatnote je realne pouzitie zaznamu - obnovi klzavu platnost consentu
         if (commEntryId) zzz1cons_touch(commEntryId, commState);
-        const saved = await zzz1cn_add(cnEntryKey, notesArea.value, false);
+        // [Zzz1-CN:IS-SAVED] ENTER na CL uklada rozpisany chatnote do CHATU, nie do Notes - preto false
+        const saved = await zzz1cn_add(cnEntryKey, notesArea.value, false, null, '', false);
         if (saved) {
           notesArea.value = '';
           workingNotes = '';
@@ -22157,20 +22172,56 @@ async function zzz1cn_load_for_chat(entryKey) {
 // pri starte, vypadok siete) a flag ostal false do konca session - odvtedy vsetky chatnotes ticho padali do
 // stareho lokalneho kluca, nikdy nie do outboxu, a NIKDY sa nesynchronizovali. Pri obnove spojenia sa preto
 // flag vracia na null = "znova over".
-function zzz1cn_reset_availability() { zzz1cnTableAvailable = null; }
+function zzz1cn_reset_availability() { zzz1cnTableAvailable = null; zzz1cnOptCols = null; }
+
+// === [Zzz1-CN:OPT-COLS] VOLITELNE STLPCE - tie, ktore sa nasadzuju samostatnym SQL a v databaze teda
+// BYT MOZU aj NEMUSIA. Appka musi fungovat v OBOCH stavoch, lebo HTML a SQL sa nasadzuju zvlast.
+//
+// Naslo sa pri tom aj STARE TICHE ZLYHANIE: note_status (v6) sa ZAPISOVAL, ale NIKDY sa NECITAL - v
+// selecte proste nebol. Status PROGRESS sa teda po prekresleni vzdy stratil a vyzeralo to, ze sa neulozil.
+// Teraz sa cita aj on.
+//
+// AKO: skusi sa select aj s volitelnymi stlpcami. Ked zlyha, RAZ ZA SESSION sa kazdy z nich osobitne
+// overi (jeden maly dopyt) a dalej sa pouzivaju len tie, ktore realne existuju. Preto chybajuci is_saved
+// nezhodi citanie a nezhodi appku do lokalneho rezimu. ===
+const ZZZ1CN_COLS_CORE = 'id, entry_key, username, note_number, note_part, note_name, note_text, is_private, is_project';
+const ZZZ1CN_COLS_OPT = ['note_status', 'is_saved'];
+let zzz1cnOptCols = null;   // null = zatial neoverene, pole = overeny zoznam pouzitelnych stlpcov
+function zzz1cn_opt_has(col) {
+  return zzz1cnOptCols === null ? ZZZ1CN_COLS_OPT.indexOf(col) >= 0 : zzz1cnOptCols.indexOf(col) >= 0;
+}
+async function zzz1cn_probe_opt_cols() {
+  const found = [];
+  for (const c of ZZZ1CN_COLS_OPT) {
+    try {
+      const r = await sb.from(ZZZ1CN_TABLE).select(c).limit(1);
+      if (!r || !r.error) found.push(c);
+    } catch (e) { /* stlpec zatial nie je nasadeny */ }
+  }
+  zzz1cnOptCols = found;
+}
 async function zzz1cn_load(entryKey) {
   if (zzz1cnTableAvailable !== false) {
+    const opt = zzz1cnOptCols === null ? ZZZ1CN_COLS_OPT : zzz1cnOptCols;
+    const cols = ZZZ1CN_COLS_CORE + (opt.length ? ', ' + opt.join(', ') : '');
     try {
       // [Zzz5-W7:NOTE-PART] note_part sa cita aj radi ako VLASTNY stlpec - "1", "1-a", "1-b", "2"
       const { data, error } = await sb.from(ZZZ1CN_TABLE)
-        .select('id, entry_key, username, note_number, note_part, note_name, note_text, is_private, is_project')
+        .select(cols)
         .eq('entry_key', String(entryKey))
         .order('note_number', { ascending: true })
         .order('note_part', { ascending: true });
       if (error) throw error;
       zzz1cnTableAvailable = true;
+      if (zzz1cnOptCols === null) zzz1cnOptCols = ZZZ1CN_COLS_OPT.slice(); // preslo aj s nimi = su tam
       return data || [];
     } catch (e) {
+      // [Zzz1-CN:OPT-COLS] prve zlyhanie s NEOVERENYMI volitelnymi stlpcami este nemusi znamenat, ze
+      // tabulka chyba - moze chybat len jeden novy stlpec. Over ich a skus znova.
+      if (zzz1cnOptCols === null) {
+        await zzz1cn_probe_opt_cols();
+        return zzz1cn_load(entryKey);
+      }
       zzz1cnTableAvailable = false; // tabulka zatial neexistuje - pokracujeme lokalne
     }
   }
@@ -22179,7 +22230,7 @@ async function zzz1cn_load(entryKey) {
 // [Zzz5-W7:NOTE-PART] subOf = { base: <cislo poznamky, ku ktorej patri> } zalozi SUB-POZNAMKU. Pismeno sa
 // NEPOSIELA ako pravda - posiela sa len odhad, aby trigger vedel, ze ide o sub-poznamku; skutocne pismeno
 // pridelí databaza a appka si ho precita z vrateneho riadku.
-async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName) {
+async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved) {
   const clean = (text || '').trim();
   if (!clean) { zzz6f2_show_toast('Chatnote je prazdny.', 'warn'); return null; }
   const username = (zzz0r1_get_current_username() || '').trim();
@@ -22195,7 +22246,8 @@ async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName) {
     : existing.reduce((max, n) => Math.max(max, Number(n.note_number) || 0), 0) + 1;
   const notePart = base ? zzz5w7_next_letter(existing, base) : '';
   const row = { entry_key: String(entryKey), username, note_number: nextNumber, note_part: notePart,
-    note_name: String(noteName || '').trim().slice(0, 60), note_text: clean, is_private: !!isPrivate, is_project: false };
+    note_name: String(noteName || '').trim().slice(0, 60), note_text: clean, is_private: !!isPrivate,
+    is_project: false, is_saved: !!isSaved };
   // OPRAVA v2 (Vrso 2026-09-24, RLS chyba sa vratila): predchadzajuci pokus "neposielat username a nechat
   // to na databazu" bol ZLY - stal na predpoklade Supabase Auth (auth.jwt() ->> 'email'), ktoru Verso
   // VOBEC nepouziva. Verso ma vlastny [Zzz0Auth-Gate:JWT-BRIDGE] most a KAZDA RLS policy porovnava
@@ -22203,6 +22255,9 @@ async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName) {
   // posielat MUSI - presne v registrovanom tvare, DB si ho porovna lowercase.
   // [Zzz0-OB:CLIENT-CHATNOTE] payload sa stavia PRED try - potrebuje ho aj catch vetva (odovzdanie outboxu).
   const payload = { entry_key: row.entry_key, username: row.username, note_number: row.note_number, note_part: row.note_part, note_name: row.note_name, note_text: row.note_text, is_private: row.is_private };
+  // [Zzz1-CN:OPT-COLS] is_saved sa posiela LEN ked stlpec v databaze naozaj je. zzz1cn_load() vyssie uz
+  // prebehol, takze v tomto bode je overene, ktore volitelne stlpce existuju.
+  if (zzz1cn_opt_has('is_saved')) payload.is_saved = row.is_saved;
   if (zzz1cnTableAvailable) {
     try {
       const { data, error } = await sb.from(ZZZ1CN_TABLE).insert(payload).select().single();
@@ -22487,8 +22542,18 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   savePriv.type = 'checkbox';
   savePriv.className = 'zzz1cn-note-privchk';
   savePriv.checked = true;
-  savePriv.title = 'Checked = the saved copy is private in Notes / unchecked = shared';
+  savePriv.title = 'Checked = the saved copy is PRIVATE in Notes / unchecked = shared with this entry';
   savePriv.addEventListener('click', (e) => e.stopPropagation());
+  // [Zzz1-CN:SAVE-UNDER] Vrso 2026-09-27 sa musel pytat, co ten stvorcek znamena ("zaciarknuty znamena, ze
+  // je public?") - holy checkbox bez popisu je chyba navrhu. Popis je rovnaky ako v note line ("priv"),
+  // nech obe miesta hovoria to iste. Zaskrtnute = PRIVATE, a je to aj vychodzi stav.
+  const savePrivLbl = document.createElement('label');
+  savePrivLbl.className = 'zzz1cn-note-privlbl';
+  savePrivLbl.title = savePriv.title;
+  savePrivLbl.appendChild(savePriv);
+  const savePrivTxt = document.createElement('span');
+  savePrivTxt.textContent = 'priv';
+  savePrivLbl.appendChild(savePrivTxt);
   saveBtn.title = 'Saves this note into Notes as a sub-note of #' + (Number(note.note_number) || 0)
     + ' (16 -> 16-a); the checkbox decides private or shared';
   saveBtn.addEventListener('click', async () => {
@@ -22496,8 +22561,10 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
     const author = (note.username || '').trim();
     const isOwn = !!me && zzz10v1_normalize(author) === me;
     const base = Number(note.note_number) || 0;
+    // [Zzz1-CN:IS-SAVED] SAVE CHATNOTE je to druhe miesto, kde sa ULOZI do Notes ("alebo neskor ulozenim
+    // z chatu") - preto is_saved = true
     const saved = await zzz1cn_add(entryKey, isOwn ? note.note_text : `${author}: ${note.note_text}`,
-      savePriv.checked, base ? { base } : null);
+      savePriv.checked, base ? { base } : null, '', true);
     if (saved) {
       const lbl = zzz5w7_label_of(saved);
       const how = savePriv.checked ? 'private' : 'shared';
@@ -22514,7 +22581,7 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   head.appendChild(headLeft);
   const saveWrap = document.createElement('span');
   saveWrap.className = 'zzz1cn-note-savewrap';
-  saveWrap.appendChild(savePriv);
+  saveWrap.appendChild(savePrivLbl);
   saveWrap.appendChild(saveBtn);
   head.appendChild(saveWrap);
 
@@ -23134,7 +23201,8 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     const got = await inlineAsk(`to #${base}`, base);
     if (!got || !got.text) { await render(); return; }
     const text = got.text;
-    const saved = await zzz1cn_add(entryKey, text.trim(), true, { base }, got.name);
+    // [Zzz1-CN:IS-SAVED] poznamka zalozena PRIAMO v Notes okne je z definicie ulozena
+    const saved = await zzz1cn_add(entryKey, text.trim(), true, { base }, got.name, true);
     if (!saved) return;
     // === [Zzz6-F22-copy-credit:SUB-NOTE] jedinecny zaznam presne ako ziadal Vrso: <entry>/<chatnote>/<sub>
     // - takze je vzdy jasne, ku ktoremu zaznamu, ktorej poznamke a ktorej sub-poznamke sa acknowledgement
@@ -23161,12 +23229,12 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     if (got.target) {
       const parent = allNotes.find(x => Number(x.note_number) === Number(got.target) && !zzz5w7_sub_of(x));
       if (!parent) { zzz6f2_show_toast(`Note #${got.target} does not exist.`, 'warn'); await render(); return; }
-      const saved = await zzz1cn_add(entryKey, got.text, true, { base: Number(got.target) }, got.name);
+      const saved = await zzz1cn_add(entryKey, got.text, true, { base: Number(got.target) }, got.name, true);
       if (saved) zzz6f2_show_toast(`Note #${zzz5w7_label_of(saved)} saved.`);
       await render();
       return;
     }
-    const saved = await zzz1cn_add(entryKey, got.text, true, null, got.name);
+    const saved = await zzz1cn_add(entryKey, got.text, true, null, got.name, true);
     if (!saved) { await render(); return; }
     zzz6f2_show_toast(`Note #${zzz5w7_label_of(saved)} saved.`);
     await render();
@@ -23324,7 +23392,12 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   area.addEventListener('scroll', alignGutter);
 
   const render = async () => {
-    allNotes = await zzz1cn_load_for_feed(entryKey);
+    // === [Zzz1-CN:IS-SAVED] Vrso 2026-09-27: "do notes window sa dostane iba po ulozeni." Notes okno teda
+    // uz NIE JE zrkadlo chatu - ukazuje LEN to, co niekto vedome ulozil (note line alebo SAVE CHATNOTE).
+    // Obycajny ENTER z chat line sa sem nedostane. Kym nie je nasadeny stlpec is_saved (v7 SQL), filter sa
+    // NEAPLIKUJE a okno sa sprava po starom - inak by po nasadeni samotneho HTML vyzeralo prazdne. ===
+    allNotes = (await zzz1cn_load_for_feed(entryKey))
+      .filter(n => !zzz1cn_opt_has('is_saved') || !!(n && n.is_saved));
     applyFilter();
     grow.innerHTML = '';
     area.value = zzz5w7_format_notes(viewNotes);
