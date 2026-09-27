@@ -2262,6 +2262,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     border-style: solid;
     background-color: rgba(212, 175, 55, 0.14);
   }
+  /* [Zzz1-CN:CHL-EXISTS] cislo, ktore v tomto zazname neexistuje - vidno to uz pri pisani */
+  .zzz1cn-target.is-bad {
+    border-color: #c0392b !important;
+    color: #c0392b;
+    background-color: rgba(192, 57, 43, 0.10);
+  }
   .zzz1cn-target:focus, .zzz1cn-target:focus-visible {
     border: 2px solid #D4AF37;
     outline: 2px solid #D4AF37;
@@ -10248,24 +10254,43 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     cnTargetName.classList.toggle('is-empty', !cnTargetNameVal);
   };
   // zvyrazni v chate to oznacenie, na ktore prave odpovedam - nech je vidiet, s cim pracujem
+  // === [Zzz1-CN:CHL-EXISTS] Vrso 2026-09-27: "ked dam # (a mozno aj @), ktore este nebolo vlozene, tak
+  // zalise na odoslanie. Je to vhodne mat takto? Nie je lepsie radsej zablokovat taku moznost?"
+  // NIE JE to vhodne. Tu hlasku vyhadzuje DATABAZOVY TRIGGER ("poznamka #30 v zazname ... neexistuje"),
+  // teda LOGICKE odmietnutie - ale klient ho chyta tym istym catch-om ako vypadok siete a posle zaznam do
+  // outboxu. Tam sa bude donekonecna opakovat zapis, ktory NIKDY neprejde, a v chate visi cislo (30-a),
+  // ktore databaza nikdy nepridelila. Preto sa taky ciel odmietne HNED a text ostane vo vstupe.
+  // Deklarovane PRED cnTargetSync zamerne - cnTargetSync ho vola a na const v TDZ by to spadlo. ===
+  const cnTargetKnown = (num) => {
+    const n = Number(num) || 0;
+    if (!n) return true;                      // prazdny ciel = nova tema, vzdy v poriadku
+    if (!cnFeedNotes.length) return true;     // feed sa este nenacital - neblokuj naslepo
+    return cnFeedNotes.some(x => (Number(x.note_number) || 0) === n);
+  };
+  const cnTargetCheck = (num) => {
+    if (cnTargetKnown(num)) return true;
+    zzz6f2_show_toast(`There is no #${Number(num) || 0} in this entry - hold the cell to reset and start a new #.`, 'warn');
+    return false;
+  };
   cnTargetSync = () => {
     const v = String(cnTarget.value || '').trim();
     cnTarget.classList.toggle('is-set', !!v);
+    // [Zzz1-CN:CHL-EXISTS] neexistujuce cislo je vidiet UZ pri pisani, nie az po stlaceni ENTER
+    cnTarget.classList.toggle('is-bad', !!v && !cnTargetKnown(v));
     cnFeed.querySelectorAll('.zzz1cn-note-number').forEach(el => {
       el.classList.toggle('is-target', !!v && el.dataset.zzz1cnNum === v);
     });
     cnPaintTargetName();
   };
-  // [Zzz1-CN:CHL-FOLLOW] prevezmi oznacenie posledneho zaznamu - PREDNOSTNE ulozeny note (ten s pismenom),
-  // lebo prave do neho sa najcastejsie dopisuje dalej
+  // === [Zzz1-CN:CHL-FOLLOW] prevezmi oznacenie POSLEDNEHO zaznamu v chate.
+  // OPRAVA (Vrso 2026-09-27, fotka 2): predtym sa cez cely zoznam hladal POSLEDNY ULOZENY note, takze ked
+  // bol najnovsi chat #29, ale niekde vyssie lezal ulozeny 23-b, bunka skocila na 23 - teda na nieco, co
+  // uz davno nebolo na obrazovke. Berie sa teda proste POSLEDNY zaznam; ked je to ulozeny note (ma
+  // pismeno), pokracuje sa v jeho vlakne, inak sa odpoveda na posledny chat. ===
   cnTargetFollow = (notes) => {
     if (!cnTargetAuto) return;
     const list = Array.isArray(notes) ? notes : [];
-    let pick = null;
-    for (let i = list.length - 1; i >= 0; i--) {
-      if (zzz5w7_sub_of(list[i])) { pick = list[i]; break; }   // ulozeny note ma prednost
-    }
-    if (!pick) pick = list[list.length - 1] || null;
+    const pick = list[list.length - 1] || null;
     const base = Number(pick && pick.note_number) || 0;
     cnTarget.value = base ? String(base) : '';
     cnTargetNameVal = String((pick && pick.note_name) || '').trim();
@@ -10303,8 +10328,36 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     zzz_haptic_pulse(20);
     zzz6f2_show_toast('Reply target cleared.');
   };
-  zzz_bind_long_press(cnTarget, 1000, cnTargetReset);
-  zzz_bind_long_press(cnTargetName, 1000, cnTargetReset);   // Vrso: "reset podrzanim tejto bunky"
+  // === [Zzz1-CN:CHL-RESET] OPRAVA (Vrso 2026-09-27: "nema pripraveny button podrz 1-2s, ktorym sa ma
+  // resetovat. Reset je potrebny, ak by som chcel urobit novy - ako novy chat/tema pod novym #").
+  // PRICINA: cielova bunka je <input>, a zzz_bind_hold_selection_guard() textove polia ZAMERNE preskakuje
+  // (zzzIsTextField -> return), aby v nich ostalo nativne Kopirovat/Vlozit. Na mobile teda podrzanie
+  // spustilo VYBER TEXTU a s nim aj nativne menu - casovac sa stratil a reset nikdy nenastal (vidno na
+  // Vrsovej fotke: "Vystrihnut / Spytat sa Copilota" nad bunkou).
+  // RIESENIE: selekcia sa blokuje LEN pocas drzania a az od 350 ms, takze bezne tuknutie (kurzor) aj
+  // oznacovanie pri kratkom dotyku funguju dalej; hmatovy pulz naviac potvrdi, ze sa drzanie pocita. ===
+  let cnTargetHold = false;
+  let cnTargetHoldT = null;
+  const cnTargetHoldOn = () => {
+    if (cnTargetHoldT) clearTimeout(cnTargetHoldT);
+    cnTargetHoldT = setTimeout(() => { cnTargetHold = true; zzz_haptic_pulse(15); }, 350);
+  };
+  const cnTargetHoldOff = () => {
+    if (cnTargetHoldT) { clearTimeout(cnTargetHoldT); cnTargetHoldT = null; }
+    cnTargetHold = false;
+  };
+  ['selectstart', 'contextmenu'].forEach(ev => cnTarget.addEventListener(ev, (e) => {
+    if (cnTargetHold && e.cancelable) e.preventDefault();
+  }));
+  cnTarget.addEventListener('touchstart', cnTargetHoldOn, { passive: true });
+  cnTarget.addEventListener('mousedown', cnTargetHoldOn);
+  ['touchend', 'touchcancel', 'mouseup', 'mouseleave'].forEach(ev => cnTarget.addEventListener(ev, cnTargetHoldOff));
+  // pri drzani sa nesmie scrollovat pod prstom, inak sa gesto zmeni na scroll a casovac padne
+  cnTarget.addEventListener('touchmove', (e) => { if (cnTargetHold && e.cancelable) e.preventDefault(); }, { passive: false });
+  const cnTargetResetDone = () => { cnTargetHoldOff(); cnTargetReset(); };
+  zzz_bind_long_press(cnTarget, 1000, cnTargetResetDone);
+  zzz_bind_hold_selection_guard(cnTargetName);              // div - tam guard funguje bez vynimiek
+  zzz_bind_long_press(cnTargetName, 1000, cnTargetResetDone); // Vrso: "reset podrzanim tejto bunky"
   // klik na oznacenie v chate ho skopiruje sem aj s menom
   cnFeed.addEventListener('click', (e) => {
     const n = e.target.closest && e.target.closest('.zzz1cn-note-number');
@@ -10425,7 +10478,9 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     const send = async () => {
       const t = textIn.value.trim();
       if (!t) { close(); return; }
-      await cnSendToChat(t, nameIn.value.trim(), parseInt(tgt.value, 10) || 0, privChk.checked);
+      const tnum = parseInt(tgt.value, 10) || 0;
+      if (!cnTargetCheck(tnum)) return;   // [Zzz1-CN:CHL-EXISTS] text ostane v riadku, nech sa neprepise
+      await cnSendToChat(t, nameIn.value.trim(), tnum, privChk.checked);
       close();
     };
     ok.addEventListener('click', send);
@@ -10455,10 +10510,17 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     { ms: 1200, fn: () => cnOpenOptions() },
     { ms: 3000, fn: () => zzz1cn_open_list(cnEntryKey, cnSave) }
   ]);
-  // [Zzz1-CN:CHL-REPLY] KLIK = sprava IBA DO CHATU s cistym novym cislom (ziadne pismeno - to pribudne az
-  // pri ulozeni). Z reply bunky sa prenesie len MENO vlakna, aby sa poznamky pod rovnakym name drzali
-  // pokope. Vrso: "chatnote line ma enter button, kde entry nejde do notes, ale iba do chatu."
-  cnSave.addEventListener('click', () => { cnSendToChat(notesArea.value, cnTargetNameVal, 0); });
+  // === [Zzz1-CN:CHL-REPLY] OPRAVA (Vrso 2026-09-27: "ked v chate bol #28, vymazal som reply module, tak
+  // namiesto novej entry pod 28a sa zobrazil ako novy #29 chat").
+  // Reply bunka je ODPOVED - ked je v nej cislo, ENTER zapise POD NEHO s dalsim pismenom (28 -> 28-a).
+  // Ked je PRAZDNA (po resete), vznikne nova tema pod novym cislom. Presne preto je reset potrebny:
+  // "reset je potrebny, ak by som chcel urobit novy - ako novy chat/tema pod novym #".
+  // Meno vlakna sa prenesie vzdy, aby sa poznamky pod rovnakym name drzali pokope. ===
+  cnSave.addEventListener('click', () => {
+    const tnum = parseInt(cnTarget.value, 10) || 0;
+    if (!cnTargetCheck(tnum)) return;   // [Zzz1-CN:CHL-EXISTS] radsej neposlat nez zaseknut v outboxe
+    cnSendToChat(notesArea.value, cnTargetNameVal, tnum);
+  });
   const cnRowSide = document.createElement('div');
   cnRowSide.className = 'zzz1cn-rowside';
   cnRowSide.appendChild(cnTarget);
