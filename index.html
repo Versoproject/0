@@ -2464,6 +2464,31 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     resize: none;
   }
   .zzz1cn-list-window.zzz5w7-full .zzz5w7-nums { min-height: 0; }
+  /* === [Zzz1-CN:NOTE-BADGE] mala znacka v bunke COMMUNICATION: kolko ulozenych poznamok zaznam ma a
+     v akej najmenej pokrocilej faze su. Prazdna (bez ramu) znamena ziadne - nesmie robit sum v riadkoch,
+     kde nic nie je. === */
+  .zzz1cn-note-badge {
+    display: none;
+    margin-left: 4px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    box-sizing: border-box;
+    border: 1px solid #D4AF37;
+    border-radius: 8px;
+    background-color: rgba(212, 175, 55, 0.14);
+    color: #8a6d1f;
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 14px;
+    cursor: pointer;
+    vertical-align: middle;
+  }
+  .zzz1cn-note-badge.has-notes { display: inline-block; }
+  /* [Zzz5-W7:STATUS-4] tie iste styri farby ako gulicka pri poznamke - jedna farba, jeden vyznam */
+  .zzz1cn-note-badge.is-progress { background-color: #ea8c00; border-color: #ea8c00; color: #fff; }
+  .zzz1cn-note-badge.is-done     { background-color: #9ca3af; border-color: #9ca3af; color: #171717; }
+  .zzz1cn-note-badge.is-final    { background-color: #1e7e34; border-color: #1e7e34; color: #fff; }
   /* [Zzz5-W7:HEAD-WRAP] vynuteny zlom pred SELECT - mimo mobilu neexistuje */
   .zzz5w7-headbreak { display: none; }
   /* === [Zzz5-W7:HEAD-FIT] Vrso 2026-09-28: "nejako si zvacsila jeho okno a nesedi v obrazovke, tak to
@@ -19660,6 +19685,10 @@ function zzz4_0_build_entry_row(row) {
       }
       wrapEl.appendChild(cellEl);
     }
+    // [Zzz1-CN:NOTE-BADGE] znacka ide do bunky COMMUNICATION - poznamky su komunikacia, takze patri k nej
+    if (field.wrap === 'info-wrap' && entryIdForRow !== '') {
+      wrapEl.appendChild(zzz1cn_build_note_badge(entryIdForRow));
+    }
     rowEl.appendChild(wrapEl);
   });
   // "Zzz6-F27 copy EL" (cely riadok) - 3s podrzanie NIEKDE NA RIADKU MIMO konkretnej bunky (napr. na ENTRY NUMBER,
@@ -23057,6 +23086,7 @@ async function zzz1cn_promote_draft(entryId) {
       };
       const { data, error } = await sb.from(ZZZ1CN_TABLE).insert(payload).select().single();
       if (error) throw error;
+      zzz1cn_note_badges_refresh();   // [Zzz1-CN:NOTE-BADGE] pocet v CRM riadku sa zmenil
       if (data && data.note_number) remap[String(n.note_number)] = data.note_number;
       await sb.from(ZZZ1CN_TABLE).delete().eq('id', n.id);
     }
@@ -23253,6 +23283,7 @@ async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved) {
     try {
       const { data, error } = await sb.from(ZZZ1CN_TABLE).insert(payload).select().single();
       if (error) throw error;
+      zzz1cn_note_badges_refresh();   // [Zzz1-CN:NOTE-BADGE] pocet v CRM riadku sa zmenil
       return data;
     } catch (e) {
       // === [Zzz0-OB:CLIENT-CHATNOTE] Vrso 2026-09-25 ("text sa moze stratit... bolo by idealne mat proces
@@ -23289,6 +23320,7 @@ async function zzz1cn_delete(entryKey, note) {
     try {
       const { error } = await sb.from(ZZZ1CN_TABLE).delete().eq('id', note.id);
       if (error) throw error;
+      zzz1cn_note_badges_refresh();   // [Zzz1-CN:NOTE-BADGE]
       return true;
     } catch (e) {
       zzz6f2_show_toast(`Zmazanie zlyhalo: ${(e && e.message) || e}`, 'warn');
@@ -23541,6 +23573,7 @@ async function zzz5w7_status_write(note, st) {
     if (st === '' || st === 'progress' || st === 'done') patch.is_project = false;
     const { error } = await sb.from(ZZZ1CN_TABLE).update(patch).eq('id', note.id);
     if (error) throw error;
+    zzz1cn_note_badges_refresh();   // [Zzz1-CN:NOTE-BADGE] zmena fazy meni aj farbu znacky
     zzz6f2_show_toast(`Note #${zzz5w7_label_of(note)} = ${zzz5w7_status_word(st)}.`);
     return true;
   } catch (e) {
@@ -24161,6 +24194,87 @@ const ZZZ5W7_FILTERS = [
   ['private',  'PRIVATE',  'visible to the author only'],
   ['mine',     'MY',       'notes by the signed-in user']
 ];
+
+// === [Zzz1-CN:NOTE-BADGE] (SYSTEM FUNCTION) KOLKO POZNAMOK MA ZAZNAM - PRIAMO V CRM RIADKU =========
+// Vrso 2026-09-28: "kde najdem napr. Notes? V databaze, org alebo len v comm window danej entry?"
+// Odpoved bola neprijemna: LEN v comm okne tej entry, cez podrzanie tlacidla. Data su pritom globalne
+// (jedna tabulka verso_chat_notes), ale dvere boli jedine a schovane - zaznam s dvadsiatimi poznamkami
+// vyzeral v databaze rovnako ako prazdny.
+// Tato znacka je prve z dvoch dveri: v bunke COMMUNICATION ukaze POCET ulozenych poznamok a FAREBNE, ako
+// na tom zaznam je. Klik otvori Notes presne pre ten zaznam.
+//
+// AKU FAZU UKAZUJE: tu NAJMENEJ POKROCILU, ktora sa v zazname nachadza - nie najvyssiu. Zmysel znacky je
+// "je tu este nieco rozrobene?", takze zelena (= vsetko potvrdene FINAL) sa rozsvieti az vtedy, ked uz
+// naozaj nic nezostalo. Opacne poradie by ukazovalo zelenu aj zaznamu, kde devat veci caka a jedna je
+// hotova - a to je presne ten pohlad, ktory clovek potrebuje NEMAT.
+const ZZZ1CN_BADGE_ORDER = ['', 'progress', 'done', 'final'];
+let zzz1cnNotesSummary = null;     // entry_key -> { n, st }
+let zzz1cnNotesSummaryBusy = false;
+async function zzz1cn_notes_summary_load() {
+  if (zzz1cnNotesSummaryBusy) return zzz1cnNotesSummary;
+  zzz1cnNotesSummaryBusy = true;
+  try {
+    // RLS sa postara o rozsah - vidno len to, na co ma prihlaseny pravo, a to je spravne
+    const cols = 'entry_key, note_status, is_project'
+      + (zzz1cn_opt_has('is_saved') ? ', is_saved' : '');
+    const { data, error } = await sb.from(ZZZ1CN_TABLE).select(cols);
+    if (error) throw error;
+    const map = {};
+    (data || []).forEach(r => {
+      // [Zzz1-CN:IS-SAVED] do znacky idu LEN ulozene poznamky - obycajne spravy v chate nie su evidencia
+      if (zzz1cn_opt_has('is_saved') && !r.is_saved) return;
+      const key = String(r.entry_key || '');
+      if (!key) return;
+      const st = zzz5w7_status_of(r);
+      const cur = map[key] || { n: 0, st: 'final' };
+      cur.n += 1;
+      if (ZZZ1CN_BADGE_ORDER.indexOf(st) < ZZZ1CN_BADGE_ORDER.indexOf(cur.st)) cur.st = st;
+      map[key] = cur;
+    });
+    zzz1cnNotesSummary = map;
+  } catch (e) {
+    // znacka je pomocka, nie funkcia - ked sa nedoplni, zaznam sa tym nerozbije
+    if (zzz1cnNotesSummary === null) zzz1cnNotesSummary = {};
+  } finally {
+    zzz1cnNotesSummaryBusy = false;
+  }
+  zzz1cn_note_badges_paint();
+  return zzz1cnNotesSummary;
+}
+// znacky sa kreslia hned (riadky vznikaju synchronne), obsah sa doplni, ked dobehne jeden dopyt
+function zzz1cn_note_badges_paint() {
+  const map = zzz1cnNotesSummary || {};
+  document.querySelectorAll('.zzz1cn-note-badge').forEach(el => {
+    const key = el.dataset.zzz1cnEntry || '';
+    const hit = map[key];
+    el.className = 'zzz1cn-note-badge' + (hit ? (' has-notes' + zzz5w7_status_cls(hit.st)) : '');
+    el.textContent = hit ? String(hit.n) : '';
+    el.title = hit
+      ? `${hit.n} saved note${hit.n === 1 ? '' : 's'} - ${zzz5w7_status_word(hit.st)} is the least advanced one. Click = open Notes.`
+      : 'No saved notes yet';
+  });
+}
+// [Zzz1-CN:NOTE-BADGE] po ZAPISE (pribudla/ubudla poznamka, zmenil sa status) treba pocty prepocitat.
+// Zamerne NIE pri kazdom prekresleni chatu - to by bol dopyt navyse pri kazdom tuknuti; a zamerne len
+// vtedy, ked je vobec nejaka znacka v stranke.
+function zzz1cn_note_badges_refresh() {
+  if (!document.querySelector('.zzz1cn-note-badge')) return;
+  zzz1cn_notes_summary_load();
+}
+function zzz1cn_build_note_badge(entryId) {
+  const key = String(entryId || '');
+  const el = document.createElement('button');
+  el.type = 'button';
+  el.className = 'zzz1cn-note-badge';
+  el.dataset.zzz1cnEntry = key;
+  el.title = 'Notes';
+  el.addEventListener('click', (e) => {
+    e.stopPropagation();   // riadok ma vlastne gesta - znacka nesmie spustit aj ich
+    zzz1cn_open_list(key, el);
+  });
+  if (zzz1cnNotesSummary === null) zzz1cn_notes_summary_load();
+  return el;
+}
 
 // === [Zzz5-W7:HEAD-FIT] (SYSTEM FUNCTION) ZMESTI SA LISTA DO JEDNEJ RADY? ===========================
 // Nie hadanim z sirky displeja, ale MERANIM. Postup je nutne v tomto poradi: najprv sa trieda ODOBERIE
