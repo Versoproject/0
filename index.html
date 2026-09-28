@@ -10716,8 +10716,10 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   const cnPasses = (n, ord) => {
     const o = cnView.on;
     if (!cnStatusOk(n, o)) return false;
-    if (o.priv && !n.is_private) return false;
-    if (o.my && zzz10v1_normalize(n.username || '') !== zzz10v1_normalize(zzz0r1_get_current_username() || '')) return false;
+    // POZOR na kluce: zdielane kriteria ([Zzz5-W7:FILTER-BOX] ZZZ5W7_FILTERS) sa volaju 'private' a
+    // 'mine' - nie 'priv'/'my'. S vlastnymi menami by filter ticho prepustal vsetko.
+    if (o.private && !n.is_private) return false;
+    if (o.mine && zzz10v1_normalize(n.username || '') !== zzz10v1_normalize(zzz0r1_get_current_username() || '')) return false;
     if (cnView.at && Number(ord) !== Number(cnView.at)) return false;
     const nameQ = zzz10v1_normalize(String(cnView.name || '').trim());
     if (nameQ && !zzz10v1_normalize(n.note_name || '').includes(nameQ)) return false;
@@ -10750,19 +10752,29 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     }
   };
 
-  // === [Zzz1-CN:COMM-TOOLS] druha lista comm okna - SHOW (FILTER/HIDE), hladanie, SELECT, COPY, COPY ALL, ×.
-  // Vzhlad si berie z Notes okna (tie iste triedy), aby to boli VIDITELNE tie iste nastroje - user ich uz
-  // pozna a nema sa co znova ucit. ===
+  // === [Zzz1-CN:COMM-TOOLS] CHAT EDIT MODULE (Vrso 2026-09-28: "v tej vyhladavacej liste... nazvime chat
+  // edit module ... alebo NOTE EDIT MODULE") - druha lista comm okna: SHOW (FILTER/HIDE), hladanie,
+  // SELECT, COPY, COPY ALL, ×.
+  // Je to dvojicka k NOTE EDIT MODULE (hlavicka Notes okna, .zzz1cn-list-head): rovnake nastroje, rovnaky
+  // vzhlad, rovnake pravidla - len jeden pracuje nad chatom a druhy nad osnovou. SHOW box je dokonca
+  // doslova ten isty kod ([Zzz5-W7:FILTER-BOX]), takze sa uz nemaju ako rozist. ===
   const cnTools = document.createElement('div');
   // [Zzz1-CN:COMM-TOOLS] VLASTNA trieda, nie 'zzz1cn-list-head': tu uz nosi hlavicka Notes okna a
   // dve rozne listy s rovnakou triedou by sa navzajom nasli pri kazdom querySelector
   cnTools.className = 'zzz1cn-comm-tools';
+  cnTools.setAttribute('aria-label', 'Chat edit module');
 
-  // === [Zzz1-CN:COMM-TOOLS] SHOW (FILTER/HIDE) tu ZATIAL NIE JE ZAMERNE. Notes okno ma vlastny, 380
-  // riadkov dlhy filter box zrasteny so svojim uzáverom; skopirovat ho sem by znamenalo druhu kopiu tych
-  // istych pravidiel - presne to, co sme uz raz museli rozpliest pri zapise statusu. Filtracny STAV a
-  // pravidla (cnView / cnHide / cnPasses / cnApplyHide) su uz na mieste a feed ich pouziva, takze box sa
-  // na ne len napoji, ked sa z neho spravi jeden zdielany modul pre obe okna. ===
+  // [Zzz1-CN:COMM-TOOLS] SHOW okno - TEN ISTY modul ako v Notes ([Zzz5-W7:FILTER-BOX]), len napojeny na
+  // stav chatu. ORDER od-do tu nie je: chat nema osnovu, poradie v nom urcuje @, a to uz ma vlastne pole.
+  const cnFilter = zzz5w7_build_filter_box(cnView, cnHide, () => cnRefreshFeed(), {
+    withOrder: false,
+    alsoClear: () => [cnFindIn],
+    // [Zzz5-W7:USER-FIELD] do napovedy patri aj owner a oznaceni useri projektu, nielen autori sprav
+    extraUsers: () => zzz6f21_parse_tags(entryData['18'] || '')
+      .concat(zzz6f21_parse_tags(entryData['17'] || ''))
+      .concat([String(entryData['4'] || '')])
+  });
+  cnTools.appendChild(cnFilter.el);
   // --- hladanie v chate: krokuje po spravach, ktore sedia, a odroluje na ne ---
   const cnFindWrap = document.createElement('div');
   cnFindWrap.className = 'zzz5w7-findwrap';
@@ -10778,15 +10790,18 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   cnFindX.type = 'button';
   cnFindX.className = 'zzz1cn-note-btn zzz5w7-findbtn zzz5w7-findclear';
   cnFindX.textContent = '×';
+  // [Zzz5-W7:FIND-COUNT] filtracny informativny udaj - kolky vyskyt z kolkych
   const cnFindCount = document.createElement('span');
   cnFindCount.className = 'zzz5w7-findcount';
+  cnFindCount.title = 'Matches found - which one you are on, out of how many';
   const cnFindNext = document.createElement('button');
   cnFindNext.type = 'button';
   cnFindNext.className = 'zzz1cn-note-btn zzz5w7-findbtn';
   cnFindNext.textContent = '›';
+  // [Zzz5-W7:FIND-ORDER] rovnake poradie ako v Notes: ‹ | pole | › | pocet | ×
   cnFindWrap.appendChild(cnFindPrev); cnFindWrap.appendChild(cnFindIn);
-  cnFindWrap.appendChild(cnFindX); cnFindWrap.appendChild(cnFindCount);
-  cnFindWrap.appendChild(cnFindNext);
+  cnFindWrap.appendChild(cnFindNext); cnFindWrap.appendChild(cnFindCount);
+  cnFindWrap.appendChild(cnFindX);
   cnTools.appendChild(cnFindWrap);
 
   let cnFindIdx = -1;
@@ -10906,19 +10921,9 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
 
   // [Zzz1-CN:COMM-TOOLS] popisy sa obnovuju pri kazdom prekresleni feedu - inak by pocty zastarali
   box.insertBefore(cnTools, cnFeed);   // v DOM patri NAD feed, hoci vznika az po nom
-  cnToolsPaint = (all, shown) => {
-    const total = (all || []).length;
-    void (all); void (shown);
-    const onCount = Object.keys(cnView.on).filter(k => cnView.on[k]).length
-      + (cnView.at ? 1 : 0) + (String(cnView.show || '').trim() ? 1 : 0)
-      + (String(cnView.name || '').trim() ? 1 : 0)
-      + Object.keys(cnView.users).filter(k => cnView.users[k]).length
-      + (zzz5w7_user_tokens(cnView.usersq).length ? 1 : 0);
-    const hideCount = (String(cnHide.txt || '').trim() ? 1 : 0)
-      + (String(cnHide.nameq || '').trim() ? 1 : 0)
-      + ['ord', 'name', 'user', 'priv', 'open', 'progress', 'done', 'final'].filter(k => cnHide[k]).length
-      + Object.keys(cnHide.users).filter(k => cnHide.users[k]).length
-      + (zzz5w7_user_tokens(cnHide.usersq).length ? 1 : 0);
+  cnToolsPaint = (all) => {
+    // [Zzz5-W7:FILTER-BOX] zoznamy userov/nazvov aj pocty na tlacidle si dopocita zdielany modul sam
+    cnFilter.paint(all || [], zzz10v1_normalize((zzz0r1_get_current_username() || '').trim()));
     cnCopyBtn.textContent = cnSel.ids.size ? `COPY (${cnSel.ids.size})` : 'COPY';
     cnFindShow();
   };
@@ -24107,85 +24112,31 @@ function zzz5w7_dock_stop() {
   if (zzz5w7DockRO) { zzz5w7DockRO.disconnect(); zzz5w7DockRO = null; }
 }
 
-async function zzz1cn_open_list(entryKey, anchorEl) {
-  document.querySelectorAll('.zzz1cn-list-window').forEach(w => w.remove());
-  const win = document.createElement('div');
-  win.className = 'zzz1cn-list-window zzz5w7-ws';
+// [Zzz5-W7:FILTER-BOX] kriteria su spolocne pre obe okna, preto zijú mimo nich
+const ZZZ5W7_FILTERS = [
+  ['open',     'OPEN',     'nobody has started it yet'],
+  ['progress', 'PROGRESS', 'the author is working on it'],
+  ['done',     'DONE',     'the author finished it'],
+  ['final',    'FINAL',    'confirmed by the project owner'],
+  ['private',  'PRIVATE',  'visible to the author only'],
+  ['mine',     'MY',       'notes by the signed-in user']
+];
 
-  const head = document.createElement('div');
-  head.className = 'zzz1cn-list-head';
-  // Vrso 2026-09-25: "premenuj chatnotes na Notes" - pri ulozenom zazname sa ukaze aj jeho cislo,
-  // pri rozpisanej CL nie (draft kluc je interny identifikator, userovi nehovori nic).
-  // === [Zzz5-W7:ADD-IN-TITLE] Vrso 2026-09-28: "v standardnom note window teraz beha po lavej strane
-  // ADD NOTE... daj ho radsej do NOTE buttonu hore takouto formou: +add / NOTE. Stlacenim moze zobrazit
-  // chatnote line aj vpravo s reply buttonom a ako jeho sucast name (chatu)."
-  // +ADD NOTE bolo POD telom okna, teda az za stlpikom cisel - v nizkom (nemaximalizovanom) okne to
-  // vyzeralo, ako keby sa potlkalo medzi cislami. Gesto sa presuva do hlavicky, do bunky, ktora tam uz
-  // je: NOTES dostane nad seba riadok "+add" a stane sa z nej tlacidlo. Dvojtuknutie na nu maximalizuje
-  // okno tak ako doteraz, preto je to stale <span> (na <button> by dvojtuk nepresiel) a jednoduchy klik
-  // sa vyhodnocuje az s odstupom - inak by dvojtuk zaroven otvoril aj dva riadky na pridanie. ===
-  const title = document.createElement('span');
-  title.className = 'zzz5w7-title zzz5w7-title-add';
-  const titleAdd = document.createElement('span');
-  titleAdd.className = 'zzz5w7-title-plus';
-  titleAdd.textContent = '+add';
-  const titleName = document.createElement('span');
-  titleName.className = 'zzz5w7-title-word';
-  titleName.textContent = 'NOTE';
-  title.appendChild(titleAdd);
-  title.appendChild(titleName);
-  title.title = /^\d+$/.test(String(entryKey))
-    ? `NOTES #${entryKey} - click = new note (note line with reply # and name) / hold 1-2s = sub-note / double tap = full screen`
-    : 'NOTES - click = new note (note line with reply # and name) / hold 1-2s = sub-note / double tap = full screen';
-  head.appendChild(title);
-
-  // === [Zzz5-W7:NOTE-SELECT] Vrso 2026-09-25: "bolo by idealne ak by sa dal pouzit napr. Select button
-  // vyznacit chatnotes number/s a tie tiez vediet kopirovat (to dnes nejde vobec robit pri vyberani
-  // textu!!!!)". SELECT prepne stlpik cisel do oznacovacieho rezimu (klik = oznac/odznac, nie skok),
-  // COPY skopiruje PRESNE to, co je oznacene. Ked nie je oznacene ziadne cislo, COPY vezme rucne oznaceny
-  // text v poli - takze kopirovanie funguje OBOMA cestami a uz nezavisi od nativneho menu prehliadaca. ===
-  const selMode = { on: false };
-  const selected = new Set();   // kluc = note.id (stabilny), nie poradie
-
-  // === [Zzz5-W7:LIST-OWNER] Vrso 2026-09-28: "v statusoch v tomto note window nejde tiez oznacit FINAL
-  // zelenou."
-  // PRICINA nebola v tlacidle. Notes okno zistovalo project ownera z `entryData` - a to je PRACOVNY STAV
-  // COMMAND LINE, teda toho zaznamu, ktory mam prave rozpisany, nie toho, ktoreho poznamky citam. Ked
-  // bola CL prazdna alebo drzala INU entry (a to je pri otvorenom Notes okne bezne), vyslo `iAmOwner`
-  // ako false a FINAL sa v cykle vobec neobjavil. Rovnaky omyl sa tykal aj farby PROJECT-FLAG.
-  // Vlastnictvo sa preto berie zo ZAZNAMU, ku ktoremu poznamky patria: raz sa docita z verso_entries
-  // (fields_json.r4 = owner, r17/r18 = oznaceni useri) a okno sa prekresli. Kym sa nacitava - a pri
-  // draft kluci, ktory v DB este nie je - plati povodny zdroj, takze sa nic nezhorsi. ===
-  const listEntry = { loaded: false, owner: '', tags: '' };
-  const listFields = () => listEntry.loaded
-    ? { owner: listEntry.owner, tags: listEntry.tags }
-    : { owner: entryData['4'] || '', tags: `${entryData['18'] || ''}, ${entryData['17'] || ''}` };
-
-  // === [Zzz5-W7:NOTE-FILTER] Vrso 2026-09-25: "vytvor filter" + "bol by aj dobry filter podla statusu
-  // (prazdny zadany, oranzovou potvrdzuje oznaceny user/group/project users)" + "treba aj search funkciu
-  // na vyhladavanie aj name k note entries".
-  // FILTER NEMENI CISLA. Cislo je identita a viaze sa nan acknowledgement, takze sa nikdy neprecisluje -
-  // filter len zuzi, CO je v okne vidno. Presne to oddelenie identita/oznacenie z VERSO-CISLOVANIE.md:
-  // #47 ostane #47, aj ked je v zuzenom zozname treti. ===
-  // Vrso 2026-09-26: "co druha filter polozka ze status, to mi pride nezmyselne - treba namiesto toho
-  // PROGRESS (oznacuje iba user) a ked je task hotovy, owner zaznaci DONE" + "nutnost zaciarknut vo filtri
-  // viacere kriteria". Preto to uz NIE JE jednovyberovy <select>, ale zaskrtavacie kriteria.
-  // VIAC ZASKRTNUTYCH = poznamka musi splnat VSETKY (a nie alebo) - inak by "PRIVATE + MOJE" vratilo aj
-  // cudzie poznamky a nedalo by sa nim nic zuzit.
-  // [Zzz5-W7:STATUS-4] styri fazy, nie tri - DONE si zaznaci autor, FINAL potvrdi owner
-  const ZZZ5W7_FILTERS = [
-    ['open',     'OPEN',     'nobody has started it yet'],
-    ['progress', 'PROGRESS', 'the author is working on it'],
-    ['done',     'DONE',     'the author finished it'],
-    ['final',    'FINAL',    'confirmed by the project owner'],
-    ['private',  'PRIVATE',  'visible to the author only'],
-    ['mine',     'MY',       'notes by the signed-in user']
-  ];
-  const view = { on: {}, q: '', from: 0, to: 0, at: 0, name: '', show: '', users: {} };
-  // [Zzz5-W7:FILTER-HIDE] druha os - co sa ma ubrat z TEXTU. Zamerne vlastny objekt, nie dalsie polozky
-  // vo view: filter a hide sa nesmu pomiesat, lebo jeden meni zoznam a druhy len vypis.
-  const hide = { txt: '', ord: false, ordq: 0, name: false, user: false, priv: false, users: {},
-                 usersq: '', open: false, progress: false, done: false, final: false, nameq: '' };
+// === [Zzz5-W7:FILTER-BOX] (SYSTEM FUNCTION) SHOW OKNO - JEDEN MODUL PRE NOTES AJ PRE CHAT ============
+// Vrso 2026-09-28: "comm window/module v liste chyba SHOW window/module (taky ako v note module, akurat
+// ma samozrejme filtrovat chaty)."
+// Box bol 380 riadkov zrastenych s uzaverom Notes okna. Skopirovat ho do chatu by znamenalo druhu kopiu
+// tych istych pravidiel - a to sme uz raz platili pri zapise statusu, kde sa Notes a chat rozisli
+// (is_project na DONE vs. na FINAL) a nikto si toho mesiac nevsimol. Preto sa NEKOPIRUJE: box je odteraz
+// jedna funkcia, ktoru volaju obe okna, a od uzavera potrebuje uz len styri veci:
+//   view, hide   - stavove objekty daneho okna (kazde ma svoje)
+//   onChange()   - co spustit po zmene kriteria (Notes: prekreslenie; chat: obnovenie feedu)
+//   opts         - withOrder (ORDER od-do ma zmysel len v osnove Notes), alsoClear (dalsie polia, ktore
+//                  ma vycistit RESET - napr. vyhladavacie pole v hlavicke)
+// Vracia { el, btn, paint(notes, meN) }: `paint` doplni zoznamy userov a nazvov z REALNYCH zaznamov
+// a prepise pocty na tlacidle aj na taboch. ===
+function zzz5w7_build_filter_box(view, hide, onChange, opts) {
+  opts = opts || {};
   const filterSel = document.createElement('div');
   filterSel.className = 'zzz5w7-filter';
   const filterBtn = document.createElement('button');
@@ -24295,7 +24246,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   showIn.className = 'zzz5w7-namefil zzz5w7-showfield';
   showIn.placeholder = 'show only if it contains';
   showIn.title = 'Keeps only notes that contain this (name, text, user or number)';
-  showIn.addEventListener('input', () => { view.show = showIn.value; findIdxReset(); render(); });
+  showIn.addEventListener('input', () => { view.show = showIn.value; onChange(); });
   showRow.appendChild(showLab); showRow.appendChild(showIn);
   paneFilter.appendChild(showRow);
   // === [Zzz5-W7:FILTER-AT] Vrso 2026-09-26: "nad OPEN doplň poradove cislo, aby sa dalo vyfiltrovat iba to
@@ -24310,7 +24261,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   const atIn = document.createElement('input');
   atIn.type = 'number'; atIn.min = '1'; atIn.className = 'zzz5w7-range'; atIn.placeholder = 'no.';
   atIn.title = 'One outline position with all its sub-notes (a, b, ...)';
-  atIn.addEventListener('input', () => { view.at = parseInt(atIn.value, 10) || 0; findIdxReset(); render(); });
+  atIn.addEventListener('input', () => { view.at = parseInt(atIn.value, 10) || 0; onChange(); });
   atRow.appendChild(atLab); atRow.appendChild(atIn);
   paneFilter.appendChild(atRow);
 
@@ -24321,7 +24272,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.value = v;
-    cb.addEventListener('change', () => { view.on[v] = cb.checked; findIdxReset(); render(); });
+    cb.addEventListener('change', () => { view.on[v] = cb.checked; onChange(); });
     const sp = document.createElement('span');
     sp.textContent = t;
     lab.appendChild(cb); lab.appendChild(sp);
@@ -24342,10 +24293,10 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   [rangeFrom, rangeTo].forEach(el => el.addEventListener('input', () => {
     view.from = parseInt(rangeFrom.value, 10) || 0;
     view.to   = parseInt(rangeTo.value, 10) || 0;
-    findIdxReset(); render();
+    onChange();
   }));
   rangeRow.appendChild(rangeLab); rangeRow.appendChild(rangeFrom); rangeRow.appendChild(rangeTo);
-  paneFilter.appendChild(rangeRow);
+  if (opts.withOrder !== false) paneFilter.appendChild(rangeRow);
 
   // [Zzz5-W7:FILTER-NAME] Vrso 2026-09-26: "tiez filter by chatnote name"
   const nameRow = document.createElement('div');
@@ -24354,7 +24305,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   nameLab.textContent = 'NAME';
   const nameFil = document.createElement('input');
   nameFil.type = 'text'; nameFil.className = 'zzz5w7-namefil zzz5w7-namefield'; nameFil.placeholder = 'note name';
-  nameFil.addEventListener('input', () => { view.name = nameFil.value; findIdxReset(); render(); });
+  nameFil.addEventListener('input', () => { view.name = nameFil.value; onChange(); });
   nameRow.appendChild(nameLab); nameRow.appendChild(nameFil);
   // [Zzz5-W7:USER-FIELD] Vrso 2026-09-28: "NAME je fajn kriterium, ale umiestni ponad deliacu ciaru" -
   // NAME je kriterium ako ostatne, takze patri k nim; pod ciaru patria uz len useri
@@ -24398,7 +24349,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       mirror.appendChild(pre); mirror.appendChild(bad);
       wrap.classList.add('has-mirror');
     };
-    input.addEventListener('input', () => { onInput(input.value); paint(); findIdxReset(); render(); });
+    input.addEventListener('input', () => { onInput(input.value); paint(); onChange(); });
     return { row, input, paint };
   };
 
@@ -24429,7 +24380,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   hideTxtIn.className = 'zzz5w7-namefil zzz5w7-notfil zzz5w7-hidefield';
   hideTxtIn.placeholder = 'hide if it contains';
   hideTxtIn.title = 'Every occurrence of this disappears from the text - the note stays';
-  hideTxtIn.addEventListener('input', () => { hide.txt = hideTxtIn.value; findIdxReset(); render(); });
+  hideTxtIn.addEventListener('input', () => { hide.txt = hideTxtIn.value; onChange(); });
   hideTxtRow.appendChild(hideTxtLab); hideTxtRow.appendChild(hideTxtIn);
   paneHide.appendChild(hideTxtRow);
 
@@ -24445,7 +24396,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   hideAtIn.type = 'number'; hideAtIn.min = '1'; hideAtIn.className = 'zzz5w7-range'; hideAtIn.placeholder = 'no.';
   hideAtIn.title = 'Hides only this one working order (@N) from the text - the note stays';
   hideAtIn.addEventListener('input', () => {
-    hide.ordq = parseInt(hideAtIn.value, 10) || 0; findIdxReset(); render();
+    hide.ordq = parseInt(hideAtIn.value, 10) || 0; onChange();
   });
   hideAtRow.appendChild(hideAtLab); hideAtRow.appendChild(hideAtIn);
   paneHide.appendChild(hideAtRow);
@@ -24477,7 +24428,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.dataset.zzz5w7Hide = k;
-    cb.addEventListener('change', () => { hide[k] = cb.checked; findIdxReset(); render(); });
+    cb.addEventListener('change', () => { hide[k] = cb.checked; onChange(); });
     const sp = document.createElement('span');
     sp.textContent = t;
     lab.appendChild(cb); lab.appendChild(sp);
@@ -24540,8 +24491,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   hideNameIn.addEventListener('input', () => {
     hide.nameq = hideNameIn.value;
     paintHideName();
-    findIdxReset();
-    render();
+    onChange();
   });
 
   // [Zzz5-W7:FILTER-TABS] Vrso 2026-09-27: "reset bude resetovat aj filter aj hide tab" - jedno tlacidlo
@@ -24554,15 +24504,181 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     hide.open = false; hide.progress = false; hide.done = false; hide.final = false; hide.nameq = '';
     hideNameIn.value = ''; paintHideName();
     filterBox.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = false; });
-    [rangeFrom, rangeTo, atIn, hideAtIn, nameFil, showIn, hideTxtIn, searchIn,
-     usersField.input, hideUsersField.input].forEach(el => { if (el) el.value = ''; });
+    [rangeFrom, rangeTo, atIn, hideAtIn, nameFil, showIn, hideTxtIn,
+     usersField.input, hideUsersField.input]
+      .concat(typeof opts.alsoClear === 'function' ? (opts.alsoClear() || []) : (opts.alsoClear || []))
+      .forEach(el => { if (el) el.value = ''; });
     usersField.paint(); hideUsersField.paint();
-    findIdxReset();
-    render();
+    onChange();
   });
 
   // [Zzz5-W7:NOTE-FILTER] box sa zarovnava pod NOTES/FILTER (lavy okraj okna), nie pod samotne tlacidlo -
   // inak vybiehal doprava cez stlpik s cislami (Vrso 2026-09-26)
+
+  // [Zzz5-W7:FILTER-BOX] zoznamy sa plnia az zo skutocnych zaznamov, preto ich dopĺňa volajuci pri kazdom
+  // prekresleni - zaskrtnutia pritom drzi view/hide, nie DOM, takze sa prekreslenim nestracaju
+  const paint = (notes, meN) => {
+    const all = notes || [];
+    const seenU = {};
+    all.forEach(n => {
+      const u = String(n.username || '').trim();
+      if (u) seenU[zzz10v1_normalize(u)] = u;
+    });
+    // extraUsers smie byt aj funkcia - okno ho casto vie az v okamihu prekreslenia
+    const extra = typeof opts.extraUsers === 'function' ? (opts.extraUsers() || []) : (opts.extraUsers || []);
+    extra.forEach(u => {
+      const t = String(u || '').trim();
+      if (t) seenU[zzz10v1_normalize(t)] = t;
+    });
+    const paintUsers = (wrap, store) => {
+      wrap.innerHTML = '';
+      Object.keys(seenU).sort().forEach(k => {
+        const lab = document.createElement('label');
+        lab.className = 'zzz5w7-filteritem';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = !!store[k];
+        cb.addEventListener('change', () => { store[k] = cb.checked; onChange(); });
+        const sp = document.createElement('span');
+        sp.textContent = seenU[k];
+        // [Zzz1-CN:USER-GOLD] vlastny zlatou, cudzi bronzovou - rovnako ako v chate a v Notes stlpiku
+        sp.className = (k === meN ? 'zzz1r17b-own' : 'zzz1r17b-foreign');
+        lab.appendChild(cb); lab.appendChild(sp);
+        wrap.appendChild(lab);
+      });
+    };
+    paintUsers(usersWrap, view.users);
+    paintUsers(hideUsersWrap, hide.users);
+    const seenN = {};
+    all.forEach(n => {
+      const v = String(n.note_name || '').trim();
+      if (v) seenN[zzz10v1_normalize(v)] = v;
+    });
+    hideNameList = Object.keys(seenN).map(k => ({ norm: k, name: seenN[k] }));
+    paintHideName();
+    usersList = Object.keys(seenU).map(k => ({ norm: k, name: seenU[k] }));
+    usersField.paint();
+    hideUsersField.paint();
+
+    const onCount = Object.keys(view.on).filter(k => view.on[k]).length
+      + ((view.from || view.to) ? 1 : 0)
+      + (view.at ? 1 : 0)
+      + (String(view.name || '').trim() ? 1 : 0)
+      + (String(view.show || '').trim() ? 1 : 0)
+      + Object.keys(view.users).filter(k => view.users[k]).length
+      + (zzz5w7_user_tokens(view.usersq).length ? 1 : 0)
+      + (String(view.q || '').trim() ? 1 : 0);
+    const hideCount = (String(hide.txt || '').trim() ? 1 : 0)
+      + (String(hide.nameq || '').trim() ? 1 : 0)
+      + (hide.ordq ? 1 : 0)
+      + ['ord', 'name', 'user', 'priv', 'open', 'progress', 'done', 'final'].filter(k => hide[k]).length
+      + Object.keys(hide.users).filter(k => hide.users[k]).length
+      + (zzz5w7_user_tokens(hide.usersq).length ? 1 : 0);
+    filterBtn.textContent = onCount ? `SHOW (${onCount})` : 'SHOW';
+    filterBtn.classList.toggle('is-on', onCount > 0);
+    filterBtn.classList.toggle('has-hide', hideCount > 0);
+    filterBtn.title = (onCount ? `${onCount} filter criteria - narrows the list. ` : 'Narrows the list - numbers do NOT change. ')
+      + (hideCount ? `${hideCount} HIDE rules - parts of the text are hidden.` : '');
+    tabHide.textContent = hideCount ? `HIDE (${hideCount})` : 'HIDE';
+    // [Zzz5-W7:SHOW-RENAME] tab je FILTER; SHOW ostava nazvom OKNA
+    tabFilter.textContent = onCount ? `FILTER (${onCount})` : 'FILTER';
+    filterTitle.classList.toggle('is-hide', paneHide.style.visibility !== 'hidden');
+    return { onCount, hideCount };
+  };
+
+  filterSel.appendChild(filterBtn);
+  filterSel.appendChild(filterBox);
+  filterBtn.addEventListener('click', () => {
+    filterBox.style.display = filterBox.style.display === 'none' ? '' : 'none';
+  });
+  return { el: filterSel, box: filterBox, btn: filterBtn, paint };
+}
+
+async function zzz1cn_open_list(entryKey, anchorEl) {
+  document.querySelectorAll('.zzz1cn-list-window').forEach(w => w.remove());
+  const win = document.createElement('div');
+  win.className = 'zzz1cn-list-window zzz5w7-ws';
+
+  // [Zzz1-CN:COMM-TOOLS] NOTE EDIT MODULE - dvojicka k CHAT EDIT MODULE v comm okne
+  const head = document.createElement('div');
+  head.className = 'zzz1cn-list-head';
+  head.setAttribute('aria-label', 'Note edit module');
+  // Vrso 2026-09-25: "premenuj chatnotes na Notes" - pri ulozenom zazname sa ukaze aj jeho cislo,
+  // pri rozpisanej CL nie (draft kluc je interny identifikator, userovi nehovori nic).
+  // === [Zzz5-W7:ADD-IN-TITLE] Vrso 2026-09-28: "v standardnom note window teraz beha po lavej strane
+  // ADD NOTE... daj ho radsej do NOTE buttonu hore takouto formou: +add / NOTE. Stlacenim moze zobrazit
+  // chatnote line aj vpravo s reply buttonom a ako jeho sucast name (chatu)."
+  // +ADD NOTE bolo POD telom okna, teda az za stlpikom cisel - v nizkom (nemaximalizovanom) okne to
+  // vyzeralo, ako keby sa potlkalo medzi cislami. Gesto sa presuva do hlavicky, do bunky, ktora tam uz
+  // je: NOTES dostane nad seba riadok "+add" a stane sa z nej tlacidlo. Dvojtuknutie na nu maximalizuje
+  // okno tak ako doteraz, preto je to stale <span> (na <button> by dvojtuk nepresiel) a jednoduchy klik
+  // sa vyhodnocuje az s odstupom - inak by dvojtuk zaroven otvoril aj dva riadky na pridanie. ===
+  const title = document.createElement('span');
+  title.className = 'zzz5w7-title zzz5w7-title-add';
+  const titleAdd = document.createElement('span');
+  titleAdd.className = 'zzz5w7-title-plus';
+  titleAdd.textContent = '+add';
+  const titleName = document.createElement('span');
+  titleName.className = 'zzz5w7-title-word';
+  titleName.textContent = 'NOTE';
+  title.appendChild(titleAdd);
+  title.appendChild(titleName);
+  title.title = /^\d+$/.test(String(entryKey))
+    ? `NOTES #${entryKey} - click = new note (note line with reply # and name) / hold 1-2s = sub-note / double tap = full screen`
+    : 'NOTES - click = new note (note line with reply # and name) / hold 1-2s = sub-note / double tap = full screen';
+  head.appendChild(title);
+
+  // === [Zzz5-W7:NOTE-SELECT] Vrso 2026-09-25: "bolo by idealne ak by sa dal pouzit napr. Select button
+  // vyznacit chatnotes number/s a tie tiez vediet kopirovat (to dnes nejde vobec robit pri vyberani
+  // textu!!!!)". SELECT prepne stlpik cisel do oznacovacieho rezimu (klik = oznac/odznac, nie skok),
+  // COPY skopiruje PRESNE to, co je oznacene. Ked nie je oznacene ziadne cislo, COPY vezme rucne oznaceny
+  // text v poli - takze kopirovanie funguje OBOMA cestami a uz nezavisi od nativneho menu prehliadaca. ===
+  const selMode = { on: false };
+  const selected = new Set();   // kluc = note.id (stabilny), nie poradie
+
+  // === [Zzz5-W7:LIST-OWNER] Vrso 2026-09-28: "v statusoch v tomto note window nejde tiez oznacit FINAL
+  // zelenou."
+  // PRICINA nebola v tlacidle. Notes okno zistovalo project ownera z `entryData` - a to je PRACOVNY STAV
+  // COMMAND LINE, teda toho zaznamu, ktory mam prave rozpisany, nie toho, ktoreho poznamky citam. Ked
+  // bola CL prazdna alebo drzala INU entry (a to je pri otvorenom Notes okne bezne), vyslo `iAmOwner`
+  // ako false a FINAL sa v cykle vobec neobjavil. Rovnaky omyl sa tykal aj farby PROJECT-FLAG.
+  // Vlastnictvo sa preto berie zo ZAZNAMU, ku ktoremu poznamky patria: raz sa docita z verso_entries
+  // (fields_json.r4 = owner, r17/r18 = oznaceni useri) a okno sa prekresli. Kym sa nacitava - a pri
+  // draft kluci, ktory v DB este nie je - plati povodny zdroj, takze sa nic nezhorsi. ===
+  const listEntry = { loaded: false, owner: '', tags: '' };
+  const listFields = () => listEntry.loaded
+    ? { owner: listEntry.owner, tags: listEntry.tags }
+    : { owner: entryData['4'] || '', tags: `${entryData['18'] || ''}, ${entryData['17'] || ''}` };
+
+  // === [Zzz5-W7:NOTE-FILTER] Vrso 2026-09-25: "vytvor filter" + "bol by aj dobry filter podla statusu
+  // (prazdny zadany, oranzovou potvrdzuje oznaceny user/group/project users)" + "treba aj search funkciu
+  // na vyhladavanie aj name k note entries".
+  // FILTER NEMENI CISLA. Cislo je identita a viaze sa nan acknowledgement, takze sa nikdy neprecisluje -
+  // filter len zuzi, CO je v okne vidno. Presne to oddelenie identita/oznacenie z VERSO-CISLOVANIE.md:
+  // #47 ostane #47, aj ked je v zuzenom zozname treti. ===
+  // Vrso 2026-09-26: "co druha filter polozka ze status, to mi pride nezmyselne - treba namiesto toho
+  // PROGRESS (oznacuje iba user) a ked je task hotovy, owner zaznaci DONE" + "nutnost zaciarknut vo filtri
+  // viacere kriteria". Preto to uz NIE JE jednovyberovy <select>, ale zaskrtavacie kriteria.
+  // VIAC ZASKRTNUTYCH = poznamka musi splnat VSETKY (a nie alebo) - inak by "PRIVATE + MOJE" vratilo aj
+  // cudzie poznamky a nedalo by sa nim nic zuzit.
+  // [Zzz5-W7:STATUS-4] styri fazy, nie tri - DONE si zaznaci autor, FINAL potvrdi owner
+  const view = { on: {}, q: '', from: 0, to: 0, at: 0, name: '', show: '', users: {} };
+  // [Zzz5-W7:FILTER-HIDE] druha os - co sa ma ubrat z TEXTU. Zamerne vlastny objekt, nie dalsie polozky
+  // vo view: filter a hide sa nesmu pomiesat, lebo jeden meni zoznam a druhy len vypis.
+  const hide = { txt: '', ord: false, ordq: 0, name: false, user: false, priv: false, users: {},
+                 usersq: '', open: false, progress: false, done: false, final: false, nameq: '' };
+  // [Zzz5-W7:FILTER-BOX] box uz nie je stavany tu - je to zdielany modul, ktory pouziva aj chat
+  let searchInRef = null;   // vyhladavacie pole vznika nizsie; RESET ho ma vycistit tiez
+  const notesFilter = zzz5w7_build_filter_box(view, hide, () => { findIdxReset(); render(); }, {
+    alsoClear: () => [searchInRef],
+    // [Zzz5-W7:USER-FIELD] do napovedy patri aj owner a oznaceni useri projektu - teda aj ti, co este
+    // nic nenapisali; inak by sa ich meno nedalo vypisat
+    extraUsers: () => { const f = listFields();
+      return zzz6f21_parse_tags(f.tags || '').concat([String(f.owner || '')]); }
+  });
+  const filterSel = notesFilter.el;
+  const filterBtn = notesFilter.btn;
+  const filterBox = notesFilter.box;
   win.appendChild(filterBox);
 
   // === [Zzz5-W7:FILTER-MOVE] Vrso 2026-09-27: "podrzanim filter window by sa mala dat posuvat filter
@@ -24642,14 +24758,14 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   win.addEventListener('mouseleave', fmEnd);
   // pocas presunu sa nesmie zacat vyber textu, inak sa gesto zmeni na oznacovanie
   filterBox.addEventListener('selectstart', (e) => { if (fmHold && e.cancelable) e.preventDefault(); });
+  // [Zzz5-W7:FILTER-BOX] zdielany modul si prepina zobrazenie sam; Notes okno k tomu este dopocita
+  // polohu pod hlavicku, kym si box user sam neposunul
   filterBtn.addEventListener('click', () => {
-    const willOpen = filterBox.style.display === 'none';
-    filterBox.style.display = willOpen ? '' : 'none';
+    const willOpen = filterBox.style.display !== 'none';
     // [Zzz5-W7:FILTER-MOVE] pod hlavicku sa vracia LEN dovtedy, kym si ho user sam neposunul - inak by mu
     // kazde zatvorenie a otvorenie zahodilo miesto, ktore si vybral
     if (willOpen && !filterMoved) filterBox.style.top = (head.offsetTop + head.offsetHeight + 2) + 'px';
   });
-  filterSel.appendChild(filterBtn);
   head.appendChild(filterSel);
 
   // === [Zzz5-W7:FIND] Vrso 2026-09-26: "dal som hladat test a naslo raz" + "dorob sipku vlavo vyhlada
@@ -24660,6 +24776,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   //   sipky     = prechadzaju JEDNOTLIVE VYSKYTY v texte a kazdy oznacia
   //   pocitadlo = "3/11", takze je vidno, kolko ich vobec je
   const searchIn = document.createElement('input');
+  searchInRef = searchIn;   // [Zzz5-W7:FILTER-BOX] aby ho RESET v SHOW okne vedel vycistit
   searchIn.type = 'text';
   searchIn.className = 'zzz5w7-search';
   searchIn.placeholder = 'search (name/text/user)';
@@ -24684,23 +24801,13 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   findPrev.className = 'zzz1cn-note-btn zzz5w7-findbtn';
   findPrev.textContent = '‹';
   findPrev.title = 'Previous match';
+  // === [Zzz5-W7:FIND-ORDER] Vrso 2026-09-28: "search bunky uprav, aby vedla bunky, kde sa hlada, napravo
+  // bola sipka doprava, potom filtracny informativny udaj a az potom × ako reset search."
+  // Poradie kopiruje to, ako sa riadok pouziva: pisem -> krokujem -> pozriem, kolko toho je -> zrusim.
+  // Predtym stalo × hned za textom, takze medzi obe sipky sa vklinilo nieco, co s krokovanim nesuvisi,
+  // a reset - ten najzriedkavejsi ukon - bol na najlepsom mieste. ===
   findWrap.appendChild(findPrev);
   findWrap.appendChild(searchIn);
-
-  // === [Zzz5-W7:FIND] Vrso 2026-09-27: "chyba tam x (reset)... asi idealne na konci vpisovania
-  // vyhladavania". Vymazat hladany vyraz sa dalo len po znakoch - a pole pritom zuzuje CELY zoznam, takze
-  // nedomazany zvysok tichom schoval vsetky poznamky ("No note matches the filter"). × je preto hned za
-  // textom, kde pisanie konci, a vracia zoznam do plneho stavu jednym tuknutim. ===
-  const findClear = document.createElement('button');
-  findClear.type = 'button';
-  findClear.className = 'zzz1cn-note-btn zzz5w7-findbtn zzz5w7-findclear';
-  findClear.textContent = '\u00d7';
-  findClear.title = 'Clear the search';
-  findWrap.appendChild(findClear);
-
-  const findCount = document.createElement('span');
-  findCount.className = 'zzz5w7-findcount';
-  findWrap.appendChild(findCount);
 
   const findNext = document.createElement('button');
   findNext.type = 'button';
@@ -24708,6 +24815,25 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   findNext.textContent = '›';
   findNext.title = 'Next match';
   findWrap.appendChild(findNext);
+
+  // [Zzz5-W7:FIND-COUNT] FILTRACNY INFORMATIVNY UDAJ - kolky vyskyt z kolkych prave stojim ("2/7").
+  // Nie je to tlacidlo a nic nevyvolava; je to jediny udaj v riadku, ktory hovori, ci hladanie vobec nieco
+  // naslo - preto stoji medzi krokovanim a resetom, teda presne tam, kde sa oko pyta "a kolko ich je?".
+  const findCount = document.createElement('span');
+  findCount.className = 'zzz5w7-findcount';
+  findCount.title = 'Matches found - which one you are on, out of how many';
+  findWrap.appendChild(findCount);
+
+  // === [Zzz5-W7:FIND] Vrso 2026-09-27: "chyba tam x (reset)... asi idealne na konci vpisovania
+  // vyhladavania". Vymazat hladany vyraz sa dalo len po znakoch - a pole pritom zuzuje CELY zoznam, takze
+  // nedomazany zvysok tichom schoval vsetky poznamky ("No note matches the filter"). × vracia zoznam do
+  // plneho stavu jednym tuknutim a [Zzz5-W7:FIND-ORDER] ho dava na KONIEC riadku. ===
+  const findClear = document.createElement('button');
+  findClear.type = 'button';
+  findClear.className = 'zzz1cn-note-btn zzz5w7-findbtn zzz5w7-findclear';
+  findClear.textContent = '\u00d7';
+  findClear.title = 'Clear the search';
+  findWrap.appendChild(findClear);
 
   const selBtn = document.createElement('button');
   selBtn.type = 'button';
@@ -25240,89 +25366,10 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     findShow();   // [Zzz5-W7:FIND] pocitadlo vyskytov po prekresleni
     // [Zzz5-W7:NOTE-FILTER] na tlacidle musi byt vidno, ze filter BEZI - inak sa user cuduje, preco
     // zoznam nesedi s celkom (presne to Vrso nahlasil: "po filtraciach nesedi ich celkovy pocet")
-    // [Zzz5-W7:FILTER-USERS] zoznam userov sa berie z poznamok, ktore realne su - prekresluje sa pri kazdom
-    // render, ale zaskrtnutie sa zachova (drzi ho view.users, nie DOM)
-    const seenU = {};
-    allNotes.forEach(n => {
-      const u = String(n.username || '').trim();
-      if (u) seenU[zzz10v1_normalize(u)] = u;
-    });
-    // [Zzz5-W7:FILTER-HIDE] ten isty zoznam userov v OBOCH taboch, ale s roznym ucinkom: vo FILTER
-    // necha len ich poznamky, v HIDE vypne ich meno z textu. Preto sa kreslia dva, nie jeden zdielany.
-    const paintUsers = (wrap, store) => {
-      wrap.innerHTML = '';
-      Object.keys(seenU).sort().forEach(k => {
-        const lab = document.createElement('label');
-        lab.className = 'zzz5w7-filteritem';
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.checked = !!store[k];
-        cb.addEventListener('change', () => { store[k] = cb.checked; findIdxReset(); render(); });
-        const sp = document.createElement('span');
-        sp.textContent = seenU[k];
-        // [Zzz1-CN:USER-GOLD] vlastny zlatou, cudzi bronzovou - rovnako ako v chate a v Notes stlpiku
-        sp.className = (k === meN ? 'zzz1r17b-own' : 'zzz1r17b-foreign');
-        lab.appendChild(cb); lab.appendChild(sp);
-        wrap.appendChild(lab);
-      });
-    };
-    paintUsers(usersWrap, view.users);
-    paintUsers(hideUsersWrap, hide.users);
-    // [Zzz5-W7:HIDE-NAME] zoznam nazvov pre zelenu napovedu - z poznamok, ktore realne su
-    const seenN = {};
-    allNotes.forEach(n => {
-      const v = String(n.note_name || '').trim();
-      if (v) seenN[zzz10v1_normalize(v)] = v;
-    });
-    hideNameList = Object.keys(seenN).map(k => ({ norm: k, name: seenN[k] }));
-    paintHideName();
-    // === [Zzz5-W7:USER-FIELD] zoznam pre zelenu napovedu v poli USERS. Berie sa zo VSETKYCH userov, ktori
-    // v okne realne vystupuju - teda autori poznamok AJ oznaceni useri projektu (contacts). Vrso: "idealne
-    // tym vyhladavacim sposobom, ak pismeno je v projektovych/vlastnych kontaktoch" - meno, ktore v projekte
-    // je, ale este nic nenapisalo, sa tym padom da vypisat tiez. ===
-    const seenAll = {};
-    Object.keys(seenU).forEach(k => { seenAll[k] = seenU[k]; });
-    // [Zzz5-W7:LIST-OWNER] owner a oznaceni useri sa citaju z toho isteho zdroja ako inde v okne;
-    // volame to tu znova, lebo tento blok bezi v render() SKOR nez samotny vypocet ownera nizsie
-    const lfU = listFields();
-    zzz6f21_parse_tags(lfU.tags || '').forEach(u => {
-      const t = String(u || '').trim();
-      if (t) seenAll[zzz10v1_normalize(t)] = t;
-    });
-    const ownU = String(lfU.owner || '').trim();
-    if (ownU) seenAll[zzz10v1_normalize(ownU)] = ownU;
-    usersList = Object.keys(seenAll).map(k => ({ norm: k, name: seenAll[k] }));
-    usersField.paint();
-    hideUsersField.paint();
-
-    const onCount = Object.keys(view.on).filter(k => view.on[k]).length
-      + ((view.from || view.to) ? 1 : 0)
-      + (view.at ? 1 : 0)
-      + (view.name.trim() ? 1 : 0)
-      + (view.show.trim() ? 1 : 0)
-      + Object.keys(view.users).filter(k => view.users[k]).length
-      + (zzz5w7_user_tokens(view.usersq).length ? 1 : 0)   // [Zzz5-W7:USER-FIELD]
-      + (view.q.trim() ? 1 : 0);
-    // === [Zzz5-W7:FILTER-TABS] obe osi musia byt vidno UZ ZVONKU - kto si nieco schoval, by inak hladal,
-    // preco v texte nieco chyba. Cislo hide pravidiel ale NEIDE do popisu tlacidla: hlavicka Notes okna je
-    // na telefone uz tak nabita, ze dlhsi popis stlaci vyhladavacie pole pod citatelnost. Preto:
-    //   pocet FILTROV  = v popise (zuzuje zoznam, to je hlavna vec)
-    //   pocet HIDE     = na tabe vnutri boxu + cerveny ram tlacidla zvonku
-    const hideCount = (hide.txt.trim() ? 1 : 0) + (hide.nameq.trim() ? 1 : 0)
-      + (hide.ordq ? 1 : 0)   // [Zzz5-W7:HIDE-AT] vypisane @ cislo je tiez pravidlo, nech sa pocita
-      + ['ord', 'name', 'user', 'priv', 'open', 'progress', 'done', 'final'].filter(k => hide[k]).length
-      + Object.keys(hide.users).filter(k => hide.users[k]).length
-      + (zzz5w7_user_tokens(hide.usersq).length ? 1 : 0);   // [Zzz5-W7:USER-FIELD]
-    filterBtn.textContent = onCount ? `SHOW (${onCount})` : 'SHOW';
-    filterBtn.classList.toggle('is-on', onCount > 0);
-    filterBtn.classList.toggle('has-hide', hideCount > 0);
-    filterBtn.title = (onCount ? `${onCount} filter criteria - narrows the list. ` : 'Narrows the list - note numbers do NOT change. ')
-      + (hideCount ? `${hideCount} HIDE rules - parts of the text are hidden.` : '');
-    tabHide.textContent = hideCount ? `HIDE (${hideCount})` : 'HIDE';
-    // [Zzz5-W7:SHOW-RENAME] tab je FILTER; SHOW ostava nazvom OKNA (tlacidlo v hlavicke + titulok)
-    tabFilter.textContent = onCount ? `FILTER (${onCount})` : 'FILTER';
-    // [Zzz5-W7:SHOW-RENAME] nazov okna nesie farbu toho tabu, v ktorom prave si - tak ako zaskrtnuty tab
-    filterTitle.classList.toggle('is-hide', paneHide.style.visibility !== 'hidden');
+    // [Zzz5-W7:FILTER-BOX] zoznamy userov a nazvov aj pocty na tlacidle/taboch dopĺňa zdielany modul -
+    // dostane realne zaznamy a sam si z nich postavi, co potrebuje
+    const lfBox = listFields();
+    notesFilter.paint(allNotes, meN);
     // [Zzz5-W7:LIST-OWNER] owner TOHTO zaznamu, nie toho rozpisaneho v command line
     const lf = listFields();
     const owner = zzz10v1_normalize(String(lf.owner || '').trim());
