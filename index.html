@@ -2499,6 +2499,22 @@ body{margin:0;color:#fff;font-family:sans-serif;}
      hranica teda neplatila a lista aj tak vytiekla von z okna.
      Preto sa uz nehada: zzz5w7_fit_head() v JS ZMERIA, ci sa riadok zmestil, a az podla toho nasadi
      triedu is-wrapped. Plati to pri kazdej sirke, kazdom zoome aj velkosti pisma. === */
+  /* [Zzz5-W7:HEAD-FIT] 2. stupen - lista sa najprv skusi ZMESTIT zmensenim, a az ked to nestaci, zalomi */
+  .zzz1cn-list-head.is-tight,
+  .zzz1cn-comm-tools.is-tight { gap: 4px; }
+  .is-tight .zzz1cn-note-btn { padding: 5px 7px !important; }
+  .is-tight .zzz5w7-filterbtn { padding: 4px 7px !important; }
+  .is-tight .zzz5w7-title-add,
+  .is-tight .zzz1cn-chat-cell { padding: 4px 7px !important; }
+  /* pole hladania ustupuje PRVE a smie sa zmrastit takmer na nic - je to jediny prvok, ktory sa da
+     zmensit bez straty informacie (text v nom sa da doscrollovat), zatial co popis tlacidla nie */
+  .is-tight .zzz5w7-findwrap { flex: 1 1 40px; }
+  /* POZOR: min-width samo nestaci. Obal ma min-width: min-content a min-content <input>u sa pocita z jeho
+     PREDVOLENEJ sirky (~20 znakov), nie z min-width - obal sa preto nezmrastil pod ~264 px a lista sa
+     zalamovala aj tam, kde na nu bolo miesto. Vyslovna `width` tu preferovanu sirku prepise, takze
+     min-content obalu klesne na sucet jeho ovladacich prvkov. */
+  .is-tight .zzz5w7-findwrap .zzz5w7-search { width: 24px; min-width: 20px; flex: 1 1 24px; }
+  .is-tight .zzz5w7-findcount { min-width: 18px; }
   .zzz1cn-list-head.is-wrapped,
   .zzz1cn-comm-tools.is-wrapped { flex-wrap: wrap; row-gap: 6px; gap: 4px; }
   .is-wrapped > .zzz5w7-headbreak { display: block; width: 100%; height: 0; margin: 0; }
@@ -10850,6 +10866,9 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   cnFindIn.type = 'text';
   cnFindIn.className = 'zzz5w7-search';
   cnFindIn.placeholder = 'search (name/text/user)';
+  // [Zzz5-W7:HEAD-FIT] v chat liste je pole PRUZNE a s malym zakladom - ked sa lista tlaci, ustupuje ono,
+  // nie tlacidla; vdaka tomu sa zmesti do jednej rady aj pri vacsom systemovom pisme
+  cnFindIn.style.cssText = 'flex: 1 1 70px; min-width: 24px;';
   const cnFindX = document.createElement('button');
   cnFindX.type = 'button';
   cnFindX.className = 'zzz1cn-note-btn zzz5w7-findbtn zzz5w7-findclear';
@@ -10967,21 +10986,9 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   });
   cnTools.appendChild(cnCopyAll);
 
-  // --- × zatvara CELY communication modul ---
-  const cnCloseBtn = document.createElement('button');
-  cnCloseBtn.type = 'button';
-  cnCloseBtn.className = 'zzz1cn-note-btn zzz5w7-closebtn';
-  cnCloseBtn.textContent = '×';
-  cnCloseBtn.title = 'Close the communication module';
-  cnCloseBtn.setAttribute('aria-label', 'Close communication');
-  cnCloseBtn.addEventListener('click', () => {
-    document.querySelectorAll('.zzz1cn-list-window').forEach(w => w.remove());   // Notes patria k nemu
-    const host = box.closest('.context-window-stack') || box.parentElement;
-    box.remove();
-    if (host && !host.children.length) host.innerHTML = '';
-    zzz1cn_sync_anchor_mode();
-  });
-  cnTools.appendChild(cnCloseBtn);
+  // === [Zzz1-CN:COMM-TOOLS] Vrso 2026-09-28: "tu nemusi byt ich × close button, vsak to je sucast chatu
+  // resp. comm window." Presne tak - comm okno sa zatvara svojim vlastnym ZATVORIT dole. Druhy zatvaraci
+  // prvok tu nic nepridaval, len bral sirku, ktoru lista potrebuje na to, aby ostala JEDNORIADKOVA. ===
 
   // [Zzz1-CN:COMM-TOOLS] popisy sa obnovuju pri kazdom prekresleni feedu - inak by pocty zastarali
   box.insertBefore(cnTools, cnFeed);   // v DOM patri NAD feed, hoci vznika az po nom
@@ -19688,6 +19695,17 @@ function zzz4_0_build_entry_row(row) {
     // [Zzz1-CN:NOTE-BADGE] znacka ide do bunky COMMUNICATION - poznamky su komunikacia, takze patri k nej
     if (field.wrap === 'info-wrap' && entryIdForRow !== '') {
       wrapEl.appendChild(zzz1cn_build_note_badge(entryIdForRow));
+      // === [Zzz1-CN:NOTE-HOLD] Vrso 2026-09-28: "suhlasim, nech sa notes otvaraju podrzanim comm bunky
+      // v CRM 1-2s."
+      // Povodne si chcel podrzanie na ENTRY NUMBER - to ale uz 1,2-3s pouziva [Zzz6-F29:HOLD-SELECT] na
+      // oznacenie celeho riadku (a 3s+ na oznacenie vsetkych), takze by sa o gesto pobili. Bunka
+      // COMMUNICATION je volna a je to to iste miesto, kde uz sedi znacka - jedno miesto, dve cesty:
+      // tuknutie na znacku alebo podrzanie kdekolvek v bunke. ===
+      zzz_bind_long_press(wrapEl, 1200, () => {
+        zzz_haptic_pulse(30);
+        zzz1cn_open_list(String(entryIdForRow), wrapEl);
+      });
+      wrapEl.title = 'COMMUNICATION - hold 1-2s = Notes of this entry';
     }
     rowEl.appendChild(wrapEl);
   });
@@ -24281,12 +24299,27 @@ function zzz1cn_build_note_badge(entryId) {
 // (inak by sa meralo uz zalomene rozlozenie, ktore nepreteka nikdy, a lista by sa uz nikdy nevratila do
 // jednej rady), potom sa precita, ci obsah presahuje, a az potom sa trieda pripadne nasadi spat.
 // Jedno precitanie scrollWidth = jeden reflow; bezi len pri zmene rozmeru, takze to nic nestoji.
+// === OPRAVA (Vrso 2026-09-28: "Notes modul si rovnako pokazilo. Do jedneho riadku ten SHOW bar! Uz to
+// tak bolo, tak naco menis, co ta neziadam"). MAL SOM PRAVDU V DIAGNOZE, ALE ZLE PORADIE KROKOV: zistil
+// som, ze lista pretekala, a rovno som ju zalomil - hoci si ziadal "zmensi search bunku, ak treba,
+// pripadne ostatne". Zalomenie bolo az posledna moznost, nie prva.
+// Postup je teda TROJSTUPNOVY a v tomto poradi:
+//   1. zmesti sa tak, ako je?            -> hotovo
+//   2. nie -> is-tight (tesnejsie tlacidla, pole sa smie zmrastit takmer na nic) a zmeraj znova
+//   3. stale nie -> az teraz is-wrapped (druha rada)
+// Kazdy stupen sa meria s ODOBRATYMI vyssimi stupnami, inak by sa merlo uz upravene rozlozenie a lista
+// by sa uz nikdy nevratila spat do jednej rady.
 function zzz5w7_fit_head(el) {
   if (!el || !el.isConnected) return;
   const had = el.classList.contains('is-wrapped');
   el.classList.remove('is-wrapped');
-  const over = el.scrollWidth > el.clientWidth + 1;
-  if (over) el.classList.add('is-wrapped');
+  el.classList.remove('is-tight');
+  let over = el.scrollWidth > el.clientWidth + 1;
+  if (over) {
+    el.classList.add('is-tight');          // 2. najprv zmensit
+    over = el.scrollWidth > el.clientWidth + 1;
+  }
+  if (over) el.classList.add('is-wrapped'); // 3. az potom zalomit
   if (had !== over) {
     // vyska listy sa zmenila - okna, ktore sa dopasovavaju na podlahu, to musia zohladnit
     if (typeof zzz1cn_fit_comm_window === 'function') zzz1cn_fit_comm_window();
