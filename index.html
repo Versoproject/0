@@ -2993,12 +2993,16 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     background-color: transparent;
     cursor: pointer;
   }
-  /* [Zzz5-W7:NOTE-STATUS] ORANZOVA = PROGRESS (oznacuje si autor sam), ZELENA/DONE = potvrdil owner.
-     Solo projekt (owner je sam) ma DONE zelene, viacclenny tmavozelene - aby bolo vidno, ze to potvrdenie
-     nieco znamena aj voci ostatnym. */
+  /* [Zzz5-W7:STATUS-4] styri fazy, tri z nich vedie AUTOR a poslednu OWNER:
+       prazdny  OPEN      - este sa toho nikto nechytil
+       oranzova PROGRESS  - autor na tom robi
+       seda     DONE      - autor skoncil ("mam hotovo")
+       zelena   FINAL     - owner to potvrdil
+     Seda je zamerne tlmena: "hotovo" je vyrok o sebe, potvrdenie este nema. Zelena je jedina, ktora nieco
+     uzatvara, preto je jedina vyrazna. */
   .zzz5w7-proj.is-progress { background-color: #ea8c00; border-color: #ea8c00; }
-  .zzz5w7-proj.is-on-multi { background-color: #166534; border-color: #166534; }
-  .zzz5w7-proj.is-on-solo  { background-color: #1e7e34; border-color: #1e7e34; }
+  .zzz5w7-proj.is-done     { background-color: #9ca3af; border-color: #9ca3af; }
+  .zzz5w7-proj.is-final    { background-color: #1e7e34; border-color: #1e7e34; }
   .zzz5w7-proj[disabled]   { cursor: default; opacity: 0.45; }
   /* oznacenie (name) vpravo od cisla - volitelne, preto sa pri prazdnom vobec nekresli */
   .zzz5w7-nm {
@@ -3152,17 +3156,6 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   }
   .zzz5w7-namefind-ok  { color: #1e7e34; font-weight: 700; }
   .zzz5w7-namefind-bad { color: #c0392b; font-weight: 700; }
-  /* [Zzz5-W7:HIDE-GROUPS] HIDE ma dve rozne veci pod jednym tabom - popisok povie ktoru */
-  .zzz5w7-groupcap {
-    padding: 5px 4px 2px;
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 0.03em;
-    color: #9ca3af;
-    border-top: 1px solid #e3e3dd;
-    margin-top: 4px;
-  }
-  .zzz5w7-groupcap:first-of-type { border-top: 0; margin-top: 0; }
   .zzz5w7-tabs {
     display: flex;
     gap: 4px;
@@ -22975,13 +22968,12 @@ async function zzz5w7_status_write(note, st) {
   }
   try {
     const patch = { note_status: st };
-    if (st === 'done') { patch.is_project = true; patch.is_private = false; }
-    if (st === '') patch.is_project = false;
+    // [Zzz5-W7:STATUS-4] is_project je stary priznak ownerovho potvrdenia - drzi sa pri FINAL, nie pri DONE
+    if (st === 'final') { patch.is_project = true; patch.is_private = false; }
+    if (st === '' || st === 'progress' || st === 'done') patch.is_project = false;
     const { error } = await sb.from(ZZZ1CN_TABLE).update(patch).eq('id', note.id);
     if (error) throw error;
-    zzz6f2_show_toast(st === 'done' ? `Note #${zzz5w7_label_of(note)} = DONE.`
-      : st === 'progress' ? `Note #${zzz5w7_label_of(note)} = PROGRESS.`
-      : `Note #${zzz5w7_label_of(note)} = OPEN.`);
+    zzz6f2_show_toast(`Note #${zzz5w7_label_of(note)} = ${zzz5w7_status_word(st)}.`);
     return true;
   } catch (e) {
     zzz6f2_show_toast(`Could not save the status: ${(e && e.message) || e}`, 'warn');
@@ -23023,22 +23015,24 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   const cnSt = zzz5w7_status_of(note);
   const cnProj = document.createElement('button');
   cnProj.type = 'button';
-  cnProj.className = 'zzz5w7-proj'
-    + (cnSt === 'progress' ? ' is-progress' : '')
-    + (cnSt === 'done' ? (cnSolo ? ' is-on-solo' : ' is-on-multi') : '');
-  cnProj.title = (isMine ? 'click = PROGRESS (my work)' : 'PROGRESS is set by the author')
-    + (cnIAmOwner ? ' / hold 1-2s = DONE (owner confirmation)' : '');
+  // [Zzz5-W7:STATUS-4] klik = autorov cyklus OPEN -> PROGRESS -> DONE -> OPEN; ownerovo podrzanie = FINAL
+  cnProj.className = 'zzz5w7-proj' + zzz5w7_status_cls(cnSt);
+  cnProj.title = `${zzz5w7_status_word(cnSt)} - `
+    + (isMine ? 'click = OPEN / PROGRESS / DONE (my work)' : 'OPEN/PROGRESS/DONE are set by the author')
+    + (cnIAmOwner ? ' / hold 1-2s = FINAL (owner confirmation)' : '');
   cnProj.disabled = !isMine && !cnIAmOwner;
   cnProj.addEventListener('click', async () => {
-    if (!isMine) { zzz6f2_show_toast('PROGRESS is set by the note author.', 'warn'); return; }
+    if (!isMine) { zzz6f2_show_toast('OPEN / PROGRESS / DONE are set by the note author.', 'warn'); return; }
+    // z ownerovho FINAL sa klikom vracia na zaciatok - potvrdenie sa nema ako "posunut dalej"
+    const nextSt = cnSt === 'final' ? '' : zzz5w7_status_next(cnSt);
     cnProj.disabled = true;
-    const okSt = await zzz5w7_status_write(note, cnSt === 'progress' ? '' : 'progress');
+    const okSt = await zzz5w7_status_write(note, nextSt);
     cnProj.disabled = false;
     if (okSt && onChanged) await onChanged();
   });
   if (cnIAmOwner) {
     zzz5w7_bind_tiered_hold(cnProj, [{ ms: 1200, fn: async () => {
-      if (await zzz5w7_status_write(note, cnSt === 'done' ? '' : 'done')) { if (onChanged) await onChanged(); }
+      if (await zzz5w7_status_write(note, cnSt === 'final' ? '' : 'final')) { if (onChanged) await onChanged(); }
     } }]);
   }
   headMarks.appendChild(cnProj);
@@ -23304,7 +23298,24 @@ function zzz5w7_next_letter(notes, baseNumber) {
 // HIDE je CISTO POHLAD. Do databazy nezasahuje - poznamky su v nej nemenne, takze aj ked si niekto
 // vyskladá "cisty" vypis, uplny zaznam existuje dalej a da sa k nemu vratit. Preto sa kopiruje bez obav:
 // dohladatelnost nesie acknowledgement (kto a z ktorej entry text prevzal), nie to, co v texte ostalo.
-const ZZZ5W7_HIDE_EMPTY = { txt: '', ord: false, name: false, user: false, priv: false, proj: false, users: {} };
+const ZZZ5W7_HIDE_EMPTY = { txt: '', ord: false, name: false, user: false, priv: false,
+                            open: false, progress: false, done: false, final: false, nameq: '', users: {} };
+// === [Zzz5-W7:STATUS-LINE] OPRAVA (Vrso 2026-09-27: "aj ked je status nezaciarknuty, tak stale ide o stav
+// OPEN! Takze to treba tiez uvadzat v notes/zaznamoch/texte... inak asi najdolezitejsi, v akych fazach je
+// projekt/uloha/status").
+// MAL SOM TO ZLE. Bral som prazdny status ako "nic nenastavene", a z toho mi vyslo, ze OPEN nema v riadku
+// co schovat. Lenze prazdno JE hodnota - OPEN je faza, nie chybajuci udaj, a je to ta najdolezitejsia vec
+// na zazname. Preto ju riadok uvadza VZDY, rovnako ako (private):
+//     [OPEN]  [PROGRESS]  [DONE]
+// Tym padaju obe nezrovnalosti naraz: da sa podla nej filtrovat aj ju schovat z riadku ako ktorykolvek
+// iny znak, a nemusi existovat ziadna zvlastna skupina "cely zaznam von z textu".
+// Nahradza byvale [project] - to bolo len stare pomenovanie DONE a v texte hovorilo menej. ===
+function zzz5w7_status_mark(n, h) {
+  const st = zzz5w7_status_of(n);
+  const key = st === 'final' ? 'final' : (st === 'done' ? 'done' : (st === 'progress' ? 'progress' : 'open'));
+  if (h && h[key]) return '';
+  return ' [' + zzz5w7_status_word(st) + ']';
+}
 function zzz5w7_hide_user(n, h) {
   if (!h) return false;
   if (h.user) return true;
@@ -23328,10 +23339,13 @@ function zzz5w7_hide_strip(s, needle) {
 }
 function zzz5w7_head_line(n, entryKey, ord, hide) {
   const h = hide || ZZZ5W7_HIDE_EMPTY;
-  const name = h.name ? '' : String((n && n.note_name) || '').trim();
+  let name = h.name ? '' : String((n && n.note_name) || '').trim();
+  // [Zzz5-W7:HIDE-NAME] vypisane meno schova LEN ten nazov - checkbox NAME schova vsetky
+  const nq = zzz10v1_normalize(String((h && h.nameq) || '').trim());
+  if (name && nq && zzz10v1_normalize(name).indexOf(nq) === 0) name = '';
   const user = zzz5w7_hide_user(n, h) ? '' : (n.username || '-');
   return `#${zzz5w7_label_of(n)}${(ord && !h.ord) ? ' @' + ord : ''}${name ? ' ' + name : ''}${user ? ' ' + user : ''}`
-    + (n.is_project && !h.proj ? ' [project]' : '')
+    + zzz5w7_status_mark(n, h)              // [Zzz5-W7:STATUS-LINE] faza je v riadku VZDY, aj OPEN
     + (n.is_private && !h.priv ? ' (private)' : '')
     + (entryKey ? ` (entry #${entryKey})` : '');
 }
@@ -23354,12 +23368,35 @@ function zzz5w7_format_notes(notes, entryKey, ordOf, hide) {
 //
 // Cita sa cez helper, aby appka fungovala AJ PRED nasadenim stlpca note_status: kym neexistuje, stary
 // priznak is_project sa cita ako 'done' (to bolo jedine, co vtedy vedel oznacit owner).
+// === [Zzz5-W7:STATUS-4] Vrso 2026-09-27: "bude treba proste 4 stavy. Pridaj stav aj sedou gulickou,
+// ktore ale bude zas moct iba user (nie owner!) s oznacenim DONE. Zelenou budu oznacene FINAL!!!"
+//     ''          OPEN      prazdny kruzok  - autor
+//     'progress'  PROGRESS  oranzova        - autor
+//     'done'      DONE      seda            - autor  ("mam hotovo")
+//     'final'     FINAL     zelena          - OWNER  ("potvrdzujem")
+// DONE je vyrok o VLASTNEJ praci - patri tomu, kto ju robil. FINAL je potvrdenie cudzej prace a je to
+// jediny ownerov akt. v6 mal oboje zlucene, takze sa autor nemal ako vyjadrit, ze skoncil.
+// Stary priznak is_project bol ownerovo potvrdenie - cita sa teda ako FINAL (v8 ho tak aj premigrovala).
 function zzz5w7_status_of(n) {
   if (!n) return '';
   const st = String(n.note_status || '').trim().toLowerCase();
-  if (st === 'progress' || st === 'done') return st;
+  if (st === 'progress' || st === 'done' || st === 'final') return st;
   if (st) return '';
-  return n.is_project ? 'done' : '';
+  return n.is_project ? 'final' : '';
+}
+// poradie klikania pre AUTORA - FINAL v nom nie je, ten patri ownerovi
+const ZZZ5W7_STATUS_CYCLE = ['', 'progress', 'done'];
+function zzz5w7_status_next(st) {
+  const i = ZZZ5W7_STATUS_CYCLE.indexOf(st);
+  return ZZZ5W7_STATUS_CYCLE[(i < 0 ? 0 : i + 1) % ZZZ5W7_STATUS_CYCLE.length];
+}
+function zzz5w7_status_cls(st) {
+  return st === 'progress' ? ' is-progress'
+    : st === 'done' ? ' is-done'
+    : st === 'final' ? ' is-final' : '';
+}
+function zzz5w7_status_word(st) {
+  return st === 'progress' ? 'PROGRESS' : st === 'done' ? 'DONE' : st === 'final' ? 'FINAL' : 'OPEN';
 }
 
 // === [Zzz5-W7:TIERED-HOLD] (SYSTEM FUNCTION) JEDNO TLACIDLO, VIAC DLZOK PODRZANIA ====================
@@ -23507,18 +23544,20 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   // viacere kriteria". Preto to uz NIE JE jednovyberovy <select>, ale zaskrtavacie kriteria.
   // VIAC ZASKRTNUTYCH = poznamka musi splnat VSETKY (a nie alebo) - inak by "PRIVATE + MOJE" vratilo aj
   // cudzie poznamky a nedalo by sa nim nic zuzit.
+  // [Zzz5-W7:STATUS-4] styri fazy, nie tri - DONE si zaznaci autor, FINAL potvrdi owner
   const ZZZ5W7_FILTERS = [
-    ['open',     'OPEN',     'no status yet'],
-    ['progress', 'PROGRESS', 'the user is working on it'],
-    ['done',     'DONE',     'confirmed done by the owner'],
+    ['open',     'OPEN',     'nobody has started it yet'],
+    ['progress', 'PROGRESS', 'the author is working on it'],
+    ['done',     'DONE',     'the author finished it'],
+    ['final',    'FINAL',    'confirmed by the project owner'],
     ['private',  'PRIVATE',  'visible to the author only'],
     ['mine',     'MY',       'notes by the signed-in user']
   ];
   const view = { on: {}, q: '', from: 0, to: 0, at: 0, name: '', show: '', users: {} };
   // [Zzz5-W7:FILTER-HIDE] druha os - co sa ma ubrat z TEXTU. Zamerne vlastny objekt, nie dalsie polozky
   // vo view: filter a hide sa nesmu pomiesat, lebo jeden meni zoznam a druhy len vypis.
-  const hide = { txt: '', ord: false, name: false, user: false, priv: false, proj: false, users: {},
-                 open: false, progress: false, nameq: '' };
+  const hide = { txt: '', ord: false, name: false, user: false, priv: false, users: {},
+                 open: false, progress: false, done: false, final: false, nameq: '' };
   const filterSel = document.createElement('div');
   filterSel.className = 'zzz5w7-filter';
   const filterBtn = document.createElement('button');
@@ -23591,6 +23630,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   const noteH = document.createElement('div');
   noteH.className = 'zzz5w7-panenote';
   noteH.textContent = 'Removes PARTS of each line from the text. No note disappears.';
+  // [Zzz5-W7:STATUS-LINE] poradie kriterii kopiruje poradie znakov v riadku, nech sa da najst okom
   paneHide.appendChild(noteH);
   panes.appendChild(paneFilter);
   panes.appendChild(paneHide);
@@ -23718,16 +23758,17 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   // HIDE ma preto dve skupiny a je to na nom napisane:
   //   Z RIADKU      - ubera casti riadku (text, @, meno, znacky, autor)
   //   CELY ZAZNAM   - nechava cely zaznam mimo textu (status, zhoda mena) ===
-  const capLine = document.createElement('div');
-  capLine.className = 'zzz5w7-groupcap';
-  capLine.textContent = 'FROM THE LINE';
-  paneHide.insertBefore(capLine, hideTxtRow);
+  // [Zzz5-W7:STATUS-LINE] vsetky tri fazy su teraz v riadku, takze su to bezne kriteria riadku ako
+  // ktorekolvek ine - ziadna zvlastna skupina netreba
   const ZZZ5W7_HIDES = [
-    ['ord',  '@',        'hides the working order (@N) in the text'],
-    ['name', 'NAME',     'hides the note name'],
-    ['proj', 'DONE',     'hides the [project] mark of a note confirmed by the owner'],
-    ['priv', 'PRIVATE',  'hides the (private) mark'],
-    ['user', 'MY',       'hides the author of every note, mine included']
+    ['ord',      '@',        'hides the working order (@N) in the text'],
+    ['name',     'NAME (all)', 'hides every note name'],
+    ['open',     'OPEN',     'hides the [OPEN] mark'],
+    ['progress', 'PROGRESS', 'hides the [PROGRESS] mark'],
+    ['done',     'DONE',     'hides the [DONE] mark'],
+    ['final',    'FINAL',    'hides the [FINAL] mark'],
+    ['priv',     'PRIVATE',  'hides the (private) mark'],
+    ['user',     'MY',       'hides the author of every note, mine included']
   ];
   ZZZ5W7_HIDES.forEach(([k, t, tip]) => {
     const lab = document.createElement('label');
@@ -23747,24 +23788,6 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   hideUsersWrap.className = 'zzz5w7-userswrap';
   paneHide.appendChild(hideUsersWrap);
 
-  // --- [Zzz5-W7:HIDE-GROUPS] druha skupina: cely zaznam von z textu ---
-  const capWhole = document.createElement('div');
-  capWhole.className = 'zzz5w7-groupcap';
-  capWhole.textContent = 'WHOLE NOTE OUT OF THE TEXT';
-  paneHide.appendChild(capWhole);
-  [['open', 'OPEN', 'leaves notes with no status out of the text'],
-   ['progress', 'PROGRESS', 'leaves notes in progress out of the text']].forEach(([k, t, tip]) => {
-    const lab = document.createElement('label');
-    lab.className = 'zzz5w7-filteritem';
-    lab.title = tip;
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.addEventListener('change', () => { hide[k] = cb.checked; findIdxReset(); render(); });
-    const sp = document.createElement('span');
-    sp.textContent = t;
-    lab.appendChild(cb); lab.appendChild(sp);
-    paneHide.appendChild(lab);
-  });
   // === [Zzz5-W7:HIDE-NAME] Vrso 2026-09-27: "NAME sa tiez musi dat vpisat, aby sa dalo zrychlit
   // oznacenie a nemusel hladat checkbox v zozname, ked ich bude vela. Name by bolo idealne vyhladavat,
   // ako zvykneme, kde zelenym sa vyznacia pismena, ktore suvisia."
@@ -23774,6 +23797,8 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   const hideNameRow = document.createElement('div');
   hideNameRow.className = 'zzz5w7-filteritem zzz5w7-rangerow';
   const hideNameLab = document.createElement('span');
+  // [Zzz5-W7:HIDE-NAME] vedla seba su dve veci s rovnakym slovom - checkbox schova VSETKY nazvy,
+  // toto pole len ten JEDEN vypisany; popisky to musia povedat, inak su na nerozoznanie
   hideNameLab.textContent = 'NAME';
   const hideNameWrap = document.createElement('div');
   hideNameWrap.className = 'zzz5w7-namefind';
@@ -23783,7 +23808,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   hideNameIn.type = 'text';
   hideNameIn.className = 'zzz5w7-namefil zzz5w7-hidename';
   hideNameIn.placeholder = 'note name';
-  hideNameIn.title = 'Notes with this name are left out of the text (green = still matches a name)';
+  hideNameIn.title = 'Hides only this one note name from the text (green = still matches a name)';
   hideNameWrap.appendChild(hideNameMirror);
   hideNameWrap.appendChild(hideNameIn);
   hideNameRow.appendChild(hideNameLab); hideNameRow.appendChild(hideNameWrap);
@@ -23818,8 +23843,8 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     view.on = {}; view.users = {}; view.from = 0; view.to = 0; view.at = 0;
     view.name = ''; view.show = ''; view.q = '';
     hide.txt = ''; hide.ord = false; hide.name = false; hide.user = false;
-    hide.priv = false; hide.proj = false; hide.users = {};
-    hide.open = false; hide.progress = false; hide.nameq = '';
+    hide.priv = false; hide.users = {};
+    hide.open = false; hide.progress = false; hide.done = false; hide.final = false; hide.nameq = '';
     hideNameIn.value = ''; paintHideName();
     filterBox.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = false; });
     [rangeFrom, rangeTo, atIn, nameFil, showIn, hideTxtIn, searchIn].forEach(el => { if (el) el.value = ''; });
@@ -24056,13 +24081,9 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   // [Zzz5-W7:CHATNOTES] SKOK NA RIADOK - spocita, kde v spojenom texte zacina a konci dana poznamka,
   // oznaci ju a odscrolluje k nej. Ziadne filtrovanie: text ostava cely, cislo sluzi na orientaciu.
   const jumpTo = (idx) => {
-    // [Zzz5-W7:HIDE-GROUPS] pozicia sa pocita v tom, co je NAOZAJ v poli
-    const n0 = viewNotes[idx];
-    const at = textNotes.indexOf(n0);
-    if (at < 0) { zzz6f2_show_toast('This note is hidden from the text.', 'warn'); return; }
     let start = 0;
-    for (let i = 0; i < at; i++) start += zzz5w7_block_of(textNotes[i], 0, ordOf(textNotes[i]), hide).length + 2;   // +2 = oddelovac '\n\n'
-    const n = textNotes[at];
+    for (let i = 0; i < idx; i++) start += zzz5w7_block_of(viewNotes[i], 0, ordOf(viewNotes[i]), hide).length + 2;   // +2 = oddelovac '\n\n'
+    const n = viewNotes[idx];
     const end = start + zzz5w7_block_of(n, 0, ordOf(n), hide).length;
     area.focus();
     area.setSelectionRange(start, end);
@@ -24260,16 +24281,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
 
   // [Zzz5-W7:NOTE-FILTER] co je PRAVE VIDNO. allNotes ostava uplny zoznam - filter je pohlad, nie zmena dat.
   let viewNotes = [];
-  // [Zzz5-W7:HIDE-GROUPS] co je vidno v TEXTE - podmnozina viewNotes bez tych, ktore HIDE nechal von
-  let textNotes = [];
-  const zzz5w7_hide_whole = (n) => {
-    const st = zzz5w7_status_of(n);
-    if (hide.open && st === '') return true;
-    if (hide.progress && st === 'progress') return true;
-    const q = zzz10v1_normalize(String(hide.nameq || '').trim());
-    if (q && zzz10v1_normalize(String(n.note_name || '')).indexOf(q) === 0) return true;
-    return false;
-  };
+
   // [Zzz5-W7:OUTLINE] je vobec nejaky filter zapnuty? Ked nie, okno sa kresli ako OSNOVA (viz render).
   const filterActive = () => !!(view.q.trim() || view.from || view.to || view.at || view.name.trim() || view.show.trim()
     || Object.keys(view.on).some(k => view.on[k])
@@ -24277,7 +24289,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   // [Zzz5-W7:FILTER-HIDE] hide sa do filterActive NEPOCITA - osnova zavisi od toho, ktore poznamky su
   // vidno, a hide ziadnu neodoberá. Inak by sa zapnutim "schovaj @" rozpadla cela osnova.
   const hideActive = () => !!(hide.txt.trim() || hide.nameq.trim() || hide.ord || hide.name || hide.user
-    || hide.priv || hide.proj || hide.open || hide.progress
+    || hide.priv || hide.open || hide.progress || hide.done || hide.final
     || Object.keys(hide.users).some(k => hide.users[k]));
 
   const applyFilter = () => {
@@ -24321,6 +24333,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       if (view.on.open     && st !== '')         return false;
       if (view.on.progress && st !== 'progress') return false;
       if (view.on.done     && st !== 'done')     return false;
+      if (view.on.final    && st !== 'final')    return false;
       if (view.on.private  && !n.is_private)     return false;
       if (view.on.mine     && zzz10v1_normalize(n.username || '') !== meF) return false;
       if (!q) return true;
@@ -24351,15 +24364,10 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     const lineH = parseFloat(cs.lineHeight) || 16;
     const out = [];
     let acc = '';
-    // [Zzz5-W7:HIDE-GROUPS] stlpik ma riadok pre KAZDU poznamku, ale v texte niektore nie su - tie
-    // dostanu polohu az za koncom textu, takze sa neprilepia k cudziemu zaznamu
-    const inText = new Set(textNotes.map(n => n.id));
-    let endY = 0;
     viewNotes.forEach(n => {
-      if (!inText.has(n.id)) { out.push(null); return; }
+      // nulova sirka na konci drzi riadok, na ktorom poznamka ZACINA - prazdny retazec by mal vysku 0
       m.textContent = acc + '\u200b';
-      endY = Math.max(0, m.getBoundingClientRect().height - lineH);
-      out.push(endY);
+      out.push(Math.max(0, m.getBoundingClientRect().height - lineH));
       acc += zzz5w7_block_of(n, 0, ordOf(n), hide) + '\n\n';
     });
     return out;
@@ -24374,18 +24382,20 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       return;
     }
     alignRetry = 0;
+    // === [Zzz5-W7:GUTTER-CLIP] OPRAVA (Vrso 2026-09-27: "narusi parovanie cislovania v lavom stlpci
+    // s notes/obsahom").
+    // Stlpik dostaval vysku z FLEXU (align-items: stretch), teda z TELA okna - nie z textoveho pola.
+    // Ked je pole nizsie (ma vlastnu vysku z resize, alebo sa zmrastilo), stlpik prerastol jeho spodnu
+    // hranu a cisla, ktore uz v texte vidno nebolo, sa kreslili POD nim - vyzeralo to, ze cislovanie
+    // nesedi so zaznamami. Stlpik preto kopiruje vysku POLA a jeho overflow:hidden orezava presne tak,
+    // ako text orezava sam seba. ===
+    numsCol.style.height = Math.round(area.clientHeight) + 'px';
     const lineH = parseFloat(getComputedStyle(area).lineHeight) || 16;
     const pad = parseFloat(getComputedStyle(area).paddingTop) || 0;
     grow.style.transform = `translateY(${pad - area.scrollTop}px)`;
     const offs = startOffsets();
     Array.from(grow.children).forEach((el, i) => {
-      // [Zzz5-W7:HIDE-GROUPS] poznamka, ktora v texte nie je, ma v stlpiku stlmene cislo a ziadne miesto,
-      // ku ktoremu by sa zarovnala - drzi sa tam, kde jej blok skoncil
-      const hasText = offs[i] !== null && offs[i] !== undefined;
-      el.classList.toggle('is-nottext', !hasText);
-      el.style.top = Math.round(hasText ? offs[i] : 0) + 'px';
-      if (!hasText) { el.style.display = 'none'; return; }
-      el.style.display = '';
+      el.style.top = Math.round(offs[i] || 0) + 'px';
       // [Zzz5-W7:GUTTER] riadok ma dva riadky, ked ma poznamka nazov (cislo+@ hore, nazov pod tym).
       // Blok v texte ma vzdy aspon hlavicku + telo + prazdny riadok, takze sa to zmesti bez prekrytia.
       const two = el.children.length > 1;
@@ -24393,6 +24403,9 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     });
   };
   area.addEventListener('scroll', alignGutter);
+  // [Zzz5-W7:GUTTER-CLIP] pole sa da tahat za roh (resize) - vtedy mu stlpik musi vysku dorovnat, inak by
+  // zase precnieval pod neho
+  if (typeof ResizeObserver === 'function') new ResizeObserver(() => alignGutter()).observe(area);
   // === [Zzz5-W7:GUTTER-SCROLL] Vrso 2026-09-27: "cislovanie lava cast/stlpec urob scrolovatelny".
   // Stlpik ZAMERNE nema vlastny scroll - keby ho mal, isli by dva scrolly vedla seba a cisla by sa od
   // svojho textu odtrhli. Je to jeden scroll s dvoma miestami na uchopenie: gesto nad stlpikom sa
@@ -24426,10 +24439,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       .filter(n => !zzz1cn_opt_has('is_saved') || !!(n && n.is_saved));
     applyFilter();
     grow.innerHTML = '';
-    // [Zzz5-W7:HIDE-GROUPS] v TEXTE su len zaznamy, ktore HIDE nenechal von; stlpik cisel ostava uplny,
-    // lebo cislo je identita a to sa neskryva
-    textNotes = viewNotes.filter(n => !zzz5w7_hide_whole(n));
-    area.value = zzz5w7_format_notes(textNotes, 0, ordOf, hide);   // [Zzz5-W7:WORK-ORDER] @N aj v texte
+    area.value = zzz5w7_format_notes(viewNotes, 0, ordOf, hide);   // [Zzz5-W7:WORK-ORDER] @N aj v texte
     const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
     if (!viewNotes.length) {
       area.placeholder = allNotes.length ? 'No note matches the filter.' : 'No saved notes.';
@@ -24488,7 +24498,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     //   pocet FILTROV  = v popise (zuzuje zoznam, to je hlavna vec)
     //   pocet HIDE     = na tabe vnutri boxu + cerveny ram tlacidla zvonku
     const hideCount = (hide.txt.trim() ? 1 : 0) + (hide.nameq.trim() ? 1 : 0)
-      + ['ord', 'name', 'user', 'priv', 'proj', 'open', 'progress'].filter(k => hide[k]).length
+      + ['ord', 'name', 'user', 'priv', 'open', 'progress', 'done', 'final'].filter(k => hide[k]).length
       + Object.keys(hide.users).filter(k => hide.users[k]).length;
     filterBtn.textContent = onCount ? `SHOW (${onCount})` : 'SHOW';
     filterBtn.classList.toggle('is-on', onCount > 0);
@@ -24542,28 +24552,30 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       // --- STATUS toggle (vlavo od cisla) - Vrso 2026-09-25: "filter podla statusu (prazdny zadany,
       //     oranzovou potvrdzuje oznaceny user/group/project users)". Prazdny = nezadany, ORANZOVY =
       //     zadany pre oznacenych userov projektu, ZELENY = owner je na projekte sam.
-      // [Zzz5-W7:NOTE-STATUS] klik = MOJ postup (OPEN -> PROGRESS -> OPEN), len na vlastnej poznamke.
-      // Podrzanie 1.2s = ownerovo DONE, aj na cudzej. Owner ma teda oboje: na svojej praci PROGRESS ako
-      // ktokolvek iny, a DONE ako potvrdenie cudzej. Nikto cudziemu PROGRESS neprepise.
+      // [Zzz5-W7:STATUS-4] klik = MOJ postup OPEN -> PROGRESS -> DONE -> OPEN, len na vlastnej poznamke.
+      // Podrzanie 1.2s = ownerovo FINAL, aj na cudzej. Owner ma teda oboje: na svojej praci vedie stav ako
+      // ktokolvek iny (vratane DONE), a FINAL je jeho potvrdenie. Nikto cudziemu stav neprepise.
       const st = zzz5w7_status_of(n);
       const proj = document.createElement('button');
       proj.type = 'button';
       proj.className = 'zzz5w7-proj'
         + (st === 'progress' ? ' is-progress' : '')
-        + (st === 'done' ? (solo ? ' is-on-solo' : ' is-on-multi') : '');
-      proj.title = (mine ? 'click = PROGRESS (my work)' : 'PROGRESS is set by the author')
-        + (iAmOwner ? ' / hold 1-2s = DONE (owner confirmation)' : '');
+        + (st === 'done' ? ' is-done' : '')
+        + (st === 'final' ? ' is-final' : '');
+      proj.title = `${zzz5w7_status_word(st)} - `
+        + (mine ? 'click = OPEN / PROGRESS / DONE (my work)' : 'OPEN/PROGRESS/DONE are set by the author')
+        + (iAmOwner ? ' / hold 1-2s = FINAL (owner confirmation)' : '');
       proj.disabled = !mine && !iAmOwner;
       proj.addEventListener('click', async () => {
-        if (!mine) { zzz6f2_show_toast('PROGRESS is set by the note author.', 'warn'); return; }
+        if (!mine) { zzz6f2_show_toast('OPEN / PROGRESS / DONE are set by the note author.', 'warn'); return; }
         proj.disabled = true;
-        await zzz5w7_set_status(n, st === 'progress' ? '' : 'progress');
+        await zzz5w7_set_status(n, st === 'final' ? '' : zzz5w7_status_next(st));
         proj.disabled = false;
         await render();
       });
       if (iAmOwner) {
         zzz5w7_bind_tiered_hold(proj, [{ ms: 1200, fn: async () => {
-          await zzz5w7_set_status(n, st === 'done' ? '' : 'done');
+          await zzz5w7_set_status(n, st === 'final' ? '' : 'final');
           await render();
         } }]);
       }
@@ -24734,7 +24746,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   copyAll.addEventListener('click', () => {
     // [Zzz5-W7:PROVENANCE] do schranky ide PRESNE to, co je vidno (vratane HIDE), len s jednym riadkom
     // povodu navrch - preto nie holy area.value.
-    const text = copyHead() + '\n' + zzz5w7_format_notes(textNotes, 0, ordOf, hide);
+    const text = copyHead() + '\n' + zzz5w7_format_notes(viewNotes, 0, ordOf, hide);
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text);
     // acknowledgement za KAZDEHO cudzieho autora, ktoreho text prave odchadza do schranky - rovnake
     // pravidlo ako pri jednej poznamke, len hromadne (deduplikaciu riesi zzz6f22 sama)
