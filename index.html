@@ -6896,6 +6896,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-X:VERSO-DEV-LOGIN-SECRET - jednoklikove prihlasenie ako Verso v Login module (vyvojova pomocka, ODSTRANIT pred verejnym spustenim)</span>
   <span class="module-tag">Zzz6-X:HIDE-VERSO-DEV-LOGIN - tlacidlo viditelne LEN na zariadeniach s historiou skutocneho prihlasenia (nechrani heslo samotne, len znizuje nahodne objavenie)</span>
   <span class="module-tag">Zzz6-X:USERNAME-EXCEPTIONS - rezervovane systemove username "verso", "verso1", "verso2" ... (verso + lubovolne cislo) - bezna registracia ich odmietne; ine mena obsahujuce "verso" (universo, reverso...) su povolene</span>
+  <span class="module-tag">Zzz6-X:VERSO1-ACCOUNT - TESTOVACI ucet Verso1 a VSETKY jeho vynimky na jednom mieste (zzz6x_is_verso1): 1) dev Quick Login s heslom v zdrojaku, 2) rezervovane meno, 3) PROJECT NUMBER=1 predvyplnene, 4) notifikacie aj z vlastnych sprav. NIE je to bezpecnostna hranica - ziadna z nich nie je vynutena v databaze. Pred verejnym spustenim ODSTRANIT body 1 a 4</span>
+  <span class="module-tag">Zzz6-X:VERSO1-NOTIF-SELF - Verso1 vidi notifikacie aj zo sprav, ktore napisal sam (testovacie kontro, Vrso 2026-09-29); prioritna notifikacia aj tu vyzaduje @Verso1/&Verso1 v texte. Zrusi sa vyprazdnenim ZZZ1CN_NOTIF_SELF_USERS</span>
+  <span class="module-tag">Zzz6-X:VERSO1-NOT-VERSO - Verso1 NEMA autologin (Zzz6-X:AUTOLOGIN-VERSO) ani SQL ochranu pred mazanim zaznamov (Zzz6-X:VERSO-NO-DELETE) - obe platia len pre ucet "Verso"; zaznamy Verso1 sa mazu ako kazde ine</span>
   <span class="module-tag">Zzz2-R6/R7:GENERIC-CLIPBOARD-COPY-PASTE - dlhe podrzanie COPY = skopiruje fokusovane pole do internej Verso schranky, PASTE (predtym EDIT) = vlozi ho + zaznamena acknowledgement (Zzz6-F22-paste-credit)</span>
   <span class="module-tag">Zzz6-R:COPY-PASTE-EXCEPTIONS - centralny katalog vynimiek pre Zzz2-R6/R7 (aktualne: type=password polia zakazane pre COPY aj PASTE, bezpecnost)</span>
   <span class="module-tag">Zzz10-R7:PASSWORD-HASH - PREDCHADZAJUCA client-side verzia, SUPERSEDED Zzz0Auth-Gate (2026-09-02), utility funkcie ponechane bez pouzitia v realnej ceste</span>
@@ -24802,8 +24805,27 @@ async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, i
   }
   if (zzz1cnTableAvailable) {
     try {
-      const { data, error } = await sb.from(ZZZ1CN_TABLE).insert(payload).select().single();
-      if (error) throw error;
+      // === [Zzz1-CN:NUM-RACE] Vrso 2026-09-29: "ide mi len o to, aby neboli duplicitne cislo chatov."
+      // Cislo prideluje trigger v databaze ako max(note_number)+1. Ked dvaja zapisu v TEJ ISTEJ chvili,
+      // obaja precitaju to iste maximum a vyratia to iste cislo - a druheho z nich odmietne unique index
+      // verso_chat_notes_key_uniq (kod 23505). Duplicita sa teda do tabulky NIKDY nedostane, to je v
+      // poriadku; zle bolo, co sa dialo potom: appka to brala ako bezne zlyhanie a poslala zaznam do
+      // outboxu, takze user videl "ulozene lokalne, caka na odoslanie" nad spravou, ktorej stacilo skusit
+      // to este raz - pri druhom pokuse uz trigger vidi nove maximum a cislo vyjde volne.
+      // Tri pokusy: kolizia je nahoda dvoch sekund, nie stav. Ked padne aj treti, ide o nieco ine a
+      // zaznam patri do outboxu, kde sa nestrati. ===
+      let data = null, lastErr = null;
+      for (let tryNo = 0; tryNo < 3; tryNo++) {
+        const res = await sb.from(ZZZ1CN_TABLE).insert(payload).select().single();
+        if (!res.error) { data = res.data; lastErr = null; break; }
+        lastErr = res.error;
+        const code = String(res.error.code || '');
+        const msg = String(res.error.message || '');
+        const collision = code === '23505' || /verso_chat_notes_key_uniq|duplicate key/i.test(msg);
+        if (!collision) break;             // ine zlyhanie - opakovanie by nepomohlo
+        await new Promise(r => setTimeout(r, 120 * (tryNo + 1)));
+      }
+      if (lastErr) throw lastErr;
       zzz1cn_note_badges_refresh();   // [Zzz1-CN:NOTE-BADGE] pocet v CRM riadku sa zmenil
       zzz1cn_notif_refresh();         // [Zzz1-CN:NOTIF] a pribudla sprava, ktora je pre niekoho nova
       return data;
@@ -26256,6 +26278,16 @@ const ZZZ5W7_FILTERS = [
 // obchadzat agregatom, ktory by bezal mimo policy.
 // =====================================================================================================
 const ZZZ1CN_NOTIF_PRIO_NEEDS_MENTION = true;   // viz rozbor vyssie (Vrso bod 8)
+// [Zzz1-CN:NOTIF] TESTOVACIA VYNIMKA - ucty, ktorym sa pocitaju aj VLASTNE spravy. Prazdny zoznam = vsetci
+// sa spravaju normalne (vlastna sprava nie je notifikacia). Mena sa porovnavaju normalizovane.
+// [Zzz6-X:VERSO1-ACCOUNT] bod 4 - cely zoznam vynimiek tohto uctu je tam, pri zzz6x_is_verso1().
+// Meno je tu ZAMERNE napisane, nie prevzate z konstanty ZZZ6X_VERSO1: ta vznika az NIZSIE v subore a
+// `const` v temporal dead zone by pri nacitani spadol na ReferenceError. Ten isty typ chyby uz tento
+// subor mal trikrat - preto radsej duplicitny retazec nez skryty pad pri starte.
+const ZZZ1CN_NOTIF_SELF_USERS = ['verso1'];
+function zzz1cn_notif_counts_self(meN) {
+  return ZZZ1CN_NOTIF_SELF_USERS.indexOf(String(meN || '')) >= 0;
+}
 const ZZZ1CN_SEEN_TABLE = 'verso_chat_seen';
 let zzz1cnSeenMap = null;        // entry_key -> { seen_at, prio_seen_at } (ms)
 let zzz1cnSeenAvailable = true;  // kym nie je nasadene SQL, appka bezi dalej - len bez notifikacii
@@ -26340,8 +26372,13 @@ function zzz1cn_notif_recount() {
     if (!key) return;
     const t = Date.parse(r.created_at || '') || 0;
     if (!t) return;                                   // bez casu sa "nove" urcit nedá
-    // vlastna sprava nie je notifikacia - o tom, ze som nieco napisal, viem
-    if (zzz10v1_normalize(r.username || '') === meN) return;
+    // vlastna sprava nie je notifikacia - o tom, ze som nieco napisal, viem.
+    // VYNIMKA (Vrso 2026-09-29: "iba pre uzera Verso1 zapracuj, aby ukazovali aj notifikacie, ked poslem
+    // sam sebe - je to testovacie kontro"): menovite vypisany ucet smie vidiet aj vlastne spravy, inak sa
+    // notifikacie nedaju vyskusat bez druheho cloveka. Je to TESTOVACIA vynimka, nie funkcia - preto je
+    // viazana na konkretne meno a nie na nejaky rezim, ktory by sa dal omylom zapnut v produkcii.
+    // ZRUSI SA vymazanim mena zo zoznamu ZZZ1CN_NOTIF_SELF_USERS nizsie - nic ine sa menit nemusi.
+    if (!zzz1cn_notif_counts_self(meN) && zzz10v1_normalize(r.username || '') === meN) return;
     const mark = seen[key] || { seen: 0, prio: 0 };
     const lvl = zzz1cn_prio_of(r);
     const cur = map[key] || { green: 0, att: 0, urg: 0 };
@@ -30733,6 +30770,63 @@ const ZZZ6X_RESERVED_USERNAME_PATTERN = /^verso\d*$/;
 function zzz6x_is_reserved_username(name) {
   return ZZZ6X_RESERVED_USERNAME_PATTERN.test(zzz10v1_normalize(name));
 }
+
+// =====================================================================================================
+// === [Zzz6-X:VERSO1-ACCOUNT] (SYSTEM FUNCTION) TESTOVACI UCET "Verso1" - CO MA NAVYSE ===============
+// -----------------------------------------------------------------------------------------------------
+// Vrso 2026-09-30: "zapis Verso1 k Zzz6-X tajnym alebo zasadnym funkciam... a aj jeho specialne
+// nastavenie/opravnenia vratane devlogin."
+//
+// PRECO TENTO ZOZNAM EXISTUJE: vynimky pre Verso1 vznikali po jednej, v rozlicnych castiach suboru, a
+// kazda sama o sebe vyzerala nevinne. Dokopy je to ucet, ktory sa sprava inak nez kazdy iny - a to sa
+// musi dat precitat na JEDNOM mieste, inak sa pred verejnym spustenim nedaju spolahlivo odstranit.
+// Toto je ten zoznam. Ked pribudne dalsia vynimka, patri SEM, nie len k svojmu kodu.
+//
+// CO TO NIE JE: nie je to bezpecnostna hranica. Ziadna z tychto vynimiek nie je vynutena v databaze -
+// su to rozhodnutia KLIENTA. Kto si otvori zdrojak, vidi ich vsetky aj s heslom. Verso1 je preto ucet
+// VYLUCNE na testovacie data; nic skutocne tam nepatri.
+//
+// ZOZNAM OPRAVNENI A VYNIMIEK (stav 2026-09-30):
+//
+//  1. DEV QUICK LOGIN - [Zzz6-X:VERSO-DEV-LOGIN-SECRET] + [Zzz6-X:DEV-TEST-ACCOUNT]
+//     Tlacidlo "QUICK LOGIN (TEST)" v Login module prihlasi na Verso1 jednym klikom; heslo je natvrdo
+//     v zdrojovom kode. Tlacidlo sa zobrazi LEN na zariadeni, ktore sa uz niekedy naozaj prihlasilo
+//     ([Zzz6-X:HIDE-VERSO-DEV-LOGIN]) - to heslo NECHRANI, len znizuje nahodne objavenie.
+//     Starsia verzia vedela ucet "verso" zmazat a znovu zalozit (dev_reset_verso); bola to diera a je
+//     VYPNUTA NA SERVERI. Quick Login dnes nic neresetuje, robi bezne prihlasenie.
+//
+//  2. REZERVOVANE MENO - [Zzz6-X:USERNAME-EXCEPTIONS]
+//     "verso" a "verso"+cislo (verso1, verso2, ...) bezna registracia odmietne, takze si ucet nikto
+//     cudzi nezaregistruje. Mena, ktore len obsahuju "verso" (universo, reverso), povolene su.
+//
+//  3. PREDVYPLNENA CL - [Zzz6-X:CL-PREFILLING] + [Zzz6-X:VERSO-ENTRY-DEFAULTS]
+//     Ako systemovy (rezervovany) ucet dostava PROJECT NUMBER = 1 predvyplnene. OWNER a USER sa
+//     predvyplnaju kazdemu, to vynimka nie je.
+//
+//  4. NOTIFIKACIE ZO SEBA SAMEHO - [Zzz1-CN:NOTIF], ZZZ1CN_NOTIF_SELF_USERS
+//     Vrso 2026-09-29: "iba pre uzera Verso1 zapracuj, aby ukazovali aj notifikacie, ked poslem sam
+//     sebe - je to testovacie kontro." Bezny ucet vlastne spravy do poctu nedostane (o tom, ze nieco
+//     napisal, vie); Verso1 ano, inak sa notifikacie nedaju vyskusat bez druheho cloveka.
+//     POZOR: prioritna (oranzova/cervena) notifikacia aj tu vyzaduje mention - `@Verso1` / `&Verso1`
+//     vo vlastnej sprave.
+//
+// CO Verso1 NEMA, hoci to znie podobne:
+//  - [Zzz6-X:AUTOLOGIN-VERSO] (automaticke prihlasenie pri nacitani) plati pre "Verso", NIE Verso1.
+//  - [Zzz6-X:VERSO-NO-DELETE] (ochrana zaznamov pred zmazanim, vynutena v SQL) plati na Project Owner
+//    "Verso", NIE Verso1. Zaznamy Verso1 sa mazu ako kazde ine - je to testovaci ucet.
+//
+// PRED VEREJNYM SPUSTENIM ODSTRANIT: body 1 a 4. Bod 2 (rezervovane meno) a bod 3 (predvyplnenie)
+// ostavaju - su to vlastnosti systemovych uctov, nie vyvojove pomocky.
+// =====================================================================================================
+const ZZZ6X_VERSO1 = 'verso1';
+// je prihlaseny prave testovaci ucet? Jedno miesto, na ktore sa pytaju vsetky vynimky vyssie.
+function zzz6x_is_verso1(name) {
+  const n = zzz10v1_normalize(
+    name === undefined ? ((typeof zzz0r1_get_current_username === 'function' && zzz0r1_get_current_username()) || '') : name
+  );
+  return n === ZZZ6X_VERSO1;
+}
+
 // === [/Zzz6-X:USERNAME-EXCEPTIONS] ===
 
 // === [Zzz10-DEV:REUSABLE-TEST-EMAIL] Vrso 2026-09-02 ziadost: "nedalo by sa zatial iba naprogramovat ze
