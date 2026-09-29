@@ -2463,6 +2463,28 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     -webkit-touch-callout: none;
     touch-action: none;
   }
+  /* [Zzz1-CN:CHL-QUICKFILTER] prekryv nad zamknutou bunkou. Priehladny (meno sa cita spod neho), ale
+     dotyk berie on - a kedze to nie je textove pole, prehliadac nad nim ziadny vyber ani nativne menu
+     neotvara. To bolo jadro problemu z 29. 9.: na <input> sa podrzanie vyhrat nedalo. */
+  .zzz1cn-target-name-wrap { position: relative; width: 100%; }
+  .zzz1cn-target-name-hit {
+    position: absolute;
+    inset: 0;
+    display: block;
+    background-color: transparent;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: none;
+  }
+  /* [Zzz1-CN:CHL-MENTFILTER] filter mentions sa odlisi od filtra podla mena - je to iny pohlad na chat,
+     nie iny nazov. Bronzova je farba, ktorou su mentions kreslene aj v texte. */
+  .zzz1cn-target-name.is-ment {
+    border-color: #8a6d1f !important;
+    background-color: rgba(138, 109, 31, 0.18) !important;
+    color: #5f4a12 !important;
+  }
   /* [Zzz1-CN:CHL-NEW] odomknuta = pise sa nazov NOVEHO chatu, nech je to vidiet na prvy pohlad */
   .zzz1cn-target-name.is-open {
     border-style: dashed;
@@ -11101,14 +11123,36 @@ function zzz1_build_quickchips_row(getVal, setVal, fixedValues = []) {
 // to iste rozhodnutie ako status na entry ([Zzz6-F13:EDIT-AS-VERSION]): zapisat sa musi BEZ razenia novej
 // verzie zaznamu. Kym to nie je, appka sa aspon sprava podla neho.
 const ZZZ1CN_OPENADD_KEY = 'zzz1cn_openadd';
-function zzz1cn_openadd_get(entryKey) {
+// === [Zzz1-CN:OWNER-GATE] OPRAVA (Vrso 2026-09-29: "v com je problem? Nerozumiem. Consent vznikne na
+// zvolene contact project ownerom. Ide len o to, ci owner povoli userom pridavat aj dalsie kontakty").
+// Mal pravdu a chyba bola moja: viazala som nastavenie na entry_id, a rozpisana CL ziadne este nema, takze
+// ho okno ukazalo zamknute s hlaskou "send the entry first". Lenze toto nastavenie NIE JE o consente ani o
+// zazname v databaze - je to rozhodnutie ownera o TOMTO chate, ktore sa da urobit rovno pri jeho zakladani.
+// Preto ma rozpisana CL svoj DRAFT kluc; ked entry dostane cislo, hodnota sa naň prenesie
+// (zzz1cn_openadd_promote nizsie, volane zo submit_entries_to_db). Kym sa tak nestane, plati uz teraz - a
+// prave to je zmysel: obmedzenie ma byt jasne skor, nez niekto zacne kontakty pridavat. ===
+const ZZZ1CN_OPENADD_DRAFT = 'draft';
+function zzz1cn_openadd_key(entryKey) {
   const k = String(entryKey || '').trim();
-  if (!k) return false;
+  return k || ZZZ1CN_OPENADD_DRAFT;
+}
+function zzz1cn_openadd_get(entryKey) {
+  const k = zzz1cn_openadd_key(entryKey);
   try { return localStorage.getItem(`${ZZZ1CN_OPENADD_KEY}:${k}`) === '1'; } catch (e) { return false; }
 }
+// [Zzz1-CN:OWNER-GATE] rozpisana CL dostala cislo - nastavenie ide s nou a draft sa upratuje, aby sa
+// neprilepil na dalsi novy zaznam
+function zzz1cn_openadd_promote(entryId) {
+  const id = String(entryId || '').trim();
+  if (!id) return;
+  try {
+    const draft = localStorage.getItem(`${ZZZ1CN_OPENADD_KEY}:${ZZZ1CN_OPENADD_DRAFT}`);
+    if (draft === '1') localStorage.setItem(`${ZZZ1CN_OPENADD_KEY}:${id}`, '1');
+    localStorage.removeItem(`${ZZZ1CN_OPENADD_KEY}:${ZZZ1CN_OPENADD_DRAFT}`);
+  } catch (e) {}
+}
 function zzz1cn_openadd_set(entryKey, on) {
-  const k = String(entryKey || '').trim();
-  if (!k) return;
+  const k = zzz1cn_openadd_key(entryKey);
   try {
     if (on) localStorage.setItem(`${ZZZ1CN_OPENADD_KEY}:${k}`, '1');
     else localStorage.removeItem(`${ZZZ1CN_OPENADD_KEY}:${k}`);
@@ -11176,15 +11220,17 @@ function zzz1cn_open_comm_setup(host, api) {
   const paint = () => {
     const owner = api.isOwner();
     const keyed = !!api.key();
-    chk.disabled = !owner || !keyed;
+    // [Zzz1-CN:OWNER-GATE] cislo zaznamu uz NIE JE podmienka - rozpisana CL drzi nastavenie v drafte a to
+    // sa na nu prenesie, ked cislo dostane. Jedina podmienka ostava ta jedina, ktora tu vzdy davala zmysel:
+    // rozhoduje o tom owner.
+    chk.disabled = !owner;
     row.classList.toggle('is-locked', chk.disabled);
     note.textContent = !owner
       ? 'Only the project owner decides this. Off means the contact list of this chat is held by the owner alone.'
-      : (!keyed
-        ? 'Send the entry first - this setting belongs to it, and a line that is still being written has no number to hold it.'
-        : (chk.checked
-          ? 'Anyone with access to this record may add contacts here.'
-          : 'Only you may add contacts here. Everyone else just sees the list.'));
+      : (chk.checked
+        ? 'Anyone with access to this record may add contacts here.'
+        : 'Only you may add contacts here. Everyone else just sees the list.')
+        + (keyed ? '' : ' The line is not sent yet - the setting travels with it.');
   };
   chk.addEventListener('change', () => {
     if (chk.disabled) return;
@@ -11278,9 +11324,17 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   // === [Zzz1-CN:COMM-TALL] Vrso 2026-09-27: "ked 2x tuknem, tak otvor window na celu stranku a opacne 2x
   // spat." Dvojklik teda UZ NIE JE kompakt - schovanie contacts modulu ostava na zlatom `-` tlacidle v
   // hornej liste, takze sa ziadne gesto nestratilo, len si vymenili vyznam. ===
+  // === OPRAVA (Vrso 2026-09-29: "nefunguje to, lebo 2x tuk maximalizuje comm window! 2x tuk urob iba na
+  // krajne listy"): dvojklik bol chyteny na CELOM okne a este v CAPTURE faze - teda skor nez sa k nemu
+  // dostal ktorykolvek prvok vnutri. Ziadne dvojtuknutie v obsahu okna tym padom nemohlo existovat; casu
+  // ([Zzz1-CN:TIME-EXACT]) jeho vlastny stopPropagation nepomohol, lebo capture bezi PRED nim.
+  // Teraz gesto zije LEN na krajnych listach - hornej (COMMUNICATION) a dolnej (DELETE/COPY/.../ZATVORIT).
+  // Su to pasy, v ktorych sa nic necita ani nepise, takze tam dvojtuknutie nema co zobrat; vnutro okna je
+  // odteraz volne pre gesta jednotlivych prvkov. ===
   box.addEventListener('dblclick', (e) => {
     const tag = e.target.tagName;
     if (tag === 'BUTTON' || tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (!e.target.closest('.zzz-context-header, .entry-modal-actions')) return;
     box.classList.toggle('zzz1cn-fullpage');
     zzz1cn_sync_anchor_mode();
     zzz1cn_fit_comm_window(box);
@@ -11676,12 +11730,19 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     if (!cnStatusOk(n, o)) return false;
     // POZOR na kluce: zdielane kriteria ([Zzz5-W7:FILTER-BOX] ZZZ5W7_FILTERS) sa volaju 'private' a
     // 'mine' - nie 'priv'/'my'. S vlastnymi menami by filter ticho prepustal vsetko.
-    if (o.priority && !zzz1cn_prio_of(n)) return false;   // [Zzz1-CN:PRIO3] kriterium plati na OBA stupne
+    // [Zzz1-CN:PRIO3] stupne su OR medzi sebou, AND voci ostatnym kriteriam - zaskrtnutie oboch teda
+    // znamena "attention alebo urgent", nie "oboje naraz" (taky zaznam neexistuje)
+    if (o.attention || o.urgent) {
+      const lvl = zzz1cn_prio_of(n);
+      if (!((o.attention && lvl === 'attention') || (o.urgent && lvl === 'urgent'))) return false;
+    }
     if (o.private && !n.is_private) return false;
     if (o.mine && zzz10v1_normalize(n.username || '') !== zzz10v1_normalize(zzz0r1_get_current_username() || '')) return false;
     if (cnView.at && Number(ord) !== Number(cnView.at)) return false;
     const nameQ = zzz10v1_normalize(String(cnView.name || '').trim());
     if (nameQ && !zzz10v1_normalize(n.note_name || '').includes(nameQ)) return false;
+    // [Zzz1-CN:CHL-MENTFILTER] prejde len sprava, v ktorej je aspon jedno @ alebo & meno
+    if (cnView.mentions && !zzz6f58_has_mention(n.note_text)) return false;
     const showQ = zzz10v1_normalize(String(cnView.show || '').trim());
     if (showQ && !zzz10v1_normalize(`${n.note_name || ''} ${n.note_text || ''} ${n.username || ''} ${zzz5w7_label_of(n)}`).includes(showQ)) return false;
     if (zzz5w7_user_any(cnView.users, cnView.usersq)
@@ -11702,7 +11763,9 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     }
     off('.zzz1cn-note-user', zzz5w7_hide_user(n, cnHide));
     off('.zzz1cn-note-private', cnHide.priv);
-    off('.zzz1cn-note-priority', cnHide.priority);   // [Zzz1-CN:PRIORITY]
+    // [Zzz1-CN:PRIO3] kazdy stupen ma svoju znacku, takze sa schovava tou svojou volbou
+    off('.zzz1cn-prio-attention', cnHide.attention);
+    off('.zzz1cn-prio-urgent', cnHide.urgent);
     off('.zzz1cn-note-time', cnHide.time);   // [Zzz1-CN:TIME]
     const st = zzz5w7_status_of(n) || 'open';
     off('.zzz5w7-proj', !!cnHide[st]);
@@ -11946,6 +12009,20 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   // bola obnova pri otvoreni, a ta uz neplati. Nechat ho bezat by znamenalo pisat do localStorage udaj,
   // ktory nikto necita - a pri kazdom scrollnutí chatu.
   let cnFeedFirst = true;
+  // === [Zzz1-CN:OPEN-BOTTOM] "drzanie spodku" do prveho dotyku usera.
+  // Skok na koniec sa nedá spravit raz a mat pokoj: vyska feedu sa po otvoreni este niekolkokrat meni
+  // (dopasovanie okna, dve rAF, ResizeObserver, prichod klavesnice). Priznak preto plati dovtedy, kym sa
+  // scrollu nedotkne SAM user - az jeho gesto (prst, koliesko, klavesa) ho zhasne. Samotne priradenie
+  // scrollTop udalost 'scroll' tiez vyvola, takze rozhodovat sa podla nej by priznak zhasínalo hned. ===
+  let cnRenderSeq = 0;   // [Zzz1-CN:FEED-RACE] poradove cislo prekreslenia feedu
+  let cnPinBottom = true;
+  const cnGoBottom = () => {
+    if (!cnPinBottom) return;
+    cnFeed.scrollTop = cnFeed.scrollHeight;
+  };
+  const cnUnpin = () => { cnPinBottom = false; };
+  ['touchstart', 'wheel', 'mousedown', 'keydown'].forEach(ev =>
+    cnFeed.addEventListener(ev, cnUnpin, { passive: true }));
   // [Zzz1-CN:CHL-TARGET] predbezna deklaracia - cnRefreshFeed ju vola, ale skutocne telo vznika az pri
   // stavbe chat line nizsie. `typeof` by tu nepomohol: na const v TDZ sam vyhodi ReferenceError.
   let cnTargetSync = () => {};
@@ -11984,8 +12061,16 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     // hore, ostava tam, kde bol. ===
     const cnWasBottom = (cnFeed.scrollHeight - cnFeed.clientHeight - cnFeed.scrollTop) < 6;
     const cnKeepTop = cnFeed.scrollTop;
-    cnFeed.innerHTML = '';
+    // === [Zzz1-CN:FEED-RACE] OPRAVA (najdene 2026-09-29 pri teste filtrov): feed sa vymazal HNED, ale
+    // naplnal sa az PO `await` na nacitani. Ked prisli tri povely rychlo za sebou (zaskrtnem ATTENTION,
+    // zaskrtnem URGENT - to je uz par udalosti), vsetky tri stihli vymazat, a potom kazda dopisala svoju
+    // davku do TOHO ISTEHO prazdneho feedu: v chate sa objavil kazdy zaznam dva- az trikrát.
+    // Teraz si kazde prekreslenie vezme cislo a po navrate z `await` sa uz nekresli, ked medzitym zacalo
+    // novsie. Vymazanie sa zaroven presunulo ZA nacitanie - feed tym prestal na okamih blikat naprazdno. ===
+    const myRender = ++cnRenderSeq;
     const notes = await zzz1cn_load_for_chat(cnEntryKey);
+    if (myRender !== cnRenderSeq) return;   // medzitym zacalo novsie prekreslenie - toto uz nikoho nezaujima
+    cnFeed.innerHTML = '';
     if (!notes.length) {
       const empty = document.createElement('div');
       empty.className = 'zzz1cn-empty';
@@ -12049,8 +12134,15 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
       // ZRUSENE TYM: obnova ulozenej polohy z minuleho otvorenia (zzz1cn_pos_load). Bola to rozumna uvaha
       // ("vrat ma, kde som cital"), ale s chat line na konci si protirecili - a Vrso urcil, ktora z nich plati.
       // zzz1cn_pos_save sa NEODSTRANUJE: v ramci jedneho otvorenia drzi polohu pri kazdom prekresleni feedu
-      // ([Zzz1-CN:FEED-KEEP] nizsie), co je iny pripad - tam by skok na koniec ucastnika vyhodil z citania. ===
-      cnFeed.scrollTop = cnFeed.scrollHeight;
+      // ([Zzz1-CN:FEED-KEEP] nizsie), co je iny pripad - tam by skok na koniec ucastnika vyhodil z citania.
+      //
+      // OPRAVA (Vrso 2026-09-29, fotka: "ta scrollovacia ciarka/bodka je v strede a chat ma byt uplne dolu"):
+      // JEDNO priradenie scrollTop nestaci. V tomto bode este nie je hotova geometria okna - hned po nom
+      // bezi zzz1cn_fit_comm_window(), potom dve rAF dopasovania ([Zzz1-CN:FIT-STABLE]) a nakoniec
+      // ResizeObserver. Kazde z nich meni vysku feedu, takze "spodok", na ktory som skocila, uz o chvilu
+      // spodkom nie je - a chat ostal visiet v strede.
+      // Teraz sa spodok DRZI (cnPinBottom) az dovtedy, kym sa usera sam nedotkne scrollu. ===
+      cnGoBottom();
     } else if (cnWasBottom) {
       cnFeed.scrollTop = cnFeed.scrollHeight; // citalo sa na spodku - novy obsah sa ma ukazat
     } else {
@@ -12058,6 +12150,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
       cnFeed.scrollTop = Math.min(cnKeepTop, Math.max(0, cnFeed.scrollHeight - cnFeed.clientHeight));
     }
     zzz1cn_fit_comm_window(box);   // [Zzz1-CN:FEED-ADAPTIVE] pribudol/ubudol chatnote -> prepocitaj vysku
+    cnGoBottom();                  // [Zzz1-CN:OPEN-BOTTOM] dopasovanie zmenilo vysku - spodok sa musi dorovnat
   };
 
   // === [Zzz1-CN:FIT-STABLE] Vrso 2026-09-26: "ked otvorim comm window stale sa mi v dolnej casti prekryvaju
@@ -12066,9 +12159,14 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   // geometrie a spravilo sa az neskor, pri prvom scrolle. Dve rAF = az po prvom skutocnom layoute, a
   // ResizeObserver drzi vysku dopasovanu pri kazdej zmene obsahu (contacts modul, riadkovy editor, nove
   // chatnotes) bez toho, aby sa na to muselo pamatat na kazdom mieste zvlast. ===
-  requestAnimationFrame(() => requestAnimationFrame(() => zzz1cn_fit_comm_window(box)));
+  requestAnimationFrame(() => requestAnimationFrame(() => { zzz1cn_fit_comm_window(box); cnGoBottom(); }));
+  // [Zzz1-CN:OPEN-BOTTOM] posledna poistka: obsah dorastá aj po prvom layoute (pismo, obrazky, klavesnica).
+  // Dva kratke navraty na spodok to pokryju bez toho, aby sa muselo pozerat na kazdy zdroj zmeny zvlast -
+  // a ked sa user medzitym scrollu dotkne, priznak je uz zhasnuty a nic sa nedeje.
+  setTimeout(cnGoBottom, 80);
+  setTimeout(cnGoBottom, 400);
   if (typeof ResizeObserver === 'function') {
-    const cnRO = new ResizeObserver(() => zzz1cn_fit_sync());
+    const cnRO = new ResizeObserver(() => { zzz1cn_fit_sync(); cnGoBottom(); });
     cnRO.observe(box);
     const anchorEl = document.getElementById('versoFullHeaderAnchor');
     if (anchorEl) cnRO.observe(anchorEl);
@@ -12142,6 +12240,9 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     cnTargetName.title = locked
       ? 'Name of the note you are replying to (read-only)'
       : 'Name for the NEW chat # (optional)';
+    // [Zzz1-CN:CHL-QUICKFILTER] prekryv patri LEN zamknutej bunke - pri pisani mena noveho chatu by
+    // bral klik, ktorym sa do nej ide
+    cnNameHit.style.display = locked ? '' : 'none';
     // hodnotu neprepisuj, ked sa nelisi - inak by sa pri kazdom prekresleni feedu preskocil kurzor
     const want = cnTargetNameVal || '';
     if (cnTargetName.value !== want) cnTargetName.value = want;
@@ -12158,8 +12259,10 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   // to user naklikal rucne, takze pocitadlo na SHOW, RESET aj preset o tom vedia. Druhe podrzanie filter
   // vypne - je to prepinac, nie jednosmerny povel. ===
   let cnNameFilterOn = false;
+  let cnMentFilterOn = false;   // [Zzz1-CN:CHL-MENTFILTER]
   const cnQuickFilterPaint = () => {
-    cnTargetName.classList.toggle('is-filtering', cnNameFilterOn);
+    cnTargetName.classList.toggle('is-filtering', cnNameFilterOn || cnMentFilterOn);
+    cnTargetName.classList.toggle('is-ment', cnMentFilterOn);
   };
   // === [Zzz1-CN:CHL-QUICKFILTER] OPRAVA (Vrso 2026-09-29, fotka): "na fotke je zle zapracovany quick
   // filter (podrz 1-2 s name chat button), ktorym by sa mal cely chat filtrovat podla chat name."
@@ -12173,53 +12276,72 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   // filtrovanie vobec je), nie je to pre usera textove pole, ale popiska. Vtedy sa teda vyber, kontextove
   // menu aj zaostrenie odmietnu a scroll pod prstom sa zastavi. Kym je bunka ODOMKNUTA (pise sa meno noveho
   // chatu), nechava sa nativne spravanie nedotknute - tam sa text naozaj pise a filtrovat nie je podla coho.
-  const cnNameLocked = () => cnTargetName.readOnly;
-  let cnNameSelTimer = null;
-  const cnNameHoldEnd = () => {
-    if (cnNameSelTimer) { clearInterval(cnNameSelTimer); cnNameSelTimer = null; }
+  // DRUHY POKUS (Vrso 2026-09-29, druha fotka: "stale ten name chat button je vybranym textom, tak 1-2 s
+  // filter nefunguje"): straz nestacila. Na Androide si dlhy dotyk na <input> vezme prehliadac SKOR, nez sa
+  // k nemu dostane ktorykolvek listener, a user-select:none sa na textovom poli ignoruje. Nedá sa to vyhrat
+  // na tom istom prvku - preto tam ten prvok pri podrzani vobec nie je.
+  // Nad zamknutou bunkou lezi PREKRYV (span), ktory zoberie dotyk na seba. Nie je to textove pole, takze
+  // ziadny vyber ani nativne menu nevznika a zzz_bind_hold_selection_guard() na nom funguje tak, ako ma.
+  // Meno pod nim ostava vidiet - prekryv je priehladny a text sa cita z inputu, takze sa nic nezdvojuje.
+  // Pri ODOMKNUTEJ bunke (pise sa meno noveho chatu) prekryv zmizne a input sa sprava uplne normalne.
+  const cnNameHit = document.createElement('span');
+  cnNameHit.className = 'zzz1cn-target-name-hit';
+  cnNameHit.setAttribute('aria-hidden', 'true');
+  cnNameHit.title = 'Hold 1-2s to filter the chat by this name / hold 3s to filter @ and & mentions';
+  zzz_bind_hold_selection_guard(cnNameHit);
+  // [Zzz1-CN:CHL-QUICKFILTER] jedno telo pre obe gesta - 1-2 s filtruje podla mena vlakna, 3 s podla
+  // mentions. Su to dva rozne pohlady na ten isty chat, takze sa navzajom vylucuju: zapnutie jedneho
+  // zhasne druhy, inak by sa prienikom dalo dojst k prazdnemu chatu bez zjavnej priciny.
+  const cnQuickClear = () => {
+    cnNameFilterOn = false;
+    cnMentFilterOn = false;
+    cnView.name = '';
+    cnView.mentions = false;
+    cnQuickFilterPaint();
   };
-  const cnNameHoldStart = () => {
-    if (!cnNameLocked()) return;
-    if (cnNameSelTimer) clearInterval(cnNameSelTimer);
-    // prehliadac vyber obnovuje aj po preventDefault - preto sa krati opakovane, kym prst drzi
-    cnNameSelTimer = setInterval(() => {
-      const sel = window.getSelection && window.getSelection();
-      if (sel && sel.toString()) sel.removeAllRanges();
-      if (cnTargetName.setSelectionRange) { try { cnTargetName.setSelectionRange(0, 0); } catch (e) {} }
-    }, 80);
-  };
-  cnTargetName.addEventListener('selectstart', (e) => { if (cnNameLocked()) e.preventDefault(); });
-  cnTargetName.addEventListener('contextmenu', (e) => { if (cnNameLocked()) e.preventDefault(); });
-  // mousedown bez fokusu = ziadny kurzor, ziadna mobilna klavesnica, ziadne doscrollovanie k prvku
-  cnTargetName.addEventListener('mousedown', (e) => { if (cnNameLocked()) e.preventDefault(); });
-  cnTargetName.addEventListener('touchstart', cnNameHoldStart, { passive: true });
-  cnTargetName.addEventListener('mousedown', cnNameHoldStart);
-  // kym prst drzi PRIAMO na bunke, stranka sa pod nim nesmie hybat - inak sa dotyk zmeni na scroll gesto
-  // a 1-2 s casovac sa zrusi ([Zzz6-X:HOLD-SELECTION-GUARD] to iste riesil pri chipoch)
-  cnTargetName.addEventListener('touchmove', (e) => {
-    if (cnNameSelTimer && e.cancelable) e.preventDefault();
-  }, { passive: false });
-  ['touchend', 'touchcancel', 'mouseup', 'mouseleave'].forEach(ev =>
-    cnTargetName.addEventListener(ev, cnNameHoldEnd));
-  zzz_bind_long_press(cnTargetName, 1200, () => {
-    cnNameHoldEnd();
+  const cnQuickName = () => {
     if (cnNameFilterOn) {
-      cnNameFilterOn = false;
-      cnView.name = '';
-      cnQuickFilterPaint();
+      cnQuickClear();
       zzz6f2_show_toast('Chat filter off.');
       cnRefreshFeed();
       return;
     }
     const nm = String(cnTargetName.value || cnTargetNameVal || '').trim();
     if (!nm) { zzz6f2_show_toast('This thread has no name to filter by.', 'warn'); return; }
+    cnQuickClear();
     cnNameFilterOn = true;
     cnView.name = nm;
     cnQuickFilterPaint();
     zzz_haptic_pulse(30);
     zzz6f2_show_toast(`Chat filtered by "${nm}" - hold again to clear.`);
     cnRefreshFeed();
-  });
+  };
+  // === [Zzz1-CN:CHL-MENTFILTER] Vrso 2026-09-29: "urob aj 3 s podrz funkciu, kedy vyfiltruje v chate
+  // vsetky @&mentions."
+  // Je to ta ista bunka a to iste gesto, len dlhsie - a dava odpoved na inu otazku: nie "co patri k tomuto
+  // vlaknu", ale "kde sa niekto niekoho dovolava". Hlada sa v TEXTE spravy tymi istymi dvoma regexmi, ktore
+  // mentions kresli ([Zzz6-F58]), takze co je v chate zvyraznene, to filter aj najde - ani viac, ani menej
+  // (e-mail a@b.sk teda neprejde ani tu). ===
+  const cnQuickMentions = () => {
+    if (cnMentFilterOn) {
+      cnQuickClear();
+      zzz6f2_show_toast('Mentions filter off.');
+      cnRefreshFeed();
+      return;
+    }
+    cnQuickClear();
+    cnMentFilterOn = true;
+    cnView.mentions = true;
+    cnQuickFilterPaint();
+    zzz_haptic_pulse(30);
+    zzz6f2_show_toast('Chat filtered to @ and & mentions - hold 3s again to clear.');
+    cnRefreshFeed();
+  };
+  // [Zzz5-W7:TIERED-HOLD] jedno gesto, dva stupne - vyhodnoti sa ten vyssi, ktory prst stihol dosiahnut
+  zzz5w7_bind_tiered_hold(cnNameHit, [
+    { ms: 1200, fn: cnQuickName },
+    { ms: 3000, fn: cnQuickMentions }
+  ]);
   // zvyrazni v chate to oznacenie, na ktore prave odpovedam - nech je vidiet, s cim pracujem
   // === [Zzz1-CN:CHL-EXISTS] Vrso 2026-09-27: "ked dam # (a mozno aj @), ktore este nebolo vlozene, tak
   // zalise na odoslanie. Je to vhodne mat takto? Nie je lepsie radsej zablokovat taku moznost?"
@@ -12608,7 +12730,13 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   const cnRowSide = document.createElement('div');
   cnRowSide.className = 'zzz1cn-rowside';
   cnRowSide.appendChild(cnTargetRow);   // [Zzz1-CN:CHL-RESET] cielova bunka + × na jej vynulovanie
-  cnRowSide.appendChild(cnTargetName);
+  // [Zzz1-CN:CHL-QUICKFILTER] bunka s menom a jej prekryv stoja v spolocnom obale - prekryv sa pozicuje
+  // absolutne voci nemu, takze presne sadne na bunku bez ohladu na to, aku sirku jej riadok pridelí
+  const cnNameWrap = document.createElement('div');
+  cnNameWrap.className = 'zzz1cn-target-name-wrap';
+  cnNameWrap.appendChild(cnTargetName);
+  cnNameWrap.appendChild(cnNameHit);
+  cnRowSide.appendChild(cnNameWrap);
   cnRowSide.appendChild(cnSave);
   cnRow.appendChild(cnRowSide);
   cnPaintTargetName();
@@ -16369,6 +16497,9 @@ async function submit_entries_to_db(options = {}) {
   // [Zzz6-F13:EDIT-AS-VERSION] posledne realne zapisane cislo si drzime globalne - editacia ho potrebuje,
   // aby vedela, ktorym zaznamom ma povodny nahradit (superseded_by). | Vrso -> Claude AI | 2026-09-20
   zzz6f2LastWrittenEntryId = nextEntryId;
+  // [Zzz1-CN:OWNER-GATE] nastavenie "smu ini pridavat kontakty", spravene este nad rozpisanou CL, sa teraz
+  // viaze na cislo, ktore zaznam prave dostal
+  zzz1cn_openadd_promote(nextEntryId);
 
   const entryDateStr = zzz6f14_format_today(); // Zzz6-F14: aktualny datum priradeny k tomuto zaznamu
 
@@ -24818,6 +24949,18 @@ function zzz6f58_names(text, onlyForm) {
   return out;
 }
 
+// [Zzz1-CN:CHL-MENTFILTER] je v texte aspon jedno @ alebo & meno? Pouziva sa ten isty regex ako pri
+// kresleni, takze filter najde presne to, co je v chate zvyraznene - nie viac a nie menej.
+function zzz6f58_has_mention(text) {
+  const t = String(text || '');
+  ZZZ6F58_RE.lastIndex = 0;
+  ZZZ6F58_RE_ONLY.lastIndex = 0;
+  const hit = ZZZ6F58_RE.test(t) || ZZZ6F58_RE_ONLY.test(t);
+  ZZZ6F58_RE.lastIndex = 0;
+  ZZZ6F58_RE_ONLY.lastIndex = 0;
+  return hit;
+}
+
 // [Zzz6-F58:MENTIONS-ONLY] vystrihne &mena z textu - to, co sa naozaj ulozi a co uvidia ostatni
 // ZRUSENE 2026-09-29 (Vrso: "&verso ... mal by byt tiez ako link ... s funkciou podrzania na parovanie"):
 // vystrihovanie mien z textu uz nikde nebezi - meno v texte ostava a da sa podrzat. Funkcia sa NECHAVA,
@@ -25571,7 +25714,8 @@ function zzz5w7_head_line(n, entryKey, ord, hide) {
     + (time ? ' ' + time : '')
     + zzz5w7_status_mark(n, h)              // [Zzz5-W7:STATUS-LINE] faza je v riadku VZDY, aj OPEN
     // [Zzz1-CN:PRIORITY] znacka stoji PRED (private) - je to vlastnost ulohy, nie jej viditelnosti
-    + (zzz1cn_prio_of(n) && !h.priority ? ` (${zzz1cn_prio_label(zzz1cn_prio_of(n))})` : '')   // [Zzz1-CN:PRIO3]
+    // [Zzz1-CN:PRIO3] znacku odoberá volba TOHO stupna, ktory zaznam naozaj ma
+    + ((() => { const l = zzz1cn_prio_of(n); return l && !h[l] ? ` (${zzz1cn_prio_label(l)})` : ''; })())
     + (String(n.note_to || '').trim() ? ` (only: ${String(n.note_to).trim()})` : '')   // [Zzz6-F58:MENTIONS-ONLY]
     + (n.is_private && !h.priv ? ' (private)' : '')
     + (entryKey ? ` (entry #${entryKey})` : '');
@@ -25772,7 +25916,13 @@ function zzz5w7_dock_stop() {
 const ZZZ5W7_FILTERS = [
   // [Zzz1-CN:PRIORITY] Vrso 2026-09-29: "treba zapracovat aj do show barov... ako kriterium niekde na
   // vrch, lebo jedno z najdolezitejsich" - preto PRVE, nad fazami ulohy
-  ['priority', 'PRIORITY', 'marked as priority'],
+  // [Zzz1-CN:PRIO3] OPRAVA (Vrso 2026-09-29: "v show baroch vo filter aj hide je priority, ale co to ma
+  // ako robit? Lepsie by bolo nahradit prave s attention a urgent"). Mal pravdu: odkedy ma priorita tri
+  // stupne, je "PRIORITY" otazka, na ktoru sa nedá odpovedat - znamenala 'attention alebo urgent', teda
+  // presne to, co uz je vidiet v riadku. Stupne su TERAZ samostatne kriteria, rovnako ako OPEN/PROGRESS/
+  // DONE/FINAL pri statuse. Zaskrtnutie oboch = "obe" (nie prienik, ten by nevratil nic).
+  ['attention', 'ATTENTION', 'marked ATTENTION'],
+  ['urgent',    'URGENT',    'marked URGENT'],
   ['open',     'OPEN',     'nobody has started it yet'],
   ['progress', 'PROGRESS', 'the author is working on it'],
   ['done',     'DONE',     'the author finished it'],
@@ -26042,7 +26192,12 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     const keys = ['open', 'progress', 'done', 'final'].filter(k => o[k]);
     const st = zzz5w7_status_of(n) || 'open';
     if (keys.length && !keys.includes(st)) return false;
-    if (o.priority && !zzz1cn_prio_of(n)) return false;   // [Zzz1-CN:PRIO3] kriterium plati na OBA stupne
+    // [Zzz1-CN:PRIO3] stupne su OR medzi sebou, AND voci ostatnym kriteriam - zaskrtnutie oboch teda
+    // znamena "attention alebo urgent", nie "oboje naraz" (taky zaznam neexistuje)
+    if (o.attention || o.urgent) {
+      const lvl = zzz1cn_prio_of(n);
+      if (!((o.attention && lvl === 'attention') || (o.urgent && lvl === 'urgent'))) return false;
+    }
     if (o.private && !n.is_private) return false;
     const me = zzz10v1_normalize(zzz0r1_get_current_username() || '');
     if (o.mine && zzz10v1_normalize(n.username || '') !== me) return false;
@@ -26700,7 +26855,9 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
   // ktorekolvek ine - ziadna zvlastna skupina netreba
   const ZZZ5W7_HIDES = [
     ['ord',      '@',        'hides the working order (@N) in the text'],
-    ['priority', 'PRIORITY', 'hides the (priority) mark'],
+    // [Zzz1-CN:PRIO3] rovnako ako vo filtri - stupne su dva, takze sa aj schovavaju zvlast
+    ['attention', 'ATTENTION', 'hides the (attention) mark'],
+    ['urgent',    'URGENT',    'hides the (urgent) mark'],
     ['name',     'NAME (all)', 'hides every note name'],
     ['open',     'OPEN',     'hides the [OPEN] mark'],
     ['progress', 'PROGRESS', 'hides the [PROGRESS] mark'],
@@ -26868,7 +27025,7 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
     view.extra = {};                                  // [Zzz5-W7:FILTER-EXTRA]
     extraInputs.forEach(el => { el.value = ''; });
     hide.time = false;                                // [Zzz1-CN:TIME]
-    hide.priority = false;                            // [Zzz1-CN:PRIORITY]
+    hide.attention = false; hide.urgent = false;      // [Zzz1-CN:PRIO3]
     hide.txt = ''; hide.ord = false; hide.ordq = 0; hide.name = false; hide.user = false;
     hide.priv = false; hide.users = {}; hide.usersq = '';
     hide.open = false; hide.progress = false; hide.done = false; hide.final = false; hide.nameq = '';
@@ -27739,7 +27896,11 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       if (view.on.progress && st !== 'progress') return false;
       if (view.on.done     && st !== 'done')     return false;
       if (view.on.final    && st !== 'final')    return false;
-      if (view.on.priority && !zzz1cn_prio_of(n)) return false;   // [Zzz1-CN:PRIO3] kriterium plati na OBA stupne
+      // [Zzz1-CN:PRIO3] stupne su OR medzi sebou (viz cnPasses)
+      if (view.on.attention || view.on.urgent) {
+        const lvl = zzz1cn_prio_of(n);
+        if (!((view.on.attention && lvl === 'attention') || (view.on.urgent && lvl === 'urgent'))) return false;
+      }
       if (view.on.private  && !n.is_private)     return false;
       if (view.on.mine     && zzz10v1_normalize(n.username || '') !== meF) return false;
       if (!zzz5w7_pass_time(n, view)) return false;   // [Zzz1-CN:TIME] rozsah DATE od-do
