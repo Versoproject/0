@@ -2690,6 +2690,29 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     vertical-align: middle;
   }
   .zzz1cn-note-badge.has-notes { display: inline-block; }
+  /* === [Zzz1-CN:NOTIF] pocet NOVYCH sprav. Jedno cislo, farba podla najvyssieho pritomneho stupna
+     (Vrso: "iba jedna hodnota priorit"). Nula sa nekresli - prazdna bunka je tichsia nez "0" a setri
+     sirku, ktorej je v CRM riadku najmenej. Vyplnena, nie obrysova: je to upozornenie, nie udaj. === */
+  .zzz1cn-notif-badge {
+    display: none;
+    margin-left: 3px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-size: 8px;
+    font-weight: 800;
+    line-height: 14px;
+    color: #fff;
+    cursor: pointer;
+    vertical-align: middle;
+  }
+  .zzz1cn-notif-badge.is-on { display: inline-block; }
+  .zzz1cn-notif-badge.is-green { background-color: #1e7e34; border-color: #1e7e34; }
+  .zzz1cn-notif-badge.is-att   { background-color: #ea8c00; border-color: #ea8c00; }
+  .zzz1cn-notif-badge.is-urg   { background-color: #c0392b; border-color: #c0392b; }
   /* [Zzz5-W7:STATUS-4] tie iste styri farby ako gulicka pri poznamke - jedna farba, jeden vyznam */
   .zzz1cn-note-badge.is-progress { background-color: #ea8c00; border-color: #ea8c00; color: #fff; }
   .zzz1cn-note-badge.is-done     { background-color: #9ca3af; border-color: #9ca3af; color: #171717; }
@@ -3731,6 +3754,41 @@ body{margin:0;color:#fff;font-family:sans-serif;}
      robit" - preto SEDA, nie zlata. Zlata v tejto appke znamena "Verso/aktivne"; zamknute pole ma naopak
      povedat "s tymto sa teraz neda hybat", a na to ma kazde rozhranie ten isty zauzivany tvar: sede. === */
   .zzz5w7-locked { opacity: 0.6; cursor: not-allowed; }
+  /* === [Zzz5-W7:MULTI-PICK] potvrdene mena stoja pod svojim polom ako chipy. Zaberaju vlastny riadok
+     (nie sirku pola), takze tri mena su vidiet naraz a kazde sa da zrusit zvlast. Zalamuju sa - na
+     telefone je sirka to jedine, coho je malo. === */
+  .zzz5w7-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 2px 0 4px 0;
+  }
+  .zzz5w7-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 3px 1px 6px;
+    border: 1px solid #D4AF37;
+    border-radius: 9px;
+    background-color: rgba(212, 175, 55, 0.16);
+    color: #8a6d1f;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 14px;
+  }
+  .zzz5w7-chip-x {
+    width: 13px;
+    height: 13px;
+    padding: 0;
+    border: 0;
+    border-radius: 7px;
+    background-color: transparent;
+    color: #8a6d1f;
+    font-size: 11px;
+    line-height: 12px;
+    cursor: pointer;
+  }
+  .zzz5w7-chip-x:hover { background-color: rgba(192, 57, 43, 0.18); color: #c0392b; }
   input.zzz5w7-locked[type="text"],
   input.zzz5w7-locked[type="number"],
   input.zzz5w7-locked[type="date"] {
@@ -11739,8 +11797,13 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     if (o.private && !n.is_private) return false;
     if (o.mine && zzz10v1_normalize(n.username || '') !== zzz10v1_normalize(zzz0r1_get_current_username() || '')) return false;
     if (cnView.at && Number(ord) !== Number(cnView.at)) return false;
-    const nameQ = zzz10v1_normalize(String(cnView.name || '').trim());
-    if (nameQ && !zzz10v1_normalize(n.note_name || '').includes(nameQ)) return false;
+    // [Zzz5-W7:MULTI-PICK] viac nazvov = ALEBO (staci, aby sedel ktorykolvek) - AND by nedaval zmysel,
+    // jedna poznamka ma jediny nazov, takze prienikom dvoch by nebolo nikdy nic
+    const nameQs = zzz5w7_multi_tokens(cnView.name).map(zzz10v1_normalize).filter(Boolean);
+    if (nameQs.length) {
+      const nm = zzz10v1_normalize(n.note_name || '');
+      if (!nameQs.some(q => nm.includes(q))) return false;
+    }
     // [Zzz1-CN:CHL-MENTFILTER] prejde len sprava, v ktorej je aspon jedno @ alebo & meno
     if (cnView.mentions && !zzz6f58_has_mention(n.note_text)) return false;
     const showQ = zzz10v1_normalize(String(cnView.show || '').trim());
@@ -11757,9 +11820,11 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     off('.zzz1cn-note-ord', cnHide.ord);
     const nameEl = q('.zzz1cn-note-name');
     if (nameEl) {
-      const nq = zzz10v1_normalize(String(cnHide.nameq || '').trim());
+      // [Zzz5-W7:MULTI-PICK] schovat sa da viac nazvov naraz - sedi ktorykolvek z nich
+      const nqs = zzz5w7_multi_tokens(cnHide.nameq).map(zzz10v1_normalize).filter(Boolean);
       const nm = zzz10v1_normalize(String(n.note_name || '').trim());
-      nameEl.style.display = (cnHide.name || (nq && nm && nm.indexOf(nq) === 0)) ? 'none' : '';
+      const hit = !!nm && nqs.some(q => nm.indexOf(q) === 0);
+      nameEl.style.display = (cnHide.name || hit) ? 'none' : '';
     }
     off('.zzz1cn-note-user', zzz5w7_hide_user(n, cnHide));
     off('.zzz1cn-note-private', cnHide.priv);
@@ -11820,32 +11885,56 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   cnChatCell.className = 'zzz1cn-chat-cell';
   cnChatCell.textContent = 'Chat';
   cnChatCell.title = 'Chat - click = cursor into the chatnote line / double tap = full screen';
+  cnChatCell.title = 'Chat - click = cursor into the chat line + jump to the last record / double tap = full screen';
   let cnChatTap = 0;
+  // === OPRAVA (Vrso 2026-09-29): "ked stlacim, hodi kurzor do chat line, ale uz x-krat som hovoril, ze
+  // by sa mal aj scrollovat chat na spodok, zaroven k poslednemu zaznamu chatu! To plati aj pre
+  // minimalizovane aj maximalizovane comm window."
+  // Skok na spodok bol doteraz LEN pri otvoreni okna ([Zzz1-CN:OPEN-BOTTOM]). Ked uz bolo otvorene a user
+  // sa niekam odrolovall, tuknutie na Chat postavilo kurzor do chat line - teda na koniec - ale pohlad
+  // nechalo v strede historie. Presne ten rozpor, ktory uz raz pri otvoreni riesil.
+  // Preto sa tu spodok ZNOVA PRIPINA (cnPinBottom = true): nielen sa raz skoci, ale sa tam aj ostane,
+  // kym dobehne prichod klavesnice a s nou prepocet vysky - inak by klavesnica pohlad zase odtlacila.
+  // Velkost okna v tom nehra rolu, preto ziadna vetva pre kompakt a maximum. ===
+  const cnJumpToLast = () => {
+    cnPinBottom = true;
+    cnGoBottom();
+    // klavesnica na mobile prichadza az po zaostreni a meni vysku feedu - dva kratke navraty to pokryju
+    setTimeout(cnGoBottom, 120);
+    setTimeout(cnGoBottom, 420);
+  };
   cnChatCell.addEventListener('click', () => {
-    if (Date.now() - cnChatHeldAt < 700) return;   // [Zzz5-W7:SHOW-PRESET] klik po podrzani uz nic nerobi
     clearTimeout(cnChatTap);
     cnChatTap = setTimeout(() => {
       const area = box.querySelector('.zzz1cn-row .zzz1r17b-notes-area');
       if (area && !area.disabled) area.focus();
+      cnJumpToLast();
     }, 260);
   });
-  // Maximalizaciu NEROBIME tu: okno uz ma vlastny dvojtuk (v capture faze, [Zzz1-CN:COMM-TALL]) a ten
-  // bezi PRV. Keby sme prepli aj my, prepne sa dvakrat a nestane sa nic - presne to test odhalil. Bunka
-  // je <span>, takze cez filter toho poslucháča prejde a maximalizuje rovnako ako dvojtuk na volnom
-  // mieste okna; nam staci zrusit odlozeny klik, aby dvojtuk zaroven nevytiahol klavesnicu.
-  cnChatCell.addEventListener('dblclick', () => { clearTimeout(cnChatTap); });
-  cnTools.appendChild(cnChatCell);
-  // [Zzz5-W7:SHOW-PRESET] bunka Chat ukazuje stav presetu a podrzanim 1-2 s ho prepina. Tu ziadny spor
-  // nie je - Chat doteraz podrzanie nemal (klik = kurzor do chatnote line, dvojtuk = maximalizacia).
-  function cnMarkPreset(on) { if (cnChatCell) cnChatCell.classList.toggle('zzz5w7-preset-on', !!on); }
-  let cnChatHeldAt = 0;
-  zzz_bind_long_press(cnChatCell, 1200, () => {
-    cnChatHeldAt = Date.now();
-    clearTimeout(cnChatTap);          // podrzanie nesmie zaroven skocit do pisania
-    zzz_haptic_pulse(30);
-    cnFilter.togglePreset();
+  // === OPRAVA (Vrso 2026-09-29): "ked ho 2x tuknem, malo by sa maximalizovat comm window."
+  // Prestalo to fungovat mojou vlastnou zmenou o par hodin skor: dvojtuk okna som obmedzil na KRAJNE
+  // LISTY (hlavicku a spodne tlacidla), aby nebral dvojtuknutie na case v chate. Bunka Chat stoji v
+  // NASTROJOVEJ liste, teda uz mimo toho rozsahu - a tym prisla o gesto, ktore mala od zaciatku.
+  // Teraz si ho robi sama. Je to spravnejsie aj tak: bunka, ktora modul pomenuva, ma mat jeho gesto
+  // vo vlastnych rukach, nie sa spoliehat na to, ze ju zachyti filter nadradeneho okna. ===
+  cnChatCell.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    clearTimeout(cnChatTap);          // dvojtuk nesmie zaroven skocit do pisania a vytiahnut klavesnicu
+    box.classList.toggle('zzz1cn-fullpage');
+    zzz1cn_sync_anchor_mode();
+    zzz1cn_fit_comm_window(box);
+    cnJumpToLast();                   // zmena velkosti meni vysku feedu - spodok sa musi dorovnat
   });
-  cnMarkPreset(cnFilter.presetOn());
+  cnTools.appendChild(cnChatCell);
+  // === [Zzz5-W7:SHOW-PRESET] ZRUSENE 2026-09-29 (Vrso: "Chat button zrus navaznost na preset v show bare,
+  // vsak ten uz tak funguje").
+  // Preset sa prepina podrzanim na samotnom SHOW tlacidle a na bunkach NOTE - tri vchody do jednej veci
+  // boli o dva viac, nez treba. Bunka Chat ma teraz len svoje dve gesta (klik, dvojtuk) a stav presetu
+  // uz nenosi; kto chce vidiet, ci preset bezi, vidi to na SHOW.
+  // Funkcia cnMarkPreset ostava ako prazdna - vola sa z niekolkych miest pri prekresleni listy a
+  // odstranit ju by znamenalo prehrabavat sa v nich kvoli niecomu, co sa ma len prestat diat.
+  function cnMarkPreset() {}
 
   // [Zzz6-F58:MENTIONS] mention pridal kontakt do zaznamu - okno si musi svoju kopiu zosynchronizovat,
   // inak by ju pri najblizsom ulozeni prepisalo starym zoznamom
@@ -12023,6 +12112,32 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   const cnUnpin = () => { cnPinBottom = false; };
   ['touchstart', 'wheel', 'mousedown', 'keydown'].forEach(ev =>
     cnFeed.addEventListener(ev, cnUnpin, { passive: true }));
+  // === [Zzz1-CN:NOTIF] ZHASINANIE ZELENEJ - staci AKTIVITA v tomto chate.
+  // Vrso: "odznaci sa ich pocet notifikacii, ked len kliknem na akukolvek z nich, resp. poslednu sa
+  // dotknem (zaznamena sa aktivita)". Preto dotyk/klik kdekolvek vo feede, nie az otvorenie okna:
+  // otvorenie samo o sebe este nie je citanie, a naopak - kto sa chatu dotkol, ten tam bol. ===
+  ['touchstart', 'mousedown'].forEach(ev =>
+    cnFeed.addEventListener(ev, () => zzz1cn_seen_mark(cnEntryKey, 'seen', Date.now()), { passive: true }));
+  // === [Zzz1-CN:NOTIF] ZHASINANIE ORANZOVEJ A CERVENEJ - az ked tie spravy naozaj DOROLUJU do zobrazenia.
+  // Vrso: "dorolovanie scrollovanim je ok... zapracuj ale iba pre attention a urgent."
+  // IntersectionObserver, nie meranie pri scrolle: pyta sa prehliadaca, ktory to vie povedat lacno, a
+  // chyta aj pripad, ked sa riadok objavi bez scrollu (zmena filtra, prichod novej spravy, zmena vysky).
+  // Znacka sa posuva na cas TOHO riadku; databazovy trigger drzi maximum, takze staci hlasit kazdy zvlast.
+  let cnPrioIO = null;
+  if (typeof IntersectionObserver === 'function') {
+    cnPrioIO = new IntersectionObserver((rows) => {
+      rows.forEach(r => {
+        if (!r.isIntersecting) return;
+        const at = Number(r.target.dataset.zzz1cnPrioAt) || 0;
+        if (at) zzz1cn_seen_mark(cnEntryKey, 'prio', at);
+        cnPrioIO.unobserve(r.target);   // raz videny riadok uz netreba strazit
+      });
+    }, { root: cnFeed, threshold: 0.6 });   // 0.6 = riadok je naozaj vidiet, nie len vykuka spod okraja
+  }
+  const cnWatchPrio = () => {
+    if (!cnPrioIO) return;
+    cnFeed.querySelectorAll('.zzz1cn-note[data-zzz1cn-prio-at]').forEach(el => cnPrioIO.observe(el));
+  };
   // [Zzz1-CN:CHL-TARGET] predbezna deklaracia - cnRefreshFeed ju vola, ale skutocne telo vznika az pri
   // stavbe chat line nizsie. `typeof` by tu nepomohol: na const v TDZ sam vyhodi ReferenceError.
   let cnTargetSync = () => {};
@@ -12151,6 +12266,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     }
     zzz1cn_fit_comm_window(box);   // [Zzz1-CN:FEED-ADAPTIVE] pribudol/ubudol chatnote -> prepocitaj vysku
     cnGoBottom();                  // [Zzz1-CN:OPEN-BOTTOM] dopasovanie zmenilo vysku - spodok sa musi dorovnat
+    cnWatchPrio();                 // [Zzz1-CN:NOTIF] riadky su nove, strazenie prioritnych treba nasadit znova
   };
 
   // === [Zzz1-CN:FIT-STABLE] Vrso 2026-09-26: "ked otvorim comm window stale sa mi v dolnej casti prekryvaju
@@ -20922,6 +21038,9 @@ function zzz4_0_build_entry_row(row) {
     // [Zzz1-CN:NOTE-BADGE] znacka ide do bunky COMMUNICATION - poznamky su komunikacia, takze patri k nej
     if (field.wrap === 'info-wrap' && entryIdForRow !== '') {
       wrapEl.appendChild(zzz1cn_build_note_badge(entryIdForRow));
+      // [Zzz1-CN:NOTIF] hned vedla poctu poznamok stoji pocet NOVYCH sprav. Su to dve rozne otazky
+      // ("kolko je tu evidencie" vs "kolko mi pribudlo"), preto dve znacky a nie jedno cislo.
+      wrapEl.appendChild(zzz1cn_build_notif_badge(entryIdForRow));
       // === [Zzz1-CN:NOTE-HOLD] Vrso 2026-09-28: "suhlasim, nech sa notes otvaraju podrzanim comm bunky
       // v CRM 1-2s."
       // Povodne si chcel podrzanie na ENTRY NUMBER - to ale uz 1,2-3s pouziva [Zzz6-F29:HOLD-SELECT] na
@@ -24332,6 +24451,7 @@ async function zzz1cn_promote_draft(entryId) {
       const { data, error } = await sb.from(ZZZ1CN_TABLE).insert(payload).select().single();
       if (error) throw error;
       zzz1cn_note_badges_refresh();   // [Zzz1-CN:NOTE-BADGE] pocet v CRM riadku sa zmenil
+      zzz1cn_notif_refresh();         // [Zzz1-CN:NOTIF] a pribudla sprava, ktora je pre niekoho nova
       if (data && data.note_number) remap[String(n.note_number)] = data.note_number;
       await sb.from(ZZZ1CN_TABLE).delete().eq('id', n.id);
     }
@@ -24616,6 +24736,7 @@ async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, i
       const { data, error } = await sb.from(ZZZ1CN_TABLE).insert(payload).select().single();
       if (error) throw error;
       zzz1cn_note_badges_refresh();   // [Zzz1-CN:NOTE-BADGE] pocet v CRM riadku sa zmenil
+      zzz1cn_notif_refresh();         // [Zzz1-CN:NOTIF] a pribudla sprava, ktora je pre niekoho nova
       return data;
     } catch (e) {
       // === [Zzz0-OB:CLIENT-CHATNOTE] Vrso 2026-09-25 ("text sa moze stratit... bolo by idealne mat proces
@@ -25109,6 +25230,15 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   const wrap = document.createElement('div');
   // [Zzz1-CN:PRIV-RED] privatna sprava nesie priznak uz na obale - ram ju odlisi bez citania popisu
   wrap.className = 'zzz1cn-note' + (note && note.is_private ? ' zzz1cn-note-priv' : '');
+  // [Zzz1-CN:NOTIF] prioritny riadok nesie svoj cas - podla neho sa posuva znacka `prio_seen_at`, ked
+  // riadok naozaj dorolujes do zobrazenia. Bezny riadok ho nepotrebuje: zelenu zhasina uz samotna aktivita.
+  if (note && zzz1cn_prio_of(note)) {
+    const pt = zzz1cn_time_of(note);
+    if (pt !== null) {
+      wrap.dataset.zzz1cnPrioAt = String(pt);
+      wrap.dataset.zzz1cnEntry = String(note.entry_key || '');
+    }
+  }
   // === [Zzz1-CN:ROW-FULL] podrzanie 1-2 s rozbali TENTO JEDEN riadok aj v kompakte (a druhe ho zbali).
   // Z gesta su vynate ovladacie prvky - cislo ma vlastne podrzanie (note line pod dane #), tlacidla svoje
   // kliky. Mimo kompaktu gesto nic nerobi: tam uz je rozbalene vsetko. ===
@@ -25527,6 +25657,91 @@ function zzz5w7_status_mark(n, h) {
 function zzz5w7_user_tokens(q) {
   return String(q || '').split(/[,;\s]+/).map(zzz10v1_normalize).filter(Boolean);
 }
+// === [Zzz5-W7:MULTI-PICK] Vrso 2026-09-29: "v show bare (vsetkych) treba user aj chat name umoznit aj
+// POTVRDENIM oznacit VIACERO, nielen jeden... napr. potrebujem rychlo vybrat 3 userov, co maju status
+// uloh - v checkboxoch by to bolo velmi na dlho hladat."
+// Textove pole doteraz drzalo JEDNU hodnotu (NAME) alebo zoznam oddeleny ciarkou, o ktorom sa user nemal
+// ako dozvediet (USERS). Obe teraz funguju rovnako a viditelne: napises meno, POTVRDIS (Enter alebo
+// ciarka) a z mena sa stane CHIP. Pole sa vyprazdni a mozes pisat dalsie. Chip sa rusi svojim ×.
+// PRECO CHIPY A NIE DLHSI TEXT V POLI: tri mena v uzkom poli uz nie je vidiet naraz, takze user prestane
+// vediet, podla coho vlastne filtruje. Chip je zvlast, da sa zratat ocami a zrusit jednotlivo.
+// PRECO HODNOTA OSTAVA RETAZEC S CIARKAMI: cely register kriterii (preset, RESET, pocitadlo na SHOW,
+// [Zzz5-W7:SHOW-PRESET]) pracuje so skalarmi. Pole s polom hodnot by si vyzadalo vlastnu vetvu v kazdom
+// z nich; retazec "anna, bob" prejde vsetkymi bez zmeny a rozoberie sa az pri porovnavani.
+function zzz5w7_multi_tokens(v) {
+  return String(v || '').split(',').map(s => s.trim()).filter(Boolean);
+}
+// prida token k hodnote, bez duplicit (nezalezi na velkosti pismen ani diakritike)
+function zzz5w7_multi_add(v, token) {
+  const t = String(token || '').trim();
+  if (!t) return String(v || '');
+  const have = zzz5w7_multi_tokens(v);
+  const k = zzz10v1_normalize(t);
+  if (have.some(x => zzz10v1_normalize(x) === k)) return have.join(', ');
+  have.push(t);
+  return have.join(', ');
+}
+// naviaze na textove pole potvrdzovanie a zoznam chipov. Vracia prvok s chipmi - kam sa vlozi, urcuje
+// volajuci; `put` sluzi presetu/RESETu, ktore hodnotu nastavuju zvonku.
+// ZIVY STAV = potvrdene chipy PLUS to, co je prave rozpisane v poli. Filtrovanie tym ostava okamzite ako
+// doteraz (pises "ver" a zoznam sa uz krati); Enter to rozpisane iba ZAMKNE do chipu a uvolni pole pre
+// dalsie meno. Keby sa filtrovalo az po potvrdeni, kazde hladanie by stalo jeden Enter navyse.
+function zzz5w7_bind_multi(input, set, onChange) {
+  let list = [];
+  const chips = document.createElement('div');
+  chips.className = 'zzz5w7-chips';
+  const sync = () => {
+    const typed = String(input.value || '').trim();
+    set(typed ? list.concat([typed]).join(', ') : list.join(', '));
+  };
+  const paint = () => {
+    chips.innerHTML = '';
+    chips.style.display = list.length ? '' : 'none';
+    list.forEach(t => {
+      const chip = document.createElement('span');
+      chip.className = 'zzz5w7-chip';
+      const txt = document.createElement('span');
+      txt.textContent = t;
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'zzz5w7-chip-x';
+      x.textContent = '\u00d7';
+      x.title = `Remove "${t}"`;
+      // fokus si necha pole, nie krizik - user zvykne rusit a hned pisat dalsie
+      x.addEventListener('mousedown', (e) => e.preventDefault());
+      x.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const k = zzz10v1_normalize(t);
+        list = list.filter(y => zzz10v1_normalize(y) !== k);
+        paint(); sync(); onChange();
+      });
+      chip.appendChild(txt); chip.appendChild(x);
+      chips.appendChild(chip);
+    });
+  };
+  const commit = () => {
+    const t = String(input.value || '').trim();
+    if (!t) return false;
+    const k = zzz10v1_normalize(t);
+    if (!list.some(y => zzz10v1_normalize(y) === k)) list.push(t);
+    input.value = '';
+    paint(); sync(); onChange();
+    return true;
+  };
+  input.addEventListener('keydown', (e) => {
+    // Enter aj ciarka potvrdzuju - ciarka preto, ze doteraz mena oddelovala a ruka ju uz ma naucenu
+    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); commit(); }
+  });
+  // odchod z pola potvrdi rozpisane meno - inak by viselo v poli bez toho, aby bolo vidiet medzi chipmi
+  input.addEventListener('blur', () => { commit(); });
+  return {
+    chips,
+    paint,
+    commit,
+    onInput: () => { sync(); },
+    put: (v) => { list = zzz5w7_multi_tokens(v); input.value = ''; paint(); }
+  };
+}
 function zzz5w7_user_picked(username, onMap, q) {
   const u = zzz10v1_normalize(username || '');
   if (!u) return false;
@@ -25931,6 +26146,231 @@ const ZZZ5W7_FILTERS = [
   ['mine',     'MY',       'notes by the signed-in user']
 ];
 
+// =====================================================================================================
+// === [Zzz1-CN:NOTIF] (SYSTEM FUNCTION) SUM COMM NOTIFICATIONS - KOLKO MI TOHO PRIBUDLO ==============
+// -----------------------------------------------------------------------------------------------------
+// Vrso 2026-09-29: "ako vyriesit pocitadla a oznacit ich v cl/el comm bunke... open chatov zelenou,
+// attention chatov oranzovou hodnotou, urgent cervenou hodnotou" a k tomu upresnenie: "ide o notifikacie,
+// nie o status - to uz je na userovi, ci urobi, co ma... len to ma napomahat neprehliadnut ich
+// a prioritizovat."
+//
+// CO TO TEDA JE: JEDNA mnozina - zaznamy v chate, ktore som este nevidel - rozrezana na tri kusy podla
+// PRIORITY tej spravy. Nie tri rozne pocitadla; tri stupne jednej notifikacie:
+//     bez priority  -> zelena
+//     attention     -> oranzova
+//     urgent        -> cervena
+//
+// ZHASINANIE ma kazda farba INE (Vrsovo zadanie, bod 2 a 3):
+//   ZELENA        staci AKTIVITA v tom chate - klik na ktorykolvek zaznam alebo dotyk na posledny.
+//   ORANZOVA/CERVENA  az ked tie spravy naozaj DOROLUJU do zobrazenia ("dorolovanie scrollovanim je ok,
+//                 zapracuj ale iba pre attention a urgent"). Inak by otvorenie okna zhaslo aj urgentnu
+//                 vec, ktoru user nikdy neuvidel - a prave to ma pocitadlo zariadit, aby sa nestalo.
+//
+// KOHO SA TYKAJU (Vrso, bod 8): zelena vsetkych, kto na zaznam vidi. Attention a urgent IBA toho, kto je
+// v sprave menovany cez @ alebo &. Dovod je jeho: mentions su adresovanie, a prioritna notifikacia ma
+// prist tomu, komu je urcena - nie vsetkym v projekte.
+// POZOR, VEDOMY DOSLEDOK: riadok v chate moze byt oranzovy/cerveny aj ked v nom nikto menovany nie je
+// (priorita je vlastnost spravy, mention je adresovanie). Taka sprava sa do pocitadla nedostane nikomu.
+// Znacka a cislo si teda nemusia sediet - je to zamer, nie chyba.
+// Prepinac je JEDEN RIADOK nizsie (ZZZ1CN_NOTIF_PRIO_NEEDS_MENTION), lebo Vrso to v tej istej sprave
+// raz napisal tak a raz onak (bod 2 "to ignoruj" vs bod 8 "uz som rozhodnuty"). Plati bod 8 - je novsi
+// a hovori "uz som rozhodnuty"; prehodit sa to dá zmenou tohto jedneho `true` na `false`.
+//
+// PRECO JEDEN DOPYT A NIE JEDEN NA ZAZNAM: rovnaky vzor ako [Zzz1-CN:NOTE-BADGE] - JEDNO nacitanie spravi
+// mapu entry_key -> pocty a JEDNO prekreslenie naplni VSETKY znacky na stranke. Tym je zadarmo splnene
+// Vrsovo "musia byt prepojene aj s entry lines vsetkych M4*": kopie zaznamu necitaju jedna z druhej,
+// vsetky citaju z tej istej mapy podla cisla zaznamu. To iste plati pre contacts pairing modul aj actual
+// comm modul so vsetkymi tabmi - staci, aby ich bunka niesla znacku s data-zzz1cn-entry.
+//
+// ROZSAH VIDITELNOSTI RIESI RLS: pocita sa nad tym, co databaza vrati, takze adresnu &spravu zapocita len
+// tomu, komu patri ([Zzz6-F58:MENTIONS-ONLY]). Ziadna dalsia kontrola tu netreba - a hlavne sa nesmie
+// obchadzat agregatom, ktory by bezal mimo policy.
+// =====================================================================================================
+const ZZZ1CN_NOTIF_PRIO_NEEDS_MENTION = true;   // viz rozbor vyssie (Vrso bod 8)
+const ZZZ1CN_SEEN_TABLE = 'verso_chat_seen';
+let zzz1cnSeenMap = null;        // entry_key -> { seen_at, prio_seen_at } (ms)
+let zzz1cnSeenAvailable = true;  // kym nie je nasadene SQL, appka bezi dalej - len bez notifikacii
+let zzz1cnNotifMap = {};         // entry_key -> { green, att, urg }
+let zzz1cnNotifBusy = false;
+
+// [Zzz1-CN:NOTIF] som ja menovany v tejto sprave? Pouziva sa ten isty rozbor ako pri kresleni mentions,
+// takze "menovany" znamena presne to, co v chate vidno zvyraznene.
+function zzz1cn_notif_names_me(note, meN) {
+  if (!meN) return false;
+  const txt = String(note.note_text || '');
+  const all = zzz6f58_names(txt, false).concat(zzz6f58_names(txt, true));
+  if (all.some(n => zzz10v1_normalize(n) === meN)) return true;
+  // adresat ulozeny v stlpci - &meno uz je rozobrane, netreba ho hladat v texte znova
+  return String(note.note_to || '').split(',').some(x => zzz10v1_normalize(x) === meN);
+}
+
+// [Zzz1-CN:NOTIF] znacky citania prihlaseneho usera. Jeden dopyt na vsetky zaznamy naraz.
+async function zzz1cn_seen_load() {
+  const me = (zzz0r1_get_current_username() || '').trim();
+  if (!me || !zzz1cnSeenAvailable) { zzz1cnSeenMap = zzz1cnSeenMap || {}; return zzz1cnSeenMap; }
+  try {
+    const { data, error } = await sb.from(ZZZ1CN_SEEN_TABLE)
+      .select('entry_key, seen_at, prio_seen_at');
+    if (error) throw error;
+    const map = {};
+    (data || []).forEach(r => {
+      map[String(r.entry_key || '')] = {
+        seen: Date.parse(r.seen_at || '') || 0,
+        prio: Date.parse(r.prio_seen_at || '') || 0
+      };
+    });
+    zzz1cnSeenMap = map;
+  } catch (e) {
+    // [Zzz1-CN:OPT-COLS] to iste pravidlo ako pri volitelnych stlpcoch: kym tabulka nie je nasadena,
+    // appka funguje dalej - len sa nic nepocita. Notifikacia je pomocka, nie podmienka chodu.
+    zzz1cnSeenAvailable = false;
+    zzz1cnSeenMap = {};
+  }
+  return zzz1cnSeenMap;
+}
+
+// [Zzz1-CN:NOTIF] posun znacky dopredu. `which`: 'seen' = aktivita (zelena), 'prio' = videne prioritne.
+// Zapisuje sa cez upsert - riadok pre dvojicu (user, zaznam) bud uz je, alebo vznika prvym citanim.
+// Databazovy trigger drzi maximum, takze znacka sa nikdy nevrati dozadu ani pri dvoch otvorenych oknach.
+async function zzz1cn_seen_mark(entryKey, which, whenMs) {
+  const me = (zzz0r1_get_current_username() || '').trim();
+  const key = String(entryKey || '').trim();
+  if (!me || !key || !zzz1cnSeenAvailable) return;
+  const when = new Date(whenMs || Date.now()).toISOString();
+  const cur = (zzz1cnSeenMap && zzz1cnSeenMap[key]) || { seen: 0, prio: 0 };
+  const want = Date.parse(when) || 0;
+  if (which === 'prio' ? want <= cur.prio : want <= cur.seen) return;   // uz sme dalej, netreba pisat
+  const row = { username: me, entry_key: key };
+  row[which === 'prio' ? 'prio_seen_at' : 'seen_at'] = when;
+  // lokalna mapa sa posuva HNED - pocitadlo ma zhasnut pod prstom, nie az po navrate zo siete
+  zzz1cnSeenMap = zzz1cnSeenMap || {};
+  zzz1cnSeenMap[key] = {
+    seen: which === 'prio' ? cur.seen : Math.max(cur.seen, want),
+    prio: which === 'prio' ? Math.max(cur.prio, want) : cur.prio
+  };
+  zzz1cn_notif_recount();
+  try {
+    const { error } = await sb.from(ZZZ1CN_SEEN_TABLE)
+      .upsert(row, { onConflict: 'username,entry_key' });
+    if (error) throw error;
+  } catch (e) {
+    // zapis znacky moze zlyhat (siet, este nenasadena tabulka) - nic sa tym nerozbije, notifikacia sa
+    // pri dalsom nacitani vrati. Zamerne ziadna hlaska: user o znacku citania nepoziadal.
+  }
+}
+
+// [Zzz1-CN:NOTIF] prepocet mapy poctov z uz nacitanych poznamok a znaciek. Ziadny dopyt - iba pocitanie,
+// takze sa smie volat aj pri kazdom prekresleni.
+let zzz1cnNotifNotes = null;   // surove riadky z posledneho nacitania
+function zzz1cn_notif_recount() {
+  const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+  const seen = zzz1cnSeenMap || {};
+  const map = {};
+  (zzz1cnNotifNotes || []).forEach(r => {
+    const key = String(r.entry_key || '');
+    if (!key) return;
+    const t = Date.parse(r.created_at || '') || 0;
+    if (!t) return;                                   // bez casu sa "nove" urcit nedá
+    // vlastna sprava nie je notifikacia - o tom, ze som nieco napisal, viem
+    if (zzz10v1_normalize(r.username || '') === meN) return;
+    const mark = seen[key] || { seen: 0, prio: 0 };
+    const lvl = zzz1cn_prio_of(r);
+    const cur = map[key] || { green: 0, att: 0, urg: 0 };
+    if (!lvl) {
+      if (t > mark.seen) cur.green += 1;
+    } else {
+      // prioritna notifikacia patri menovanemu; bez mentions by sa cervena rozsvietila vsetkym v projekte
+      if (ZZZ1CN_NOTIF_PRIO_NEEDS_MENTION && !zzz1cn_notif_names_me(r, meN)) return;
+      if (t > mark.prio) cur[lvl === 'urgent' ? 'urg' : 'att'] += 1;
+    }
+    map[key] = cur;
+  });
+  zzz1cnNotifMap = map;
+  zzz1cn_notif_paint();
+}
+
+// [Zzz1-CN:NOTIF] nacitanie + prepocet. Jeden dopyt na poznamky, jeden na znacky citania.
+async function zzz1cn_notif_load() {
+  if (zzz1cnNotifBusy) return zzz1cnNotifMap;
+  zzz1cnNotifBusy = true;
+  try {
+    const cols = 'entry_key, username, created_at, note_text'
+      + (zzz1cn_opt_has('note_priority') ? ', note_priority' : '')
+      + (zzz1cn_opt_has('is_priority') ? ', is_priority' : '')
+      + (zzz1cn_opt_has('note_to') ? ', note_to' : '');
+    const [notes] = await Promise.all([
+      sb.from(ZZZ1CN_TABLE).select(cols),
+      zzz1cn_seen_load()
+    ]);
+    if (notes.error) throw notes.error;
+    zzz1cnNotifNotes = notes.data || [];
+  } catch (e) {
+    if (zzz1cnNotifNotes === null) zzz1cnNotifNotes = [];
+  } finally {
+    zzz1cnNotifBusy = false;
+  }
+  zzz1cn_notif_recount();
+  return zzz1cnNotifMap;
+}
+
+// === [Zzz1-CN:NOTIF] KRESLENIE. Vrso 2026-09-29: "napadlo ma pravidlo, ze sa bude zobrazovat iba JEDNA
+// hodnota priorit (cize ak su iba open, tak zelena; ak je attention, tak iba tu; ak je urgent, tak iba tu)."
+// Takze: jedno cislo, farba podla NAJVYSSIEHO pritomneho stupna. Nula sa nekresli vobec - ani ako "0".
+// CENA TOHO PRAVIDLA (aby neprekvapila): ked cakaju 3 urgentne a 20 beznych, v bunke stoji cervena 3 a tych
+// 20 nevidno. Preto je cely rozpis v napovede bunky - pravidlo plati na to, co je VIDNO, nie na to, co sa vie. ===
+function zzz1cn_notif_paint() {
+  const map = zzz1cnNotifMap || {};
+  document.querySelectorAll('.zzz1cn-notif-badge').forEach(el => {
+    const key = el.dataset.zzz1cnEntry || '';
+    const c = map[key] || { green: 0, att: 0, urg: 0 };
+    const lvl = c.urg ? 'urg' : (c.att ? 'att' : (c.green ? 'green' : ''));
+    el.className = 'zzz1cn-notif-badge' + (lvl ? ' is-on is-' + lvl : '');
+    el.textContent = lvl ? String(c[lvl]) : '';
+    el.title = lvl
+      ? `New for you: ${c.green} plain, ${c.att} attention, ${c.urg} urgent. Click = open the chat.`
+      : 'Nothing new';
+  });
+}
+function zzz1cn_notif_refresh() {
+  if (!document.querySelector('.zzz1cn-notif-badge')) return;
+  zzz1cn_notif_load();
+}
+function zzz1cn_build_notif_badge(entryId) {
+  const el = document.createElement('button');
+  el.type = 'button';
+  el.className = 'zzz1cn-notif-badge';
+  el.dataset.zzz1cnEntry = String(entryId || '');
+  el.addEventListener('click', (e) => {
+    e.stopPropagation();   // riadok ma vlastne gesta - znacka nesmie spustit aj ich
+    zzz1cn_open_list(String(entryId || ''), el);
+  });
+  // [Zzz1-CN:NOTIF] prva znacka na stranke rozbehne aj nacitanie a pravidelny prepocet - rovnaky vzor
+  // ako pri [Zzz1-CN:NOTE-BADGE]. Kym v stranke ziadna znacka nie je, nepyta sa na nic.
+  if (zzz1cnNotifNotes === null) zzz1cn_notif_load();
+  zzz1cn_notif_start();
+  return el;
+}
+// [Zzz1-CN:NOTIF] Vrso: "co takto pri kazdom nacitani nejakeho workspacu a pod. v kombinacii, ze sa
+// apka pravidelne nacitava?"
+// Presne tak, dve cesty vedla seba: (1) UDALOSTI - zapis chatnote, otvorenie comm okna, otvorenie
+// workspacu; (2) PRAVIDELNE - raz za minutu, kym je karta vidno. Na skrytej karte sa nepyta vobec
+// (document.hidden), inak by appka v pozadi mlela dopyty cely den pre nikoho.
+// POZOR, COM TO NIE JE: nie je to realtime. Sprava od niekoho ineho rozsvieti bunku az pri najblizsom
+// z tych dvoch okamihov, teda do minuty - nie v tej sekunde, ako to robi chat, ktory ma prave otvoreny.
+// Skutocny realtime je Supabase subscription a je to samostatny krok ([Zzz1-CN:NOTIF-REALTIME] v backlogu).
+const ZZZ1CN_NOTIF_POLL_MS = 60000;
+let zzz1cnNotifTimer = null;
+function zzz1cn_notif_start() {
+  if (zzz1cnNotifTimer) return;
+  zzz1cnNotifTimer = setInterval(() => {
+    if (document.hidden) return;
+    zzz1cn_notif_refresh();
+  }, ZZZ1CN_NOTIF_POLL_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) zzz1cn_notif_refresh();   // navrat ku karte je ten najlepsi moment na prepocet
+  });
+}
+
 // === [Zzz1-CN:NOTE-BADGE] (SYSTEM FUNCTION) KOLKO POZNAMOK MA ZAZNAM - PRIAMO V CRM RIADKU =========
 // Vrso 2026-09-28: "kde najdem napr. Notes? V databaze, org alebo len v comm window danej entry?"
 // Odpoved bola neprijemna: LEN v comm okne tej entry, cez podrzanie tlacidla. Data su pritom globalne
@@ -26201,8 +26641,12 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     if (o.private && !n.is_private) return false;
     const me = zzz10v1_normalize(zzz0r1_get_current_username() || '');
     if (o.mine && zzz10v1_normalize(n.username || '') !== me) return false;
-    const nameQ = zzz10v1_normalize(String(view.name || '').trim());
-    if (nameQ && !zzz10v1_normalize(n.note_name || '').includes(nameQ)) return false;
+    // [Zzz5-W7:MULTI-PICK] viac nazvov = ALEBO, viz cnPasses
+    const nameQs = zzz5w7_multi_tokens(view.name).map(zzz10v1_normalize).filter(Boolean);
+    if (nameQs.length) {
+      const nm = zzz10v1_normalize(n.note_name || '');
+      if (!nameQs.some(q => nm.includes(q))) return false;
+    }
     const showQ = zzz10v1_normalize(String(view.show || '').trim());
     if (showQ && !zzz10v1_normalize(`${n.note_name || ''} ${n.note_text || ''} ${n.username || ''} ${zzz5w7_label_of(n)}`).includes(showQ)) return false;
     if (zzz5w7_user_any(view.users, view.usersq)
@@ -26716,12 +27160,17 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
   nameLab.textContent = 'NAME';
   const nameFil = document.createElement('input');
   nameFil.type = 'text'; nameFil.className = 'zzz5w7-namefil zzz5w7-namefield'; nameFil.placeholder = 'note name';
-  nameFil.addEventListener('input', () => { view.name = nameFil.value; onChange(); });
+  // [Zzz5-W7:MULTI-PICK] NAME uz nie je jedno meno - potvrdenim sa z neho stava chip a da sa pridat dalsie
+  const nameMulti = zzz5w7_bind_multi(nameFil, (v) => { view.name = v; }, onChange);
+  nameFil.placeholder = 'note name + Enter';
+  nameFil.title = 'Type a name and confirm (Enter) - several names may be picked, any of them matches';
+  nameFil.addEventListener('input', () => { nameMulti.onInput(); onChange(); });
   nameRow.appendChild(nameLab); nameRow.appendChild(nameFil);
-  reg('name', nameFil, () => view.name || '', (v) => { view.name = v || ''; nameFil.value = v || ''; });
+  reg('name', nameFil, () => view.name || '', (v) => { view.name = v || ''; nameMulti.put(v || ''); });
   // [Zzz5-W7:USER-FIELD] Vrso 2026-09-28: "NAME je fajn kriterium, ale umiestni ponad deliacu ciaru" -
   // NAME je kriterium ako ostatne, takze patri k nim; pod ciaru patria uz len useri
   paneFilter.appendChild(nameRow);
+  paneFilter.appendChild(nameMulti.chips);   // [Zzz5-W7:MULTI-PICK] chipy stoja POD svojim polom
 
   // === [Zzz5-W7:USER-FIELD] jedno pole, dva taby. Zrkadlo pod priehladnym vstupom farbi napisane meno:
   // zelene je to, co este sedi s niektorym userom v zozname, cervene uz nie - rovnaky mechanizmus ako
@@ -26761,8 +27210,13 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
       mirror.appendChild(pre); mirror.appendChild(bad);
       wrap.classList.add('has-mirror');
     };
-    input.addEventListener('input', () => { onInput(input.value); paint(); onChange(); });
-    return { row, input, paint };
+    // [Zzz5-W7:MULTI-PICK] to iste potvrdzovanie ako pri NAME. USERS uz viac mien zvladalo (ciarkou),
+    // ale user sa to nemal ako dozvediet a napisane mena nebolo vidiet naraz - chipy obe veci riesia.
+    const multi = zzz5w7_bind_multi(input, onInput, onChange);
+    input.placeholder = 'user + Enter';
+    input.title = 'Type a user and confirm (Enter) - several users may be picked, any of them matches';
+    input.addEventListener('input', () => { multi.onInput(); paint(); onChange(); });
+    return { row, input, paint, chips: multi.chips, put: multi.put };
   };
 
   // [Zzz5-W7:FILTER-USERS] Vrso 2026-09-26: "filter by username/s" - mnozne cislo, takze zaskrtavacie
@@ -26795,12 +27249,13 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
   usersBlock.className = 'zzz5w7-usersblock';
   const usersField = buildUserField((v) => { view.usersq = v; });
   usersBlock.appendChild(usersField.row);
+  usersBlock.appendChild(usersField.chips);   // [Zzz5-W7:MULTI-PICK]
   const usersWrap = document.createElement('div');
   usersWrap.className = 'zzz5w7-userswrap';
   usersBlock.appendChild(usersWrap);
   paneFilter.appendChild(usersBlock);
   reg('usersq', usersField.input, () => view.usersq || '',
-    (v) => { view.usersq = v || ''; usersField.input.value = v || ''; usersField.paint(); });
+    (v) => { view.usersq = v || ''; usersField.put(v || ''); usersField.paint(); });
   // zaskrtavacie policka userov vznikaju az v paint() - zamyka sa teda cely zoznam naraz podla mapy
   reg('users', [], () => Object.assign({}, view.users), (v) => { view.users = Object.assign({}, v || {}); });
 
@@ -26888,6 +27343,7 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
   hideUsersBlock.className = 'zzz5w7-usersblock';
   const hideUsersField = buildUserField((v) => { hide.usersq = v; });
   hideUsersBlock.appendChild(hideUsersField.row);
+  hideUsersBlock.appendChild(hideUsersField.chips);   // [Zzz5-W7:MULTI-PICK]
   const hideUsersWrap = document.createElement('div');
   hideUsersWrap.className = 'zzz5w7-userswrap';
   hideUsersBlock.appendChild(hideUsersWrap);
@@ -26920,7 +27376,7 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
   paneHide.appendChild(hideNameRow);
   paneHide.appendChild(hideUsersBlock);
   reg('hide:usersq', hideUsersField.input, () => hide.usersq || '',
-    (v) => { hide.usersq = v || ''; hideUsersField.input.value = v || ''; hideUsersField.paint(); });
+    (v) => { hide.usersq = v || ''; hideUsersField.put(v || ''); hideUsersField.paint(); });
   reg('hide:users', [], () => Object.assign({}, hide.users), (v) => { hide.users = Object.assign({}, v || {}); });
   // zoznam nazvov sa berie z poznamok, ktore realne su - prekresluje ho render() do hideNameList
   let hideNameList = [];
@@ -26939,13 +27395,20 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
     hideNameMirror.appendChild(bad);
     hideNameWrap.classList.add('has-mirror');
   };
+  // [Zzz5-W7:MULTI-PICK] aj v HIDE tabe sa da schovat viac nazvov naraz - rovnakym potvrdenim ako vo FILTER
+  const hideNameMulti = zzz5w7_bind_multi(hideNameIn, (v) => { hide.nameq = v; }, onChange);
+  hideNameIn.placeholder = 'note name + Enter';
+  hideNameIn.title = 'Type a name and confirm (Enter) - several names may be hidden (green = still matches a name)';
   hideNameIn.addEventListener('input', () => {
-    hide.nameq = hideNameIn.value;
+    hideNameMulti.onInput();
     paintHideName();
     onChange();
   });
   reg('hide:nameq', hideNameIn, () => hide.nameq || '',
-    (v) => { hide.nameq = v || ''; hideNameIn.value = v || ''; paintHideName(); });
+    (v) => { hide.nameq = v || ''; hideNameMulti.put(v || ''); paintHideName(); });
+  // [Zzz5-W7:MULTI-PICK] chipy patria hned pod svoj riadok; vkladaju sa az tu, lebo hideNameMulti
+  // vznika nizsie nez sam riadok (const v TDZ by pri skorsom vlozeni spadol)
+  paneHide.insertBefore(hideNameMulti.chips, hideNameRow.nextSibling);
 
   // === [Zzz5-W7:SHOW-PRESET] samotny zamok ===
   // Ulozeny je v localStorage pod klucom okna (opts.presetKey), takze Notes, chat a workspace maju kazdy
@@ -27036,6 +27499,10 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
       .concat(typeof opts.alsoClear === 'function' ? (opts.alsoClear() || []) : (opts.alsoClear || []))
       .forEach(el => { if (el) el.value = ''; });
     usersField.paint(); hideUsersField.paint();
+    // [Zzz5-W7:MULTI-PICK] RESET musi zmazat aj POTVRDENE chipy. Vyprazdnenie samotnych poli nestaci -
+    // chipy su vlastny zoznam vedla nich a po resete by v okne ostali visiet uz bez ucinku, teda ako
+    // klamlivy udaj o tom, podla coho sa filtruje.
+    nameMulti.put(''); usersField.put(''); hideNameMulti.put(''); hideUsersField.put('');
     // [Zzz5-W7:SHOW-PRESET] zamknute kriteria RESET NEZHADZUJE - preset je zaklad vyberu, nie dalsie
     // zaskrtnutie. Vycisti sa vsetko a preset sa hned vrati spat.
     presetApply(); presetPaintLock();
@@ -27872,7 +28339,8 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
       atBase = hit ? (sbAt ? sbAt.base : Number(hit.note_number) || 0) : 0;
       if (!atBase) atBase = -1;   // take poradie neexistuje -> neprejde nic
     }
-    const nameQ = zzz10v1_normalize(view.name.trim());
+    // [Zzz5-W7:MULTI-PICK] viac nazvov = ALEBO, viz cnPasses
+    const nameQs = zzz5w7_multi_tokens(view.name).map(zzz10v1_normalize).filter(Boolean);
     const showQ = zzz10v1_normalize(view.show.trim());
     // [Zzz5-W7:USER-FIELD] zaskrtnuti + vypisani useri su jedno kriterium
 
@@ -27885,7 +28353,10 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
         const base = sb ? sb.base : Number(n.note_number);
         if (base !== atBase) return false;
       }
-      if (nameQ && !zzz10v1_normalize(n.note_name || '').includes(nameQ)) return false;
+      if (nameQs.length) {
+        const nm = zzz10v1_normalize(n.note_name || '');
+        if (!nameQs.some(q => nm.includes(q))) return false;
+      }
       // [Zzz5-W7:FILTER-TABS] SHOW = pricitavaci filter: co sa nezhoduje, to VYPADNE. Odpocitavanie
       // (byvale NOT) je teraz v HIDE tabe a pracuje s textom, nie so zoznamom.
       if (showQ && !zzz10v1_normalize(`${n.note_name || ''} ${n.note_text || ''} ${n.username || ''} ${zzz5w7_label_of(n)}`).includes(showQ)) return false;
