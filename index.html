@@ -3598,6 +3598,14 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     touch-action: none;
   }
   .zzz6f58-mention:active { background-color: rgba(140, 98, 57, 0.18); border-radius: 4px; }
+  /* [Zzz6-F58:MENTIONS-ONLY] znacka adresnej spravy - cervenkava ako private, lebo je to to iste
+     rodine obmedzenie viditelnosti, len menovite */
+  .zzz6f58-only {
+    font-size: 9px;
+    font-weight: 800;
+    color: #c0392b;
+    white-space: nowrap;
+  }
   /* [Zzz1-CN:TIME] datum a cas v hlavicke spravy - udaj, nie obsah: tichy, ale citatelny */
   .zzz1cn-note-time {
     font-size: 9px;
@@ -11525,6 +11533,13 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   });
   cnMarkPreset(cnFilter.presetOn());
 
+  // [Zzz6-F58:MENTIONS] mention pridal kontakt do zaznamu - okno si musi svoju kopiu zosynchronizovat,
+  // inak by ju pri najblizsom ulozeni prepisalo starym zoznamom
+  const cnOnGranted = () => {
+    workingTags = zzz6f21_parse_tags(entryData[fieldId] || '');
+    renderChips();
+  };
+  document.addEventListener('zzz6f58-granted', cnOnGranted);
   cnTools.appendChild(cnFilter.el);
   // [Zzz5-W7:FILTER-MOVE] SHOW box chatu sa presuva rovnako ako v Notes - drzi sa v comm okne a vracia sa
   // pod chat edit module, kym si ho user sam neposunie
@@ -12049,13 +12064,24 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   // ma enter button, kde entry NEJDE do notes, ale iba do chatu" - preto ENTER posiela false, kym note
   // line (a SAVE CHATNOTE pri konkretnom chate) posielaju true.
   const cnSendToChat = async (text, name, target, priv, toSaved, prio) => {
-    const body = String(text || '').trim();
-    if (!body) { zzz6f2_show_toast('Nothing to send.', 'warn'); return null; }
+    const raw = String(text || '').trim();
+    if (!raw) { zzz6f2_show_toast('Nothing to send.', 'warn'); return null; }
+    // === [Zzz6-F58:MENTIONS] pred odoslanim sa sprava PRECITA:
+    //   @meno -> ostava v texte, menovany dostane pristup k zaznamu
+    //   &meno -> z textu sa VYSTRIHNE, menovany dostane pristup A stava sa adresatom (vidi to len on)
+    const mAt = zzz6f58_names(raw, false);
+    const mOnly = zzz6f58_names(raw, true);
+    const body = mOnly.length ? zzz6f58_strip_only(raw) : raw;
+    if (mOnly.length && !body) { zzz6f2_show_toast('The message is only names - write something to send.', 'warn'); return null; }
+    const granted = zzz6f58_grant_access(mAt.concat(mOnly));
     // do CHATU = standardne zdielany zaznam (is_private=false); cislo prideli databaza
     // [Zzz1-CN:PRIORITY] priority je vlastnost zapisu rovnako ako privacy - posiela sa spolu s nim
-    const saved = await zzz1cn_add(cnEntryKey, body, !!priv, target ? { base: Number(target) } : null, name, !!toSaved, !!prio);
+    const saved = await zzz1cn_add(cnEntryKey, body, !!priv, target ? { base: Number(target) } : null, name, !!toSaved, !!prio, mOnly);
     if (saved) {
-      zzz6f2_show_toast(`Chatnote #${zzz5w7_label_of(saved)} sent.`);
+      // [Zzz6-F58:MENTIONS] jedna hlaska povie OBE veci: ze to odislo, a komu sa tym otvoril zaznam
+      const extra = (mOnly.length ? ` Only for: ${mOnly.join(', ')}.` : '')
+        + (granted.length ? ` Access granted: ${granted.join(', ')}.` : '');
+      zzz6f2_show_toast(`Chatnote #${zzz5w7_label_of(saved)} sent.${extra}`);
       cnTargetAuto = true;   // [Zzz1-CN:CHL-FOLLOW] dalsia odpoved uz ide za NOVYM poslednym chatom
       notesArea.value = '';
       workingNotes = '';
@@ -15959,6 +15985,24 @@ async function submit_entries_to_db(options = {}) {
     zzz6f2_show_toast(`Zaznam uz existuje (#${duplicate.entry_id})`);
     return false; // Zzz2-R14: signalizuje volajucemu (napr. ENTRY button), ze sa NEZAPISALO (duplicita)
   }
+
+  // === [Zzz6-F58:MENTIONS] Vrso 2026-09-29: "v texte ak bude @user/s ... tak daj automaticky pristup
+  // (comm consent) danemu userovi, ale IBA PRE DANU ENTRY, bez ohladu na to, ci je v contacts alebo nie."
+  // Pred zapisom sa teda precita CELY text zaznamu (vsetky bunky CL) a kazde @meno aj &meno sa prida do
+  // COMMUNICATION bunky. To je jediny mechanizmus, ktorym sa entry niekomu sprístupňuje - RLS aj
+  // databazovy trigger consentov citaju prave r18 - takze mention ho len vyplni automaticky.
+  // TEXT SA TU NEUPRAVUJE: v chate sa &meno vystrihuje (sprava je kratka a meno v nej uz nema co robit),
+  // ale v bunkach CL je to OBSAH, ktory user napisal - do toho sa nesiaha. Sprístupnenie funguje rovnako.
+  try {
+    const clMentions = [];
+    Object.keys(entryData || {}).forEach(k => {
+      const v = entryData[k];
+      if (typeof v !== 'string' || v.indexOf('@') < 0 && v.indexOf('&') < 0) return;
+      zzz6f58_names(v, false).concat(zzz6f58_names(v, true)).forEach(n => clMentions.push(n));
+    });
+    const grantedCl = zzz6f58_grant_access(clMentions);
+    if (grantedCl.length) zzz6f2_show_toast(`Access granted: ${grantedCl.join(', ')}.`);
+  } catch (e) { /* mention je pomocka, nie podmienka zapisu - nikdy nesmie zhodit ENTER */ }
 
   // Zzz6-F2: obsahovy hash CL (SHA-256) - posiela sa v payloade nizsie, DB-side UNIQUE index na content_hash
   // je AUTORITATIVNA ochrana pred duplicitami (funguje aj ked lokalny pre-check vyssie nic nenajde, napr.
@@ -23959,7 +24003,10 @@ function zzz1cn_reset_availability() { zzz1cnTableAvailable = null; zzz1cnOptCol
 const ZZZ1CN_COLS_CORE = 'id, entry_key, username, note_number, note_part, note_name, note_text, is_private, is_project';
 // [Zzz1-CN:PRIORITY] is_priority je volitelny rovnako ako ostatne - appka funguje aj PRED nasadenim SQL,
 // len bez priority (ziadny pad, ziadne prazdne pole navyse)
-const ZZZ1CN_COLS_OPT = ['note_status', 'is_saved', 'created_at', 'is_priority'];
+// [Zzz6-F58:MENTIONS-ONLY] note_to = komu je zaznam adresovany (&user). Volitelny rovnako ako ostatne:
+// kym stlpec v DB nie je, adresna sprava sa ulozi ako PRIVATNA (vidi ju len autor) - teda fail-closed,
+// radsej ju adresat nedostane, nez aby ju videl niekto, komu urcena nebola.
+const ZZZ1CN_COLS_OPT = ['note_status', 'is_saved', 'created_at', 'is_priority', 'note_to'];
 let zzz1cnOptCols = null;   // null = zatial neoverene, pole = overeny zoznam pouzitelnych stlpcov
 function zzz1cn_opt_has(col) {
   return zzz1cnOptCols === null ? ZZZ1CN_COLS_OPT.indexOf(col) >= 0 : zzz1cnOptCols.indexOf(col) >= 0;
@@ -24004,7 +24051,7 @@ async function zzz1cn_load(entryKey) {
 // [Zzz5-W7:NOTE-PART] subOf = { base: <cislo poznamky, ku ktorej patri> } zalozi SUB-POZNAMKU. Pismeno sa
 // NEPOSIELA ako pravda - posiela sa len odhad, aby trigger vedel, ze ide o sub-poznamku; skutocne pismeno
 // pridelí databaza a appka si ho precita z vrateneho riadku.
-async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, isPriority) {
+async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, isPriority, noteTo) {
   const clean = (text || '').trim();
   if (!clean) { zzz6f2_show_toast('Chatnote je prazdny.', 'warn'); return null; }
   const username = (zzz0r1_get_current_username() || '').trim();
@@ -24021,7 +24068,12 @@ async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, i
   const notePart = base ? zzz5w7_next_letter(existing, base) : '';
   const row = { entry_key: String(entryKey), username, note_number: nextNumber, note_part: notePart,
     note_name: String(noteName || '').trim().slice(0, 60), note_text: clean, is_private: !!isPrivate,
-    is_project: false, is_saved: !!isSaved, is_priority: !!isPriority };
+    is_project: false, is_saved: !!isSaved, is_priority: !!isPriority,
+    // [Zzz6-F58:MENTIONS-ONLY] adresati sa ukladaju NORMALIZOVANE (lowercase, bez diakritickych znamienok -
+    // zzz10v1_normalize, rovnako ako [Zzz0-R2:USERNAME-CASE]). Dovod: RLS policy v SQL v10 porovnava tento
+    // zoznam priamo s verso_jwt_username(), a Postgres by "Anná" na "anna" sam neprepisal (unaccent nie je
+    // zarucene nainstalovany). Normalizacia na klientovi je teda podmienka toho, aby adresat zaznam vobec videl.
+    note_to: (noteTo || []).map(x => zzz10v1_normalize(x)).filter(Boolean).join(', ') };
   // OPRAVA v2 (Vrso 2026-09-24, RLS chyba sa vratila): predchadzajuci pokus "neposielat username a nechat
   // to na databazu" bol ZLY - stal na predpoklade Supabase Auth (auth.jwt() ->> 'email'), ktoru Verso
   // VOBEC nepouziva. Verso ma vlastny [Zzz0Auth-Gate:JWT-BRIDGE] most a KAZDA RLS policy porovnava
@@ -24034,6 +24086,12 @@ async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, i
   if (zzz1cn_opt_has('is_saved')) payload.is_saved = row.is_saved;
   // [Zzz1-CN:PRIORITY] to iste pravidlo ako pri is_saved - posiela sa, len ked stlpec existuje
   if (zzz1cn_opt_has('is_priority')) payload.is_priority = row.is_priority;
+  // === [Zzz6-F58:MENTIONS-ONLY] adresati (&user). Ked stlpec este nie je, zaznam sa ulozi ako PRIVATNY -
+  // fail-closed: radsej ho adresat nedostane, nez aby adresnu spravu videl niekto cudzi. ===
+  if (row.note_to) {
+    if (zzz1cn_opt_has('note_to')) payload.note_to = row.note_to;
+    else payload.is_private = true;
+  }
   if (zzz1cnTableAvailable) {
     try {
       const { data, error } = await sb.from(ZZZ1CN_TABLE).insert(payload).select().single();
@@ -24353,7 +24411,65 @@ async function zzz5w7_status_write(note, st) {
 // KDE TO PLATI: vsade, kde je text v DOM prvku (chat, Notes workspace). Osnova v Notes okne je jedno
 // textove pole (<textarea>), a v nom ziadny prvok, na ktory by sa dalo klikat, existovat nemoze - tam
 // mention ostava obycajnym textom.
-const ZZZ6F58_RE = /(^|[\s(\[{.,;:!?"'])@([A-Za-z0-9_.\-]{2,40})/g;
+// === [Zzz6-F58:MENTIONS-ONLY] Vrso 2026-09-29: "zapracuj aj novu formu Zzz6-F* mentions ONLY pod
+// rovnakym cislom funkcie. Ak ten, co chatuje, zada &user, sprava bude private a pride IBA danemu
+// userovi... v texte ani v chate users nebudu viditelni po odoslani."
+// DVE ZNACKY, JEDNA FUNKCIA - lisia sa VIDITELNOSTOU, nie mechanizmom:
+//   @user  VEREJNY  - meno v texte OSTAVA a je z neho zive oznacenie (kazdy vidi, komu je to urcene)
+//   &user  ADRESNY  - meno sa z ulozeneho textu VYSTRIHNE (po odoslani ho uz nikto necita) a zaznam
+//                     dostane ADRESATOV; vidi ho autor a menovani, nikto iny
+// OBE davaju menovanemu PRISTUP K TOMUTO ZAZNAMU (pridanie do COMMUNICATION), bez ohladu na kontakty -
+// to je ten "automaticky comm consent pre danu entry". Samotny SUHLAS si user dava sam, to mu nikto
+// vziat nemoze; toto je strana vlastnika: sprístupnenie.
+// Meno je \p{L}\p{N}, nie [A-Za-z0-9] - inak by sa "@Anná" odtrhlo na "Ann" a pristup by dostal niekto
+// iny (alebo nikto). Diakritiku aj velke pismena zrovna az zzz10v1_normalize, presne ako pri usernameoch.
+// Znak PRED znackou ostava povinny - preto e-mail "a@b.sk" mentionom nie je.
+const ZZZ6F58_RE = /(^|[\s(\[{.,;:!?"'])@([\p{L}\p{M}\p{N}_.\-]{2,40})/gu;
+const ZZZ6F58_RE_ONLY = /(^|[\s(\[{.,;:!?"'])&([\p{L}\p{M}\p{N}_.\-]{2,40})/gu;
+
+// vytiahne mena z textu podla znacky (@ alebo &), bez duplicit a bez ohladu na velkost pismen
+function zzz6f58_names(text, onlyForm) {
+  const re = onlyForm ? ZZZ6F58_RE_ONLY : ZZZ6F58_RE;
+  const out = [];
+  const seen = {};
+  re.lastIndex = 0;
+  let m;
+  while ((m = re.exec(String(text || '')))) {
+    const n = m[2];
+    const k = zzz10v1_normalize(n);
+    if (k && !seen[k]) { seen[k] = 1; out.push(n); }
+  }
+  re.lastIndex = 0;
+  return out;
+}
+
+// [Zzz6-F58:MENTIONS-ONLY] vystrihne &mena z textu - to, co sa naozaj ulozi a co uvidia ostatni
+function zzz6f58_strip_only(text) {
+  return String(text || '').replace(ZZZ6F58_RE_ONLY, '$1').replace(/[ \t]{2,}/g, ' ').trim();
+}
+
+// [Zzz6-F58:MENTIONS] sprístupnenie zaznamu menovanym - pridanie do COMMUNICATION bunky.
+// Toto je jediny existujuci mechanizmus, ktorym sa da entry niekomu sprístupnit (RLS aj databazovy
+// trigger consentov citaju prave r18), takze mention nerobi nic nove - len ho vyplni automaticky.
+function zzz6f58_grant_access(names) {
+  const list = (names || []).map(n => String(n || '').trim()).filter(Boolean);
+  if (!list.length) return [];
+  const have = zzz6f21_parse_tags(entryData['18'] || '');
+  const haveN = have.map(u => zzz10v1_normalize(u));
+  const added = [];
+  list.forEach(n => {
+    const k = zzz10v1_normalize(n);
+    if (k && haveN.indexOf(k) < 0) { have.push(n); haveN.push(k); added.push(n); }
+  });
+  if (added.length) {
+    write_to_entry('18', have.join(', '));
+    // === [Zzz6-F58:MENTIONS] otvorene comm okno pracuje s VLASTNOU kopiou kontaktov (workingTags) a pri
+    // najblizsom ulozeni ju zapise spat - bez tejto spravy by moje pridanie ticho prepisalo. Okno si po
+    // nej nacita zoznam z entryData nanovo. ===
+    document.dispatchEvent(new CustomEvent('zzz6f58-granted', { detail: { added } }));
+  }
+  return added;
+}
 
 // je to meno uz medzi kontaktmi tejto CL? (COMMUNICATION + USER + owner)
 function zzz6f58_known_contact(name) {
@@ -24582,6 +24698,16 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
     nm.textContent = nmTxt;
     nm.title = 'Note name (not editable)';
     headId.appendChild(nm);
+  }
+  // [Zzz6-F58:MENTIONS-ONLY] adresna sprava povie, KOMU je urcena - inak by odosielatel nevedel, ci
+  // sa to vobec podarilo. Adresata vidi autor aj menovani; nikto iny taky riadok nedostane.
+  const toLab = String(note.note_to || '').trim();
+  if (toLab) {
+    const onlyEl = document.createElement('span');
+    onlyEl.className = 'zzz6f58-only';
+    onlyEl.textContent = `only: ${toLab}`;
+    onlyEl.title = 'Addressed message - visible to you and to the named users';
+    headId.appendChild(onlyEl);
   }
   // [Zzz1-CN:PRIORITY] znacka priority stoji pred private - vlastnost ulohy, nie jej viditelnosti
   if (note.is_priority) {
@@ -24962,6 +25088,7 @@ function zzz5w7_head_line(n, entryKey, ord, hide) {
     + zzz5w7_status_mark(n, h)              // [Zzz5-W7:STATUS-LINE] faza je v riadku VZDY, aj OPEN
     // [Zzz1-CN:PRIORITY] znacka stoji PRED (private) - je to vlastnost ulohy, nie jej viditelnosti
     + (n.is_priority && !h.priority ? ' (priority)' : '')
+    + (String(n.note_to || '').trim() ? ` (only: ${String(n.note_to).trim()})` : '')   // [Zzz6-F58:MENTIONS-ONLY]
     + (n.is_private && !h.priv ? ' (private)' : '')
     + (entryKey ? ` (entry #${entryKey})` : '');
 }
@@ -26924,7 +27051,13 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     // [Zzz5-W7:RENAME] privacy uz rozhoduje policko v riadku, nie natvrdo zapisana 'true'. Predtym bola
     // KAZDA poznamka zalozena v Notes okne privatna, co islo proti [Zzz1-CN:PRIV-DEFAULT] (Vrso: "nech
     // je to rovnake" - nezaskrtnute vsade).
-    const saved = await zzz1cn_add(entryKey, text.trim(), !!got.priv, { base }, got.name, true, !!got.prio);
+    // [Zzz6-F58:MENTIONS] rovnaky rozbor ako v chate - @ ostava, & sa vystrihne a robi z toho adresnu poznamku
+    const mAt = zzz6f58_names(text, false);
+    const mOnly = zzz6f58_names(text, true);
+    const clean = mOnly.length ? zzz6f58_strip_only(text) : text.trim();
+    if (mOnly.length && !clean) { zzz6f2_show_toast('The note is only names - write something.', 'warn'); return; }
+    zzz6f58_grant_access(mAt.concat(mOnly));
+    const saved = await zzz1cn_add(entryKey, clean, !!got.priv, { base }, got.name, true, !!got.prio, mOnly);
     if (!saved) return;
     // === [Zzz6-F22-copy-credit:SUB-NOTE] jedinecny zaznam presne ako ziadal Vrso: <entry>/<chatnote>/<sub>
     // - takze je vzdy jasne, ku ktoremu zaznamu, ktorej poznamke a ktorej sub-poznamke sa acknowledgement
@@ -26951,12 +27084,20 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     if (got.target) {
       const parent = allNotes.find(x => Number(x.note_number) === Number(got.target) && !zzz5w7_sub_of(x));
       if (!parent) { zzz6f2_show_toast(`Note #${got.target} does not exist.`, 'warn'); await render(); return; }
-      const saved = await zzz1cn_add(entryKey, got.text, !!got.priv, { base: Number(got.target) }, got.name, true, !!got.prio);
+      const mAtT = zzz6f58_names(got.text, false);
+      const mOnlyT = zzz6f58_names(got.text, true);
+      zzz6f58_grant_access(mAtT.concat(mOnlyT));   // [Zzz6-F58:MENTIONS]
+      const saved = await zzz1cn_add(entryKey, mOnlyT.length ? zzz6f58_strip_only(got.text) : got.text,
+        !!got.priv, { base: Number(got.target) }, got.name, true, !!got.prio, mOnlyT);
       if (saved) zzz6f2_show_toast(`Note #${zzz5w7_label_of(saved)} saved.`);
       await render();
       return;
     }
-    const saved = await zzz1cn_add(entryKey, got.text, !!got.priv, null, got.name, true, !!got.prio);
+    const mAtN = zzz6f58_names(got.text, false);
+    const mOnlyN = zzz6f58_names(got.text, true);
+    zzz6f58_grant_access(mAtN.concat(mOnlyN));   // [Zzz6-F58:MENTIONS]
+    const saved = await zzz1cn_add(entryKey, mOnlyN.length ? zzz6f58_strip_only(got.text) : got.text,
+      !!got.priv, null, got.name, true, !!got.prio, mOnlyN);
     if (!saved) { await render(); return; }
     zzz6f2_show_toast(`Note #${zzz5w7_label_of(saved)} saved.`);
     await render();
