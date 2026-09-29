@@ -11885,7 +11885,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   cnChatCell.className = 'zzz1cn-chat-cell';
   cnChatCell.textContent = 'Chat';
   cnChatCell.title = 'Chat - click = cursor into the chatnote line / double tap = full screen';
-  cnChatCell.title = 'Chat - click = cursor into the chat line + jump to the last record / double tap = full screen';
+  cnChatCell.title = 'Chat - click = cursor into the chat line + jump to the last record / double tap = filter @ and & mentions';
   let cnChatTap = 0;
   // === OPRAVA (Vrso 2026-09-29): "ked stlacim, hodi kurzor do chat line, ale uz x-krat som hovoril, ze
   // by sa mal aj scrollovat chat na spodok, zaroven k poslednemu zaznamu chatu! To plati aj pre
@@ -11911,20 +11911,22 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
       cnJumpToLast();
     }, 260);
   });
-  // === OPRAVA (Vrso 2026-09-29): "ked ho 2x tuknem, malo by sa maximalizovat comm window."
-  // Prestalo to fungovat mojou vlastnou zmenou o par hodin skor: dvojtuk okna som obmedzil na KRAJNE
-  // LISTY (hlavicku a spodne tlacidla), aby nebral dvojtuknutie na case v chate. Bunka Chat stoji v
-  // NASTROJOVEJ liste, teda uz mimo toho rozsahu - a tym prisla o gesto, ktore mala od zaciatku.
-  // Teraz si ho robi sama. Je to spravnejsie aj tak: bunka, ktora modul pomenuva, ma mat jeho gesto
-  // vo vlastnych rukach, nie sa spoliehat na to, ze ju zachyti filter nadradeneho okna. ===
+  // === ZMENA (Vrso 2026-09-29): "podrz 3s chat note funkciu zrus a prenes (mentions @ aj &) na chat
+  // button funkcie v comm window, ale uz nie s povelom 3s, ale 2x tukni (namiesto sucasnej maximalizuj
+  // comm window)."
+  // Dvojtuk na Chat teda uz NEMAXIMALIZUJE - vyfiltruje vsetky @ a & mentions v chate. Druhy dvojtuk
+  // filter vypne.
+  // CO SA TYM STRATILO A KDE TO JE: maximalizacia. Ostava na KRAJNYCH LISTACH okna - dvojtuk na hornej
+  // (COMMUNICATION) alebo na spodnej (DELETE/COPY/.../ZATVORIT). Zaniklo teda jedno z troch miest, nie
+  // samotne gesto.
+  // PRECO to sem sadne lepsie nez na bunku s menom, kde to bolo doteraz: mentions su filter CELEHO chatu
+  // ("kde sa niekto niekoho dovolava"), nie tohto jedneho vlakna. Bunka Chat pomenuva cely modul, bunka
+  // s menom jedno vlakno - kazdy filter tak stoji tam, kam siaha jeho rozsah. ===
   cnChatCell.addEventListener('dblclick', (e) => {
     e.preventDefault();
     e.stopPropagation();
     clearTimeout(cnChatTap);          // dvojtuk nesmie zaroven skocit do pisania a vytiahnut klavesnicu
-    box.classList.toggle('zzz1cn-fullpage');
-    zzz1cn_sync_anchor_mode();
-    zzz1cn_fit_comm_window(box);
-    cnJumpToLast();                   // zmena velkosti meni vysku feedu - spodok sa musi dorovnat
+    cnQuickMentions();
   });
   cnTools.appendChild(cnChatCell);
   // === [Zzz5-W7:SHOW-PRESET] ZRUSENE 2026-09-29 (Vrso: "Chat button zrus navaznost na preset v show bare,
@@ -12403,7 +12405,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   const cnNameHit = document.createElement('span');
   cnNameHit.className = 'zzz1cn-target-name-hit';
   cnNameHit.setAttribute('aria-hidden', 'true');
-  cnNameHit.title = 'Double tap = filter the chat by this name / hold 3s = filter @ and & mentions';
+  cnNameHit.title = 'Double tap = filter the chat by this name (tap twice again to clear)';
   zzz_bind_hold_selection_guard(cnNameHit);
   // [Zzz1-CN:CHL-QUICKFILTER] jedno telo pre obe gesta - 1-2 s filtruje podla mena vlakna, 3 s podla
   // mentions. Su to dva rozne pohlady na ten isty chat, takze sa navzajom vylucuju: zapnutie jedneho
@@ -12450,7 +12452,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     cnView.mentions = true;
     cnQuickFilterPaint();
     zzz_haptic_pulse(30);
-    zzz6f2_show_toast('Chat filtered to @ and & mentions - hold 3s again to clear.');
+    zzz6f2_show_toast('Chat filtered to @ and & mentions - tap Chat twice again to clear.');
     cnRefreshFeed();
   };
   // === ZMENA (Vrso 2026-09-29): "zmen podrz name chat button na povel 2x tuknut... na filtrovanie chatu
@@ -12460,8 +12462,10 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   // a hlavne sa uz nebije s podrzanim na mentions - kazdy povel ma teraz vlastny tvar, nie vlastnu dlzku
   // toho isteho. Prah 3 s pre mentions preto ostava podrzanim; tam sa nic nemenilo.
   zzz6f14_bind_tap_double(cnNameHit, null, cnQuickName);
-  // [Zzz1-CN:CHL-MENTFILTER] podrzanie uz nesie IBA mentions, takze ziadne stupne netreba
-  zzz_bind_long_press(cnNameHit, 3000, cnQuickMentions);
+  // [Zzz1-CN:CHL-MENTFILTER] ZRUSENE tu 2026-09-29 (Vrso: "podrz 3s chat note funkciu zrus a prenes
+  // mentions na chat button"): bunka s menom uz nesie IBA svoj vlastny filter (podla mena vlakna).
+  // Filter mentions sa presunul na bunku Chat - je to filter CELEHO chatu, nie tohto jedneho vlakna,
+  // takze aj patri k bunke, ktora pomenuva cely modul.
   // zvyrazni v chate to oznacenie, na ktore prave odpovedam - nech je vidiet, s cim pracujem
   // === [Zzz1-CN:CHL-EXISTS] Vrso 2026-09-27: "ked dam # (a mozno aj @), ktore este nebolo vlozene, tak
   // zalise na odoslanie. Je to vhodne mat takto? Nie je lepsie radsej zablokovat taku moznost?"
@@ -12596,9 +12600,29 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   // [Zzz1-CN:IS-SAVED] toSaved rozhoduje, ci zaznam ide AJ do Notes okna. Vrso 2026-09-27: "chatnote line
   // ma enter button, kde entry NEJDE do notes, ale iba do chatu" - preto ENTER posiela false, kym note
   // line (a SAVE CHATNOTE pri konkretnom chate) posielaju true.
+  // === [Zzz1-CN:SEND-ONCE] OPRAVA (Vrso 2026-09-29: "vlozil som #34 chat Xxxxxxx...Xxx - preco sa vlozil
+  // 2x? V notes je iba raz").
+  // Odosielanie je ASYNCHRONNE (zapis do databazy + cakanie na vratene cislo), ale ziadny z povelov, ktore
+  // ho spustaju - ENTER v chat line, OK v note line - sa pocas toho nezamykal. Druhe tuknutie, kym prve
+  // este bezi, teda zacalo DRUHY zapis. A kedze cislo prideluje az databaza (trigger [Zzz5-W7:NOTE-PART]),
+  // druhy zapis dostane VLASTNE cislo - nie je to viditelny duplikat, ale novy zaznam: #34 a #34-a.
+  // Na telefone je to lahke: tlacidlo je velke, reakcia nie je okamzita a prst tukne druhy raz.
+  // Zamok drzi CELY comm window, nie jedno tlacidlo - inak by ENTER a OK v note line vedeli spustit zapis
+  // kazdy zvlast a zamykali by sa navzajom nezavisle, co je presne ten pripad, co sa stal.
+  let cnSendBusy = false;
   const cnSendToChat = async (text, name, target, priv, toSaved, prio) => {
     const raw = String(text || '').trim();
     if (!raw) { zzz6f2_show_toast('Nothing to send.', 'warn'); return null; }
+    // [Zzz1-CN:SEND-ONCE] ticho, bez hlasky: druhe tuknutie nie je chyba usera, len prst rychlejsi nez siet
+    if (cnSendBusy) return null;
+    cnSendBusy = true;
+    try {
+      return await cnSendToChatInner(raw, name, target, priv, toSaved, prio);
+    } finally {
+      cnSendBusy = false;
+    }
+  };
+  const cnSendToChatInner = async (raw, name, target, priv, toSaved, prio) => {
     // === [Zzz6-F58:MENTIONS] pred odoslanim sa sprava PRECITA:
     //   @meno -> ostava v texte, menovany dostane pristup k zaznamu
     //   &meno -> ostava v texte AKO LINK, zaznam je PRIVATNY a menovany je jeho adresat
@@ -13532,6 +13556,20 @@ function zzz6f18_open_context_select_modal(sourceRow) {
     if (zzz6f29SelectMode) { zzz6f29_toggle_cl_cell('18', cell); return; }
     zzz6f18_open_context_select_modal();
   });
+  // === [Zzz1-CN:NOTES-WS] Vrso 2026-09-29: "urob funkciu na CL podrz comm bunku 3s, ze sa otvori v tabe
+  // notes (zatial nedoriesim cely author credits workspace)."
+  // Rovnake gesto, ake uz ma bunka COMMUNICATION v CRM riadku - tam podrzanie 1-2 s otvara Notes JEDNEJ
+  // entry ([Zzz1-CN:NOTE-BADGE]). Na CL to jedna entry byt nemoze: rozpisana CL este ziadne cislo nema.
+  // Preto 3 s a preto CELY prehlad - vsetky poznamky naprieč zaznamami, teda ten isty Notes tab, ktory
+  // otvara AUTHOR CREDITS. Dlzka gesta je zaroven rozdiel voci kliku, ktory otvara comm okno.
+  if (cell) {
+    zzz_bind_hold_selection_guard(cell);
+    zzz_bind_long_press(cell, 3000, () => {
+      if (zzz6f29SelectMode) return;   // v select-mode ma bunka vlastny vyznam
+      zzz_haptic_pulse(30);
+      zzz1cn_open_notes_workspace(cell);
+    });
+  }
 })();
 // === [/Zzz6-F18-context-a:BUTTON-CELL-BIND] ===
 
@@ -16620,6 +16658,18 @@ async function submit_entries_to_db(options = {}) {
   // [Zzz1-CN:OWNER-GATE] nastavenie "smu ini pridavat kontakty", spravene este nad rozpisanou CL, sa teraz
   // viaze na cislo, ktore zaznam prave dostal
   zzz1cn_openadd_promote(nextEntryId);
+  // === [Zzz1-CN:DRAFT-KEY] OPRAVA (Vrso 2026-09-29: "EN je 155 a project name Comm test. Podrzanim comm
+  // sa sice otvoria notes, takze fajn, ale su prazdne! Preco?").
+  // PRICINA: chatnotes pisane nad NEULOZENOU CL zijú pod DRAFT klucom a pod skutocne cislo sa presuvaju az
+  // volanim zzz1cn_promote_draft(). To volanie ale stalo na JEDINOM mieste - na tlacidle ENTER VNUTRI comm
+  // okna. Kto CL odoslal hlavnym ENTER (zelene tlacidlo v module), presun nikdy nespustil: zaznam #155
+  // vznikol prazdny a poznamky ostali visiet pod draftom.
+  // Presun teda patri sem - k momentu, ked zaznam SKUTOCNE dostane cislo. Tym je jedno, ktorym tlacidlom
+  // sa odosielalo.
+  // try/catch: presun poznamok nesmie za ziadnych okolnosti zhodit zapis samotneho zaznamu. Ked zlyha,
+  // poznamky ostavaju pod draftom (nestracaju sa) a skusi sa to pri dalsom ulozeni - tak, ako to ma
+  // zzz1cn_promote_draft popisane vo svojom catch-i.
+  try { await zzz1cn_promote_draft(nextEntryId); } catch (e) {}
 
   const entryDateStr = zzz6f14_format_today(); // Zzz6-F14: aktualny datum priradeny k tomuto zaznamu
 
@@ -24428,6 +24478,21 @@ function zzz1cn_key_for(entryId) {
 }
 // [Zzz1-CN:DRAFT-KEY] po ulozeni CL: presun poznamok z draftu pod skutocne entry number a novy draft.
 // Presun = insert kopii + delete povodnych (tabulka zamerne NEMA UPDATE policy - chatnote sa neda prepisat).
+// [Zzz1-CN:DRAFT-KEY] jeden tvar payloadu pre obe vetvy presunu (hlavne aj sub-poznamky), aby sa nemohli
+// rozist - prave ich rozdielnost bola tym, co poznamky pri presune okrajalo
+function zzz1cn_promote_payload(entryId, n, noteNumber, notePart, noteText) {
+  const payload = {
+    entry_key: String(entryId), username: n.username,
+    note_number: noteNumber, note_part: notePart,
+    note_text: noteText, is_private: !!n.is_private,
+    note_name: String(n.note_name || '').trim().slice(0, 60)
+  };
+  if (zzz1cn_opt_has('is_saved')) payload.is_saved = !!n.is_saved;
+  if (zzz1cn_opt_has('is_priority')) payload.is_priority = !!n.is_priority;
+  if (zzz1cn_opt_has('note_priority')) payload.note_priority = zzz1cn_prio_level(n.note_priority || n.is_priority);
+  if (zzz1cn_opt_has('note_to')) payload.note_to = String(n.note_to || '');
+  return payload;
+}
 async function zzz1cn_promote_draft(entryId) {
   const id = Number(entryId);
   if (!id) return;
@@ -24448,10 +24513,13 @@ async function zzz1cn_promote_draft(entryId) {
     const subs  = list.filter(n => !!zzz5w7_sub_of(n));
     const remap = {};   // stare cislo v drafte -> nove cislo pridelene databazou
     for (const n of mains) {
-      const payload = {
-        entry_key: String(id), username: n.username,
-        note_number: n.note_number, note_part: '', note_text: n.note_text, is_private: n.is_private
-      };
+      // === [Zzz1-CN:DRAFT-KEY] OPRAVA (2026-09-29, druha polovica toho isteho problemu): presun prenasal
+      // LEN text a privacy. Ulozena poznamka (is_saved) sa tym menila na obycajny chat, meno vlakna sa
+      // stratilo a s nim aj priorita a adresati - takze aj keby presun zbehol, Notes okno ostalo PRAZDNE,
+      // lebo Notes ukazuje vylucne riadky s is_saved = true.
+      // Volitelne stlpce sa pridavaju rovnakym pravidlom ako v zzz1cn_add ([Zzz1-CN:OPT-COLS]) - aby presun
+      // fungoval aj na schéme, kde este niektory z nich nie je nasadeny. ===
+      const payload = zzz1cn_promote_payload(id, n, n.note_number, '', n.note_text);
       const { data, error } = await sb.from(ZZZ1CN_TABLE).insert(payload).select().single();
       if (error) throw error;
       zzz1cn_note_badges_refresh();   // [Zzz1-CN:NOTE-BADGE] pocet v CRM riadku sa zmenil
@@ -24461,11 +24529,8 @@ async function zzz1cn_promote_draft(entryId) {
     }
     for (const n of subs) {
       const s = zzz5w7_sub_of(n);
-      const payload = {
-        entry_key: String(id), username: n.username,
-        note_number: remap[String(s.base)] || s.base, note_part: s.letter,
-        note_text: zzz5w7_body_of(n), is_private: n.is_private   // zbavi sa aj starej znacky "[#1-a]", ak tam este je
-      };
+      // zzz5w7_body_of sa zbavi aj starej znacky "[#1-a]", ak v texte este je
+      const payload = zzz1cn_promote_payload(id, n, remap[String(s.base)] || s.base, s.letter, zzz5w7_body_of(n));
       const { error } = await sb.from(ZZZ1CN_TABLE).insert(payload);
       if (error) throw error;
       await sb.from(ZZZ1CN_TABLE).delete().eq('id', n.id);
