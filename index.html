@@ -12724,8 +12724,10 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     const base = Number(pick && pick.note_number) || 0;
     cnTarget.value = base ? String(base) : '';
     cnTargetNameVal = String((pick && pick.note_name) || '').trim();
-    const nlTgt = cnOptionsBar.querySelector('.zzz5w7-inline-tgt');
-    if (nlTgt) nlTgt.value = cnTarget.value;
+    // [Zzz1-CN:NL-ONE-TARGET] nl uz nema vlastnu bunku na prepisanie; posunul sa ale ciel, takze si ma
+    // obnovit napovedu s menom vlakna. Riadkom sa ZAMERNE nehybe - sledovanie posledneho zaznamu je
+    // automatika, nie userov povel, a nl by pod nim uskakovala pri kazdom prekresleni feedu.
+    if (cnOptionsBar.style.display !== 'none') cnOptionsBar.dispatchEvent(new CustomEvent('zzz1cn-nl-retarget'));
   };
   // ked user prepise cislo rucne, meno uz nevieme odvodit inak nez z feedu - dohladaj ho
   const cnNameForNum = (num) => {
@@ -12739,11 +12741,14 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     cnTargetAuto = false;   // user si ciel urcil sam - prestan sledovat posledny zaznam
     cnTargetNameVal = cnNameForNum(cnTarget.value);
     cnTargetSync();
-    // [Zzz1-CN:CHL-TARGET] ked je prave otvorena nl, drz jej "to #" na tej istej hodnote
-    const nlTgt = cnOptionsBar.querySelector('.zzz5w7-inline-tgt');
-    if (nlTgt && nlTgt.value !== cnTarget.value) {
-      nlTgt.value = cnTarget.value;
-      cnPlaceOptions(parseInt(cnTarget.value, 10) || 0);
+    // === [Zzz1-CN:NL-ONE-TARGET] nl uz vlastnu cielovu bunku nema, takze to, co pri pisani do nej robila
+    // sama, musi teraz urobit odtialto: presunut sa pod dane # v chate a obnovit napovedu s menom vlakna.
+    // Bez tychto dvoch riadkov by nl po zruseni bunky ostala visiet v doku a ponukala meno z PREDOSLEHO
+    // vlakna - teda presne to, co uz raz opravovalo [Zzz1-CN:NL-NAME]. ===
+    if (cnOptionsBar.style.display !== 'none') {
+      const n = parseInt(cnTarget.value, 10) || 0;
+      if (n !== cnOptionsTarget) cnPlaceOptions(n);
+      cnOptionsBar.dispatchEvent(new CustomEvent('zzz1cn-nl-retarget'));
     }
   });
   const cnTargetReset = () => {
@@ -12752,8 +12757,12 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     // vynulovanie je vedoma volba - preto sa sledovanie vypne, inak by najblizsie prekreslenie feedu
     // oznacenie posledneho zaznamu hned vratilo spat
     cnTargetAuto = false;
-    const nlTgt = cnOptionsBar.querySelector('.zzz5w7-inline-tgt');
-    if (nlTgt) nlTgt.value = '';
+    // [Zzz1-CN:NL-ONE-TARGET] × vynuluje ciel, takze otvorena nl sa vracia do doku a prestava ponukat
+    // meno zruseneho vlakna
+    if (cnOptionsBar.style.display !== 'none') {
+      cnPlaceOptions(0);
+      cnOptionsBar.dispatchEvent(new CustomEvent('zzz1cn-nl-retarget'));
+    }
     cnTargetSync();
     zzz_haptic_pulse(20);
     // [Zzz1-CN:CHL-NEW] hlaska hovori, co z toho vznikne - prazdna bunka uz nie je "nic", ale novy chat
@@ -12807,8 +12816,12 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     cnTargetAuto = false;
     cnTargetNameVal = String(n.dataset.zzz1cnName || '');
     cnTargetSync();
-    const nlTgt = cnOptionsBar.querySelector('.zzz5w7-inline-tgt');
-    if (nlTgt && nlTgt.value !== cnTarget.value) nlTgt.value = cnTarget.value;
+    // [Zzz1-CN:NL-ONE-TARGET] klik na # je userov povel "odpovedam tomuto", takze otvorena nl sa pod tu
+    // poznamku aj presunie - rovnako, ako ked cislo vypise do reply bunky rukou
+    if (cnOptionsBar.style.display !== 'none') {
+      cnPlaceOptions(parseInt(cnTarget.value, 10) || 0);
+      cnOptionsBar.dispatchEvent(new CustomEvent('zzz1cn-nl-retarget'));
+    }
     zzz6f2_show_toast(`Reply to #${cnTarget.value}${cnTargetNameVal ? ' ' + cnTargetNameVal : ''}`);
   });
 
@@ -12935,15 +12948,14 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     cnOptionsBar.style.display = '';
     const bar = document.createElement('div');
     bar.className = 'zzz5w7-inline';
-    const tag = document.createElement('span');
-    tag.className = 'zzz5w7-inline-tag';
-    tag.textContent = 'chat';
-    const tgt = document.createElement('input');
-    tgt.type = 'text'; tgt.className = 'zzz5w7-inline-tgt'; tgt.placeholder = 'to #';
-    tgt.title = 'Empty = new number. A number = sub-note of it (e.g. 4 -> 4-a)';
-    // [Zzz1-CN:CHL-TARGET] nl a mini bunka nad tlacidlom su JEDEN a ten isty ciel - preto sa pri otvoreni
-    // prevezme a pri pisani hned premietne spat. Inak by user videl dve cielove bunky s roznou hodnotou.
-    tgt.value = String(cnTarget.value || '');
+    // === [Zzz1-CN:NL-ONE-TARGET] Vrso 2026-09-30: "ja som hovoril o chatnote line, kde je chat/30 bunky,
+    // ale to iste je v reply bunke vpravo. Otazka je, ci chat/30 ma nejaku funkciu? Ide mi o to, ze ak by
+    // sa odstranila, na mobile by sa myslim celkom pekne zmestila cela chatnote line bez kompromisov."
+    // OVERENE: NEMALA. 'chat' bol holy popisok a bunka 'to #' bola DRUHE POLE NA TU ISTU HODNOTU - uz
+    // [Zzz1-CN:CHL-TARGET] hovori "nl a mini bunka nad tlacidlom su JEDEN a ten isty ciel", takze sa obe
+    // navzajom prepisovali pri kazdom pisme. Ciel teda ostava JEDEN a na JEDNOM mieste: reply bunka.
+    // Co po nej musel prevziat cnTarget (viz jeho input handler): premiestnenie nl pod dane # v chate
+    // (cnPlaceOptions) a obnovenie napovedy s menom vlakna (nlNameHint).
     const nameIn = document.createElement('input');
     // [Zzz1-CN:NL-NAME] Vrso 2026-09-29: "name (ii neviem co znamena)" - v napovede stalo meno vlakna
     // ("Ii"), co bez kontextu vyzeralo ako preklep. Pole je teda pomenovane tym, CO DO NEHO PATRI:
@@ -13028,7 +13040,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     const send = async () => {
       const t = textIn.value.trim();
       if (!t) { close(); return; }
-      const tnum = parseInt(tgt.value, 10) || 0;
+      const tnum = parseInt(cnTarget.value, 10) || 0;   // [Zzz1-CN:NL-ONE-TARGET] jediny ciel = reply bunka
       if (!cnTargetCheck(tnum)) return;   // [Zzz1-CN:CHL-EXISTS] text ostane v riadku, nech sa neprepise
       // [Zzz1-CN:NL-NAME] prazdne pole pri odpovedi = prevezmi meno vlakna (rovnako ako ENTER)
       const nm = nameIn.value.trim() || String(nlThreadName(tnum) || '').trim();
@@ -13037,26 +13049,19 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     };
     ok.addEventListener('click', send);
     cancel.addEventListener('click', close);
-    // [Zzz1-CN:NL-PLACE] vyplnene "to #" presunie cely riadok pod dane cislo v chate, prazdne ho vrati do doku
-    tgt.addEventListener('input', () => {
-      tgt.value = tgt.value.replace(/[^0-9]/g, '');
-      cnTarget.value = tgt.value;      // [Zzz1-CN:CHL-TARGET] jeden ciel, dve miesta na jeho zadanie
-      cnTargetAuto = false;            // [Zzz1-CN:CHL-FOLLOW] vypisanie v nl je tiez vlastna volba usera
-      // [Zzz1-CN:NL-NAME] k novemu cielu patri aj jeho meno. Bez tohto riadku ostavalo cnTargetNameVal
-      // visiet na PREDOSLOM vlakne, takze bunka nad ENTER ukazovala cudzie meno a nl ho aj zapisala -
-      // prepisanie "to #" musi menit ciel CELY, nie len jeho cislo.
-      cnTargetNameVal = cnNameForNum(tgt.value);
-      cnTargetSync();
-      nlNameHint();   // [Zzz1-CN:NL-NAME] iny ciel = ine vlakno = ine meno, ktore sa prevezme
-      cnPlaceOptions(parseInt(tgt.value, 10) || 0);
-    });
-    [tgt, nameIn, textIn].forEach(el => el.addEventListener('keydown', (e) => {
+    // [Zzz1-CN:NL-ONE-TARGET] vlastne "to #" uz nl nema - premiestnenie riadka pod dane cislo aj napovedu
+    // s menom vlakna teraz riadi VYLUCNE reply bunka (cnTarget), ktora to robila aj predtym
+    [nameIn, textIn].forEach(el => el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); send(); }
       if (e.key === 'Escape') { e.preventDefault(); close(); }
     }));
-    bar.appendChild(tag); bar.appendChild(tgt); bar.appendChild(nameIn); bar.appendChild(textIn);
+    bar.appendChild(nameIn); bar.appendChild(textIn);
     bar.appendChild(flags); bar.appendChild(ok); bar.appendChild(cancel);
     cnOptionsBar.appendChild(bar);
+    // [Zzz1-CN:NL-ONE-TARGET] reply bunka ohlasi zmenu ciela; nl si na nu obnovi napovedu s menom vlakna.
+    // Cez udalost, a nie priamym volanim, lebo nlNameHint zije az vnutri tohto otvorenia - handler reply
+    // bunky vznika skor a ziadnu jeho verziu by si drzat nemal.
+    cnOptionsBar.addEventListener('zzz1cn-nl-retarget', () => nlNameHint());
     nlNameHint();        // [Zzz1-CN:NL-NAME] hned pri otvoreni je vidno, ake meno sa prevezme
     cnPlaceOptions(Number(openAt) || 0);   // [Zzz1-CN:NL-HOLD] bud pod svoje #, inak do doku
     zzz1cn_fit_comm_window(box);
