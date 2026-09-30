@@ -3444,7 +3444,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     background-color: #262626;
     color: #e6e6e6;
   }
+  .zzz1cn-setup-empty { font-size: 9px; line-height: 1.35; color: #9a9a92; }
   .zzz1cn-setup-udel { display: flex; align-items: center; gap: 3px; font-size: 8px; color: #9a9a92; }
+  .zzz1cn-setup-udel.is-locked { opacity: 0.45; }
   .zzz1cn-setup-udel input { margin: 0; accent-color: #D4AF37; }
   .zzz1cn-min-btn:hover { background-color: rgba(212, 175, 55, 0.15); }
   /* [Zzz1-CN:CHL-20] line-height dedi z tlacidla (8 px) - vlastnych 1.05 bolo to, co riadky pretlacalo */
@@ -7016,6 +7018,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz1-R17/R10:WIDEN - USER a CONTENT CRM bunky su teraz sirsie (flex:2 namiesto 1), Login mini-USER uz bez tag-modalu</span>
   <span class="module-tag">Zzz6-F13:STATE-VS-CONTENT (SYSTEM FUNCTION) - hranica OBSAH/STAV na verso_entries. Obsah (r1, fields_json, content_hash, entry_date, username, entry_id) je NEMENNY pre kazdeho a opravuje sa EDITom, ktory razi novu verziu; STAV (is_trashed, superseded_by, copied_from + nove comm_setup, entry_status, entry_refs) sa prepisuje NA MIESTE bez noveho cisla. Vynucuje UPDATE trigger ako deny-list (SQL verso_entries_v1_state_columns), rovnaky vzor ako verso_chat_notes_restrict_update. Test: bude niekedy niekto chciet vidiet predchadzajucu hodnotu toho pola? Ano = obsah, nie = stav</span>
   <span class="module-tag">Zzz1-CN:GATE-ONLINE - COMM SETUP prestal zit v localStorage: pravda je stlpec verso_entries.comm_setup ("contacts:owner|all", dalsie riadky matice sa pridaju bez migracie), localStorage je uz len cache + fronta nezapisanych zmien. Okno sa otvara s poslednou znamou hodnotou a hned si pyta cerstvu; cudzia zmena prebije cache a prekresli aj zoznam kontaktov. Pri opravneniach plati: lokalna kopia riadi LEN zobrazenie, zamok je RLS</span>
+  <span class="module-tag">Zzz1-CN:SETUP-ROWS - COMM SETUP uz nie je jeden prepinac: Add contacts / Add chats su KUMULATIVNE stupne owner &lt; delegate &lt; users (zaskrtnutie stupna zaskrtne aj nizsie, owner sa neda odskrtnut) a ziju v comm_setup na zazname; Notifications je UROVEN (everything / mentions only), nie povolenie - jej vychodzia hodnota je na zazname, vynimky po useroch vo verso_comm_users. Add chats = kto smie ZALOZIT NOVE vlakno; odpovedanie do existujuceho obmedzene nie je. Prazdna alebo poskodena hodnota = najprisnejsi stav</span>
+  <span class="module-tag">Zzz6-F58:MENTION-GATE - mention UZ NEVYRABA KONTAKT. Predtym sa kazde @meno, ktore v kontaktoch nebolo, ticho pridalo (zzz6f58_grant_access), takze kto nemal pravo pridavat kontakty, obisiel to napisanim @ktokolvek a riadok Add contacts bol povolenie len naoko. Teraz: NOVE meno smie pridat len ten, kto smie pridavat kontakty; menovanie uz pritomnych ostava kazdemu. Nova CL sa neobmedzuje - jej autor je jej owner</span>
+  <span class="module-tag">Zzz1-CN:DELEGATE - rola definovana (Vrso 30. 9.): delegat moze byt IBA user s comm consentom (vynucuje trigger, nie len okno), pridava a odvolava ho IBA owner, kompetencie az ownerove ale VYLUCNE nad STAVOM zaznamu (obsah je nemenny), odvolanie plati len dopredu. Ulozenie verso_comm_users(entry_key, username, is_delegate, notify_level) - riadok na usera, lebo Vrsov workspace v Settings sa pyta "kde vsade som delegat", teda PODLA USERA naprieg zaznamami. MEMO: prevzatie projektu bude musiet rozdelit autora a ownera, dnes su to oboje username</span>
   <span class="module-tag">Zzz1-CN:NL-ONE-TARGET - note line stratila vlastnu bunku "to #" aj popisok "chat": bola to DRUHA bunka na TU ISTU hodnotu ako reply bunka (uz Zzz1-CN:CHL-TARGET hovoril "jeden a ten isty ciel", obe sa prepisovali navzajom). Ciel je teraz na JEDNOM mieste a reply bunka prevzala, co robila zrusena: presun nl pod dane # v chate (cnPlaceOptions) aj obnovenie napovedy s menom vlakna (udalost zzz1cn-nl-retarget). Duvod: cela note line sa tym zmesti aj na uzky displej bez zalamovania</span>
   <span class="module-tag">Zzz6-F45 Privacy function (SYSTEM FUNCTION) - Zzz1-R7 toggle: "ano"=VEREJNE (musi byt vyslovene zaciarknute), default ""=SUKROMNE. Editacia: jednouzivatelsky projekt (R17<=1 user) volna, multi-user projekt (R17>1) LEN project owner/delegate (delegat MEMO), Category="Final" (zzz1r5_is_final) uplne zamyka editaciu (odomknutie = buduci specialny proces cez consenty, zatial nedoriesene)</span>
 </div>
@@ -11701,7 +11706,7 @@ function zzz1cn_open_comm_setup(host, api) {
   nLine.className = 'zzz1cn-setup-line';
   const nTxt = document.createElement('span');
   nTxt.className = 'zzz1cn-setup-txt';
-  nTxt.textContent = 'Notifications';
+  nTxt.textContent = 'Notifications (default)';
   const nSel = document.createElement('select');
   nSel.className = 'zzz1cn-setup-usel';
   [['all', 'everything'], ['mentions', 'mentions only']].forEach(([v, t]) => {
@@ -11720,7 +11725,8 @@ function zzz1cn_open_comm_setup(host, api) {
   // dostane povolenie dostavat notifikacie, ale jeho clenovia dostanu len mentions."
   const sep = document.createElement('div');
   sep.className = 'zzz1cn-setup-sep';
-  sep.textContent = 'PER USER';
+  // [Zzz1-CN:SETUP-ROWS] popis hovori, ako sa tie dve urovne k sebe maju - Vrso na tom narazil (22:18)
+  sep.textContent = 'PER USER - OVERRIDES THE DEFAULT';
   win.appendChild(sep);
   const uBox = document.createElement('div');
   uBox.className = 'zzz1cn-setup-users';
@@ -11733,30 +11739,38 @@ function zzz1cn_open_comm_setup(host, api) {
     const names = (typeof api.users === 'function' ? api.users() : []) || [];
     if (!names.length) {
       const empty = document.createElement('div');
-      empty.className = 'zzz1cn-setup-note';
-      empty.style.marginTop = '0';
+      // VLASTNA trieda, nie zzz1cn-setup-note: to je JEDEN prvok na dne okna, ktory vysvetluje
+      // nastavenie. Dva prvky s rovnakou triedou robia z "prvej poznamky v okne" lotériu.
+      empty.className = 'zzz1cn-setup-empty';
       empty.textContent = 'No contacts in this chat yet.';
       uBox.appendChild(empty);
       return;
     }
-    names.forEach(nm => {
+    names.forEach(entry => {
+      const nm = typeof entry === 'string' ? entry : entry.name;
+      const isOwnerRow = typeof entry === 'string' ? false : !!entry.owner;
       const r = document.createElement('div');
       r.className = 'zzz1cn-setup-userrow';
       const who = document.createElement('span');
       who.className = 'zzz1cn-setup-uname';
-      who.textContent = nm;
+      who.textContent = nm + (isOwnerRow ? ' (owner)' : '');
       who.title = nm;
       const dWrap = document.createElement('label');
       dWrap.className = 'zzz1cn-setup-udel';
       const dChk = document.createElement('input');
       dChk.type = 'checkbox';
       dChk.checked = zzz1cn_is_delegate(gkey, nm);
-      dChk.disabled = !owner;
+      // [Zzz1-CN:SETUP-ROWS] ownerovi sa delegovat neda - prava ma z titulu vlastnictva. Uroven
+      // notifikacii si ale nastavuje ako ktokolvek iny (Vrso 22:18).
+      dChk.disabled = !owner || isOwnerRow;
+      if (isOwnerRow) dWrap.title = 'The owner already has every right here - nothing to delegate.';
       const dTxt = document.createElement('span');
       dTxt.textContent = 'delegate';
       dWrap.appendChild(dChk); dWrap.appendChild(dTxt);
+      dWrap.classList.toggle('is-locked', dChk.disabled);
       const meN = zzz10v1_normalize(nm);
       dChk.addEventListener('change', async () => {
+        if (dChk.disabled) { dChk.checked = false; return; }
         const ok = await zzz1cn_cu_save(gkey, nm, { is_delegate: dChk.checked });
         // [Zzz1-CN:DELEGATE] consent overuje DATABAZA (trigger). Ked odmietne, zaskrtnutie sa musi
         // vratit - inak by okno tvrdilo nieco, co na serveri neplati.
@@ -11984,20 +11998,30 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
         }
         return done;
       },
-      // koho vobec mozno urobit delegatom / komu nastavit uroven: kontakty tohto zaznamu, bez ownera
-      // (ten ma vsetko z titulu vlastnictva a delegovat sam sebe nema co)
+      // === [Zzz1-CN:SETUP-ROWS] OPRAVA (Vrso 2026-09-30, 22:18: "preco si nastavila notifs pre vsetky
+      // subjekty rovnako? Vsak v nejakom projekte chce owner mat notifikacie na vsetko, inokedy len byt
+      // mentioned, ak treba zasiahnut").
+      // Mal pravdu: ownera som zo zoznamu VYHODILA, takze si vlastnu uroven nemal ako nastavit - platila
+      // mu vychodzia hodnota zaznamu a nic s tym nespravil. Delegovanie sam sebe zmysel nema (prava ma
+      // z titulu vlastnictva), ale UROVEN NOTIFIKACII je nieco uplne ine: to nie je pravo, ale kolko toho
+      // chce citat. A to sa od projektu k projektu lisi.
+      // Owner ide preto do zoznamu VZDY - aj ked sa medzi kontaktmi neuvadza - a ako PRVY.
       users: () => {
         const own = zzz10v1_normalize((entryData['4'] || '').trim());
+        const out = [];
         const seen = {};
-        return zzz6f21_parse_tags(entryData['18'] || '')
+        const add = (raw, isOwner) => {
+          const nm = String(raw || '').trim();
+          const k = zzz10v1_normalize(nm);
+          if (!k || seen[k]) return;
+          seen[k] = true;
+          out.push({ name: nm, owner: !!isOwner });
+        };
+        add((entryData['4'] || '').trim(), true);
+        zzz6f21_parse_tags(entryData['18'] || '')
           .concat(zzz6f21_parse_tags(entryData['17'] || ''))
-          .map(x => String(x || '').trim())
-          .filter(x => {
-            const k = zzz10v1_normalize(x);
-            if (!k || k === own || seen[k]) return false;
-            seen[k] = true;
-            return true;
-          });
+          .forEach(x => add(x, zzz10v1_normalize(String(x || '').trim()) === own));
+        return out;
       },
       // [Zzz1-CN:GATE-ONLINE] ceka este hodnota vo fronte na zapis?
       pending: () => zzz1cn_openadd_key(cnGateKey) in zzz1cn_gate_pending_all(),
