@@ -11369,12 +11369,16 @@ function zzz1cn_openadd_promote(entryId) {
   // bez await: zapis zaznamu sa nesmie zdrzat ani zhodit kvoli nastaveniu (rovnako ako promote poznamok)
   zzz1cn_gate_push(id, true).catch(() => {});
 }
+// Vracia PRISLUB zapisu, aby sa okno vedelo prekreslit, ked zapis dobehne. Bez toho hlaska
+// "Not saved to the server yet" svietila VZDY hned po zaskrtnuti - do fronty sa hodnota vklada pred
+// zapisom a paint() bezal synchronne hned za tym, teda este kym odpoved zo servera nebola. Zapis presiel
+// o chvilu neskor, ale okno uz nikto neprekreslil (Vrso 2026-09-30, dve fotky o minutu po sebe).
 function zzz1cn_openadd_set(entryKey, on) {
   const k = zzz1cn_openadd_key(entryKey);
   zzz1cn_gate_cache_put(k, on);          // okno musi reagovat OKAMZITE, aj ked siet mlci
-  if (k === ZZZ1CN_OPENADD_DRAFT) return;
+  if (k === ZZZ1CN_OPENADD_DRAFT) return Promise.resolve(false);
   zzz1cn_gate_pending_put(k, on);        // az uspesny zapis ju z fronty vyhodi
-  zzz1cn_gate_push(k, on).catch(() => {});
+  return zzz1cn_gate_push(k, on).catch(() => false);
 }
 // je prihlaseny user ownerom TOHTO zaznamu?
 function zzz1cn_is_owner() {
@@ -11456,8 +11460,11 @@ function zzz1cn_open_comm_setup(host, api) {
   };
   chk.addEventListener('change', () => {
     if (chk.disabled) return;
-    api.set(chk.checked);
-    paint();
+    const done = api.set(chk.checked);
+    paint();   // okamzita odozva - hodnota uz plati, aj keby siet mlcala
+    // [Zzz1-CN:GATE-ONLINE] a este raz, ked zapis dobehne: dovtedy je hodnota este vo fronte a poznamka
+    // by inak ostala visiet na "Not saved to the server yet" aj po uspesnom zapise
+    if (done && typeof done.then === 'function') done.then(() => { if (win.isConnected) paint(); });
   });
   paint();
   // [Zzz1-CN:GATE-ONLINE] pravda je na serveri - stiahni ju a prekresli, ak sa lisi od cache.
@@ -11633,7 +11640,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
         }).then(() => { if (typeof after === 'function') after(); }).catch(() => {});
       },
       set: (v) => {
-        zzz1cn_openadd_set(cnGateKey, v);
+        const done = zzz1cn_openadd_set(cnGateKey, v);
         cnGatePaint();
         // [Zzz1-CN:OWNER-GATE] prepnutie musi OKAMZITE platit aj na zoznam kontaktov v tomto okne
         canEdit = zzz1_context_can_edit(consentKey, cnGateKey);
@@ -11641,6 +11648,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
         zzz6f2_show_toast(v
           ? 'Adding contacts opened to everyone with access.'
           : 'Adding contacts limited to you.');
+        return done;   // [Zzz1-CN:GATE-ONLINE] okno sa podla neho prekresli, ked zapis dobehne
       }
     });
   });
