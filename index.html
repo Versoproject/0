@@ -6956,6 +6956,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz5-T1/T2:LONGPRESS-MENU (3s podrzanie na tabe, zdielana Zzz6-F27 utilita) - PREMENOVAT/ODSTRANIT popup menu</span>
   <span class="module-tag">Zzz0-R1:DB-CONNECTION oranzovy ram - Login teraz pouziva TENTO existujuci system pri DB vypadku (offline-friendly)</span>
   <span class="module-tag">Zzz1-R17/R10:WIDEN - USER a CONTENT CRM bunky su teraz sirsie (flex:2 namiesto 1), Login mini-USER uz bez tag-modalu</span>
+  <span class="module-tag">Zzz6-F13:STATE-VS-CONTENT (SYSTEM FUNCTION) - hranica OBSAH/STAV na verso_entries. Obsah (r1, fields_json, content_hash, entry_date, username, entry_id) je NEMENNY pre kazdeho a opravuje sa EDITom, ktory razi novu verziu; STAV (is_trashed, superseded_by, copied_from + nove comm_setup, entry_status, entry_refs) sa prepisuje NA MIESTE bez noveho cisla. Vynucuje UPDATE trigger ako deny-list (SQL verso_entries_v1_state_columns), rovnaky vzor ako verso_chat_notes_restrict_update. Test: bude niekedy niekto chciet vidiet predchadzajucu hodnotu toho pola? Ano = obsah, nie = stav</span>
+  <span class="module-tag">Zzz1-CN:GATE-ONLINE - COMM SETUP prestal zit v localStorage: pravda je stlpec verso_entries.comm_setup ("contacts:owner|all", dalsie riadky matice sa pridaju bez migracie), localStorage je uz len cache + fronta nezapisanych zmien. Okno sa otvara s poslednou znamou hodnotou a hned si pyta cerstvu; cudzia zmena prebije cache a prekresli aj zoznam kontaktov. Pri opravneniach plati: lokalna kopia riadi LEN zobrazenie, zamok je RLS</span>
   <span class="module-tag">Zzz6-F45 Privacy function (SYSTEM FUNCTION) - Zzz1-R7 toggle: "ano"=VEREJNE (musi byt vyslovene zaciarknute), default ""=SUKROMNE. Editacia: jednouzivatelsky projekt (R17<=1 user) volna, multi-user projekt (R17>1) LEN project owner/delegate (delegat MEMO), Category="Final" (zzz1r5_is_final) uplne zamyka editaciu (odomknutie = buduci specialny proces cez consenty, zatial nedoriesene)</span>
 </div>
 <!-- zzz2-M1 layout modul END -->
@@ -11208,10 +11210,8 @@ function zzz1_build_quickchips_row(getVal, setVal, fixedValues = []) {
 //                           len uz nie je zamknuty na ownera)
 // ROZSAH: plati na JEDEN zaznam (comm window/chat), nie na usera a nie globalne - preto sa kluc viaze na
 // entry_id.
-// POZOR, CO TO ZATIAL NIE JE: hodnota sa drzi LOKALNE (localStorage). Je to nastavenie, ktore ma byt
-// vynutene v databaze - dovtedy je to dohoda v ramci zariadenia, nie zamok. Vlastny stlpec + RLS caka na
-// to iste rozhodnutie ako status na entry ([Zzz6-F13:EDIT-AS-VERSION]): zapisat sa musi BEZ razenia novej
-// verzie zaznamu. Kym to nie je, appka sa aspon sprava podla neho.
+// ULOZENIE: od 2026-09-30 je zdrojom pravdy STLPEC verso_entries.comm_setup ([Zzz1-CN:GATE-ONLINE]
+// nizsie). localStorage uz nie je miesto, kde nastavenie ZIJE - je to len cache a offline fronta.
 const ZZZ1CN_OPENADD_KEY = 'zzz1cn_openadd';
 // === [Zzz1-CN:OWNER-GATE] OPRAVA (Vrso 2026-09-29: "v com je problem? Nerozumiem. Consent vznikne na
 // zvolene contact project ownerom. Ide len o to, ci owner povoli userom pridavat aj dalsie kontakty").
@@ -11226,27 +11226,155 @@ function zzz1cn_openadd_key(entryKey) {
   const k = String(entryKey || '').trim();
   return k || ZZZ1CN_OPENADD_DRAFT;
 }
-function zzz1cn_openadd_get(entryKey) {
-  const k = zzz1cn_openadd_key(entryKey);
-  try { return localStorage.getItem(`${ZZZ1CN_OPENADD_KEY}:${k}`) === '1'; } catch (e) { return false; }
+// === [Zzz1-CN:GATE-ONLINE] (Vrso 2026-09-30: "k local storage - neda sa to riesit online? Ja chcem local
+// storage len ako PWA vrstvu, ak vypadne pripojenie... resp. ako nejaky minimalny backup dat") ==========
+// Mal pravdu a bola to moja obchadzka: nastavenie NEMALO na serveri kopiu, localStorage bolo jeho JEDINE
+// miesto. Prepol si ho na mobile a notebook o tom nevedel. Dovod bol jediny - nemala som ho kam na zaznam
+// zapisat bez toho, aby vznikla nova verzia. To uz neplati: [Zzz6-F13:STATE-VS-CONTENT] (SQL
+// verso_entries_v1_state_columns) oddelil OBSAH od STAVU a comm_setup je stav, takze sa prepisuje na mieste.
+//
+// ROZDELENIE ULOH - presne podla pravidla v backlogu, sekcia C:
+//   DATABAZA   verso_entries.comm_setup  = PRAVDA. Vynucuje ju trigger + RLS (meni ju vlastnik zaznamu).
+//   localStorage                          = (a) posledna znama hodnota, aby okno nieco ukazalo aj offline,
+//                                           (b) fronta nezapisanych zmien.
+//
+// PRI OPRAVNENIACH NAVYSE: lokalna kopia riadi LEN ZOBRAZENIE (co je v okne zaskrtnute). Ci niekto naozaj
+// smie pridat kontakt, rozhoduje server - inak si pravo udeli kazdy, kto si prepise localStorage.
+// zzz1_context_can_edit() nizsie je teda UI-gate, nie zamok; zamok je RLS.
+//
+// TVAR HODNOTY: ciarkou oddelene dvojice "co:komu" - dnes jedina "contacts:owner|all", aby sa dalsie
+// riadky matice (chats, mentions, viz VERSO-SUBS-NOTES kap. 11) dali pridat BEZ migracie stlpca.
+// Prazdne/NULL = vsetko drzi owner, teda najprisnejsi stav - fail-closed.
+const ZZZ1CN_GATE_COL = 'comm_setup';
+const ZZZ1CN_GATE_PENDING = 'zzz1cn_openadd_pending';   // kluce, ktorych zapis este nepresiel
+let zzz1cnGateColOk = null;    // null = neoverene, false = stlpec v DB zatial nie je
+const zzz1cnGateCache = {};    // entryKey -> bool, mirror localStorage v pamati (setri citanie pri kazdom paint)
+
+function zzz1cn_gate_parse(raw) {
+  const s = String(raw || '').toLowerCase();
+  return /(^|[,\s])contacts\s*:\s*all(\s*(,|$))/.test(s);
 }
-// [Zzz1-CN:OWNER-GATE] rozpisana CL dostala cislo - nastavenie ide s nou a draft sa upratuje, aby sa
-// neprilepil na dalsi novy zaznam
-function zzz1cn_openadd_promote(entryId) {
-  const id = String(entryId || '').trim();
-  if (!id) return;
-  try {
-    const draft = localStorage.getItem(`${ZZZ1CN_OPENADD_KEY}:${ZZZ1CN_OPENADD_DRAFT}`);
-    if (draft === '1') localStorage.setItem(`${ZZZ1CN_OPENADD_KEY}:${id}`, '1');
-    localStorage.removeItem(`${ZZZ1CN_OPENADD_KEY}:${ZZZ1CN_OPENADD_DRAFT}`);
-  } catch (e) {}
-}
-function zzz1cn_openadd_set(entryKey, on) {
-  const k = zzz1cn_openadd_key(entryKey);
+function zzz1cn_gate_build(on) { return on ? 'contacts:all' : 'contacts:owner'; }
+
+// --- cache -------------------------------------------------------------------------------------------
+function zzz1cn_gate_cache_put(k, on) {
+  zzz1cnGateCache[k] = !!on;
   try {
     if (on) localStorage.setItem(`${ZZZ1CN_OPENADD_KEY}:${k}`, '1');
     else localStorage.removeItem(`${ZZZ1CN_OPENADD_KEY}:${k}`);
   } catch (e) {}
+}
+// SYNCHRONNE citanie - volaju ho vykreslovacie funkcie pri kazdom paint, cakat sa tu neda.
+// Vracia poslednu ZNAMU hodnotu; cerstvu prinesie zzz1cn_openadd_load() a prekresli.
+function zzz1cn_openadd_get(entryKey) {
+  const k = zzz1cn_openadd_key(entryKey);
+  if (k in zzz1cnGateCache) return zzz1cnGateCache[k];
+  let v = false;
+  try { v = localStorage.getItem(`${ZZZ1CN_OPENADD_KEY}:${k}`) === '1'; } catch (e) {}
+  zzz1cnGateCache[k] = v;
+  return v;
+}
+
+// --- fronta nezapisanych zmien (offline vrstva) -------------------------------------------------------
+function zzz1cn_gate_pending_all() {
+  try { return JSON.parse(localStorage.getItem(ZZZ1CN_GATE_PENDING) || '{}') || {}; } catch (e) { return {}; }
+}
+function zzz1cn_gate_pending_put(k, on) {
+  const m = zzz1cn_gate_pending_all();
+  if (on === null) delete m[k]; else m[k] = !!on;
+  try { localStorage.setItem(ZZZ1CN_GATE_PENDING, JSON.stringify(m)); } catch (e) {}
+}
+
+// --- zapis na server ---------------------------------------------------------------------------------
+// Vracia true, ked hodnota NAOZAJ pristala v databaze. Pri neuspechu ostava vo fronte a skusi sa znova
+// pri najblizsom otvoreni comm setupu alebo nacitani zaznamu - rovnaky model ako Zzz1-D1:RETRY-SYNC.
+async function zzz1cn_gate_push(entryKey, on) {
+  const k = zzz1cn_openadd_key(entryKey);
+  if (k === ZZZ1CN_OPENADD_DRAFT) return false;      // rozpisana CL este nema riadok, kam zapisat
+  if (zzz1cnGateColOk === false) return false;       // stlpec zatial nie je nasadeny - drzime lokalne
+  const id = Number(k);
+  if (!Number.isFinite(id)) return false;
+  try {
+    const { error } = await sb.from('verso_entries')
+      .update({ [ZZZ1CN_GATE_COL]: zzz1cn_gate_build(on) })
+      .eq('entry_id', id);
+    if (error) throw error;
+    zzz1cnGateColOk = true;
+    zzz1cn_gate_pending_put(k, null);
+    return true;
+  } catch (e) {
+    // 42703 = stlpec neexistuje. Vtedy to NIE JE vypadok siete, ale nenasadene SQL - nema zmysel
+    // opakovat a uz vobec nie strasit usera hlaskou o pripojeni.
+    const code = String((e && e.code) || '');
+    const msg = String((e && (e.message || e.details)) || '');
+    if (code === '42703' || msg.indexOf(ZZZ1CN_GATE_COL) >= 0) {
+      zzz1cnGateColOk = false;
+      // z FRONTY to VYHOD: fronta je na veci, ktore siet nestihla, nie na veci, ktore nemaju kam pristat.
+      // Inak by tam visela navzdy a okno by tvrdilo "posle sa, ked bude spojenie" - co nie je pravda.
+      zzz1cn_gate_pending_put(k, null);
+      console.warn(`[Zzz1-CN:GATE-ONLINE] stlpec verso_entries.${ZZZ1CN_GATE_COL} zatial nie je nasadeny (verso_entries_v1_state_columns.sql) - nastavenie ostava lokalne`);
+      return false;
+    }
+    zzz1cn_gate_pending_put(k, on);
+    console.warn('[Zzz1-CN:GATE-ONLINE] zapis comm setupu zlyhal, ostava vo fronte:', msg);
+    return false;
+  }
+}
+
+// --- nacitanie zo servera ----------------------------------------------------------------------------
+// onChange sa zavola LEN ked sa cerstva hodnota lisi od tej, ktoru okno prave ukazuje - inak by kazde
+// otvorenie okna zbytocne prekreslovalo zoznam kontaktov.
+async function zzz1cn_openadd_load(entryKey, onChange) {
+  const k = zzz1cn_openadd_key(entryKey);
+  if (k === ZZZ1CN_OPENADD_DRAFT) return null;
+  if (zzz1cnGateColOk === false) return null;
+  const id = Number(k);
+  if (!Number.isFinite(id)) return null;
+  // najprv dotlac, co sa nestihlo zapisat - inak by cerstve citanie prepisalo cache starsou hodnotou
+  const pend = zzz1cn_gate_pending_all();
+  if (k in pend) { if (await zzz1cn_gate_push(k, pend[k])) { /* zapisane */ } else return null; }
+  try {
+    const { data, error } = await sb.from('verso_entries')
+      .select(ZZZ1CN_GATE_COL).eq('entry_id', id).maybeSingle();
+    if (error) throw error;
+    zzz1cnGateColOk = true;
+    const fresh = zzz1cn_gate_parse(data && data[ZZZ1CN_GATE_COL]);
+    const before = zzz1cn_openadd_get(k);
+    zzz1cn_gate_cache_put(k, fresh);
+    if (fresh !== before && typeof onChange === 'function') onChange(fresh);
+    return fresh;
+  } catch (e) {
+    const code = String((e && e.code) || '');
+    const msg = String((e && (e.message || e.details)) || '');
+    if (code === '42703' || msg.indexOf(ZZZ1CN_GATE_COL) >= 0) zzz1cnGateColOk = false;
+    return null;   // offline/nenasadene - okno ukaze poslednu znamu hodnotu z cache
+  }
+}
+
+// [Zzz1-CN:OWNER-GATE] rozpisana CL dostala cislo - nastavenie ide s nou a draft sa upratuje, aby sa
+// neprilepil na dalsi novy zaznam. [Zzz1-CN:GATE-ONLINE] a zaroven sa zapise do DB; ked zapis zlyha,
+// ostava vo fronte, takze sa nestrati ani ked sa CL odosielala offline.
+function zzz1cn_openadd_promote(entryId) {
+  const id = String(entryId || '').trim();
+  if (!id) return;
+  let draft = false;
+  try {
+    draft = localStorage.getItem(`${ZZZ1CN_OPENADD_KEY}:${ZZZ1CN_OPENADD_DRAFT}`) === '1';
+    localStorage.removeItem(`${ZZZ1CN_OPENADD_KEY}:${ZZZ1CN_OPENADD_DRAFT}`);
+  } catch (e) {}
+  delete zzz1cnGateCache[ZZZ1CN_OPENADD_DRAFT];
+  if (!draft) return;              // vychodzi (najprisnejsi) stav sa nikam zapisovat nemusi
+  zzz1cn_gate_cache_put(id, true);
+  zzz1cn_gate_pending_put(id, true);
+  // bez await: zapis zaznamu sa nesmie zdrzat ani zhodit kvoli nastaveniu (rovnako ako promote poznamok)
+  zzz1cn_gate_push(id, true).catch(() => {});
+}
+function zzz1cn_openadd_set(entryKey, on) {
+  const k = zzz1cn_openadd_key(entryKey);
+  zzz1cn_gate_cache_put(k, on);          // okno musi reagovat OKAMZITE, aj ked siet mlci
+  if (k === ZZZ1CN_OPENADD_DRAFT) return;
+  zzz1cn_gate_pending_put(k, on);        // az uspesny zapis ju z fronty vyhodi
+  zzz1cn_gate_push(k, on).catch(() => {});
 }
 // je prihlaseny user ownerom TOHTO zaznamu?
 function zzz1cn_is_owner() {
@@ -11320,7 +11448,11 @@ function zzz1cn_open_comm_setup(host, api) {
       : (chk.checked
         ? 'Anyone with access to this record may add contacts here.'
         : 'Only you may add contacts here. Everyone else just sees the list.')
-        + (keyed ? '' : ' The line is not sent yet - the setting travels with it.');
+        + (keyed ? '' : ' The line is not sent yet - the setting travels with it.')
+        // [Zzz1-CN:GATE-ONLINE] user ma vediet, ci nastavenie uz plati VSADE, alebo len na tomto
+        // zariadeni - je to rozdiel medzi zamkom a dohodou
+        + (keyed && typeof api.pending === 'function' && api.pending()
+            ? ' Not saved to the server yet - it will be sent as soon as the connection is back.' : '');
   };
   chk.addEventListener('change', () => {
     if (chk.disabled) return;
@@ -11328,6 +11460,11 @@ function zzz1cn_open_comm_setup(host, api) {
     paint();
   });
   paint();
+  // [Zzz1-CN:GATE-ONLINE] pravda je na serveri - stiahni ju a prekresli, ak sa lisi od cache.
+  // Okno sa otvori HNED s poslednou znamou hodnotou; cakat sa na siet nema preco.
+  if (typeof api.refresh === 'function') {
+    api.refresh(() => { if (win.isConnected) { chk.checked = api.get(); paint(); } });
+  }
 
   // [Zzz5-W7:FILTER-MOVE] to iste gesto ako pri SHOW boxe - podrzanie 600 ms okno odopne a ide za prstom.
   // Chytit sa da kdekolvek okrem samotnych ovladacov (na checkboxe ma podrzanie nechat okno stat).
@@ -11485,6 +11622,16 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
       key: () => cnGateKey,
       isOwner: () => cnGateOwner,
       get: () => zzz1cn_openadd_get(cnGateKey),
+      // [Zzz1-CN:GATE-ONLINE] ceka este hodnota vo fronte na zapis?
+      pending: () => zzz1cn_openadd_key(cnGateKey) in zzz1cn_gate_pending_all(),
+      // stiahne cerstvu hodnotu zo servera; ked sa lisi, prekresli koliesko AJ zoznam kontaktov
+      refresh: (after) => {
+        zzz1cn_openadd_load(cnGateKey, () => {
+          cnGatePaint();
+          canEdit = zzz1_context_can_edit(consentKey, cnGateKey);
+          renderChips();
+        }).then(() => { if (typeof after === 'function') after(); }).catch(() => {});
+      },
       set: (v) => {
         zzz1cn_openadd_set(cnGateKey, v);
         cnGatePaint();
@@ -11509,6 +11656,16 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   // otvara sa zzz1_build_user_window (toggle okno). Tato funkcia sa dnes vola VYLUCNE s "18" (COMMUNICATION).
 
   let canEdit = zzz1_context_can_edit(consentKey, cnGateKey);   // [Zzz1-CN:OWNER-GATE]
+  // [Zzz1-CN:GATE-ONLINE] okno sa otvara s poslednou ZNAMOU hodnotou (necaka na siet) a hned si pyta
+  // cerstvu. Ked ju owner medzitym prepol na inom zariadeni, prekresli sa koliesko aj zoznam kontaktov -
+  // inak by tu user videl pridavanie povolene, kym mu ho server uz odmieta.
+  // UMIESTNENIE ZAMERNE AZ TU, POD `let canEdit`: callback naň siaha a hoci bezi az po await (teda po
+  // dobehnuti tela funkcie), TDZ na top-level `const/let` ma v tomto subore uz styri zaznamy v denniku.
+  zzz1cn_openadd_load(cnGateKey, () => {
+    cnGatePaint();
+    canEdit = zzz1_context_can_edit(consentKey, cnGateKey);
+    renderChips();
+  }).catch(() => {});
   const current = zzz0r1_get_current_username();
 
   let workingTags = zzz6f21_parse_tags(entryData[fieldId]);
@@ -24683,7 +24840,9 @@ async function zzz1cn_load_for_chat(entryKey) {
 // pri starte, vypadok siete) a flag ostal false do konca session - odvtedy vsetky chatnotes ticho padali do
 // stareho lokalneho kluca, nikdy nie do outboxu, a NIKDY sa nesynchronizovali. Pri obnove spojenia sa preto
 // flag vracia na null = "znova over".
-function zzz1cn_reset_availability() { zzz1cnTableAvailable = null; zzz1cnOptCols = null; }
+// [Zzz1-CN:GATE-ONLINE] zzz1cnGateColOk sem patri z rovnakeho dovodu ako zzz1cnOptCols: raz zisteny
+// "stlpec tam nie je" by inak platil do konca relacie aj potom, ako sa SQL nasadi
+function zzz1cn_reset_availability() { zzz1cnTableAvailable = null; zzz1cnOptCols = null; zzz1cnGateColOk = null; }
 
 // === [Zzz1-CN:OPT-COLS] VOLITELNE STLPCE - tie, ktore sa nasadzuju samostatnym SQL a v databaze teda
 // BYT MOZU aj NEMUSIA. Appka musi fungovat v OBOCH stavoch, lebo HTML a SQL sa nasadzuju zvlast.
