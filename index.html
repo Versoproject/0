@@ -3445,6 +3445,16 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     color: #e6e6e6;
   }
   .zzz1cn-setup-empty { font-size: 9px; line-height: 1.35; color: #9a9a92; }
+  /* [Zzz1-CN:NOTIFY-BY-ROLE] riadok vyzera ako povolenia, ale znamena nieco ine - preto pripis, ktory
+     hovori, CO to zaskrtnutie robi ("mentions only"), nie len komu */
+  .zzz1cn-setup-sub2 {
+    display: block;
+    font-size: 8px;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    color: #9a9a92;
+    line-height: 1.2;
+  }
   .zzz1cn-setup-udel { display: flex; align-items: center; gap: 3px; font-size: 8px; color: #9a9a92; }
   .zzz1cn-setup-udel.is-locked { opacity: 0.45; }
   .zzz1cn-setup-udel input { margin: 0; accent-color: #D4AF37; }
@@ -11340,7 +11350,18 @@ let zzz1cnGateColOk = null;    // null = neoverene, false = stlpec v DB zatial n
 const zzz1cnGateCache = {};    // entryKey -> {contacts, chats, notify}, mirror localStorage v pamati
 
 const ZZZ1CN_LEVELS = ['owner', 'delegate', 'all'];
-const ZZZ1CN_SETUP_DEF = { contacts: 'owner', chats: 'owner', notify: 'all' };
+// === [Zzz1-CN:NOTIFY-BY-ROLE] OPRAVA (Vrso 2026-09-30, 22:35) =======================================
+// "mne islo o to, ze notifs mali mat moznost mentions(@&), ale pre ownera/delegate/users uz podla volby
+// ownera pre seba ako ownera aj ostatnych."
+// Mal som tam JEDNU vychodziu uroven pre cely zaznam. To bolo malo: owner chce casto citat vsetko a
+// ostatnych nechat len na mentions - alebo naopak seba nechat na pokoji a tim mat vsetko.
+// Uroven je teda hodnota NA ROLU, nie na zaznam. A na rozdiel od povoleni NIE JE kumulativna - nie je to
+// rebrik "aspon toto", ale tri samostatne volby, lebo kazda rola moze chciet nieco ine.
+const ZZZ1CN_NOTIFY_KEYS = { owner: 'notify_owner', delegate: 'notify_delegate', all: 'notify_users' };
+const ZZZ1CN_SETUP_DEF = {
+  contacts: 'owner', chats: 'owner',
+  notify_owner: 'all', notify_delegate: 'all', notify_users: 'all'
+};
 function zzz1cn_level_rank(v) {
   const i = ZZZ1CN_LEVELS.indexOf(String(v || '').toLowerCase());
   return i < 0 ? 0 : i;   // nezname = najprisnejsie
@@ -11353,14 +11374,28 @@ function zzz1cn_setup_parse(raw) {
     const m = /^\s*([a-z_]+)\s*:\s*([a-z]+)\s*$/.exec(part);
     if (!m) return;
     const k = m[1], v = m[2];
-    if (k === 'notify') { if (v === 'all' || v === 'mentions') out.notify = v; return; }
+    // [Zzz1-CN:NOTIFY-BY-ROLE] stary jednoriadkovy tvar "notify:x" znamenal jednu uroven pre vsetkych -
+    // prepise teda vsetky tri. Zaznamy ulozene pred 30. 9. vecer tak nestratia, co v nich bolo.
+    if (k === 'notify') {
+      if (v === 'all' || v === 'mentions') { out.notify_owner = out.notify_delegate = out.notify_users = v; }
+      return;
+    }
+    if (/^notify_(owner|delegate|users)$/.test(k)) { if (v === 'all' || v === 'mentions') out[k] = v; return; }
     if ((k === 'contacts' || k === 'chats') && ZZZ1CN_LEVELS.indexOf(v) >= 0) out[k] = v;
   });
   return out;
 }
 function zzz1cn_setup_build(s) {
   const v = Object.assign({}, ZZZ1CN_SETUP_DEF, s || {});
-  return `contacts:${v.contacts}, chats:${v.chats}, notify:${v.notify}`;
+  return `contacts:${v.contacts}, chats:${v.chats}, `
+       + `notify_owner:${v.notify_owner}, notify_delegate:${v.notify_delegate}, notify_users:${v.notify_users}`;
+}
+// akú ROLU ma tento user na tomto zazname
+function zzz1cn_role_of(entryKey, name) {
+  const who = zzz10v1_normalize(String(name || zzz0r1_get_current_username() || '').trim());
+  const own = zzz10v1_normalize((entryData['4'] || '').trim());
+  if (who && who === own) return 'owner';
+  return zzz1cn_is_delegate(entryKey, who) ? 'delegate' : 'all';
 }
 // Smie TENTO prihlaseny na TOMTO zazname to, co riadok dovoluje?
 // UI-gate, nie zamok - zamok je RLS. Preto sa tu smie citat aj z cache.
@@ -11437,12 +11472,18 @@ function zzz1cn_is_delegate(entryKey, name) {
   const rows = zzz1cn_cu_rows(entryKey);
   return !!(rows && rows[who] && rows[who].is_delegate);
 }
-// vysledna uroven pre usera: jeho vlastny riadok, inak vychodzia zo zaznamu
+// [Zzz1-CN:NOTIFY-BY-ROLE] vysledna uroven pre usera - dva kroky, v tomto poradi:
+//   1. jeho VLASTNY riadok (vynimka, ktoru mu niekto nastavil menovite)
+//   2. inak uroven jeho ROLY na tomto zazname (owner / delegate / users)
+// Vrso 22:35: "myslim, ze by sa zislo mat moznost tieto podmienky definovat aj pre zvolenych users,
+// resp. ako vynimky" - preto vynimka prebija rolu, a nie naopak.
 function zzz1cn_notify_level(entryKey, name) {
   const who = zzz10v1_normalize(String(name || zzz0r1_get_current_username() || '').trim());
   const rows = zzz1cn_cu_rows(entryKey);
   const own = rows && rows[who] ? String(rows[who].notify_level || '') : '';
-  return own || zzz1cn_setup_get(entryKey).notify;
+  if (own) return own;
+  const s = zzz1cn_setup_get(entryKey);
+  return s[ZZZ1CN_NOTIFY_KEYS[zzz1cn_role_of(entryKey, who)]] || 'all';
 }
 async function zzz1cn_cu_load(entryKey) {
   const k = zzz1cn_openadd_key(entryKey);
@@ -11699,25 +11740,44 @@ function zzz1cn_open_comm_setup(host, api) {
   // vlakna tym obmedzene NIE JE - to je bezna praca v chate.
   mkLevelRow('Add chats', 'chats');
 
-  // --- vychodzia uroven notifikacii pre zaznam ----------------------------------------------------
-  // Vrso 21:46: "add notifications ma definovat skor to, nech user nedostava notifikacie, iba ked je
-  // mentioned". Nie je to teda povolenie, ale UROVEN - a preto ma dva stavy, nie tri stupne.
+  // --- notifikacie: uroven NA ROLU -----------------------------------------------------------------
+  // [Zzz1-CN:NOTIFY-BY-ROLE] Vrso 22:35: "notifs mali mat moznost mentions(@&), ale pre ownera/delegate/
+  // users uz podla volby ownera pre seba ako ownera aj ostatnych."
+  // Vyzera to ako riadky vyssie, ale spravanie je INE a je to zamerne: povolenia su REBRIK (kumulativne),
+  // notifikacie su TRI SAMOSTATNE VOLBY. Owner moze chciet citat vsetko a tim nechat len mentions -
+  // alebo presne naopak. Rebrik by taku kombinaciu nedovolil.
   const nLine = document.createElement('div');
   nLine.className = 'zzz1cn-setup-line';
   const nTxt = document.createElement('span');
   nTxt.className = 'zzz1cn-setup-txt';
-  nTxt.textContent = 'Notifications (default)';
-  const nSel = document.createElement('select');
-  nSel.className = 'zzz1cn-setup-usel';
-  [['all', 'everything'], ['mentions', 'mentions only']].forEach(([v, t]) => {
-    const o = document.createElement('option'); o.value = v; o.textContent = t; nSel.appendChild(o);
+  nTxt.textContent = 'Notifications';
+  const nSub = document.createElement('span');
+  nSub.className = 'zzz1cn-setup-sub2';
+  nSub.textContent = 'mentions only';
+  const nWrap = document.createElement('span');
+  nWrap.appendChild(nTxt); nWrap.appendChild(nSub);
+  const nLvls = document.createElement('div');
+  nLvls.className = 'zzz1cn-setup-lvls';
+  const nBoxes = [];
+  ZZZ1CN_LEVELS.forEach(lv => {
+    const cell = document.createElement('label');
+    cell.className = 'zzz1cn-setup-lvl';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    const cap = document.createElement('span');
+    cap.textContent = lv === 'all' ? 'users' : lv;
+    cell.appendChild(cb); cell.appendChild(cap);
+    cb.addEventListener('change', () => {
+      if (cb.disabled) return;
+      // zaskrtnute = tato rola dostava LEN mentions; odskrtnute = dostava vsetko
+      const done = api.setLevel(ZZZ1CN_NOTIFY_KEYS[lv], cb.checked ? 'mentions' : 'all');
+      paint();
+      if (done && typeof done.then === 'function') done.then(() => { if (win.isConnected) paint(); });
+    });
+    nBoxes.push({ cb, cell, lv });
+    nLvls.appendChild(cell);
   });
-  nSel.addEventListener('change', () => {
-    const done = api.setLevel('notify', nSel.value);
-    paint();
-    if (done && typeof done.then === 'function') done.then(() => { if (win.isConnected) paint(); });
-  });
-  nLine.appendChild(nTxt); nLine.appendChild(nSel);
+  nLine.appendChild(nWrap); nLine.appendChild(nLvls);
   win.appendChild(nLine);
 
   // --- per-user: delegat + vlastna uroven ---------------------------------------------------------
@@ -11725,8 +11785,10 @@ function zzz1cn_open_comm_setup(host, api) {
   // dostane povolenie dostavat notifikacie, ale jeho clenovia dostanu len mentions."
   const sep = document.createElement('div');
   sep.className = 'zzz1cn-setup-sep';
-  // [Zzz1-CN:SETUP-ROWS] popis hovori, ako sa tie dve urovne k sebe maju - Vrso na tom narazil (22:18)
-  sep.textContent = 'PER USER - OVERRIDES THE DEFAULT';
+  // [Zzz1-CN:NOTIFY-BY-ROLE] Vrso 22:35: "zislo by sa mat moznost tieto podmienky definovat aj pre
+  // zvolenych users, resp. ako vynimky". Riadok tu vznikne LEN vtedy, ked sa niekomu nastavi nieco ine
+  // nez ma jeho rola - dovtedy je vsade "follows role" a v databaze po nom niet stopy.
+  sep.textContent = 'EXCEPTIONS - PER USER';
   win.appendChild(sep);
   const uBox = document.createElement('div');
   uBox.className = 'zzz1cn-setup-users';
@@ -11779,12 +11841,16 @@ function zzz1cn_open_comm_setup(host, api) {
       });
       const sel = document.createElement('select');
       sel.className = 'zzz1cn-setup-usel';
-      [['', 'default'], ['all', 'everything'], ['mentions', 'mentions only']].forEach(([v, t]) => {
+      // "follows role" je PRAZDNA hodnota - kym je vybrata, ziadna vynimka neexistuje
+      [['', 'follows role'], ['all', 'everything'], ['mentions', 'mentions only']].forEach(([v, t]) => {
         const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o);
       });
       const rows = zzz1cn_cu_rows(gkey);
       sel.value = (rows && rows[meN] && rows[meN].notify_level) || '';
-      sel.disabled = !owner;
+      // [Zzz1-CN:NOTIFY-BY-ROLE] delegat smie nastavit vynimku sebe a beznym users - nie ownerovi a nie
+      // inemu delegatovi (to iste vynucuje trigger verso_comm_users_can_write)
+      sel.disabled = !(owner || (api.isDelegate() && !isOwnerRow
+        && (zzz10v1_normalize(zzz0r1_get_current_username() || '') === meN || !dChk.checked)));
       sel.addEventListener('change', async () => {
         const ok = await zzz1cn_cu_save(gkey, nm, { notify_level: sel.value });
         if (!ok) { const rr = zzz1cn_cu_rows(gkey); sel.value = (rr && rr[meN] && rr[meN].notify_level) || ''; }
@@ -11811,11 +11877,19 @@ function zzz1cn_open_comm_setup(host, api) {
         cell.classList.toggle('is-on', cb.checked);
       });
     });
-    nSel.value = s.notify;
-    nSel.disabled = !owner;
+    // [Zzz1-CN:NOTIFY-BY-ROLE] tieto tri su samostatne, nie rebrik - preto ziadne "i <= rank"
+    nBoxes.forEach(({ cb, cell, lv }) => {
+      cb.checked = s[ZZZ1CN_NOTIFY_KEYS[lv]] === 'mentions';
+      // urovne notifikacii smie menit aj delegat (Vrso 22:35) - povolenia nad nimi stale len owner
+      cb.disabled = !(owner || api.isDelegate());
+      cell.classList.toggle('is-locked', cb.disabled);
+      cell.classList.toggle('is-on', cb.checked);
+    });
     note.textContent = (!owner
-      ? 'Only the project owner decides this. Everyone else sees what applies.'
-      : 'Levels add up - ticking users grants delegates too.')
+      ? (api.isDelegate()
+          ? 'As a delegate you set notification levels; permissions stay with the owner.'
+          : 'Only the project owner decides this. Everyone else sees what applies.')
+      : 'Permissions add up - ticking users grants delegates too. Notification levels are separate per role.')
       + (keyed ? '' : ' The line is not sent yet - the setting travels with it.')
       // [Zzz1-CN:GATE-ONLINE] user ma vediet, ci nastavenie uz plati VSADE, alebo len na tomto
       // zariadeni - je to rozdiel medzi zamkom a dohodou
@@ -11988,6 +12062,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
       get: () => zzz1cn_openadd_get(cnGateKey),
       // [Zzz1-CN:SETUP-ROWS] cele nastavenie a zmena jedneho riadku
       setup: () => zzz1cn_setup_get(cnGateKey),
+      isDelegate: () => zzz1cn_is_delegate(cnGateKey),
       setLevel: (k, v) => {
         const done = zzz1cn_setup_set(cnGateKey, { [k]: v });
         if (k === 'contacts') {
