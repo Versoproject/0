@@ -3388,6 +3388,64 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     line-height: 1.35;
     color: #9a9a92;
   }
+  /* === [Zzz1-CN:SETUP-ROWS] styri riadky namiesto jedneho prepinaca ============================== */
+  .zzz1cn-setup { width: 268px; }
+  .zzz1cn-setup-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 5px;
+  }
+  .zzz1cn-setup-lvls { display: flex; align-items: center; gap: 5px; }
+  /* stupen sa nezaskrtava samostatne - je to jeden posuvnik na troch stupnoch, preto popis POD kazdym */
+  .zzz1cn-setup-lvl {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    cursor: pointer;
+  }
+  .zzz1cn-setup-lvl span { font-size: 7px; letter-spacing: 0.04em; color: #9a9a92; line-height: 1; }
+  .zzz1cn-setup-lvl input { margin: 0; accent-color: #D4AF37; }
+  .zzz1cn-setup-lvl.is-locked { opacity: 0.45; cursor: not-allowed; }
+  .zzz1cn-setup-lvl.is-on span { color: #D4AF37; }
+  .zzz1cn-setup-sep {
+    margin: 7px 0 5px 0;
+    border-top: 1px solid #3a3a3a;
+    padding-top: 5px;
+    font-size: 8px;
+    letter-spacing: 0.08em;
+    color: #9a9a92;
+  }
+  .zzz1cn-setup-users { max-height: 132px; overflow-y: auto; }
+  .zzz1cn-setup-userrow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .zzz1cn-setup-uname {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+    font-weight: 700;
+    color: #e6e6e6;
+  }
+  .zzz1cn-setup-usel {
+    font-size: 9px;
+    padding: 1px 2px;
+    border: 1px solid #5a5a5a;
+    border-radius: 4px;
+    background-color: #262626;
+    color: #e6e6e6;
+  }
+  .zzz1cn-setup-udel { display: flex; align-items: center; gap: 3px; font-size: 8px; color: #9a9a92; }
+  .zzz1cn-setup-udel input { margin: 0; accent-color: #D4AF37; }
   .zzz1cn-min-btn:hover { background-color: rgba(212, 175, 55, 0.15); }
   /* [Zzz1-CN:CHL-20] line-height dedi z tlacidla (8 px) - vlastnych 1.05 bolo to, co riadky pretlacalo */
   .zzz1cn-save-btn span { line-height: inherit; }
@@ -10239,9 +10297,21 @@ function zzz1_r12f1_sync_priority_dot() {
 // EDITACNE PRAVO na samotny R7 toggle (kto SMIE kliknut):
 // 1) jednouzivatelsky projekt (R17 <= 1 tagovany user) -> volne editovatelne (bez obmedzenia na ownera)
 // 2) multi-user projekt (R17 > 1 tagovany user, viz zzz1_r26f1_is_multiuser_project() - zdielana R17 logika,
-//    DRY) -> VYLUCNE Project Owner (entryData["4"]) alebo delegat. Delegat rola/proces zatial NEDEFINOVANA
-//    (Vrso MEMO - doriesi neskor v ramci delegovania a nastaveni projektu) - docasne teda LEN owner, rovnaky
-//    docasny princip ako zzz1_r26f1_can_set_confirmed() pri R26 Status (zdielana logika porovnania s ownerom).
+//    DRY) -> VYLUCNE Project Owner (entryData["4"]) alebo delegat.
+//    === [Zzz1-CN:DELEGATE] ROLA UZ DEFINOVANA JE (Vrso 2026-09-30, 22:02) - ZATIAL NEPOSTAVENA, takze
+//    docasne plati stale LEN owner. Definicia (cela v VERSO-SUBS-NOTES kap. 13e-13f):
+//      - delegovany moze byt IBA user, ktory dal comm consent (verso_consents)
+//      - pridat aj odvolat delegata smie IBA owner, v comm setupe
+//      - kompetencie mozu byt az ownerove - ale VYLUCNE nad STAVOM zaznamu, nikdy nad OBSAHOM:
+//        owner je verso_entries.username, co je zaroven AUTOR, a ten je nemenny
+//        ([Zzz6-F13:STATE-VS-CONTENT]). Hranica nasadena 30. 9. teda presne vymedzuje, co delegat smie.
+//      - odvolanie plati len DOPREDU: co delegat urobil, ostava (jeho chatnotes su jeho, text nemenny)
+//      - ulozenie: verso_comm_users(entry_key, username, is_delegate, notify_level) - riadok na usera,
+//        nie hodnota na zazname. Rozhodol o tom Vrsov pozadovany workspace v Settings ("aby user vedel,
+//        kde vsade bol delegovany") - to je dopyt PODLA USERA naprieg zaznamami, a ten sa nad textovym
+//        polom na zazname neda urobit inak nez prehladanim vsetkych. Vzor: verso_chat_seen.
+//      - MEMO prevzatie projektu: dnes je username NARAZ autor aj owner. Prevzatie ich bude musiet
+//        rozdelit na dva stlpce (alebo razit novu verziu) - viz kap. 13g. ===
 function zzz1_r7f1_can_edit_privacy() {
   if (!zzz1_r26f1_is_multiuser_project()) return true; // jednouzivatelsky projekt - volna editacia
   const current = zzz0r1_get_current_username();
@@ -11243,47 +11313,185 @@ function zzz1cn_openadd_key(entryKey) {
 // smie pridat kontakt, rozhoduje server - inak si pravo udeli kazdy, kto si prepise localStorage.
 // zzz1_context_can_edit() nizsie je teda UI-gate, nie zamok; zamok je RLS.
 //
-// TVAR HODNOTY: ciarkou oddelene dvojice "co:komu" - dnes jedina "contacts:owner|all", aby sa dalsie
-// riadky matice (chats, mentions, viz VERSO-SUBS-NOTES kap. 11) dali pridat BEZ migracie stlpca.
+// TVAR HODNOTY: ciarkou oddelene dvojice "co:komu", aby dalsie riadky pribudali BEZ migracie stlpca.
 // Prazdne/NULL = vsetko drzi owner, teda najprisnejsi stav - fail-closed.
+//
+// === [Zzz1-CN:SETUP-ROWS] Vrso 2026-09-30 (21:46), REVIZIA povodneho navrhu ==========================
+// Povodne som tretim riadkom navrhol "kto smie rozsirit okruh ludi s pristupom". Vrso to opravil:
+//   "zasadna vec, ze add notifications nema byt povolenie na mentions - tie su samozrejme v ramci
+//    povolenia oznacovat/komunikovat s users definovanych v comm window v contacts module"
+// Ma pravdu: mention mieri na niekoho, kto v kontaktoch UZ JE. Pravo mentionovat teda nie je samostatne
+// povolenie, je to DOSLEDOK riadku "add contacts" - viz [Zzz6-F58:MENTION-GATE] nizsie v subore, kde sa
+// to aj vynucuje (dovtedy mention kontakt nie obmedzoval, ale VYRABAL).
+// Tretí riadok je teda UROVEN NOTIFIKACII a ta je per-user, takze NIE JE tu - zije vo verso_comm_users
+// spolu s delegatmi ([Zzz1-CN:DELEGATE]). V comm_setup ostava len jej VYCHODZIA hodnota pre zaznam.
+//
+// STUPNE SU KUMULATIVNE: owner < delegate < all. "users ano, delegate nie" nedava zmysel - users su sirsi
+// okruh nez delegat. Preto jedna hodnota s tromi stupnami, nie tri nezavisle zaskrtavatka.
 const ZZZ1CN_GATE_COL = 'comm_setup';
 const ZZZ1CN_GATE_PENDING = 'zzz1cn_openadd_pending';   // kluce, ktorych zapis este nepresiel
+const ZZZ1CN_SETUP_KEY = 'zzz1cn_setup';                // cache surovej hodnoty (localStorage)
 let zzz1cnGateColOk = null;    // null = neoverene, false = stlpec v DB zatial nie je
-const zzz1cnGateCache = {};    // entryKey -> bool, mirror localStorage v pamati (setri citanie pri kazdom paint)
+const zzz1cnGateCache = {};    // entryKey -> {contacts, chats, notify}, mirror localStorage v pamati
 
-function zzz1cn_gate_parse(raw) {
-  const s = String(raw || '').toLowerCase();
-  return /(^|[,\s])contacts\s*:\s*all(\s*(,|$))/.test(s);
+const ZZZ1CN_LEVELS = ['owner', 'delegate', 'all'];
+const ZZZ1CN_SETUP_DEF = { contacts: 'owner', chats: 'owner', notify: 'all' };
+function zzz1cn_level_rank(v) {
+  const i = ZZZ1CN_LEVELS.indexOf(String(v || '').toLowerCase());
+  return i < 0 ? 0 : i;   // nezname = najprisnejsie
 }
-function zzz1cn_gate_build(on) { return on ? 'contacts:all' : 'contacts:owner'; }
+// Prazdne, neznamy stupen aj poskodena hodnota davaju VZDY najprisnejsi stav - nastavenie sa nesmie dat
+// obist tym, ze sa doň napise nezmysel.
+function zzz1cn_setup_parse(raw) {
+  const out = Object.assign({}, ZZZ1CN_SETUP_DEF);
+  String(raw || '').toLowerCase().split(',').forEach(part => {
+    const m = /^\s*([a-z_]+)\s*:\s*([a-z]+)\s*$/.exec(part);
+    if (!m) return;
+    const k = m[1], v = m[2];
+    if (k === 'notify') { if (v === 'all' || v === 'mentions') out.notify = v; return; }
+    if ((k === 'contacts' || k === 'chats') && ZZZ1CN_LEVELS.indexOf(v) >= 0) out[k] = v;
+  });
+  return out;
+}
+function zzz1cn_setup_build(s) {
+  const v = Object.assign({}, ZZZ1CN_SETUP_DEF, s || {});
+  return `contacts:${v.contacts}, chats:${v.chats}, notify:${v.notify}`;
+}
+// Smie TENTO prihlaseny na TOMTO zazname to, co riadok dovoluje?
+// UI-gate, nie zamok - zamok je RLS. Preto sa tu smie citat aj z cache.
+function zzz1cn_setup_allows(level, entryKey) {
+  const rank = zzz1cn_level_rank(level);
+  if (rank >= 2) return true;                       // all
+  if (zzz1cn_is_owner()) return true;               // owner smie vzdy
+  if (rank >= 1) return zzz1cn_is_delegate(entryKey);
+  return false;
+}
 
 // --- cache -------------------------------------------------------------------------------------------
-function zzz1cn_gate_cache_put(k, on) {
-  zzz1cnGateCache[k] = !!on;
+function zzz1cn_gate_cache_put(k, setup) {
+  const s = zzz1cn_setup_parse(zzz1cn_setup_build(setup));   // prejde normalizaciou, nech je cache cista
+  zzz1cnGateCache[k] = s;
   try {
-    if (on) localStorage.setItem(`${ZZZ1CN_OPENADD_KEY}:${k}`, '1');
-    else localStorage.removeItem(`${ZZZ1CN_OPENADD_KEY}:${k}`);
+    localStorage.setItem(`${ZZZ1CN_SETUP_KEY}:${k}`, zzz1cn_setup_build(s));
+    // [Zzz1-CN:SETUP-ROWS] stary jednobitovy kluc sa uz nepouziva - uprac ho, nech sa nestane, ze
+    // zastarana '1' prezije zmenu nastavenia a pri dalsom citani ho vrati spat
+    localStorage.removeItem(`${ZZZ1CN_OPENADD_KEY}:${k}`);
   } catch (e) {}
 }
-// SYNCHRONNE citanie - volaju ho vykreslovacie funkcie pri kazdom paint, cakat sa tu neda.
-// Vracia poslednu ZNAMU hodnotu; cerstvu prinesie zzz1cn_openadd_load() a prekresli.
-function zzz1cn_openadd_get(entryKey) {
-  const k = zzz1cn_openadd_key(entryKey);
+// surova hodnota z cache (vratane prechodu zo stareho jednobitoveho kluca)
+function zzz1cn_gate_cache_get(k) {
   if (k in zzz1cnGateCache) return zzz1cnGateCache[k];
-  let v = false;
-  try { v = localStorage.getItem(`${ZZZ1CN_OPENADD_KEY}:${k}`) === '1'; } catch (e) {}
-  zzz1cnGateCache[k] = v;
-  return v;
+  let s = null;
+  try {
+    const raw = localStorage.getItem(`${ZZZ1CN_SETUP_KEY}:${k}`);
+    if (raw !== null) s = zzz1cn_setup_parse(raw);
+    else if (localStorage.getItem(`${ZZZ1CN_OPENADD_KEY}:${k}`) === '1') {
+      s = zzz1cn_setup_parse('contacts:all');   // stary format: jediny prepinac znamenal prave toto
+    }
+  } catch (e) {}
+  if (!s) s = Object.assign({}, ZZZ1CN_SETUP_DEF);
+  zzz1cnGateCache[k] = s;
+  return s;
+}
+// SYNCHRONNE citanie celeho nastavenia - volaju ho vykreslovacie funkcie pri kazdom paint, cakat sa tu
+// neda. Vracia poslednu ZNAMU hodnotu; cerstvu prinesie zzz1cn_openadd_load() a prekresli.
+function zzz1cn_setup_get(entryKey) {
+  return zzz1cn_gate_cache_get(zzz1cn_openadd_key(entryKey));
+}
+// Tenka obalka so starym menom: "smiem sem pridat kontakt?" Ostava, lebo na nu stoji zzz1_context_can_edit
+// a par vykreslovani - a hlavne je to otazka, ktoru appka naozaj klade, nie stav nastavenia.
+function zzz1cn_openadd_get(entryKey) {
+  return zzz1cn_setup_allows(zzz1cn_setup_get(entryKey).contacts, entryKey);
+}
+// smiem v tomto zazname ZALOZIT NOVY chat (nove cislo/vlakno)? Odpoved na riadok "Add chats".
+function zzz1cn_newchat_ok(entryKey) {
+  return zzz1cn_setup_allows(zzz1cn_setup_get(entryKey).chats, entryKey);
 }
 
 // --- fronta nezapisanych zmien (offline vrstva) -------------------------------------------------------
 function zzz1cn_gate_pending_all() {
   try { return JSON.parse(localStorage.getItem(ZZZ1CN_GATE_PENDING) || '{}') || {}; } catch (e) { return {}; }
 }
-function zzz1cn_gate_pending_put(k, on) {
+// hodnota vo fronte je uz CELE nastavenie (surovy retazec), nie jeden bit
+function zzz1cn_gate_pending_put(k, raw) {
   const m = zzz1cn_gate_pending_all();
-  if (on === null) delete m[k]; else m[k] = !!on;
+  if (raw === null) delete m[k]; else m[k] = String(raw);
   try { localStorage.setItem(ZZZ1CN_GATE_PENDING, JSON.stringify(m)); } catch (e) {}
+}
+
+// === [Zzz1-CN:DELEGATE] kto je na tomto zazname delegat + akú úroveň notifikácií ma ===================
+// Riadok na dvojicu (zaznam, user) - SQL verso_comm_users_v1. Tu len cache a citanie; zapisuje comm setup.
+const zzz1cnCommUsers = {};      // entryKey -> { username(lower): {is_delegate, notify_level} }
+let zzz1cnCommUsersOk = null;    // null = neoverene, false = tabulka zatial nie je nasadena
+function zzz1cn_cu_rows(entryKey) {
+  return zzz1cnCommUsers[zzz1cn_openadd_key(entryKey)] || null;
+}
+function zzz1cn_is_delegate(entryKey, name) {
+  const who = zzz10v1_normalize(String(name || zzz0r1_get_current_username() || '').trim());
+  if (!who) return false;
+  const rows = zzz1cn_cu_rows(entryKey);
+  return !!(rows && rows[who] && rows[who].is_delegate);
+}
+// vysledna uroven pre usera: jeho vlastny riadok, inak vychodzia zo zaznamu
+function zzz1cn_notify_level(entryKey, name) {
+  const who = zzz10v1_normalize(String(name || zzz0r1_get_current_username() || '').trim());
+  const rows = zzz1cn_cu_rows(entryKey);
+  const own = rows && rows[who] ? String(rows[who].notify_level || '') : '';
+  return own || zzz1cn_setup_get(entryKey).notify;
+}
+async function zzz1cn_cu_load(entryKey) {
+  const k = zzz1cn_openadd_key(entryKey);
+  if (k === ZZZ1CN_OPENADD_DRAFT) return null;   // rozpisana CL este ziadnych userov nema
+  if (zzz1cnCommUsersOk === false) return null;
+  try {
+    const { data, error } = await sb.from('verso_comm_users')
+      .select('username, is_delegate, notify_level').eq('entry_key', k);
+    if (error) throw error;
+    zzz1cnCommUsersOk = true;
+    const map = {};
+    (data || []).forEach(r => {
+      map[zzz10v1_normalize(r.username)] = { is_delegate: !!r.is_delegate, notify_level: String(r.notify_level || '') };
+    });
+    zzz1cnCommUsers[k] = map;
+    return map;
+  } catch (e) {
+    // 42P01 = tabulka neexistuje. Kym SQL nie je nasadene, delegati proste ziadni nie su - a kedze
+    // "delegate" je stupen MEDZI ownerom a vsetkymi, znamena to najprisnejsi vyklad, nie volnejsi.
+    const code = String((e && e.code) || '');
+    if (code === '42P01' || /verso_comm_users/.test(String((e && e.message) || ''))) {
+      zzz1cnCommUsersOk = false;
+      console.warn('[Zzz1-CN:DELEGATE] tabulka verso_comm_users zatial nie je nasadena (verso_comm_users_v1.sql)');
+    }
+    return null;
+  }
+}
+// zapis jedneho riadku (iba owner - vynucuje RLS). patch = {is_delegate} alebo {notify_level}
+async function zzz1cn_cu_save(entryKey, name, patch) {
+  const k = zzz1cn_openadd_key(entryKey);
+  const who = zzz10v1_normalize(String(name || '').trim());
+  if (k === ZZZ1CN_OPENADD_DRAFT || !who) return false;
+  if (zzz1cnCommUsersOk === false) return false;
+  const rows = zzz1cnCommUsers[k] || (zzz1cnCommUsers[k] = {});
+  const before = rows[who] || { is_delegate: false, notify_level: '' };
+  const after = Object.assign({}, before, patch);
+  rows[who] = after;   // okno reaguje hned, server potvrdi o chvilu
+  try {
+    const { error } = await sb.from('verso_comm_users')
+      .upsert({ entry_key: k, username: who, is_delegate: !!after.is_delegate, notify_level: String(after.notify_level || '') },
+              { onConflict: 'entry_key,username' });
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    rows[who] = before;   // neprislo to na server - nepredstieraj, ze ano
+    const msg = String((e && (e.message || e.details)) || '');
+    if (/comm consent/i.test(msg)) {
+      zzz6f2_show_toast('Only a user who gave comm consent can be a delegate.', 'warn');
+    } else {
+      zzz6f2_show_toast('The change did not reach the server.', 'warn');
+    }
+    console.warn('[Zzz1-CN:DELEGATE] zapis riadku zlyhal:', msg);
+    return false;
+  }
 }
 
 // --- zapis na server ---------------------------------------------------------------------------------
@@ -11295,9 +11503,10 @@ async function zzz1cn_gate_push(entryKey, on) {
   if (zzz1cnGateColOk === false) return false;       // stlpec zatial nie je nasadeny - drzime lokalne
   const id = Number(k);
   if (!Number.isFinite(id)) return false;
+  const raw = typeof on === 'string' ? on : zzz1cn_setup_build(on);
   try {
     const { error } = await sb.from('verso_entries')
-      .update({ [ZZZ1CN_GATE_COL]: zzz1cn_gate_build(on) })
+      .update({ [ZZZ1CN_GATE_COL]: raw })
       .eq('entry_id', id);
     if (error) throw error;
     zzz1cnGateColOk = true;
@@ -11316,7 +11525,7 @@ async function zzz1cn_gate_push(entryKey, on) {
       console.warn(`[Zzz1-CN:GATE-ONLINE] stlpec verso_entries.${ZZZ1CN_GATE_COL} zatial nie je nasadeny (verso_entries_v1_state_columns.sql) - nastavenie ostava lokalne`);
       return false;
     }
-    zzz1cn_gate_pending_put(k, on);
+    zzz1cn_gate_pending_put(k, raw);
     console.warn('[Zzz1-CN:GATE-ONLINE] zapis comm setupu zlyhal, ostava vo fronte:', msg);
     return false;
   }
@@ -11339,10 +11548,13 @@ async function zzz1cn_openadd_load(entryKey, onChange) {
       .select(ZZZ1CN_GATE_COL).eq('entry_id', id).maybeSingle();
     if (error) throw error;
     zzz1cnGateColOk = true;
-    const fresh = zzz1cn_gate_parse(data && data[ZZZ1CN_GATE_COL]);
-    const before = zzz1cn_openadd_get(k);
+    const fresh = zzz1cn_setup_parse(data && data[ZZZ1CN_GATE_COL]);
+    const beforeRaw = zzz1cn_setup_build(zzz1cn_gate_cache_get(k));
     zzz1cn_gate_cache_put(k, fresh);
-    if (fresh !== before && typeof onChange === 'function') onChange(fresh);
+    // [Zzz1-CN:DELEGATE] delegati a urovne su druha polovica toho isteho nastavenia - tiahnu sa spolu,
+    // inak by okno ukazalo cerstve povolenia nad zastaralym zoznamom delegatov
+    await zzz1cn_cu_load(k);
+    if (zzz1cn_setup_build(fresh) !== beforeRaw && typeof onChange === 'function') onChange(fresh);
     return fresh;
   } catch (e) {
     const code = String((e && e.code) || '');
@@ -11358,28 +11570,37 @@ async function zzz1cn_openadd_load(entryKey, onChange) {
 function zzz1cn_openadd_promote(entryId) {
   const id = String(entryId || '').trim();
   if (!id) return;
-  let draft = false;
+  const draft = zzz1cn_gate_cache_get(ZZZ1CN_OPENADD_DRAFT);
+  const raw = zzz1cn_setup_build(draft);
   try {
-    draft = localStorage.getItem(`${ZZZ1CN_OPENADD_KEY}:${ZZZ1CN_OPENADD_DRAFT}`) === '1';
+    localStorage.removeItem(`${ZZZ1CN_SETUP_KEY}:${ZZZ1CN_OPENADD_DRAFT}`);
     localStorage.removeItem(`${ZZZ1CN_OPENADD_KEY}:${ZZZ1CN_OPENADD_DRAFT}`);
   } catch (e) {}
   delete zzz1cnGateCache[ZZZ1CN_OPENADD_DRAFT];
-  if (!draft) return;              // vychodzi (najprisnejsi) stav sa nikam zapisovat nemusi
-  zzz1cn_gate_cache_put(id, true);
-  zzz1cn_gate_pending_put(id, true);
+  // vychodzi (najprisnejsi) stav sa nikam zapisovat nemusi - prazdny stlpec znamena presne to iste
+  if (raw === zzz1cn_setup_build(ZZZ1CN_SETUP_DEF)) return;
+  zzz1cn_gate_cache_put(id, draft);
+  zzz1cn_gate_pending_put(id, raw);
   // bez await: zapis zaznamu sa nesmie zdrzat ani zhodit kvoli nastaveniu (rovnako ako promote poznamok)
-  zzz1cn_gate_push(id, true).catch(() => {});
+  zzz1cn_gate_push(id, raw).catch(() => {});
 }
 // Vracia PRISLUB zapisu, aby sa okno vedelo prekreslit, ked zapis dobehne. Bez toho hlaska
 // "Not saved to the server yet" svietila VZDY hned po zaskrtnuti - do fronty sa hodnota vklada pred
 // zapisom a paint() bezal synchronne hned za tym, teda este kym odpoved zo servera nebola. Zapis presiel
 // o chvilu neskor, ale okno uz nikto neprekreslil (Vrso 2026-09-30, dve fotky o minutu po sebe).
-function zzz1cn_openadd_set(entryKey, on) {
+// patch = ciastocna zmena nastavenia, napr. {contacts:'all'} alebo {notify:'mentions'}
+function zzz1cn_setup_set(entryKey, patch) {
   const k = zzz1cn_openadd_key(entryKey);
-  zzz1cn_gate_cache_put(k, on);          // okno musi reagovat OKAMZITE, aj ked siet mlci
+  const next = Object.assign({}, zzz1cn_gate_cache_get(k), patch || {});
+  const raw = zzz1cn_setup_build(next);
+  zzz1cn_gate_cache_put(k, next);        // okno musi reagovat OKAMZITE, aj ked siet mlci
   if (k === ZZZ1CN_OPENADD_DRAFT) return Promise.resolve(false);
-  zzz1cn_gate_pending_put(k, on);        // az uspesny zapis ju z fronty vyhodi
-  return zzz1cn_gate_push(k, on).catch(() => false);
+  zzz1cn_gate_pending_put(k, raw);       // az uspesny zapis ju z fronty vyhodi
+  return zzz1cn_gate_push(k, raw).catch(() => false);
+}
+// stara jednobitova cesta - ostava pre volajucich, ktori sa pytaju len na kontakty
+function zzz1cn_openadd_set(entryKey, on) {
+  return zzz1cn_setup_set(entryKey, { contacts: on ? 'all' : 'owner' });
 }
 // je prihlaseny user ownerom TOHTO zaznamu?
 function zzz1cn_is_owner() {
@@ -11421,57 +11642,178 @@ function zzz1cn_open_comm_setup(host, api) {
   head.appendChild(x);
   win.appendChild(head);
 
-  // jedina polozka - "zatial len" z Vrsovho zadania. Dalsie pribudnu sem pod nu.
-  const row = document.createElement('label');
-  row.className = 'zzz1cn-setup-row';
-  const chk = document.createElement('input');
-  chk.type = 'checkbox';
-  chk.className = 'zzz1cn-setup-chk';
-  chk.checked = api.get();
-  const txt = document.createElement('span');
-  txt.className = 'zzz1cn-setup-txt';
-  txt.textContent = 'Let others add contacts to this chat';
-  row.appendChild(chk);
-  row.appendChild(txt);
-  win.appendChild(row);
-
+  // === [Zzz1-CN:SETUP-ROWS] STYRI RIADKY (Vrso 2026-09-30, foto + 21:46 + 22:02) ======================
+  // Povodne tu bol JEDEN prepinac. Teraz: dve povolenia (kumulativne, na zazname) + delegati a urovne
+  // notifikacii (per-user, vo verso_comm_users). Preco prave takto - viz VERSO-SUBS-NOTES kap. 13.
+  const gkey = api.key();
   const note = document.createElement('div');
   note.className = 'zzz1cn-setup-note';
-  win.appendChild(note);
+  let paint = () => {};   // skutocne telo nizsie; deklarovane tu, lebo naň siahaju obsluhy prvkov
 
-  // DOVOD, preco sa nedá prepnut, patri do okna - nie do zamknuteho tlacidla, pri ktorom sa user len domyslia
-  const paint = () => {
-    const owner = api.isOwner();
-    const keyed = !!api.key();
-    // [Zzz1-CN:OWNER-GATE] cislo zaznamu uz NIE JE podmienka - rozpisana CL drzi nastavenie v drafte a to
-    // sa na nu prenesie, ked cislo dostane. Jedina podmienka ostava ta jedina, ktora tu vzdy davala zmysel:
-    // rozhoduje o tom owner.
-    chk.disabled = !owner;
-    row.classList.toggle('is-locked', chk.disabled);
-    note.textContent = !owner
-      ? 'Only the project owner decides this. Off means the contact list of this chat is held by the owner alone.'
-      : (chk.checked
-        ? 'Anyone with access to this record may add contacts here.'
-        : 'Only you may add contacts here. Everyone else just sees the list.')
-        + (keyed ? '' : ' The line is not sent yet - the setting travels with it.')
-        // [Zzz1-CN:GATE-ONLINE] user ma vediet, ci nastavenie uz plati VSADE, alebo len na tomto
-        // zariadeni - je to rozdiel medzi zamkom a dohodou
-        + (keyed && typeof api.pending === 'function' && api.pending()
-            ? ' Not saved to the server yet - it will be sent as soon as the connection is back.' : '');
+  // --- jeden riadok povolenia: tri stupne, KUMULATIVNE -------------------------------------------
+  // Vrso zakreslil tri zaskrtavatka. Nie su to ale tri nezavisle volby: "users ano, delegate nie"
+  // nedava zmysel, lebo users su sirsi okruh nez delegat. Preto zaskrtnutie stupna zaskrtne aj vsetky
+  // nizsie a odskrtnutie odskrtne vsetky vyssie. Owner je zaskrtnuty vzdy a neda sa vypnut - nastavenie
+  // bez vlastnika by nemal kto zmenit spat.
+  const lvlRows = [];
+  const mkLevelRow = (label, keyName) => {
+    const line = document.createElement('div');
+    line.className = 'zzz1cn-setup-line';
+    const txt = document.createElement('span');
+    txt.className = 'zzz1cn-setup-txt';
+    txt.textContent = label;
+    const lvls = document.createElement('div');
+    lvls.className = 'zzz1cn-setup-lvls';
+    const boxes = [];
+    ZZZ1CN_LEVELS.forEach((lv, i) => {
+      const cell = document.createElement('label');
+      cell.className = 'zzz1cn-setup-lvl';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.dataset.level = lv;
+      const cap = document.createElement('span');
+      cap.textContent = lv === 'all' ? 'users' : lv;
+      cell.appendChild(cb); cell.appendChild(cap);
+      cb.addEventListener('change', () => {
+        if (cb.disabled) return;
+        // kumulativne: zaskrtnutie stupna i znamena "aspon i", odskrtnutie "najviac i-1"
+        const next = ZZZ1CN_LEVELS[cb.checked ? i : Math.max(0, i - 1)];
+        const done = api.setLevel(keyName, next);
+        paint();
+        if (done && typeof done.then === 'function') done.then(() => { if (win.isConnected) paint(); });
+      });
+      boxes.push({ cb, cell, lv, i });
+      lvls.appendChild(cell);
+    });
+    line.appendChild(txt); line.appendChild(lvls);
+    win.appendChild(line);
+    lvlRows.push({ keyName, boxes });
   };
-  chk.addEventListener('change', () => {
-    if (chk.disabled) return;
-    const done = api.set(chk.checked);
-    paint();   // okamzita odozva - hodnota uz plati, aj keby siet mlcala
-    // [Zzz1-CN:GATE-ONLINE] a este raz, ked zapis dobehne: dovtedy je hodnota este vo fronte a poznamka
-    // by inak ostala visiet na "Not saved to the server yet" aj po uspesnom zapise
+  mkLevelRow('Add contacts', 'contacts');
+  // "Add chats" = kto smie ZALOZIT NOVE vlakno (nove cislo a jeho meno). Odpovedanie do existujuceho
+  // vlakna tym obmedzene NIE JE - to je bezna praca v chate.
+  mkLevelRow('Add chats', 'chats');
+
+  // --- vychodzia uroven notifikacii pre zaznam ----------------------------------------------------
+  // Vrso 21:46: "add notifications ma definovat skor to, nech user nedostava notifikacie, iba ked je
+  // mentioned". Nie je to teda povolenie, ale UROVEN - a preto ma dva stavy, nie tri stupne.
+  const nLine = document.createElement('div');
+  nLine.className = 'zzz1cn-setup-line';
+  const nTxt = document.createElement('span');
+  nTxt.className = 'zzz1cn-setup-txt';
+  nTxt.textContent = 'Notifications';
+  const nSel = document.createElement('select');
+  nSel.className = 'zzz1cn-setup-usel';
+  [['all', 'everything'], ['mentions', 'mentions only']].forEach(([v, t]) => {
+    const o = document.createElement('option'); o.value = v; o.textContent = t; nSel.appendChild(o);
+  });
+  nSel.addEventListener('change', () => {
+    const done = api.setLevel('notify', nSel.value);
+    paint();
     if (done && typeof done.then === 'function') done.then(() => { if (win.isConnected) paint(); });
   });
+  nLine.appendChild(nTxt); nLine.appendChild(nSel);
+  win.appendChild(nLine);
+
+  // --- per-user: delegat + vlastna uroven ---------------------------------------------------------
+  // Vrso: "zrejme by sa zislo uz aj definovat, ktori users aj jednotlivo. Napr. podriadeny teamleader
+  // dostane povolenie dostavat notifikacie, ale jeho clenovia dostanu len mentions."
+  const sep = document.createElement('div');
+  sep.className = 'zzz1cn-setup-sep';
+  sep.textContent = 'PER USER';
+  win.appendChild(sep);
+  const uBox = document.createElement('div');
+  uBox.className = 'zzz1cn-setup-users';
+  win.appendChild(uBox);
+  win.appendChild(note);
+
+  const paintUsers = () => {
+    uBox.innerHTML = '';
+    const owner = api.isOwner();
+    const names = (typeof api.users === 'function' ? api.users() : []) || [];
+    if (!names.length) {
+      const empty = document.createElement('div');
+      empty.className = 'zzz1cn-setup-note';
+      empty.style.marginTop = '0';
+      empty.textContent = 'No contacts in this chat yet.';
+      uBox.appendChild(empty);
+      return;
+    }
+    names.forEach(nm => {
+      const r = document.createElement('div');
+      r.className = 'zzz1cn-setup-userrow';
+      const who = document.createElement('span');
+      who.className = 'zzz1cn-setup-uname';
+      who.textContent = nm;
+      who.title = nm;
+      const dWrap = document.createElement('label');
+      dWrap.className = 'zzz1cn-setup-udel';
+      const dChk = document.createElement('input');
+      dChk.type = 'checkbox';
+      dChk.checked = zzz1cn_is_delegate(gkey, nm);
+      dChk.disabled = !owner;
+      const dTxt = document.createElement('span');
+      dTxt.textContent = 'delegate';
+      dWrap.appendChild(dChk); dWrap.appendChild(dTxt);
+      const meN = zzz10v1_normalize(nm);
+      dChk.addEventListener('change', async () => {
+        const ok = await zzz1cn_cu_save(gkey, nm, { is_delegate: dChk.checked });
+        // [Zzz1-CN:DELEGATE] consent overuje DATABAZA (trigger). Ked odmietne, zaskrtnutie sa musi
+        // vratit - inak by okno tvrdilo nieco, co na serveri neplati.
+        if (!ok) dChk.checked = zzz1cn_is_delegate(gkey, nm);
+        if (win.isConnected) paint();
+      });
+      const sel = document.createElement('select');
+      sel.className = 'zzz1cn-setup-usel';
+      [['', 'default'], ['all', 'everything'], ['mentions', 'mentions only']].forEach(([v, t]) => {
+        const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o);
+      });
+      const rows = zzz1cn_cu_rows(gkey);
+      sel.value = (rows && rows[meN] && rows[meN].notify_level) || '';
+      sel.disabled = !owner;
+      sel.addEventListener('change', async () => {
+        const ok = await zzz1cn_cu_save(gkey, nm, { notify_level: sel.value });
+        if (!ok) { const rr = zzz1cn_cu_rows(gkey); sel.value = (rr && rr[meN] && rr[meN].notify_level) || ''; }
+      });
+      r.appendChild(who); r.appendChild(dWrap); r.appendChild(sel);
+      uBox.appendChild(r);
+    });
+  };
+
+  // DOVOD, preco sa nedá prepnut, patri do okna - nie do zamknuteho tlacidla, pri ktorom sa user len domyslia
+  paint = () => {
+    const owner = api.isOwner();
+    const keyed = !!api.key();
+    const s = api.setup();
+    lvlRows.forEach(({ keyName, boxes }) => {
+      const rank = zzz1cn_level_rank(s[keyName]);
+      boxes.forEach(({ cb, cell, i }) => {
+        cb.checked = i <= rank;
+        // [Zzz1-CN:OWNER-GATE] cislo zaznamu uz NIE JE podmienka - rozpisana CL drzi nastavenie v drafte
+        // a to sa na nu prenesie, ked cislo dostane. Rozhoduje o tom vylucne owner.
+        // Stupen 'owner' je zamknuty pre kazdeho: nastavenie bez vlastnika by nemal kto zmenit spat.
+        cb.disabled = !owner || i === 0;
+        cell.classList.toggle('is-locked', cb.disabled);
+        cell.classList.toggle('is-on', cb.checked);
+      });
+    });
+    nSel.value = s.notify;
+    nSel.disabled = !owner;
+    note.textContent = (!owner
+      ? 'Only the project owner decides this. Everyone else sees what applies.'
+      : 'Levels add up - ticking users grants delegates too.')
+      + (keyed ? '' : ' The line is not sent yet - the setting travels with it.')
+      // [Zzz1-CN:GATE-ONLINE] user ma vediet, ci nastavenie uz plati VSADE, alebo len na tomto
+      // zariadeni - je to rozdiel medzi zamkom a dohodou
+      + (keyed && typeof api.pending === 'function' && api.pending()
+          ? ' Not saved to the server yet - it will be sent as soon as the connection is back.' : '');
+  };
   paint();
+  paintUsers();
   // [Zzz1-CN:GATE-ONLINE] pravda je na serveri - stiahni ju a prekresli, ak sa lisi od cache.
   // Okno sa otvori HNED s poslednou znamou hodnotou; cakat sa na siet nema preco.
   if (typeof api.refresh === 'function') {
-    api.refresh(() => { if (win.isConnected) { chk.checked = api.get(); paint(); } });
+    api.refresh(() => { if (win.isConnected) { paint(); paintUsers(); } });
   }
 
   // [Zzz5-W7:FILTER-MOVE] to iste gesto ako pri SHOW boxe - podrzanie 600 ms okno odopne a ide za prstom.
@@ -11630,6 +11972,33 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
       key: () => cnGateKey,
       isOwner: () => cnGateOwner,
       get: () => zzz1cn_openadd_get(cnGateKey),
+      // [Zzz1-CN:SETUP-ROWS] cele nastavenie a zmena jedneho riadku
+      setup: () => zzz1cn_setup_get(cnGateKey),
+      setLevel: (k, v) => {
+        const done = zzz1cn_setup_set(cnGateKey, { [k]: v });
+        if (k === 'contacts') {
+          // zmena prava na kontakty musi OKAMZITE platit aj na zoznam v tomto okne
+          cnGatePaint();
+          canEdit = zzz1_context_can_edit(consentKey, cnGateKey);
+          renderChips();
+        }
+        return done;
+      },
+      // koho vobec mozno urobit delegatom / komu nastavit uroven: kontakty tohto zaznamu, bez ownera
+      // (ten ma vsetko z titulu vlastnictva a delegovat sam sebe nema co)
+      users: () => {
+        const own = zzz10v1_normalize((entryData['4'] || '').trim());
+        const seen = {};
+        return zzz6f21_parse_tags(entryData['18'] || '')
+          .concat(zzz6f21_parse_tags(entryData['17'] || ''))
+          .map(x => String(x || '').trim())
+          .filter(x => {
+            const k = zzz10v1_normalize(x);
+            if (!k || k === own || seen[k]) return false;
+            seen[k] = true;
+            return true;
+          });
+      },
       // [Zzz1-CN:GATE-ONLINE] ceka este hodnota vo fronte na zapis?
       pending: () => zzz1cn_openadd_key(cnGateKey) in zzz1cn_gate_pending_all(),
       // stiahne cerstvu hodnotu zo servera; ked sa lisi, prekresli koliesko AJ zoznam kontaktov
@@ -12852,6 +13221,14 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     }
   };
   const cnSendToChatInner = async (raw, name, target, priv, toSaved, prio) => {
+    // === [Zzz1-CN:SETUP-ROWS] riadok "Add chats" - kto smie ZALOZIT NOVE vlakno ======================
+    // Prazdny ciel = nove cislo = novy chat. Odpoved do existujuceho vlakna (target vyplneny) tym
+    // obmedzena NIE JE - to je bezna praca v chate a ziadny novy chat nevznika.
+    // Hlaska musi povedat, CO s tym: odpovedat sa da, zalozit nove vlakno nie.
+    if (!target && !zzz1cn_newchat_ok(cnGateKey)) {
+      zzz6f2_show_toast('Only the owner may start a new chat here. Reply to an existing one instead.', 'warn');
+      return null;
+    }
     // === [Zzz6-F58:MENTIONS] pred odoslanim sa sprava PRECITA:
     //   @meno -> ostava v texte, menovany dostane pristup k zaznamu
     //   &meno -> ostava v texte AKO LINK, zaznam je PRIVATNY a menovany je jeho adresat
@@ -12864,7 +13241,9 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     const mAt = zzz6f58_names(raw, false);
     const mOnly = zzz6f58_names(raw, true);
     const body = raw;
-    const granted = zzz6f58_grant_access(mAt.concat(mOnly));
+    // [Zzz6-F58:MENTION-GATE] v comm okne UZ EXISTUJUCEHO zaznamu rozhoduje jeho comm setup, nie to,
+    // ze mam otvorene okno
+    const granted = zzz6f58_grant_access(mAt.concat(mOnly), cnGateKey);
     // === [Zzz6-F58:MENTIONS-ONLY] OPRAVA (2026-09-29): "automaticky oznacene privacy" sa NESMIE zapisat
     // do is_private. Predtym sa zapisovalo - a tym sa cela funkcia rusila sama:
     //   is_private = true  znamena v RLS "VIDI LEN AUTOR" (privacy je strop, pravidlo B2)
@@ -24857,7 +25236,7 @@ async function zzz1cn_load_for_chat(entryKey) {
 // flag vracia na null = "znova over".
 // [Zzz1-CN:GATE-ONLINE] zzz1cnGateColOk sem patri z rovnakeho dovodu ako zzz1cnOptCols: raz zisteny
 // "stlpec tam nie je" by inak platil do konca relacie aj potom, ako sa SQL nasadi
-function zzz1cn_reset_availability() { zzz1cnTableAvailable = null; zzz1cnOptCols = null; zzz1cnGateColOk = null; }
+function zzz1cn_reset_availability() { zzz1cnTableAvailable = null; zzz1cnOptCols = null; zzz1cnGateColOk = null; zzz1cnCommUsersOk = null; }
 
 // === [Zzz1-CN:OPT-COLS] VOLITELNE STLPCE - tie, ktore sa nasadzuju samostatnym SQL a v databaze teda
 // BYT MOZU aj NEMUSIA. Appka musi fungovat v OBOCH stavoch, lebo HTML a SQL sa nasadzuju zvlast.
@@ -25412,16 +25791,35 @@ function zzz6f58_strip_only(text) {
 // [Zzz6-F58:MENTIONS] sprístupnenie zaznamu menovanym - pridanie do COMMUNICATION bunky.
 // Toto je jediny existujuci mechanizmus, ktorym sa da entry niekomu sprístupnit (RLS aj databazovy
 // trigger consentov citaju prave r18), takze mention nerobi nic nove - len ho vyplni automaticky.
-function zzz6f58_grant_access(names) {
+// === [Zzz6-F58:MENTION-GATE] (Vrso 2026-09-30, 21:46) ================================================
+// Vrso: "mentions su samozrejme v ramci povolenia oznacovat/komunikovat s users definovanych v comm
+// window v contacts module."
+// LENZE KOD ROBIL PRESNY OPAK: kazde @meno, ktore v kontaktoch nebolo, sa sem TICHO PRIDALO. Mention
+// teda kontakt neobmedzoval - vyrabal ho. Kto nemal pravo pridavat kontakty, obisiel to tym, ze napisal
+// @ktokolvek, a riadok "Add contacts" v comm setupe bol povolenie len naoko.
+// TERAZ: pridat NOVE meno smie len ten, kto smie pridavat kontakty. Menovanie uz PRITOMNYCH ostava
+// kazdemu - to je bezna praca v chate a ziadny okruh nerozsiruje.
+// gateKey = zaznam, o ktoreho nastavenie ide. Chyba parametra znamena "volajuci je owner" - tak je to
+// v submit_entries_to_db, ktory zaklada NOVU entry, a jej vlastnikom je prave prihlaseny user.
+function zzz6f58_grant_access(names, gateKey) {
   const list = (names || []).map(n => String(n || '').trim()).filter(Boolean);
   if (!list.length) return [];
   const have = zzz6f21_parse_tags(entryData['18'] || '');
   const haveN = have.map(u => zzz10v1_normalize(u));
+  const mayAdd = (gateKey === undefined) ? true : zzz1cn_openadd_get(gateKey);
   const added = [];
+  const refused = [];
   list.forEach(n => {
     const k = zzz10v1_normalize(n);
-    if (k && haveN.indexOf(k) < 0) { have.push(n); haveN.push(k); added.push(n); }
+    if (!k || haveN.indexOf(k) >= 0) return;   // uz je medzi kontaktmi - netreba nic
+    if (!mayAdd) { if (refused.indexOf(n) < 0) refused.push(n); return; }
+    have.push(n); haveN.push(k); added.push(n);
   });
+  if (refused.length) {
+    // hlaska menuje KOHO sa to tyka a PRECO - inak by user videl, ze sa sprava odoslala, a nechapal,
+    // preco menovany nic nedostal
+    zzz6f2_show_toast(`Not in this chat's contacts: ${refused.join(', ')}. Only the owner may add contacts here.`, 'warn');
+  }
   if (added.length) {
     write_to_entry('18', have.join(', '));
     // === [Zzz6-F58:MENTIONS] otvorene comm okno pracuje s VLASTNOU kopiou kontaktov (workingTags) a pri
