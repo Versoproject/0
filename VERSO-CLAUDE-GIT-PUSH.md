@@ -1,6 +1,6 @@
 # VERSO — CLAUDE: GIT A PUSH
 
-**Verzia: 2026-10-02 01:50**
+**Verzia: 2026-10-02 01:55**
 
 > Prikladá sa na začiatok každého nového chatu. Platí na celý chat.
 
@@ -14,6 +14,29 @@
   ```
   git clone https://github.com/Versoproject/0
   ```
+
+## 1a. ČO SA SMIE PUSHOVAŤ (Vrso 2. 10., 01:53)
+
+**Nepushuje sa každý súbor.** Do repa idú **iba** tieto súbory:
+
+| Súbor | Čo to je |
+|---|---|
+| `index.html` | appka |
+| `VERSO-HLAVNE-INSTRUKCIE.md` | **rules** |
+| `VERSO-CLAUDE-GIT-PUSH.md` | tento súbor |
+| *ideas (planned)* | až keď bude vytvorený, názov sa sem dopíše |
+| *nextup (todo)* | až keď bude vytvorený, názov sa sem dopíše |
+
+- Súbory **rules, ideas a nextup** sa pushujú **automaticky** pri každej ich zmene, bez pýtania. Pred
+  pushom sa aj tak stručne napíše, čo sa mení.
+- Ďalší `.md` pribudne do repa **iba keď ho Vrso pomenuje**. Potom sa zapíše do tabuľky vyššie.
+- **Vždy sa PREPISUJE.** Push nahradí súbor na tej istej ceste. Nikdy nevzniká kópia s novým menom
+  (`index-v2.html`, `rules-novy.md` …). Staré verzie drží história gitu.
+- Pracovné súbory (testy, skripty, screenshoty, poznámky) **nepatria do repa**. Patria do scratchpadu
+  mimo repa. Ak by ležali v repe, hook na konci odpovede si vynúti ich commit. Tak sa 2. 10. o 01:49
+  dostal do repa `VERSO-CLAUDE-GIT-PUSH.md` skôr, než Vrso odpovedal.
+- `VERSO-BACKLOG.md` je v repe (nahral ho Vrso). **Neprepisuje sa**, kým Vrso nepovie, či je to
+  *ideas (planned)*.
 
 ## 2. PRVÉ, ČO SA V CHATE ROBÍ (v tomto poradí)
 
