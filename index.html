@@ -15554,6 +15554,29 @@ function zzz2r38_subs_chip_display(sub) {
   return { text: sub, cssClass: null, locked: false, label: 'sub' }; // dolny riadok - cislo doplni render (sub-1, sub-2...)
 }
 
+// [Zzz6-F8:SUBS-OPEN] pamat dvojtuku - mimo chipu, viz vysvetlenie pri obsluhe kliku
+const zzz6f8SubsTap = { sub: '', at: 0 };
+// [Zzz6-F8:SUBS-OPEN] otvor to, na co chip ukazuje. Vracia true, ked sa nieco otvorilo.
+// DVA DRUHY ODKAZU, ktore vedia povedat KAM:
+//   note:<entry>/<cislo>[/<pismeno>]  -> Notes toho zaznamu, kurzor rovno na tej poznamke (aj na a/b/c)
+//   #<cislo>                          -> Notes toho zaznamu (ref-EN, odkaz na iny zaznam)
+// Ostatne chipy (sub-NUM, ref-TAB, ref-SRC, volny text) necham tak: nie su to odkazy na zaznam ani na
+// poznamku, takze nie je kam ist a dvojtuk na nich normalne oznacuje.
+function zzz6f8_subs_open(sub) {
+  const k = zzz1cn_subs_note_key(sub);
+  if (k) {
+    zzz_haptic_pulse(20);
+    zzz1cn_open_list(String(k.entry), null, { num: k.num, part: k.part });
+    return true;
+  }
+  if (ZZZ6F8_AUTO_NUMBER_PATTERN.test(String(sub || '').trim())) {
+    zzz_haptic_pulse(20);
+    zzz1cn_open_list(String(sub).trim().slice(1), null);
+    return true;
+  }
+  return false;
+}
+
 // [Zzz6-X:SUBS-REF-BASE] "zapisala to funkcia?" test pre holy (neprefixovany) sub-REF chip - viz vysvetlenie
 // vyssie. Znovupouziva uz existujuci zzz2r38_is_known_tab_label() (pozna VSETKY T1/T2/T3 taby vratane
 // novovytvorenych cez + ADD TEMPLATE, aj pevny 10-T2 pripad), takze netreba ziadny dalsi hardcoded zoznam.
@@ -15618,7 +15641,26 @@ function zzz6f8_build_subs_chip(sub, selState, rerender, onDelete, openIndex, re
   chip.appendChild(valueSpan);
   unit.appendChild(chip);
 
+  // === [Zzz6-F8:SUBS-OPEN] DVOJTUK OTVORI TO, NA CO CHIP UKAZUJE ==================================
+  // Vrso 2026-10-01: "ideálne by bolo, aby mal každý # aj reply-note (a, b...) svoje vlastné označenie,
+  // aby sa dali otvárať jednotlivé notes aj záznamy riadkov priamo zo subs."
+  // Odkaz, ktory sa neda otvorit, je polovicny odkaz: cislo clovek vidi, ale aby sa k nemu dostal,
+  // musel si pamatat, v ktorom zazname je, a prejst tam rucne.
+  // PRECO DVOJTUK a nie obycajny klik: jeden tuk na chipe uz ZNAMENA oznacenie ([Zzz6-X:SUBS-ONE-ROW])
+  // a prepisat mu vyznam by rozbilo to, co funguje. Dvojtuk je v tejto appke uz zauzivany presne na
+  // tento ucel - ENTRY NUMBER bunka ho ma tiez ("2x tukni = log zaznamu").
+  // Meria sa rucne (dva tuky do 400 ms): nativny dblclick je na Androide nespolahlivy a casto ho
+  // predbehne zoom gesto prehliadaca - rovnaky dovod ako pri [Zzz6-F14:ENTRY-LOG-WINDOW].
+  // Pamat dvojtuku NESMIE zit na chipe: prvy tuk prekresli cely riadok (rerender), takze druhy tuk uz
+  // dopadne na NOVY prvok, ktory o prvom nic nevie. Drzi sa preto mimo - podla hodnoty chipu, nie podla
+  // prvku. (Prvy pokus to mal v closure chipu a dvojtuk sa nikdy nechytil.)
   chip.addEventListener('click', () => {
+    const now = Date.now();
+    if (zzz6f8SubsTap.sub === sub && (now - zzz6f8SubsTap.at) < 400) {
+      zzz6f8SubsTap.sub = ''; zzz6f8SubsTap.at = 0;
+      if (zzz6f8_subs_open(sub)) return;    // otvorilo sa - oznacenie uz netreba prepinat
+    }
+    zzz6f8SubsTap.sub = sub; zzz6f8SubsTap.at = now;
     selState.value = (selState.value === sub) ? null : sub;
     rerender();
   });
@@ -29746,7 +29788,9 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
            togglePreset: presetToggle, presetOn: presetIsOn };
 }
 
-async function zzz1cn_open_list(entryKey, anchorEl) {
+// [Zzz6-F8:SUBS-OPEN] focusNote = {num, part} - otvor okno a rovno postav kurzor na TU poznamku.
+// Pouziva to dvojtuk na chipe v SUBS: odkaz, ktory sa neda otvorit, je polovicny odkaz.
+async function zzz1cn_open_list(entryKey, anchorEl, focusNote) {
   document.querySelectorAll('.zzz1cn-list-window').forEach(w => w.remove());
   const win = document.createElement('div');
   win.className = 'zzz1cn-list-window zzz5w7-ws';
@@ -31078,6 +31122,16 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   await render();
   document.body.appendChild(win);
   zzz5w7_watch_head(head);   // [Zzz5-W7:HEAD-FIT]
+  // [Zzz6-F8:SUBS-OPEN] prislo sa sem z konkretneho chipu v SUBS - postav sa rovno na tu poznamku.
+  // Ked tam nie je (odkaz na nieco, co uz nevidim alebo neexistuje), okno sa proste otvori cele a
+  // povie to - lepsie nez ticho ukazat prvu poznamku a tvarit sa, ze to je ona.
+  if (focusNote) {
+    const want = (n) => Number(n.note_number) === Number(focusNote.num)
+      && String(n.note_part || '').toLowerCase() === String(focusNote.part || '').toLowerCase();
+    const idx = viewNotes.findIndex(want);
+    if (idx >= 0) jumpTo(idx);
+    else zzz6f2_show_toast(`#${focusNote.num}${focusNote.part ? '-' + focusNote.part : ''} is not in this record's notes (or you cannot see it).`, 'warn');
+  }
   // [Zzz5-W7:LIST-OWNER] owner sa dotiahne zo zaznamu na pozadi - okno sa uz medzitym da pouzivat
   (async () => {
     if (!/^\d+$/.test(String(entryKey))) return;   // draft kluc v DB este nie je
