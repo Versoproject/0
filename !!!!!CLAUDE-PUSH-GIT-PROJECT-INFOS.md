@@ -1,8 +1,24 @@
-# VERSO — CLAUDE: GIT A PUSH
+# !!!!! VERSO — CLAUDE: PUSH, GIT + PROJECT INFOS
 
-**Verzia: 2026-10-02 01:55**
+**Verzia: 2026-10-02 02:00**
 
 > Prikladá sa na začiatok každého nového chatu. Platí na celý chat.
+> Názov začína `!!!!!`, aby bol v repe vždy prvý. Do 2. 10. 01:58 sa volal `VERSO-CLAUDE-GIT-PUSH.md`.
+
+---
+
+## 0. PROJEKT
+
+- **Verso** je jednosúborová CRM: `index.html` (~38 000 riadkov), dáta v **Supabase**, nasadené na
+  **Vercel** (`0-gold-seven.vercel.app`).
+- **Rules** (záväzné pravidlá, ako spolu pracujeme, návrh do Custom instructions) sú v
+  `VERSO-HLAVNE-INSTRUKCIE.md`. Prečítaj ich skôr, než začneš niečo meniť.
+- **claude.ai Project:** „Verso-5-Workspace". Project docs: `claude/VERSO-HLAVNE-INSTRUKCIE.md`
+  (kópia rules). Fotky a náčrty nahráva do Project files Vrso.
+- **Značka buildu** je vpravo v riadku vlastných tabov v Author workspace (`[Zzz5-6:BUILD]`).
+  Keď na screenshote nesedí s posledným commitom, testuje sa stará verzia.
+- Každá zmena má **module tag** `[Zzz<N>-<X>:NÁZOV]` a v kóde komentár, PREČO je tak.
+- **Testy:** `t<N>.py` (Playwright), baseline `t36`. Zatiaľ nie sú v repe (pozri kap. 5).
 
 ---
 
@@ -23,7 +39,7 @@
 |---|---|
 | `index.html` | appka |
 | `VERSO-HLAVNE-INSTRUKCIE.md` | **rules** |
-| `VERSO-CLAUDE-GIT-PUSH.md` | tento súbor |
+| `!!!!!CLAUDE-PUSH-GIT-PROJECT-INFOS.md` | tento súbor |
 | *ideas (planned)* | až keď bude vytvorený, názov sa sem dopíše |
 | *nextup (todo)* | až keď bude vytvorený, názov sa sem dopíše |
 
