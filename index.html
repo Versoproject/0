@@ -523,11 +523,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   }
   /* [Zzz1-CN:ENTER-TO-SUBS] desatsekundove podrzanie MUSI byt vidno, inak to user povazuje za pokazene
      tlacidlo a pusti to po troch sekundach. Vypln rastie zlava doprava, popis odpocitava. */
-  /* [Zzz1-CN:ENTER-TO-SUBS] patka SHOW boxu - oddelena ciarou, aby nevyzerala ako dalsie kriterium */
+  /* [Zzz1-CN:ENTER-TO-SUBS] lista povelov v SHOW boxe - HORE a oddelena ciarou, aby bola hned vidno
+     a zaroven nevyzerala ako dalsie kriterium */
   .zzz5w7-filterfoot {
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 1px solid #3a3a3a;
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #c8c8c8;
     display: flex;
     justify-content: flex-end;
   }
@@ -11615,6 +11616,45 @@ function zzz1cn_is_delegate(entryKey, name) {
   return !!(rows && rows[who] && rows[who].is_delegate);
 }
 // [Zzz1-CN:ROLE-EXCEPTIONS] vlastna rola tohto cloveka, alebo null, ked ziadnu nema
+// === [Zzz1-CN:REF-BACK] SPATNE VYHLADANIE: kde vsade je tato poznamka odkazana? ====================
+// MIRRORING DATA, planned bod 1. Smer je opacny nez vsetko ostatne: chip v SUBS vie, na ktoru poznamku
+// ukazuje, ale poznamka sama nevie, KTO na nu ukazuje - a prave to clovek potrebuje vediet, kym nieco
+// prestitkuje, premenuje alebo odoberie.
+// JEDEN DOPYT NA CELY INDEX, nie dopyt na kazdu poznamku: zaznamov, ktore vobec nejake odkazy maju, je
+// malo (entry_refs IS NOT NULL), takze sa stiahnu naraz a rozlozia do mapy. Pytat sa osobitne na kazdy
+// riadok zoznamu by znamenalo desiatky dopytov na jedno otvorenie okna.
+const zzz1cnRefBack = {};        // "<entry>/<cislo>/<pismeno>" -> [entry_id, ...]
+let zzz1cnRefBackAt = 0;
+async function zzz1cn_refback_load(force) {
+  // index starne pomaly (meni ho len ENTER TO SUBS a odobranie chipu), preto staci minuta
+  if (!force && zzz1cnRefBackAt && (Date.now() - zzz1cnRefBackAt) < 60000) return zzz1cnRefBack;
+  try {
+    const { data, error } = await sb.from('verso_entries')
+      .select('entry_id, ' + ZZZ1CN_REFS_COL).not(ZZZ1CN_REFS_COL, 'is', null);
+    if (error) throw error;
+    Object.keys(zzz1cnRefBack).forEach(k => { delete zzz1cnRefBack[k]; });
+    (data || []).forEach(r => {
+      zzz6f8_parse_subs(r[ZZZ1CN_REFS_COL] || '').forEach(chip => {
+        const k = zzz1cn_subs_note_key(chip);
+        if (!k) return;
+        const key = k.entry + '/' + k.num + '/' + k.part;
+        (zzz1cnRefBack[key] = zzz1cnRefBack[key] || []).push(String(r.entry_id));
+      });
+    });
+    zzz1cnRefBackAt = Date.now();
+  } catch (e) {
+    // stlpec este nie je nasadeny, alebo offline - index ostane prazdny a odznaky sa proste neukazu
+  }
+  return zzz1cnRefBack;
+}
+// v ktorych INYCH zaznamoch je tato poznamka odkazana. Vlastny zaznam sa vynecháva: ze je poznamka
+// v SUBS toho isteho zaznamu, kam patri, je bezny stav a odznak pri kazdom riadku by stratil vypovednu
+// hodnotu. Zaujimave je prave to, ze si ju pritiahol NIEKTO INY.
+function zzz1cn_refback_of(entryKey, n) {
+  const key = String(entryKey) + '/' + (Number(n.note_number) || 0) + '/' + String(n.note_part || '').toLowerCase();
+  return (zzz1cnRefBack[key] || []).filter(e => String(e) !== String(entryKey));
+}
+
 function zzz1cn_exception_of(entryKey, name) {
   const who = zzz10v1_normalize(String(name || zzz0r1_get_current_username() || '').trim());
   if (!who) return null;
@@ -28109,7 +28149,8 @@ async function zzz1cn_ws_load_notes() {
 }
 // zaznamy, ku ktorym poznamky patria - z nich su stlpce PROJECT NUMBER / OWNER / SUBS / CONTENT / TAG
 async function zzz1cn_ws_load_entries() {
-  const { data, error } = await sb.from('verso_entries').select('entry_id, fields_json, username')
+  // [Zzz1-CN:TAGS] tag_vocab sa tiahne SPOLU so zaznamami - workspace z neho poskladá ponuku stitkov
+  const { data, error } = await sb.from('verso_entries').select('entry_id, fields_json, username, tag_vocab')
     .eq('is_trashed', false).is('superseded_by', null);
   if (error) throw error;
   const map = {};
@@ -28122,7 +28163,8 @@ async function zzz1cn_ws_load_entries() {
       owner: String(f.r4 || ''),
       subs: String(f.r8 || ''),
       content: String(f.r10 || ''),
-      tag: String(f.tags || '')
+      tag: String(f.tags || ''),
+      vocab: String(r.tag_vocab || '')
     };
   });
   return map;
@@ -28198,7 +28240,17 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
       { key: 'owner',   label: 'OWNER',   placeholder: 'project owner' },
       { key: 'tag',     label: 'TAG',     placeholder: 'tag' }
     ],
-    extraUsers: () => Object.keys(entryMap).map(k => entryMap[k].owner)
+    extraUsers: () => Object.keys(entryMap).map(k => entryMap[k].owner),
+    // [Zzz1-CN:TAGS] slovnik je na zazname, workspace ich vidi mnoho - ponukne teda ZJEDNOTENIE
+    // slovnikov vsetkych vidielnych zaznamov. Pozor: to iste slovo v dvoch projektoch su dve rozne veci;
+    // rozlisit sa daju az spolu s kriteriom PROJECT / ENTRY.
+    tagsList: () => {
+      const out = [];
+      Object.keys(entryMap).forEach(k => {
+        zzz1cn_tags_parse(entryMap[k].vocab || '').forEach(t => { if (out.indexOf(t) < 0) out.push(t); });
+      });
+      return out.sort();
+    }
   });
   head.appendChild(box.el);
   // [Zzz5-W7:FILTER-MOVE] to iste aj tu - box zije v okne workspacu a da sa podrzanim presunut
@@ -28294,6 +28346,13 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     if (!has(c.project, ex.project)) return false;
     if (!has(c.owner, ex.owner)) return false;
     if (!has(c.tag, ex.tag)) return false;
+    // [Zzz1-CN:TAGS] pozor na dve rozne veci s podobnym nazvom: kriterium TAG hore je stitok ZAZNAMU
+    // (pole zaznamu), zaskrtnute chipy TAGS su stitky POZNAMKY. Chipy su medzi sebou ALEBO.
+    const tagPick = Object.keys(view.tags || {});
+    if (tagPick.length) {
+      const mine = zzz1cn_tags_parse(n.note_tags || '');
+      if (!tagPick.some(t => mine.indexOf(t) >= 0)) return false;
+    }
     if (!zzz5w7_pass_time(n, view)) return false;   // [Zzz1-CN:TIME] rozsah DATE od-do
     return true;
   };
@@ -28444,6 +28503,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     copyBtn.textContent = sel.ids.size ? `COPY (${sel.ids.size})` : 'COPY';
     box.paint(allNotes, zzz10v1_normalize(zzz0r1_get_current_username() || ''));
     findShow();
+
   }
   const cnHideStrip = (txt) => {
     const q = String(hide.txt || '').trim();
@@ -28455,6 +28515,8 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
   try {
     const [notes, entries] = await Promise.all([zzz1cn_ws_load_notes(), zzz1cn_ws_load_entries()]);
     entryMap = entries;
+    // [Zzz1-CN:TAGS] box sa stavia prv, nez su zaznamy - ponuka stitkov vznikla prazdna, teraz uz je z coho
+    box.paintTags();
     // [Zzz1-CN:IS-SAVED] workspace je EVIDENCIA - patria don ulozene poznamky, nie bezne spravy v chate
     allNotes = notes.filter(n => !zzz1cn_opt_has('is_saved') || !!n.is_saved);
   } catch (e) {
@@ -28699,14 +28761,18 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
   tagRow.appendChild(tagLab); tagRow.appendChild(tagChips);
   paneFilter.appendChild(tagRow);
   const tagKeyOf = () => (typeof opts.tagsKey === 'function' ? opts.tagsKey() : '');
+  // Jeden zaznam ma jeden slovnik, workspace vidi mnoho zaznamov - preto sa zoznam da dodat zvonka
+  // (opts.tagsList). Bez neho plati slovnik zaznamu, ktory okno drzi.
+  const tagsListOf = () => (typeof opts.tagsList === 'function'
+    ? (opts.tagsList() || []) : zzz1cn_vocab_get(tagKeyOf()));
   const paintTags = () => {
     tagChips.innerHTML = '';
     const key = tagKeyOf();
-    const vocab = zzz1cn_vocab_get(key);
+    const vocab = tagsListOf();
     if (!vocab.length) {
       const e = document.createElement('span');
       e.className = 'zzz5w7-tagempty';
-      e.textContent = 'no tags in this project yet';
+      e.textContent = opts.tagsList ? 'no tags in these records yet' : 'no tags in this project yet';
       tagChips.appendChild(e);
     }
     vocab.forEach(t => {
@@ -28721,7 +28787,8 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
       });
       tagChips.appendChild(c);
     });
-    if (zzz1cn_vocab_can_edit(key)) {
+    // slovnik sa spravuje na zazname, nie nad vyberom z mnohych - preto v workspace ziadne "+ edit"
+    if (opts.tagsKey && zzz1cn_vocab_can_edit(key)) {
       const add = document.createElement('button');
       add.type = 'button';
       add.className = 'zzz5w7-tagedit';
@@ -28732,8 +28799,9 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
     }
   };
   paintTags();
-  // slovnik je na serveri - okno sa otvori s poslednym znamym a cerstvy si vypyta
-  zzz1cn_vocab_load(tagKeyOf(), () => paintTags()).catch(() => {});
+  // slovnik je na serveri - okno sa otvori s poslednym znamym a cerstvy si vypyta.
+  // Ak zoznam dodava okno samo (workspace), vytiahol si ho uz so zaznamami - netreba dalsi dotaz.
+  if (!opts.tagsList) zzz1cn_vocab_load(tagKeyOf(), () => paintTags()).catch(() => {});
   reg('tags', tagChips, () => Object.keys(view.tags || {}).join(','),
       (v) => { view.tags = {}; String(v || '').split(',').forEach(t => { if (t) view.tags[t] = true; }); paintTags(); });
 
@@ -29391,7 +29459,7 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
     // slova, ktore uz v projekte nie su (alebo naopak zatajil nove).
     if (willOpen) {
       paintTags();
-      zzz1cn_vocab_load(tagKeyOf(), () => paintTags()).catch(() => {});
+      if (!opts.tagsList) zzz1cn_vocab_load(tagKeyOf(), () => paintTags()).catch(() => {});
     }
     // [Zzz5-W7:FILTER-MOVE] pod hlavicku sa vracia LEN dovtedy, kym si ho user sam neposunul - inak by mu
     // kazde zatvorenie a otvorenie zahodilo miesto, ktore si vybral
@@ -29411,12 +29479,18 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
   // cas, nepatri medzi tlacidla pouzivane kazdu chvilu. Navyse tym pribudla cela jedna vrstva - najprv
   // treba otvorit SHOW, az potom sa da desat sekund drzat.
   // Je to VSEOBECNA patka, nie "miesto na jedno tlacidlo": okno si do nej vlozi, co potrebuje.
+  // OPRAVA (Vrso 2026-10-01, 02:56: "kde zmizol enter to subs?"): bola NA KONCI panelu, teda az za
+  // vsetkymi kriteriami - a box sa nikde neroluje, je proste vysoky, takze tlacidlo skoncilo pod dolnym
+  // okrajom displeja. Vrso ho nenasiel, a povel, ktory sa neda najst, je to iste ako povel, ktory tam nie je.
+  // Teraz stoji HORE, hned ako sa SHOW otvori. Ochrana sa tym nestraca: stale treba otvorit SHOW, oznacit
+  // a drzat 10 sekund.
   const filterFoot = document.createElement('div');
   filterFoot.className = 'zzz5w7-filterfoot';
-  filterFoot.style.display = 'none';   // prazdna patka nema robit ciaru pod poslednym kriteriom
-  paneFilter.appendChild(filterFoot);
+  filterFoot.style.display = 'none';   // prazdna lista nema robit ciaru nad prvym kriteriom
+  paneFilter.insertBefore(filterFoot, paneFilter.firstChild);
 
   return { el: filterSel, box: filterBox, btn: filterBtn, paint, enableMove,
+           paintTags,                     // [Zzz1-CN:TAGS] ponuka sa moze zmenit az po dotiahnuti dat
            foot: filterFoot,
            togglePreset: presetToggle, presetOn: presetIsOn };
 }
@@ -29462,6 +29536,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   // text v poli - takze kopirovanie funguje OBOMA cestami a uz nezavisi od nativneho menu prehliadaca. ===
   const selMode = { on: false };
   const selected = new Set();   // kluc = note.id (stabilny), nie poradie
+  let refbackDone = false;      // [Zzz1-CN:REF-BACK] index odkazov uz dorazil a zoznam sa po nom prekreslil
 
   // === [Zzz5-W7:LIST-OWNER] Vrso 2026-09-28: "v statusoch v tomto note window nejde tiez oznacit FINAL
   // zelenou."
@@ -30266,6 +30341,13 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     // dostane realne zaznamy a sam si z nich postavi, co potrebuje
     const lfBox = listFields();
     notesFilter.paint(allNotes, meN);
+    // [Zzz1-CN:REF-BACK] index sa tiahne AZ TERAZ a zoznam sa prekresli, ked pride - okno teda nikdy
+    // neceka na siet kvoli odznaku, ktory je len doplnkova informacia.
+    // Priznak je LOKALNY tomuto oknu: globalny by si prve otvorene okno prebralo a druhe by uz
+    // neprekreslilo nikdy.
+    if (!refbackDone) {
+      zzz1cn_refback_load().then(() => { if (!refbackDone) { refbackDone = true; render(); } }).catch(() => {});
+    }
     // [Zzz5-W7:LIST-OWNER] owner TOHTO zaznamu, nie toho rozpisaneho v command line
     const lf = listFields();
     const owner = zzz10v1_normalize(String(lf.owner || '').trim());
@@ -30393,6 +30475,23 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
           } }
       ]);
       line1.appendChild(b);
+      // === [Zzz1-CN:REF-BACK] odznak "pouzite inde" ===============================================
+      // Ukaze sa LEN vtedy, ked na poznamku ukazuje NIEKTO INY (vlastny zaznam sa nepocita), takze
+      // ticho mlci, kym nie je co povedat. Klik vypise, ktore zaznamy to su - kym sa s poznamkou nieco
+      // urobi, clovek vidi, koho sa to dotkne.
+      const refIn = zzz1cn_refback_of(entryKey, n);
+      if (refIn.length) {
+        const rb = document.createElement('button');
+        rb.type = 'button';
+        rb.className = 'zzz5w7-refback';
+        rb.textContent = '\u2197' + refIn.length;
+        rb.title = `Used in SUBS of ${refIn.length} other record(s) - click to see which`;
+        rb.addEventListener('click', (e) => {
+          e.stopPropagation();
+          zzz6f2_show_toast(`#${zzz5w7_label_of(n)} is in SUBS of: ${refIn.map(x => '#' + x).join(', ')}`);
+        });
+        line1.appendChild(rb);
+      }
 
       // [Zzz5-W7:WORK-ORDER] @poradie hned vedla cisla - to iste cislo v osnove, vo filtri aj v texte
       ord.textContent = '@' + ordOf(n);
