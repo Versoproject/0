@@ -11431,8 +11431,11 @@ const ZZZ1CN_LEVELS = ['owner', 'delegate', 'all'];
 // Uroven je teda hodnota NA ROLU, nie na zaznam. A na rozdiel od povoleni NIE JE kumulativna - nie je to
 // rebrik "aspon toto", ale tri samostatne volby, lebo kazda rola moze chciet nieco ine.
 const ZZZ1CN_NOTIFY_KEYS = { owner: 'notify_owner', delegate: 'notify_delegate', all: 'notify_users' };
+// [Zzz1-CN:TAGS] "tags" = kto smie menit SLOVNIK stitkov projektu. Je to povolenie ako contacts/chats,
+// teda rebrik - a zamerne NIE je viazane na "chats": kto smie otvorit temu, nemusi byt ten, kto prepise,
+// ako sa v projekte veci triedia (premenovanim slova stratia zaradenie VSETKY poznamky, aj spatne).
 const ZZZ1CN_SETUP_DEF = {
-  contacts: 'owner', chats: 'owner',
+  contacts: 'owner', chats: 'owner', tags: 'owner',
   notify_owner: 'all', notify_delegate: 'all', notify_users: 'all'
 };
 function zzz1cn_level_rank(v) {
@@ -11454,13 +11457,13 @@ function zzz1cn_setup_parse(raw) {
       return;
     }
     if (/^notify_(owner|delegate|users)$/.test(k)) { if (v === 'all' || v === 'mentions') out[k] = v; return; }
-    if ((k === 'contacts' || k === 'chats') && ZZZ1CN_LEVELS.indexOf(v) >= 0) out[k] = v;
+    if ((k === 'contacts' || k === 'chats' || k === 'tags') && ZZZ1CN_LEVELS.indexOf(v) >= 0) out[k] = v;
   });
   return out;
 }
 function zzz1cn_setup_build(s) {
   const v = Object.assign({}, ZZZ1CN_SETUP_DEF, s || {});
-  return `contacts:${v.contacts}, chats:${v.chats}, `
+  return `contacts:${v.contacts}, chats:${v.chats}, tags:${v.tags}, `
        + `notify_owner:${v.notify_owner}, notify_delegate:${v.notify_delegate}, notify_users:${v.notify_users}`;
 }
 // akú ROLU ma tento user na tomto zazname
@@ -11857,6 +11860,8 @@ function zzz1cn_open_comm_setup(host, api) {
   // "Add chats" = kto smie ZALOZIT NOVE vlakno (nove cislo a jeho meno). Odpovedanie do existujuceho
   // vlakna tym obmedzene NIE JE - to je bezna praca v chate.
   mkLevelRow('Add chats', 'chats');
+  // [Zzz1-CN:TAGS] kto smie menit slovnik stitkov projektu
+  mkLevelRow('Edit tags', 'tags');
 
   // --- notifikacie: uroven NA ROLU -----------------------------------------------------------------
   // [Zzz1-CN:NOTIFY-BY-ROLE] Vrso 22:35: "notifs mali mat moznost mentions(@&), ale pre ownera/delegate/
@@ -14862,6 +14867,125 @@ function zzz1cn_current_entry_key() {
   const n = Number(String(entryData['1'] || '').trim());
   return n ? String(n) : '';
 }
+
+// === [Zzz1-CN:TAGS] SLOVNIK STITKOV PROJEKTU =======================================================
+// Vrso 2026-10-01: "stitky treba vyriesit, aby sa dali pridavat s projektom a idealne v nejakom vlastnom
+// tags okne... hadam do show baru".
+// Slovnik zije na ZAZNAME (verso_entries.tag_vocab) a je to STAV - prepisuje sa na mieste, bez novej
+// verzie. Tu je len cache a zapis; vynucenie ("zdielana poznamka smie pouzit len slovo zo slovnika") robi
+// DATABAZA, inac by prvy zapis inou cestou vyrobil "fotky", "Fotky" aj "foto" ako tri rozne veci.
+const ZZZ1CN_VOCAB_COL = 'tag_vocab';
+const ZZZ1CN_VOCAB_KEY = 'zzz1cn_vocab';
+let zzz1cnVocabColOk = null;
+const zzz1cnVocabCache = {};
+
+// Slovo stitku: male pismena, bez ciarok (ciarka oddeluje) a bez prazdnych okrajov. Normalizuje sa UZ
+// TU aj v databaze - inac by sa "Fotky" a "fotky" stali dvoma polozkami, co je presne to, comu ma slovnik
+// zabranit.
+function zzz1cn_tag_norm(t) {
+  return String(t || '').trim().toLowerCase().replace(/[,;]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function zzz1cn_tags_parse(raw) {
+  const out = [], seen = {};
+  String(raw || '').split(',').forEach(x => {
+    const t = zzz1cn_tag_norm(x);
+    if (t && !seen[t]) { seen[t] = true; out.push(t); }
+  });
+  return out;
+}
+function zzz1cn_vocab_cache_put(k, list) {
+  const arr = zzz1cn_tags_parse((list || []).join(', '));
+  zzz1cnVocabCache[k] = arr;
+  try { localStorage.setItem(`${ZZZ1CN_VOCAB_KEY}:${k}`, arr.join(', ')); } catch (e) {}
+}
+function zzz1cn_vocab_get(entryKey) {
+  const k = zzz1cn_openadd_key(entryKey);
+  if (k in zzz1cnVocabCache) return zzz1cnVocabCache[k];
+  let arr = [];
+  try { arr = zzz1cn_tags_parse(localStorage.getItem(`${ZZZ1CN_VOCAB_KEY}:${k}`) || ''); } catch (e) {}
+  zzz1cnVocabCache[k] = arr;
+  return arr;
+}
+// smiem ja menit slovnik tohto zaznamu? (riadok "Edit tags" v comm setupe)
+function zzz1cn_vocab_can_edit(entryKey) {
+  return zzz1cn_setup_allows(zzz1cn_setup_get(entryKey).tags, entryKey);
+}
+async function zzz1cn_vocab_push(entryKey, list) {
+  const k = zzz1cn_openadd_key(entryKey);
+  if (k === ZZZ1CN_OPENADD_DRAFT || zzz1cnVocabColOk === false) return false;
+  const id = Number(k);
+  if (!Number.isFinite(id)) return false;
+  try {
+    const { error } = await sb.from('verso_entries')
+      .update({ [ZZZ1CN_VOCAB_COL]: (list || []).join(', ') }).eq('entry_id', id);
+    if (error) throw error;
+    zzz1cnVocabColOk = true;
+    return true;
+  } catch (e) {
+    const code = String((e && e.code) || '');
+    const msg = String((e && (e.message || e.details)) || '');
+    if (code === '42703' || msg.indexOf(ZZZ1CN_VOCAB_COL) >= 0) {
+      zzz1cnVocabColOk = false;
+      console.warn('[Zzz1-CN:TAGS] stlpec verso_entries.tag_vocab zatial nie je nasadeny (verso_tags_v1.sql)');
+      return false;
+    }
+    // hlaska ma povedat DOVOD - "slovnik meni owner" sa riesi inak nez vypadok siete
+    if (/slovnik stitkov/i.test(msg)) zzz6f2_show_toast('Only the owner (or a delegate they allowed) edits the tag list.', 'warn');
+    else zzz6f2_show_toast('The change did not reach the server.', 'warn');
+    return false;
+  }
+}
+async function zzz1cn_vocab_load(entryKey, onChange) {
+  const k = zzz1cn_openadd_key(entryKey);
+  if (k === ZZZ1CN_OPENADD_DRAFT || zzz1cnVocabColOk === false) return null;
+  const id = Number(k);
+  if (!Number.isFinite(id)) return null;
+  try {
+    const { data, error } = await sb.from('verso_entries')
+      .select(ZZZ1CN_VOCAB_COL).eq('entry_id', id).maybeSingle();
+    if (error) throw error;
+    zzz1cnVocabColOk = true;
+    const fresh = zzz1cn_tags_parse((data && data[ZZZ1CN_VOCAB_COL]) || '');
+    const before = zzz1cn_vocab_get(k).join(', ');
+    zzz1cn_vocab_cache_put(k, fresh);
+    if (fresh.join(', ') !== before && typeof onChange === 'function') onChange(fresh);
+    return fresh;
+  } catch (e) {
+    if (String((e && e.code) || '') === '42703') zzz1cnVocabColOk = false;
+    return null;
+  }
+}
+async function zzz1cn_vocab_set(entryKey, list) {
+  const k = zzz1cn_openadd_key(entryKey);
+  const next = zzz1cn_tags_parse((list || []).join(', '));
+  const before = zzz1cn_vocab_get(k).slice();
+  zzz1cn_vocab_cache_put(k, next);                 // okno reaguje hned
+  const ok = await zzz1cn_vocab_push(k, next);
+  if (!ok && k !== ZZZ1CN_OPENADD_DRAFT && zzz1cnVocabColOk !== false) {
+    zzz1cn_vocab_cache_put(k, before);             // neprislo to na server - nepredstieraj, ze ano
+  }
+  return ok;
+}
+// rozpisana CL dostala cislo - slovnik ide s nou
+function zzz1cn_vocab_promote(entryId) {
+  const id = String(entryId || '').trim();
+  if (!id) return;
+  const draft = zzz1cn_vocab_get(ZZZ1CN_OPENADD_DRAFT);
+  try { localStorage.removeItem(`${ZZZ1CN_VOCAB_KEY}:${ZZZ1CN_OPENADD_DRAFT}`); } catch (e) {}
+  delete zzz1cnVocabCache[ZZZ1CN_OPENADD_DRAFT];
+  if (!draft.length) return;
+  zzz1cn_vocab_cache_put(id, draft);
+  zzz1cn_vocab_push(id, draft).catch(() => {});
+}
+// smie TATO poznamka niest tento stitok? Privatna cokolvek, zdielana len zo slovnika (ako v DB triggeri).
+function zzz1cn_tag_allowed(entryKey, tag, isPrivate) {
+  const t = zzz1cn_tag_norm(tag);
+  if (!t) return false;
+  if (isPrivate) return true;
+  const vocab = zzz1cn_vocab_get(entryKey);
+  if (!vocab.length) return false;
+  return vocab.indexOf(t) >= 0;
+}
 const zzz1cnSubsNoteTried = {};   // zaznamy, na ktore sme sa uz pytali - viz nizsie
 async function zzz1cn_subs_note_load(subsRaw, onDone) {
   const keys = zzz6f8_parse_subs(subsRaw).map(zzz1cn_subs_note_key).filter(Boolean)
@@ -17844,6 +17968,7 @@ async function submit_entries_to_db(options = {}) {
   // [Zzz1-CN:ENTRY-REFS] to iste pre odkazy v SUBS: poznamky dane do SUBS nad rozpisanou CL sa prenesu
   // na cislo, ktore zaznam prave dostal
   zzz1cn_refs_promote(nextEntryId);
+  zzz1cn_vocab_promote(nextEntryId);   // [Zzz1-CN:TAGS] slovnik stitkov ide so zaznamom rovnako
   // === [Zzz1-CN:DRAFT-KEY] OPRAVA (Vrso 2026-09-29: "EN je 155 a project name Comm test. Podrzanim comm
   // sa sice otvoria notes, takze fajn, ale su prazdne! Preco?").
   // PRICINA: chatnotes pisane nad NEULOZENOU CL zijú pod DRAFT klucom a pod skutocne cislo sa presuvaju az
@@ -27865,6 +27990,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
   head.appendChild(title);
 
   const view = { on: {}, q: '', from: 0, to: 0, at: 0, name: '', show: '', users: {}, usersq: '', extra: {},
+                 tags: {},   // [Zzz1-CN:TAGS] vybrane stitky; viac = ALEBO
                  dfrom: '', dto: '', sort: '' };   // [Zzz1-CN:TIME]
   const hide = { txt: '', ord: false, ordq: 0, name: false, user: false, priv: false, time: false,
                  priority: false, users: {},
@@ -28364,6 +28490,59 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
   // Cislo sa zadava ako PORADIE V OSNOVE (@1, @2...), nie ako note_number - lebo prave to je to, co je
   // v stlpiku vidno. Sub-poznamky sa pritahuju SAMY: filter prepusti hlavnu poznamku aj vsetko, co pod nu
   // patri, takze "@3" da cely blok 3, 3-a, 3-b. ===
+  // === [Zzz1-CN:TAGS] riadok stitkov v SHOW bare ================================================
+  // Vrso 2026-10-01: "stitky... idealne v nejakom vlastnom tags okne (moc miesta uz nie je, kam to
+  // umiestnit, tak hadam do show baru)".
+  // Stitky sa NEVYPISUJU - ponukaju sa ako tlacidla zo slovnika projektu. Prave na to slovnik je: keby
+  // sa vypisovali rukou, vzniknu "fotky", "Fotky" a "foto" ako tri rozne veci a filter prestane sediet.
+  // + otvori spravu slovnika (len owner, pripadne delegat podla riadku "Edit tags" v comm setupe).
+  const tagRow = document.createElement('div');
+  tagRow.className = 'zzz5w7-filteritem zzz5w7-tagrow';
+  const tagLab = document.createElement('span');
+  tagLab.textContent = 'TAGS';
+  const tagChips = document.createElement('div');
+  tagChips.className = 'zzz5w7-tagchips';
+  tagRow.appendChild(tagLab); tagRow.appendChild(tagChips);
+  paneFilter.appendChild(tagRow);
+  const tagKeyOf = () => (typeof opts.tagsKey === 'function' ? opts.tagsKey() : '');
+  const paintTags = () => {
+    tagChips.innerHTML = '';
+    const key = tagKeyOf();
+    const vocab = zzz1cn_vocab_get(key);
+    if (!vocab.length) {
+      const e = document.createElement('span');
+      e.className = 'zzz5w7-tagempty';
+      e.textContent = 'no tags in this project yet';
+      tagChips.appendChild(e);
+    }
+    vocab.forEach(t => {
+      const c = document.createElement('button');
+      c.type = 'button';
+      c.className = 'zzz5w7-tagchip' + (view.tags && view.tags[t] ? ' is-on' : '');
+      c.textContent = t;
+      c.addEventListener('click', () => {
+        view.tags = view.tags || {};
+        if (view.tags[t]) delete view.tags[t]; else view.tags[t] = true;
+        paintTags(); onChange();
+      });
+      tagChips.appendChild(c);
+    });
+    if (zzz1cn_vocab_can_edit(key)) {
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'zzz5w7-tagedit';
+      add.textContent = '+ edit';
+      add.title = 'Manage the tag list of this project';
+      add.addEventListener('click', () => zzz1cn_open_tags(box, key, () => { paintTags(); onChange(); }));
+      tagChips.appendChild(add);
+    }
+  };
+  paintTags();
+  // slovnik je na serveri - okno sa otvori s poslednym znamym a cerstvy si vypyta
+  zzz1cn_vocab_load(tagKeyOf(), () => paintTags()).catch(() => {});
+  reg('tags', tagChips, () => Object.keys(view.tags || {}).join(','),
+      (v) => { view.tags = {}; String(v || '').split(',').forEach(t => { if (t) view.tags[t] = true; }); paintTags(); });
+
   const atRow = document.createElement('div');
   atRow.className = 'zzz5w7-filteritem zzz5w7-rangerow';
   const atLab = document.createElement('span');
@@ -28803,7 +28982,7 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
   // [Zzz5-W7:FILTER-TABS] Vrso 2026-09-27: "reset bude resetovat aj filter aj hide tab" - jedno tlacidlo
   // vracia okno do vychodzieho stavu cele, nech netreba hladat, v ktorom tabe este nieco ostalo zapnute.
   filterReset.addEventListener('click', () => {
-    view.on = {}; view.users = {}; view.from = 0; view.to = 0; view.at = 0;
+    view.on = {}; view.users = {}; view.from = 0; view.to = 0; view.at = 0; view.tags = {};
     view.name = ''; view.show = ''; view.q = ''; view.usersq = '';
     view.dfrom = ''; view.dto = ''; view.sort = ''; sortPaint();   // [Zzz1-CN:TIME]
     view.extra = {};                                  // [Zzz5-W7:FILTER-EXTRA]
@@ -28885,6 +29064,7 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
     const onCount = Object.keys(view.on).filter(k => view.on[k]).length
       + ((view.from || view.to) ? 1 : 0)
       + (view.at ? 1 : 0)
+      + (Object.keys(view.tags || {}).length ? 1 : 0)   // [Zzz1-CN:TAGS]
       + (String(view.name || '').trim() ? 1 : 0)
       + (String(view.show || '').trim() ? 1 : 0)
       + Object.keys(view.users).filter(k => view.users[k]).length
@@ -29095,6 +29275,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   // cudzie poznamky a nedalo by sa nim nic zuzit.
   // [Zzz5-W7:STATUS-4] styri fazy, nie tri - DONE si zaznaci autor, FINAL potvrdi owner
   const view = { on: {}, q: '', from: 0, to: 0, at: 0, name: '', show: '', users: {},
+                 tags: {},   // [Zzz1-CN:TAGS] vybrane stitky; viac = ALEBO
                  dfrom: '', dto: '', sort: '' };   // [Zzz1-CN:TIME] rozsah dni + radenie podla casu
   // [Zzz5-W7:FILTER-HIDE] druha os - co sa ma ubrat z TEXTU. Zamerne vlastny objekt, nie dalsie polozky
   // vo view: filter a hide sa nesmu pomiesat, lebo jeden meni zoznam a druhy len vypis.
@@ -29111,7 +29292,9 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
     // [Zzz5-W7:USER-FIELD] do napovedy patri aj owner a oznaceni useri projektu - teda aj ti, co este
     // nic nenapisali; inak by sa ich meno nedalo vypisat
     extraUsers: () => { const f = listFields();
-      return zzz6f21_parse_tags(f.tags || '').concat([String(f.owner || '')]); }
+      return zzz6f21_parse_tags(f.tags || '').concat([String(f.owner || '')]); },
+    // [Zzz1-CN:TAGS] slovnik patri ZAZNAMU, ktoreho poznamky citam - nie rozpisanej CL
+    tagsKey: () => String(entryKey || '')
   });
   const filterSel = notesFilter.el;
   const filterBtn = notesFilter.btn;
@@ -29643,6 +29826,7 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
   // cisel" a ani jedno z nich uz taky zoznam nenecha - rozsah dni z neho ubera a radenie podla casu mu
   // meni poradie. Osnova by potom tvrdila strukturu, ktora na obrazovke nie je.
   const filterActive = () => !!(view.q.trim() || view.from || view.to || view.at || view.name.trim() || view.show.trim()
+    || Object.keys(view.tags || {}).length
     || view.dfrom || view.dto || view.sort
     || Object.keys(view.on).some(k => view.on[k])
     || Object.keys(view.users).some(k => view.users[k]));
@@ -29705,6 +29889,12 @@ async function zzz1cn_open_list(entryKey, anchorEl) {
         if (!((view.on.attention && lvl === 'attention') || (view.on.urgent && lvl === 'urgent'))) return false;
       }
       if (view.on.private  && !n.is_private)     return false;
+      // [Zzz1-CN:TAGS] viac stitkov = ALEBO (rovnako ako mena) - zuzovat sa da dalsim kriteriom
+      const tagPick = Object.keys(view.tags || {});
+      if (tagPick.length) {
+        const mine = zzz1cn_tags_parse(n.note_tags || '');
+        if (!tagPick.some(t => mine.indexOf(t) >= 0)) return false;
+      }
       if (view.on.mine     && zzz10v1_normalize(n.username || '') !== meF) return false;
       if (!zzz5w7_pass_time(n, view)) return false;   // [Zzz1-CN:TIME] rozsah DATE od-do
       if (!q) return true;
