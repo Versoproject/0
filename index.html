@@ -3842,7 +3842,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
      nie pilulky. Ziadne percenta: co nie su kriteria, patri poznamkam. */
   .zzz1cn-ws-tbl {
     display: grid;
-    grid-template-columns: 78px 56px minmax(0, 1fr);
+    grid-template-columns: 78px 56px minmax(0, 1fr) 46px;
     margin: 0 0 8px 0;
     border: 1px solid #e0d7bd;
     border-radius: 9px;
@@ -3911,19 +3911,34 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     display: block;
     width: 100%;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     margin-bottom: 3px;
     padding: 4px 8px;
     border: 1px solid #d4d4d4;
     border-radius: 8px;
     background-color: #fff;
     color: #171717;
-    font-size: 10.5px;
-    font-weight: 700;
     text-align: left;
     cursor: pointer;
   }
+  /* Vrso: "subs kludne mozu byt zobrazovane iba ako CHAT NAME, ale POD NIM AJ OBSAH!"
+     Meno nesie, CO to je, obsah CO v tom je; cislo, autor a cas patria do sub linku (2x tuk). */
+  .zzz1cn-ws-subbtn-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #8a6d1f;
+  }
+  .zzz1cn-ws-subbtn-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+    color: #171717;
+  }
+  /* [Zzz1-CN:WS-TABLE] dvojslovny popis stlpca ide POD SEBA - rovnako ako cierne tlacidla CRM nad nim */
+  .zzz1cn-ws-th > div { line-height: 1.15; }
   .zzz1cn-ws-subbtn.zzz1cn-note-priv { border-color: rgba(192, 57, 43, 0.55); }
   .zzz1cn-ws-subbtn.is-open { border-color: #D4AF37; background-color: #fffdf6; }
   /* odlozeny v notes window tohto tabu - fialova, ako vsade, kde ide o pripnuty zdroj */
@@ -30032,10 +30047,16 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     w.className = 'zzz5-6-notewin';
     w.style.display = 'none';
     nmAnchor.appendChild(w);
+    // [Zzz5-6:TAB-NOTES] Vrso 2026-10-01 (22:25): "1-2s podrz ULOZI do notes window... 3s OTVORI notes
+    // window tohto tabu (aj s ulozenymi zaznamami)."
+    // Ukladanie a otvaranie su teda dva rozne povely: okno sa samo neotvara, ked don nieco padne -
+    // inak by pri skladani vyberu vyskakovalo po kazdom ulozeni. Ze ulozenie preslo, hovori fialovy
+    // okraj na sube a hlaska; pozriet sa na cely vyber je vlastne rozhodnutie.
+    let openState = false;
     const paint = () => {
       const list = zzz5_6_tabnote_list(activeTab);
       w.innerHTML = '';
-      if (!list.length) { w.style.display = 'none'; return; }
+      if (!list.length || !openState) { w.style.display = 'none'; return; }
       w.style.display = '';
       const head = document.createElement('div');
       head.className = 'zzz5-6-notewin-head';
@@ -30091,7 +30112,19 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
       });
       scrm.paintAttach();
     };
-    return { el: w, paint };
+    // ten isty povel oboma smermi: 3s otvara aj zatvara
+    const open = (toggle) => {
+      const list = zzz5_6_tabnote_list(activeTab);
+      if (!list.length) {
+        zzz6f2_show_toast('Nothing saved to this tab yet - hold a sub 1-2s to save it.', 'warn');
+        return;
+      }
+      openState = toggle ? !openState : true;
+      zzz_haptic_pulse(20);
+      paint();
+      if (openState) w.scrollIntoView({ block: 'nearest' });
+    };
+    return { el: w, paint, open };
   })();
 
 
@@ -30311,10 +30344,19 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     // Poznamka je zase CELY RIADOK (hlavicka + text), nie pilulka - rovnako, ako vyzera pripnuta.
     const tbl = document.createElement('div');
     tbl.className = 'zzz1cn-ws-tbl';
-    ['PROJECT', 'ENTRY', 'SUBS'].forEach(h => {
+    // [Zzz1-CN:WS-TABLE] Vrso 2026-10-01 (22:25): "project na PROJECT NAME, entry na ENTRY NUMBER (ked
+    // su ale dve slova, tak pod sebou vsetky!), content do stlpca vpravo od subs (ma byt v linii, kde su
+    // vzdy kriteria vsetky, aby sa nestalo, ze chyba aspon jedno oznacenie v ramci obrazovky)."
+    // Dvojslovne popisy sa teda lamu na dva riadky - presne ako cierne tlacidla v CRM nad nimi, takze
+    // hlavicka tabulky a hlavicka CRM citaju rovnako.
+    ['PROJECT NAME', 'ENTRY NUMBER', 'SUBS', 'CONTENT'].forEach(h => {
       const th = document.createElement('div');
       th.className = 'zzz1cn-ws-th';
-      th.textContent = h;
+      h.split(' ').forEach(word => {
+        const line = document.createElement('div');
+        line.textContent = word;
+        th.appendChild(line);
+      });
       tbl.appendChild(th);
     });
     let rowOdd = false;
@@ -30330,9 +30372,10 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
           tbl.appendChild(d);
           return d;
         };
-        const tdProj = td('is-proj');     // 1. PROJECT: owner a nazov POD SEBOU
-        const tdEntry = td('is-entry');   // 2. ENTRY: cislo a pod nim jeho CONTENT
+        const tdProj = td('is-proj');     // 1. PROJECT NAME: owner a pod nim CISLO PROJEKTU
+        const tdEntry = td('is-entry');   // 2. ENTRY NUMBER
         const tdSubs = td('is-subs');     // 3. SUBS: cela zvysna sirka
+        const tdCont = td('is-content');  // 4. CONTENT: vpravo od SUBS, v tej istej linii kriterii
         const panel = document.createElement('div');
         panel.className = 'zzz1cn-ws-subpanel';
         panel.style.display = 'none';
@@ -30364,9 +30407,12 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
           b.addEventListener('click', () => { wsFold[key] = !openOf(key); render(); });
           return b;
         };
+        // Vrso 2026-10-01: "1-ka je tiez kriterium a umiestni (samozrejme ma filtrovat tiez) pod
+        // project name." Cislo projektu teda nie je ozdoba pri nazve - je to VLASTNY riadok pod nim
+        // a vlastna zlozka, takze sa da zlozit prave podla neho.
         tdProj.appendChild(crit('is-owner', c.owner || '—', ownKey, 'PROJECT OWNER'));
-        const nmTxt = [c.project, c.projectName].filter(Boolean).join(' · ');
-        tdProj.appendChild(crit('is-name', nmTxt || '—', prjKey, 'PROJECT NAME'));
+        if (c.projectName) tdProj.appendChild(crit('is-name', c.projectName, prjKey, 'PROJECT NAME'));
+        tdProj.appendChild(crit('is-num', c.project || '—', prjKey, 'PROJECT NUMBER'));
 
         // cislo zaznamu: tuk zlozi/rozlozi jeho SUBS, podrzanie otvori jeho Notes. Dve gesta na jednom
         // cisle su lepsie nez dve tlacidla vedla seba s tym istym cislom.
@@ -30379,8 +30425,9 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
         zzz_bind_long_press(eBtn, 1200, () => { zzz_haptic_pulse(20); zzz1cn_open_list(ek, eBtn); });
         tdEntry.appendChild(eBtn);
 
-        // CONTENT stoji POD cislom zaznamu: je to obsah TEJ entry, takze patri k jej totoznosti vlavo -
-        // napravo uz maju miesto len poznamky. Nezobrazuje obsah, len k nemu vedie.
+        // [Zzz1-CN:WS-TABLE] CONTENT stoji VPRAVO OD SUBS (Vrso: "ma byt v linii, kde su vzdy kriteria
+        // vsetky, aby sa nestalo, ze chyba aspon jedno oznacenie v ramci obrazovky"). Nezobrazuje obsah,
+        // len k nemu vedie.
         const cVal = String(c.content || '').trim();
         const cBtn = document.createElement('button');
         cBtn.type = 'button';
@@ -30392,7 +30439,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
           if (!cVal) { zzz6f2_show_toast('This record has no CONTENT.', 'warn'); return; }
           zzz6f29_open_readonly_viewer('CONTENT #' + ek, cVal, null);
         });
-        tdEntry.appendChild(cBtn);
+        tdCont.appendChild(cBtn);
 
         if (!rowOpen()) {
           const f = document.createElement('button');
@@ -30420,13 +30467,20 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
         };
 
         // === (a) POZNAMKY tohto zaznamu ako TLACIDLA =========================================
-        // Vrso 2026-10-01 (22:01): "subs mozu byt v novej podobe ako nejaky button, aspon sa lahsie
-        // klikne. Po kliknuti ale otvor tento sub (kde uz bude cely zaznam aj s oznaceniami date...)
-        // ...podrzanim 1-2s pridaj do notes window pre tento tab."
-        // Cely riadok s textom bol prilis velky cielový bod na to, co sa v nom robi najcastejsie -
-        // tukne sa. Tlacidlo nesie, co treba na rozoznanie (cislo + meno), text az po otvoreni.
-        //   TUK       = otvori sub ako okno pod riadkom (cely zaznam poznamky aj s datumom a stavom)
-        //   1-2s DRZAT = prida ho do NOTES WINDOW tohto tabu
+        // Vrso 2026-10-01 (22:25):
+        //   "subs kludne mozu byt zobrazovane iba ako chat name, ale pod nim aj obsah!
+        //    2x tuk tak ukaze cely sub link (pre info, kedy bol zapisany a tie oznacujuce info).
+        //    Stlac ma otvorit ten sub note v note window, kde bol zapisany.
+        //    1-2s podrz ulozi do notes window, ale TOHTO notes tabu!
+        //    3s otvori notes window tohto tabu (aj s ulozenymi zaznamami)."
+        //
+        // STYRI POVELY NA JEDNOM TLACIDLE, zoradene podla toho, ako casto sa pouziju:
+        //   tuk     -> otvori poznamku tam, KDE BOLA ZAPISANA (Notes okno jej zaznamu, zaostrene na nu)
+        //   2x tuk  -> ukaze cely sub link: cislo, autor, CAS a stav (info, ktore v riadku nie je)
+        //   1-2s    -> ULOZI do notes window tohto tabu
+        //   3s      -> OTVORI notes window tohto tabu
+        // Rozhoduje sa az pri PUSTENI prsta - dva casovace by sa predbiehali ([Zzz5-W7:TIERED-HOLD]).
+        // Pri tuku sa caka 400 ms, ci nepride druhy: bez cakania by sa dvojtuk nikdy nestihol odlisit.
         const shownKeys = {};
         notesOf.forEach(n => {
           const part = String(n.note_part || '').toLowerCase();
@@ -30435,18 +30489,51 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
           const b = document.createElement('button');
           b.type = 'button';
           // [Zzz1-CN:WS-TABLE] triedu .zzz1cn-ws-note aj dataset nesie SAMO TLACIDLO - na nom stoji FIND
-          // bar aj znackovanie pre COPY. Keby ju nemalo, hladanie by prestalo nachadzat poznamky len
+          // bar aj znackovanie pre COPY. Keby ho nemalo, hladanie by prestalo nachadzat poznamky len
           // preto, ze sa zmenil ich tvar.
           b.className = 'zzz1cn-ws-subbtn zzz1cn-ws-note' + (n.is_private ? ' zzz1cn-note-priv' : '')
             + (sel.on ? ' zzz1cn-note-selmode' : '') + (sel.ids.has(n.id) ? ' zzz1cn-note-sel' : '')
             + (zzz5_6_tabnote_has(activeTab, n) ? ' is-inwin' : '');
           b.dataset.zzz1cnId = String(n.id);
           b.dataset.zzz1cnHay = `${n.note_name || ''} ${n.note_text || ''} ${n.username || ''} ${zzz5w7_label_of(n)}`;
+          // HORE chat name, POD NIM obsah. Ked poznamka meno nema, hore stoji jej cislo - inak by sa
+          // riadok nedal rozoznat od susedneho.
           const nmN = hide.name ? '' : cnHideStrip(String(n.note_name || '').trim());
-          b.textContent = '#' + zzz5w7_label_of(n) + (nmN ? ' \u00b7 ' + nmN : '');
+          const top = document.createElement('div');
+          top.className = 'zzz1cn-ws-subbtn-name';
+          top.textContent = nmN || ('#' + zzz5w7_label_of(n));
+          const bod = document.createElement('div');
+          bod.className = 'zzz1cn-ws-subbtn-text';
+          bod.textContent = String(cnHideStrip(n.note_text || ''));
+          b.appendChild(top); b.appendChild(bod);
           b.title = zzz5w7_head_line(n, 0, 0, hide)
-            + ' - tap opens it / hold 1-2s adds it to the notes window of this tab';
-          b.addEventListener('click', () => {
+            + ' - tap opens it where it was written / double tap shows the full sub link'
+            + ' / hold 1-2s saves it to this tab\'s notes window / hold 3s opens that window';
+
+          let pressAt = 0, tapTimer = null;
+          const openWhereWritten = () => {
+            // "otvor ten sub note v note window, kde bol zapisany" - Notes okno JEHO zaznamu, zaostrene
+            // na tuto poznamku. Nie panel pod riadkom: ten je na info (dvojtuk).
+            zzz1cn_open_list(String(n.entry_key || ''), b, { num: n.note_number, part });
+          };
+          const down = () => { pressAt = Date.now();
+            setTimeout(() => { if (pressAt) zzz_haptic_pulse(15); }, 1100);
+            setTimeout(() => { if (pressAt) zzz_haptic_pulse(30); }, 3000); };
+          const up = () => {
+            const t = pressAt; pressAt = 0; if (!t) return;
+            const dt = Date.now() - t;
+            if (dt >= 3000) {                       // 3s = OTVOR notes window tohto tabu
+              notesWin.open(true);
+              return;
+            }
+            if (dt >= 1100) {                       // 1-2s = ULOZ do notes window tohto tabu
+              const added = zzz5_6_tabnote_toggle(activeTab, n);
+              zzz6f2_show_toast(added ? 'Saved to the notes window of this tab.'
+                                      : 'Removed from the notes window of this tab.');
+              notesWin.paint();
+              b.classList.toggle('is-inwin', added);
+              return;
+            }
             // v rezime znackovania tuk ZNACKUJE, nie otvara - inac by sa nedalo oznacit nic
             if (sel.on) {
               if (sel.ids.has(n.id)) { sel.ids.delete(n.id); b.classList.remove('zzz1cn-note-sel'); }
@@ -30454,16 +30541,18 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
               copyBtn.textContent = sel.ids.size ? `COPY (${sel.ids.size})` : 'COPY';
               return;
             }
-            openPanel(sub, b);
-          });
-          zzz_bind_long_press(b, 1200, () => {
-            zzz_haptic_pulse(20);
-            const added = zzz5_6_tabnote_toggle(activeTab, n);
-            zzz6f2_show_toast(added ? 'Added to the notes window of this tab.'
-                                    : 'Removed from the notes window of this tab.');
-            notesWin.paint();
-            b.classList.toggle('is-inwin', added);
-          });
+            if (tapTimer) {                         // 2x tuk = CELY SUB LINK (cislo, autor, cas, stav)
+              clearTimeout(tapTimer); tapTimer = null;
+              openPanel(sub, b);
+              return;
+            }
+            tapTimer = setTimeout(() => { tapTimer = null; openWhereWritten(); }, 400);
+          };
+          b.addEventListener('mousedown', down);
+          b.addEventListener('touchstart', down, { passive: true });
+          b.addEventListener('mouseup', up);
+          b.addEventListener('touchend', up);
+          b.addEventListener('mouseleave', () => { pressAt = 0; });
           tdSubs.appendChild(b);
         });
         // (b) SUBS ZAPISANE V ZAZNAME, ktore medzi poznamkami vyssie nie su - napr. #156 priradene k
