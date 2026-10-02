@@ -4081,6 +4081,41 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   }
   /* panel otvorenej poznamky ide pod CELY riadok - inak by sa text tlacil do 1.5fr stlpca */
   .zzz1cn-ws-tbl > .zzz1cn-ws-subpanel { grid-column: 1 / -1; margin: 0 4px 4px 4px; }
+  /* [Zzz5-6:TAB-INLINE] NOTES TAB okno vlozene pod riadkom zaznamu - cez celu sirku tabulky */
+  .zzz1cn-ws-tbl > .zzz5-6-tabwin-holder { grid-column: 1 / -1; margin: 0 4px 6px 4px; }
+  .zzz1cn-list-window.zzz5-6-inline {
+    position: relative;
+    top: auto !important;
+    left: auto;
+    width: auto;
+    max-width: none;
+    z-index: auto;
+    border: 1px solid #7b2ff7;
+    border-radius: 9px;
+    box-shadow: none;
+    padding: 6px;
+  }
+  /* maximalizovane vlozene okno: vyska z obrazovky, nie z premennej workspacu (ta sa dedi a dala by 100vh) */
+  .zzz1cn-list-window.zzz5-6-inline.zzz5w7-full { height: 78vh !important; max-height: 78vh !important; }
+  /* [Zzz5-6:TAB-TITLE] uzky pas s nazvom tabu nad hlavickou okna - 2x tuk = maximalizacia */
+  .zzz5-6-tabstrip {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: -4px 0 4px 0;
+    padding: 1px 6px;
+    border-bottom: 1px solid #d9c9f5;
+    color: #4a2a8a;
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: pointer;
+  }
+  .zzz5-6-tabstrip-attach { margin-left: auto; padding: 0 8px; font-size: 8px; }
   /* cislo zaznamu je zapnute, kym su jeho SUBS rozbalene - inak by sa nedalo zistit, odkial su */
   .zzz1cn-ws-cardentry.is-on { background-color: #D4AF37; color: #171717; }
   .zzz1cn-ws-cardentry {
@@ -28928,7 +28963,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 02:56';
+const ZZZ5_6_BUILD = '2026-10-02 03:14';
 
 // === [Zzz5-6:TAB-NOTES] NOTES WINDOW jedneho tabu =================================================
 // Vrso 2026-10-01 (22:01): "podrzanim 1-2s pridaj do notes window pre tento tab (v nom ma byt attach
@@ -28971,8 +29006,13 @@ function zzz5_6_is_tab_entry(key) {
 function zzz5_6_tab_entry_label(key) {
   const k = String(key || '').slice(ZZZ5_6_TAB_ENTRY_PREFIX.length);
   const t = ZZZ1CN_WS_TABS.find(x => x.key === k) || zzz5_6UserTabs.find(x => x.key === k);
-  return 'NOTES TAB \u00b7 ' + ((t && t.label) || k.toUpperCase());
+  // [Zzz5-6:TAB-LABEL] Vrso 2026-10-02: "notes tab - notes ma byt oznacenie v KODE... to len aby sa
+  // nepletlo umiestnenie". "NOTES TAB" je teda nazov PRE NAS v kode; clovek vidi len meno tabu.
+  return (t && t.label) || k.toUpperCase();
 }
+// [Zzz5-6:TAB-ATTACH] prekreslenie ATTACHED pasu pod notes CRM - nastavi ho workspace, vola ho note line
+// v NOTES TAB okne (ATTACH namiesto OK). Okno a workspace su dve rozne funkcie, toto je ich jedine spojenie.
+let zzz5_6RepaintAttach = null;
 // co uz bolo z tabulky do tabu ulozene - LEN oznacenie pre toto otvorenie okna (fialovy okraj na sube).
 // Nie je to zdroj pravdy: ten je v databaze, v poznamkach pod klucom tabu.
 const zzz5_6TabNotes = {};        // { tabKey: [ {key, entryKey, num, part, label, name, username, text} ] }
@@ -28984,6 +29024,13 @@ function zzz5_6_tabnote_list(tab) {
 function zzz5_6_tabnote_has(tab, n) {
   const k = zzz1cn_na_key(n);
   return zzz5_6_tabnote_list(tab).some(x => x.key === k);
+}
+// [Zzz5-6:TAB-ATTACH] ATTACH celeho okna tabu: zoznam pripnutych = VSETKY poznamky tabu (rovnaky tvar
+// zaznamu ako pri jednotlivom odlozeni, aby ATTACHED pas pod notes CRM nemusel rozlisovat odkial su)
+function zzz5_6_tabnote_set_all(tab, notes) {
+  const list = zzz5_6_tabnote_list(tab);
+  list.length = 0;
+  (notes || []).forEach(n => zzz5_6_tabnote_toggle(tab, n));
 }
 // vracia TRUE, ak pribudol; FALSE, ak ten isty podrzanim odisiel (to iste gesto oboma smermi)
 function zzz5_6_tabnote_toggle(tab, n) {
@@ -30019,6 +30066,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
   // vecny, nie lenivost: privatne poznamky su moje vlastne naprieg zaznamami a filtrovat ich podla
   // stlpcov CUDZIEHO zaznamu nema co povedat.
   const scrm = zzz1cn_build_notes_crm(view, () => render());
+  zzz5_6RepaintAttach = () => scrm.paintAttach();   // [Zzz5-6:TAB-ATTACH]
   // [Zzz1-CN:NOTES-CRM] Vrso: "CL bude v author workspace automaticky oznacena ako search" - modul je
   // zapnuty rovno a jeho bunky su preto ORANZOVE. Ziadne tlacidlo ich nezapina ani nevypina.
   const noteMod = zzz1cn_build_note_module({});
@@ -30048,10 +30096,15 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     nmAnchor.appendChild(w);
     const countOf = (tab) => allNotes.filter(n =>
       String(n.entry_key || '') === zzz5_6_tab_entry_key(tab)).length;
+    // [Zzz5-6:TAB-NOSTRIP] Vrso 2026-10-02: "ten riadok v tabe, ze open notes tab, je zbytocny."
+    // Pas NOTES TAB (n) / OPEN / ATTACH sa uz NEKRESLI: okno sa otvara 3s podrzanim subu (rozbali sa
+    // priamo pod riadkom zaznamu) a ATTACH sa presunul do note line v tom okne (namiesto OK).
+    // Kod pasu ostava pod podmienkou, ktora sa nesplni - keby sa ho Vrso rozhodol vratit, je to jeden riadok.
+    const ZZZ5_6_SHOW_STRIP = false;
     const paint = () => {
       const n = countOf(activeTab) || zzz5_6_tabnote_list(activeTab).length;
       w.innerHTML = '';
-      if (!n) { w.style.display = 'none'; return; }
+      if (!ZZZ5_6_SHOW_STRIP || !n) { w.style.display = 'none'; scrm.paintAttach(); return; }
       w.style.display = '';
       const head = document.createElement('div');
       head.className = 'zzz5-6-notewin-head';
@@ -30091,7 +30144,21 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
       zzz5_6WsReturn = true;
       zzz1cn_open_list(zzz5_6_tab_entry_key(activeTab), null, null);
     };
-    return { el: w, paint, open };
+    // [Zzz5-6:TAB-INLINE] Vrso 2026-10-02: "maximalizuj notes tab window POD sub riadkom, ktorym sa
+    // otvoril (maximalizovane, ale pod neho, lebo tak to bude prehladnejsie)" + workspace nad nim ostava.
+    // Okno sa preto NEOTVARA cez celu obrazovku (to by workspace zavrelo), ale rozbali sa v tabulke ako
+    // riadok cez celu sirku hned pod riadkom zaznamu, z ktoreho sub prisiel - rovnako ako panel otvorenej
+    // poznamky. Je to stale to iste Notes okno (zzz1cn_open_list), len vlozene, nie plavajuce.
+    const openInline = (afterCell) => {
+      zzz_haptic_pulse(20);
+      document.querySelectorAll('.zzz5-6-tabwin-holder').forEach(h => h.remove());
+      const holder = document.createElement('div');
+      holder.className = 'zzz5-6-tabwin-holder';
+      afterCell.after(holder);
+      zzz1cn_open_list(zzz5_6_tab_entry_key(activeTab), null, null, { inlineIn: holder })
+        .then(() => holder.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+    };
+    return { el: w, paint, open, openInline };
   })();
 
 
@@ -30506,8 +30573,8 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
           const up = () => {
             const t = pressAt; pressAt = 0; if (!t) return;
             const dt = Date.now() - t;
-            if (dt >= 3000) {                       // 3s = OTVOR NOTES TAB okno
-              notesWin.open();
+            if (dt >= 3000) {                       // 3s = OTVOR NOTES TAB okno pod tymto riadkom
+              notesWin.openInline(tdCont);          // [Zzz5-6:TAB-INLINE]
               return;
             }
             if (dt >= 1100) {                       // 1-2s = ULOZ poznamku ZNOVU do NOTES TAB okna
@@ -30518,7 +30585,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
               zzz5_6_tabnote_toggle(activeTab, n);   // oznacenie pre toto otvorenie okna
               zzz1cn_add(zzz5_6_tab_entry_key(activeTab), String(n.note_text || ''), false, null,
                          String(n.note_name || ''), true, null, null)
-                .then(() => { zzz6f2_show_toast(`Saved again into ${zzz5_6_tab_entry_label(zzz5_6_tab_entry_key(activeTab))}.`);
+                .then(() => { zzz6f2_show_toast(`Saved again into the notes of tab ${zzz5_6_tab_entry_label(zzz5_6_tab_entry_key(activeTab))}.`);
                               notesWin.paint(); })
                 .catch(e => { b.classList.remove('is-inwin');
                               zzz6f2_show_toast(`Not saved: ${(e && e.message) || e}`, 'warn'); });
@@ -31700,16 +31767,21 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
 
 // [Zzz6-F8:SUBS-OPEN] focusNote = {num, part} - otvor okno a rovno postav kurzor na TU poznamku.
 // Pouziva to dvojtuk na chipe v SUBS: odkaz, ktory sa neda otvorit, je polovicny odkaz.
-async function zzz1cn_open_list(entryKey, anchorEl, focusNote) {
+// [Zzz5-6:TAB-INLINE] openOpts.inlineIn = element, do ktoreho sa okno VLOZI (namiesto plavajuceho okna
+// cez celu obrazovku). Vtedy sa ine okna NEZATVARAJU - vlozene okno zije vo workspace a ten musi ostat.
+async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
+  const inlineIn = (openOpts && openOpts.inlineIn) || null;
   // [Zzz5-6:WS-RETURN] odkaz "vrat sa do workspacu" si okno zoberie HNED a globalnu hodnotu vynuluje:
   // odteraz patri TOMUTO oknu. Keby ostala v globale, zatvorenie Notes okna otvoreneho inokade (z CRM
   // riadku) by workspace vytiahlo bez dovodu - a to je presne ten druh prekvapenia, ktory sa potom
   // hlada hodinu.
-  const returnToWs = zzz5_6WsReturn;
+  const returnToWs = inlineIn ? false : zzz5_6WsReturn;
   zzz5_6WsReturn = false;
-  document.querySelectorAll('.zzz1cn-list-window').forEach(w => w.remove());
+  if (inlineIn) document.querySelectorAll('.zzz5-6-inline').forEach(w => w.remove());
+  else document.querySelectorAll('.zzz1cn-list-window').forEach(w => w.remove());
   const win = document.createElement('div');
-  win.className = 'zzz1cn-list-window zzz5w7-ws';
+  // vlozene okno je od zaciatku MAXIMALIZOVANE (Vrso: "maximalizovane, ale pod neho")
+  win.className = 'zzz1cn-list-window zzz5w7-ws' + (inlineIn ? ' zzz5-6-inline zzz5w7-full' : '');
 
   // [Zzz1-CN:COMM-TOOLS] NOTE EDIT MODULE - dvojicka k CHAT EDIT MODULE v comm okne
   const head = document.createElement('div');
@@ -31753,14 +31825,20 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote) {
     eNum.textContent = '#' + entryKey;
     eNum.title = 'These notes belong to record #' + entryKey;
     head.appendChild(eNum);
-  } else if (zzz5_6_is_tab_entry(entryKey)) {
-    // [Zzz5-6:TAB-ENTRY] okno tabu nema cislo zaznamu - a presne to ma povedat. Prazdne miesto by
-    // vyzeralo ako chyba; "NOTES TAB · NOTES" povie, ze zaznam tu nie je preto, lebo tu byt nema.
-    const eTab = document.createElement('span');
-    eTab.className = 'zzz5-6-note-entry is-tab';
-    eTab.textContent = zzz5_6_tab_entry_label(entryKey);
-    eTab.title = 'These notes belong to a tab, not to a record - they have no entry number';
-    head.appendChild(eTab);
+  }
+  // [Zzz5-6:TAB-TITLE] Vrso 2026-10-02: "nazov oznac nie ako si umiestnila, ale do nejakeho UZKEHO RIADKU
+  // NAVRCHU, ktory ked 2x tuk, maximalizuje okno." Predtym stal fialovy chip "NOTES TAB · NOTES" medzi
+  // NOTE a SHOW - bral miesto ovladacom a niesol aj kodove oznacenie. Teraz je nazov tabu v tenkom pase
+  // nad hlavickou; okno tabu nema cislo zaznamu, a prave tento pas hovori, komu poznamky patria.
+  // Pas sa vklada az nizsie (win.insertBefore), ked uz existuje zzz5w7ToggleFull.
+  let tabStrip = null;
+  if (zzz5_6_is_tab_entry(entryKey)) {
+    tabStrip = document.createElement('div');
+    tabStrip.className = 'zzz5-6-tabstrip';
+    const stripName = document.createElement('span');
+    stripName.textContent = zzz5_6_tab_entry_label(entryKey);
+    tabStrip.appendChild(stripName);
+    tabStrip.title = 'Notes of this tab (no entry number) - double tap maximizes / restores the window';
   }
 
   // === [Zzz5-W7:NOTE-SELECT] Vrso 2026-09-25: "bolo by idealne ak by sa dal pouzit napr. Select button
@@ -31964,6 +32042,8 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote) {
   close.setAttribute('aria-label', 'Close Notes');
   close.title = 'Close';
   close.addEventListener('click', () => {
+    // [Zzz5-6:TAB-INLINE] vlozene okno zavrie len samo seba - workspace okolo neho ostava
+    if (inlineIn) { win.remove(); inlineIn.remove(); return; }
     zzz5w7_dock_stop(); win.remove(); zzz1cn_fit_comm_window();
     // [Zzz5-6:WS-RETURN] prisiel som sem z Author workspacu - vratim sa don, nie na hlavnu stranku
     if (returnToWs) zzz1cn_open_notes_workspace(null);
@@ -31985,6 +32065,38 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote) {
     requestAnimationFrame(alignGutter);   // [Zzz5-W7:GUTTER-WRAP] ina sirka = ine zalamovanie
   };
   head.addEventListener('dblclick', zzz5w7ToggleFull);
+  if (tabStrip) {   // [Zzz5-6:TAB-TITLE] pas nad hlavickou, 2x tuk = maximalizacia
+    tabStrip.addEventListener('dblclick', zzz5w7ToggleFull);
+    // [Zzz5-6:TAB-ATTACH] Vrso 2026-10-02 (03:13): "attach pojde do listy, kde je aj nazov tohto notes...
+    // ale uz celeho notes tab window ako attach". ATTACH zo zruseneho pasu vo workspace je teda TU, vedla
+    // nazvu, a pripina CELE okno tabu - vsetky jeho poznamky, nie len suby odlozene v tomto otvoreni.
+    // (Tlacidlo zzz5w7ToggleFull ignoruje, takze 2x tuk na nom okno nemaximalizuje.)
+    const tabKey = String(entryKey).slice(ZZZ5_6_TAB_ENTRY_PREFIX.length);
+    const stripAtt = document.createElement('button');
+    stripAtt.type = 'button';
+    stripAtt.className = 'zzz1cn-ws-subattach zzz5-6-tabstrip-attach';
+    const paintStripAtt = () => {
+      const on = zzz5_6AttachedTab === tabKey;
+      stripAtt.textContent = on ? 'ATTACHED' : 'ATTACH';
+      stripAtt.classList.toggle('is-on', on);
+      stripAtt.title = on ? 'This tab window is pinned under the notes CRM - tap to detach'
+                          : 'Pin this whole tab window (all its notes) under the notes CRM';
+    };
+    stripAtt.addEventListener('click', () => {
+      if (zzz5_6AttachedTab === tabKey) {
+        zzz5_6AttachedTab = null;
+      } else {
+        zzz5_6_tabnote_set_all(tabKey, allNotes);
+        zzz5_6AttachedTab = tabKey;
+      }
+      zzz_haptic_pulse(20);
+      paintStripAtt();
+      if (zzz5_6RepaintAttach) zzz5_6RepaintAttach();
+    });
+    paintStripAtt();
+    tabStrip.appendChild(stripAtt);
+    win.insertBefore(tabStrip, win.firstChild);
+  }
   // === [Zzz5-W7:ADD-IN-TITLE] tri gesta na jednej bunke, a musia sa rozlisit:
   //   klik        = nova samostatna poznamka (note line s reply # a menom)
   //   podrzanie   = poznamka priradena k oznacenej (inak poslednej) -> 1-a, 1-b...
@@ -33063,7 +33175,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote) {
   });
 
   await render();
-  document.body.appendChild(win);
+  (inlineIn || document.body).appendChild(win);   // [Zzz5-6:TAB-INLINE]
   zzz5w7_watch_head(head);   // [Zzz5-W7:HEAD-FIT]
   // [Zzz6-F8:SUBS-OPEN] prislo sa sem z konkretneho chipu v SUBS - postav sa rovno na tu poznamku.
   // Ked tam nie je (odkaz na nieco, co uz nevidim alebo neexistuje), okno sa proste otvori cele a
@@ -33089,6 +33201,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote) {
       if (win.isConnected) await render();
     } catch (e) { /* ostava povodny zdroj - okno funguje dalej */ }
   })();
+  if (inlineIn) { requestAnimationFrame(() => requestAnimationFrame(alignGutter)); return; }   // [Zzz5-6:TAB-INLINE] vlozene sa nedokuje
   zzz5w7_dock_start();   // [Zzz5-W7:NOTES-DOCK] az po vlozeni do DOM - skor sa neda zmerat
   zzz1cn_fit_comm_window();   // [Zzz1-CN:COMM-FULL] comm okno sa zastavi nad Notes, nech sa neprekryvaju
   // [Zzz5-W7:GUTTER-WRAP] prve skutocne zarovnanie - teraz uz ma pole sirku a da sa merat zalamovanie

@@ -415,6 +415,15 @@ inak sa to o mesiac postaví znova rovnako zle.
 - **Modul v tabe PRIVATE NOTES** — zatiaľ sa tam nekreslí.
 - **Vlastný search bar pri každej bunke read line** — dnes popis otvára okno so šiestimi kritériami
   + rozsah; či má byť doslova panel zo SHOW baru (bez hide), nie je potvrdené.
+- **Notes otvárať VŽDY maximalizované, všade** (Vrso 2. 10., 03:04: „rule do backlog: notes vždy
+  otváraj maximalizovane všade"). Zatiaľ to platí len pre NOTES TAB okno vložené pod riadkom záznamu
+  (`[Zzz5-6:TAB-INLINE]`); ostatné Notes okná sa ešte otvárajú dokované.
+- **Acknowledgement pri NOTES TAB** (Vrso 2. 10.: „treba myslieť aj na acknowledgement, aby sa
+  minimalizovalo obchádzanie a hlavne bol vždy nejaký log aspoň"). Podržanie subu 1–2 s ho uloží
+  **znova** do okna tabu cez `zzz1cn_add()` — kópia nesie len text a meno, **nie pôvodného autora ani
+  zdroj** (`#záznam/číslo-časť`) a nepíše `zzz6f22_record_copy_credit` ako sub-poznámka v Notes okne.
+  Cudzia poznámka sa tak dá prevziať pod vlastným menom bez stopy. Treba rozhodnúť, kde má log žiť
+  (pri kópii samotnej, alebo v acknowledgement bunke) — mechanizmus copy-credit už existuje.
 
 ### B10. Ďalšie nedoriešené
 
