@@ -26045,9 +26045,16 @@ let zzz5w5cmCwRows = [];
 let zzz5w5cmCwSelected = {};   // { '<entry_id>': true }
 let zzz5w5cmCwLoading = false;
 let zzz5w5cmCwError = '';
+// [Zzz5-W5:CW-LOAD-ONCE] OPRAVA 2026-10-02 (23:30, Vrso: "okna su rozhadzane, ked som dal close po otvoreni
+// contacts pair, contacts a actual window"): ked nacitanie vratilo PRAZDNY zoznam (ziadne zaznamy / chyba),
+// render ho volal znova, nacitanie zase render - nekonecny kolotoc dopytov, ktory pri rychlej odpovedi
+// zamrazil celu stranku (overene testom: stranka prestala reagovat). Prazdny vysledok sa uz povazuje za
+// NACITANY - znova sa pyta len na force (alebo po zatvoreni a novom otvoreni okna).
+let zzz5w5cmCwLoaded = false;
 async function zzz5w5cm_cw_load(force) {
   if (zzz5w5cmCwLoading) return;
-  if (zzz5w5cmCwRows.length && !force) return;
+  if ((zzz5w5cmCwRows.length || zzz5w5cmCwLoaded) && !force) return;
+  zzz5w5cmCwLoaded = true;
   zzz5w5cmCwLoading = true;
   zzz5w5cmCwError = '';
   try {
@@ -26190,6 +26197,7 @@ function zzz5w5cm_cw_use_candidates() {
 }
 
 function zzz5w5cm_cw_close() {
+  zzz5w5cmCwLoaded = false;   // [Zzz5-W5:CW-LOAD-ONCE] nove otvorenie sa opyta znova
   zzz5w5cmContactsWinOpen = false;
   zzz5w5cmCwSelected = {};
   zzz5w5cmM4aOwner = 'module';
@@ -26548,6 +26556,18 @@ async function zzz1r17b_load_contact_names(force) {
     const own = String(r.username || '').trim();
     if (own) seen[zzz10v1_normalize(own)] = own;
   });
+  // === [Zzz1-R17b:REGISTERED-NAMES] Vrso 2026-10-02 (23:34): "verso aj vrso su cervenym, takze nie su
+  // v databaze - a to je cudne". Zoznam sa skladal LEN zo zaznamov, ktore user vidi (owner + bunky USER /
+  // COMMUNICATION). Kto s nim este nebol v ziadnom zazname, bol cerveny, hoci je normalne zaregistrovany.
+  // Pribudli preto REGISTROVANE mena (verso_verification_public, ten isty zdroj ako kontrola mena pri
+  // registracii - bez emailov). Zlyhanie tohto zdroja zoznam nezhodi, len ostane uzsi.
+  try {
+    const reg = await zzz10v1_fetch_known_registrations();
+    ((reg && reg.usernames) || []).forEach(u => {
+      const t = String(u || '').trim();
+      if (t && !seen[zzz10v1_normalize(t)]) seen[zzz10v1_normalize(t)] = t;
+    });
+  } catch (e) { /* bez registracii sa farbi podla zaznamov ako doteraz */ }
   zzz1r17bNamesCache = Object.keys(seen).sort().map(k => ({ norm: k, name: seen[k] }));
   zzz1r17bNamesAt = Date.now();
   return zzz1r17bNamesCache;
@@ -26703,7 +26723,16 @@ function zzz5w5cm_over_comm_place() {
     return;
   }
   const anchorRow = zzz5w5cm_over_comm_anchor();
-  if (!anchorRow) { zzz5w5cm_over_comm_set(false); return; }
+  // [Zzz5-W5:OVER-COMM-CLOSE] OPRAVA 2026-10-02 (23:30, Vrso: "okna su rozhadzane, ked som dal close po
+  // otvoreni contacts pair, contacts a actual window"): contacts modul otvoreny Z COMMUNICATION okna je
+  // pripnuty NAD jeho riadkom contacts. Ked sa okno zavrelo, modul ostal visiet na starej polohe (prepocet
+  // bezal len pri scrolle) s prazdnym pasom pod CRM. Modul patri tomu oknu - zavrie sa s nim.
+  if (!anchorRow) {
+    zzz5w5cm_over_comm_set(false);
+    close_communication_workspace();
+    zzz6f40_workspaceOpener = null;
+    return;
+  }
   const r = anchorRow.getBoundingClientRect();
   const vh = window.innerHeight || document.documentElement.clientHeight || 0;
   // STICKY: pod hornou hranou sa drzi presne na contacts riadku, ale nikdy nevyjde nad vrch obrazovky
@@ -26723,10 +26752,18 @@ function zzz5w5cm_over_comm_sync() {
   });
 }
 
+let zzz5w5cmOverCommMO = null;   // [Zzz5-W5:OVER-COMM-CLOSE] strazi, kedy COMMUNICATION okno zmizne
 function zzz5w5cm_over_comm_set(on) {
   const next = !!on;
   if (next === zzz5w5cmOverComm) { if (next) zzz5w5cm_over_comm_place(); return; }
   zzz5w5cmOverComm = next;
+  if (zzz5w5cmOverCommMO) { zzz5w5cmOverCommMO.disconnect(); zzz5w5cmOverCommMO = null; }
+  if (next && typeof MutationObserver === 'function') {
+    zzz5w5cmOverCommMO = new MutationObserver(() => {
+      if (zzz5w5cmOverComm && !zzz5w5cm_over_comm_anchor()) zzz5w5cm_over_comm_place();
+    });
+    zzz5w5cmOverCommMO.observe(document.body, { childList: true, subtree: true });
+  }
   const wrap = zzz5w5cm_over_comm_wrap();
   if (!next && wrap) {
     wrap.classList.remove('zzz5w5cm-over-comm');
@@ -29312,7 +29349,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 22:30';
+const ZZZ5_6_BUILD = '2026-10-02 23:50';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -36887,7 +36924,32 @@ function zzz10v1_update_register_entry_button_state() {
     && Date.now() < new Date(s.expiresAt).getTime();
   if (btn) btn.disabled = !enabled;
   if (passwordInput) passwordInput.disabled = !enabled; // Zzz10-R7:PASSWORD-GATE
+  // === [Zzz10-V1:GATE-RECOVER] Vrso 2026-10-02 (23:37): "nejde vpisat heslo a registrovat". Ocakavany kod
+  // drzala LEN pamat stranky (zzz10v1LastSentActivation) - po obnoveni stranky (napr. pas NEW VERSION,
+  // zatvorenie karty, druhe zariadenie) sa stratil a heslo ostalo zamknute NAVZDY, hoci kod v emaile platil
+  // este 24 h. Teraz, ked su vyplnene username + email + 6-mistny kod a pamat nic nevie, appka sa opyta
+  // DATABAZY na vlastnu rezervaciu (ten isty RPC get_own_reservation, ktory pouziva samotna registracia)
+  // a ked kod sedi a nevyprsal, heslo sa odomkne. Ziadna nova cesta dnu - autoritativna kontrola ostava
+  // v zzz10v1_submit_register.
+  if (!enabled && username && email && /^\d{6}$/.test(code) && !(s && s.username === username && s.email === email && s.code === code)) {
+    const probe = username + '|' + email + '|' + code;
+    if (zzz10v1GateProbe !== probe) {
+      zzz10v1GateProbe = probe;
+      zzz10v1_get_own_reservation(username, email).then(r => {
+        if (!r || zzz10v1GateProbe !== probe) return;
+        // RPC vracia len PLATNE rezervacie; expires_at sa kontroluje navyse, ked ho vrati
+        const exp = r.expires_at || r.expiresAt || new Date(Date.now() + 3600000).toISOString();
+        if (String(r.activation_code || '') === code && Date.now() < new Date(exp).getTime()) {
+          zzz10v1LastSentActivation = { username, email, code, expiresAt: exp };
+          zzz10v1_update_register_entry_button_state();
+        } else if (String(r.activation_code || '') !== code) {
+          zzz6f2_show_toast('This activation code does not match the last one sent for this username + email.', 'warn');
+        }
+      }).catch(() => {});
+    }
+  }
 }
+let zzz10v1GateProbe = '';   // [Zzz10-V1:GATE-RECOVER] posledna overovana trojica - nech sa DB nepyta pri kazdom pismene dookola
 // === [/Zzz10-V1:REGISTER-ENTRY-GATE] ===
 
 // === [Zzz10-R7:PASSWORD-FIELD] Heslo pole v Register Setup - LOKALNY <input type="password">, VOBEC
@@ -36914,7 +36976,7 @@ function zzz10v1_build_password_field() {
   // uz existujuci Zzz10-V1:REGISTER-ENTRY-GATE pre REGISTER ENTRY tlacidlo, viz
   // zzz10v1_update_register_entry_button_state - ZNOVUPOUZITE, DRY, nie duplicitna logika). | Vrso -> Claude AI | 2026-09-15 ===
   input.disabled = true;
-  input.placeholder = 'vpíš svoje prihlasovacie heslo po vložení aktivačného kódu';
+  input.placeholder = 'password (unlocks after the activation code)';   // [Zzz10-V1:GATE-RECOVER] zakladna verzia je po anglicky
   wrap.appendChild(input);
 
   return { wrap, input };

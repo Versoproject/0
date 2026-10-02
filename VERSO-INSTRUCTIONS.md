@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-02 23:40** · build appky v čase zápisu: `2026-10-02 22:30`
+**Verzia: 2026-10-02 23:55** · build appky v čase zápisu: `2026-10-02 23:50`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -332,6 +332,9 @@ Pohyb prsta viac ako ~10 px počas ťuku/podržania = scroll, nie povel.
 | Okno „poskočilo" pri otvorení | porušenie `[Zzz5-6:NO-JUMP]` | nahlásiť so screenshotom a buildom |
 
 ---
+| Registrácia: pole PASSWORD sa nedá vyplniť | heslo sa odomkne až keď USERNAME + EMAIL + ACTIVATION CODE sedia s posledným odoslaným kódom | vyplniť **aj EMAIL** (ten istý, na ktorý prišiel kód) a kód; od 23:50 to funguje aj po obnovení stránky (appka si kód overí v databáze, `[Zzz10-V1:GATE-RECOVER]`) |
+| Pri pridávaní kontaktu sú písmená červené, hoci user existuje | do 23:50 sa mená brali len zo záznamov, ktoré vidíš | obnoviť stránku; teraz sa berú aj registrovaní useri (`[Zzz1-R17b:REGISTERED-NAMES]`); podržať pole 1,5 s = čerstvý zoznam. Neregistrovaný user ostáva červený - musí sa najprv zaregistrovať |
+| Po zatvorení COMMUNICATION okna ostal contacts modul „visieť" | opravené 23:50 | contacts modul otvorený z okna sa teraz zavrie spolu s oknom (`[Zzz5-W5:OVER-COMM-CLOSE]`) |
 
 ## 8. OTVORENÉ (ešte nerozhodnuté)
 
