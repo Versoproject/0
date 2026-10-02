@@ -463,6 +463,13 @@ reflektuje notes kategórie - neskôr a oddelene skúsime, čo bude lepšie"*).
 hry, uložia sa tam dáta, ktoré nie sú reálne využiteľné pre bežných užívateľov. Programátor ich nájde
 podľa entry numbers alebo podľa nových subs (pracovný názov **„techs"**).
 
+### CONTACTS REGISTER (Vrso 2. 10., 23:55 — planned)
+- **Postavené:** doplňovanie mien v CONTACTS berie mená z mojich záznamov + z registra (PROJECT 1 / owner Verso /
+  CATEGORY Contacts), nie zo všetkých registrovaných (`[Zzz1-R17b:CONTACTS-REGISTRY]`).
+- **Ďalej:** pri registrácii nového usera automaticky založiť jeho záznam v registri (owner Verso → zápis
+  musí ísť cez serverovú funkciu, user sám pod menom Verso zapisovať nesmie); RLS registra (kto smie čítať
+  ktoré mená); prístup autorít bez párovania len ku konkrétnemu projektu (napr. zdravotné záležitosti).
+
 ### CONTACTS MODULE — PAIRING (Vrso 2. 10., 23:29: „ešte musíme potom doriešiť contacts module pairing hlavne")
 - Čaká na zadanie. Stav k 2. 10.: meno sa do kontaktov CL dostane cez bunku COMMUNICATION (CONTACTS riadok,
   zelené písmená = známy user) alebo podržaním @mena; do DB ide až s ENTER. Pomenovaný user potom vidí
@@ -560,6 +567,12 @@ authorized repository set"*; čítať sa dá, pushovať nie. Nie je to chyba kó
     mieste a **nevytvára novú verziu** — nemennosť uloženého záznamu tým nie je dotknutá.
   - CL s notes: pri uložení poznámky prechádzajú pod číslo záznamu (`[Zzz1-CN:DRAFT-KEY]`) a záznam
     ostáva v tom umiestnení, kde CL bola.
+- **KONTAKTY - REGISTER A VLASTNÉ ZOZNAMY** (Vrso 2. 10., 23:55). **Každý kontakt musí byť registrovaný
+  v PROJECT 1 / owner Verso / CATEGORY Contacts** - tým je reálne dohľadateľný (záznam s menom v USER /
+  COMMUNICATION). Zoznam kontaktov sa ale **neviaže na všetkých registrovaných** - **každý si buduje vlastný**
+  (mená z jeho záznamov + register). Kto je kto, vie len málokto; čo komu register ukáže, určuje **oprávnenie**
+  (RLS), nie appka. Prístup **bez párovania** budú mať zrejme **autority**, a to **len ku konkrétnemu
+  projektu** (napr. zdravotné záležitosti), nikdy k celému zoznamu (`[Zzz1-R17b:CONTACTS-REGISTRY]`).
 - **TABY NESMÚ MAŤ NIKDY ROVNAKÝ NÁZOV** (Vrso 1. 10.: „*tabs nemozu mat nikdy rovnaky nazov. Daj do
   rules!"). Platí **naprieč všetkými líniami tabov toho istého modulu** — človek vidí jeden rad názvov,
   nie dva nezávislé zoznamy — a **necitlivo na veľkosť písmen a medzery**: „Work", „work" a „work " sú

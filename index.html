@@ -26571,18 +26571,29 @@ async function zzz1r17b_load_contact_names(force) {
     const own = String(r.username || '').trim();
     if (own) seen[zzz10v1_normalize(own)] = own;
   });
-  // === [Zzz1-R17b:REGISTERED-NAMES] Vrso 2026-10-02 (23:34): "verso aj vrso su cervenym, takze nie su
-  // v databaze - a to je cudne". Zoznam sa skladal LEN zo zaznamov, ktore user vidi (owner + bunky USER /
-  // COMMUNICATION). Kto s nim este nebol v ziadnom zazname, bol cerveny, hoci je normalne zaregistrovany.
-  // Pribudli preto REGISTROVANE mena (verso_verification_public, ten isty zdroj ako kontrola mena pri
-  // registracii - bez emailov). Zlyhanie tohto zdroja zoznam nezhodi, len ostane uzsi.
+  // === [Zzz1-R17b:CONTACTS-REGISTRY] (nahradza [Zzz1-R17b:REGISTERED-NAMES] z 23:50) =====================
+  // Vrso 2026-10-02 (23:55): "nechcem viazat contacts zoznam na vsetky [registrovane]... naco... bude si kazdy
+  // budovat sam, ale realne dohladatelny bude kazdy kontakt: kazdy kontakt musi byt registrovany v PROJECT 1,
+  // owner Verso, category CONTACTS." Zoznam na doplnanie preto NIE su vsetci registrovani useri, ale:
+  //   1. mena z mojich zaznamov (owner + USER + COMMUNICATION) - kontakty, ktore si budujem sam
+  //   2. REGISTER KONTAKTOV = zaznamy PROJECT 1 / owner Verso / CATEGORY Contacts (ich USER a COMMUNICATION)
+  // Co z registra smiem vidiet, urcuje RLS databazy, nie tento zoznam.
   try {
-    const reg = await zzz10v1_fetch_known_registrations();
-    ((reg && reg.usernames) || []).forEach(u => {
-      const t = String(u || '').trim();
-      if (t && !seen[zzz10v1_normalize(t)]) seen[zzz10v1_normalize(t)] = t;
+    const { data: reg, error: regErr } = await sb.from('verso_entries')
+      .select('fields_json').eq('is_trashed', false)
+      .filter('fields_json->>r2', 'eq', '1')
+      .filter('fields_json->>r4', 'ilike', 'verso')
+      .filter('fields_json->>r5', 'ilike', 'contacts')
+      .limit(1000);
+    if (regErr) throw regErr;
+    (reg || []).forEach(r => {
+      const f = r.fields_json || {};
+      [f.r17, f.r18].forEach(cell => zzz6f21_parse_tags(cell || '').forEach(u => {
+        const t = String(u).trim();
+        if (t && t !== '-' && !seen[zzz10v1_normalize(t)]) seen[zzz10v1_normalize(t)] = t;
+      }));
     });
-  } catch (e) { /* bez registracii sa farbi podla zaznamov ako doteraz */ }
+  } catch (e) { /* bez registra sa farbi podla mojich zaznamov ako doteraz */ }
   zzz1r17bNamesCache = Object.keys(seen).sort().map(k => ({ norm: k, name: seen[k] }));
   zzz1r17bNamesAt = Date.now();
   return zzz1r17bNamesCache;
@@ -29364,7 +29375,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-03 00:05';
+const ZZZ5_6_BUILD = '2026-10-03 00:20';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
