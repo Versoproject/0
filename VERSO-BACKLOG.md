@@ -475,7 +475,7 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
 | `verso_entries` INSERT | návrh `verso_entries_owner_is_session_v1` (owner = prihlásený) - čaká |
 | `verso_entries` UPDATE / SELECT | `true` - návrh `verso_entries_rls_update_v1` čaká; SELECT podľa pravidiel viditeľnosti |
 | `verso_entries.comm_setup` | presunúť do vlastnej chránenej tabuľky `verso_comm_setup` - návrh |
-| `verso_consents` | RLS neoverené - čaká na `verso_protected_tables_dump` |
+| `verso_consents` | RLS neoverené - čaká na výsledok `verso_protected_tables_dump` (SQL dané 3. 10. 00:26) |
 | `verso_note_tabs`, `verso_trash`, `verso_audit_log` | neoverené |
 
 ### CONTACTS REGISTER (Vrso 2. 10., 23:55 / 3. 10., 00:14)
@@ -550,7 +550,9 @@ authorized repository set"*; čítať sa dá, pushovať nie. Nie je to chyba kó
   nikdy jediná cesta.
 
 - **Základná verzia Versa je po anglicky** — všetky viditeľné popisy, tlačidlá, placeholdery a hlášky
-- **SQL vždy s menom**, v samostatnom skopírovateľnom bloku
+- **SQL vždy s menom**, v samostatnom skopírovateľnom bloku. Keď Claude niečo z DB potrebuje (dump, overenie,
+  migráciu), **hneď dá celé SQL s menom na copy**, nikdy len odkaz na meno (Vrso 3. 10., 00:26). Dump je
+  read-only a vracia **jeden výsledok** (SQL editor ukáže len posledný).
 - Okná a workspacy sa **nesmú hýbať** pri bežnej práci — ani pri **otváraní okien a povelov** (podržanie
   3 s, otvorenie Notes/chat okna, note line): obrazovka nesmie poskočiť, poloha stránky aj scrollu v okne
   sa drží (Vrso 2. 10., 14:08; `[Zzz5-6:NO-JUMP]`)
