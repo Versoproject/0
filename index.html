@@ -4115,7 +4115,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz5-6-wsdock > .zzz1cn-list-window.zzz5-6-inline > .zzz5w7-body { flex: 1 1 auto; min-height: 0; }
   .zzz5-6-wsdock > .zzz1cn-list-window.zzz5-6-inline .zzz5w7-text { height: 100% !important; min-height: 0; resize: none; }
   .zzz1cn-ws-window.zzz5-6-dockmax > .zzz5-6-wsdock { flex: 1 1 100%; }
-  .zzz1cn-ws-window.zzz5-6-dockmax > .zzz1cn-ws-body { display: none; }
+  .zzz1cn-ws-window.zzz5-6-dockmax > .zzz1cn-ws-body,
+  .zzz1cn-ws-window.zzz5-6-dockmax > .zzz1cn-list-head { display: none; }   /* [Zzz5-6:DOCK-PAIR] cela obrazovka */
+  /* [Zzz5-6:DOCK-PAIR] WORK NOTE + okno zaznamu naraz: kazde polovicu, zaznam prilepeny pod WORK NOTE;
+     2x tuk na jedno z nich = len to jedno cez cely dok a spat */
+  .zzz5-6-wsdock > .zzz1cn-list-window.zzz5-6-inline + .zzz1cn-list-window.zzz5-6-inline { margin-top: 4px; }
+  .zzz5-6-wsdock.zzz5-6-pair > .zzz1cn-list-window.zzz5-6-inline { flex: 1 1 0; }
+  .zzz5-6-wsdock.zzz5-6-pair:has(> .zzz5-6-solo) > .zzz1cn-list-window.zzz5-6-inline:not(.zzz5-6-solo) { display: none; }
   /* [Zzz5-6:WORK-COVER] WORK NOTE prekryje zoznam tabu aj jeho listu */
   .zzz1cn-ws-window.zzz5-6-dockwork > .zzz5-6-wsdock { flex: 1 1 100%; }
   .zzz1cn-ws-window.zzz5-6-dockwork > .zzz1cn-ws-body,
@@ -4224,6 +4230,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     font-weight: 700; padding: 0 6px !important; font-size: 7.5px !important; line-height: 1.1; flex: 0 0 auto; }
   .zzz5w7-inline:has(.zzz5-6-nl-chat) { gap: 3px; flex-wrap: wrap; row-gap: 4px; }
   .zzz5-6-nl-save { padding: 0 6px !important; font-size: 7.5px !important; line-height: 1.1; flex: 0 0 auto; }
+  /* [Zzz5-6:NL-SAVE-TOGGLE] SAVE je prepinac - vypnuty bledy, zapnuty zlato vyplneny */
+  .zzz5-6-nl-save { background-color: #fff !important; color: #9a9a9a !important; border-color: #cfcfcf !important; }
+  .zzz5-6-nl-save.is-on { background-color: #D4AF37 !important; color: #171717 !important; border-color: #b8860b !important; font-weight: 700; }
   /* cislo zaznamu je zapnute, kym su jeho SUBS rozbalene - inak by sa nedalo zistit, odkial su */
   .zzz1cn-ws-cardentry.is-on { background-color: #D4AF37; color: #171717; }
   .zzz1cn-ws-cardentry {
@@ -29192,7 +29201,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 15:58';
+const ZZZ5_6_BUILD = '2026-10-02 16:20';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -29342,6 +29351,27 @@ async function zzz5_6_open_chat_reply(entryKey, num) {
 // filtrovanie" vyriesene stavbou, nie podmienkou, na ktoru sa da zabudnut.
 const ZZZ5_6_TAB_ENTRY_PREFIX = 'tab:';
 function zzz5_6_tab_entry_key(tab) { return ZZZ5_6_TAB_ENTRY_PREFIX + String(tab || ''); }
+// === [Zzz5-6:DOCK-PAIR] Vrso 2026-10-02 (16:06): "ked stlacim 2x +add NOTE v 156 notes, tak sa ma
+// maximalizovat na celu obrazovku (ak je uz otvorene ine okno, hlavne WORK NOTE, tak do pol obrazovky a
+// prilep na to druhe)". Dok uz nedrzi len JEDNO okno, ale najviac DVE ROZNE: WORK NOTE tabu (hore) a okno
+// zaznamu (#156, pod nim). Nove okno nahradi len okno TOHO ISTEHO druhu - dve #156 tam byt nemozu
+// ([Zzz5-6:ONE-IN-DOCK] plati dalej). Rozlozenie sa pocita na jednom mieste po kazdom otvoreni/zatvoreni:
+//   len zaznam        = polovica pod zoznamom; 2x tuk = cela obrazovka (zoznam aj jeho lista sa schovaju)
+//   len WORK NOTE     = prekryje zoznam aj listu ([Zzz5-6:WORK-COVER])
+//   WORK NOTE + zaznam = kazde polovicu, zoznam schovany; 2x tuk na jedno = len ono cez cely dok a spat
+function zzz5_6_dock_layout(dock) {
+  if (!dock) return;
+  const ws = dock.closest('.zzz1cn-ws-window');
+  const wins = Array.from(dock.querySelectorAll(':scope > .zzz1cn-list-window.zzz5-6-inline'));
+  const hasWork = wins.some(w => w.dataset.zzz56Kind === 'work');
+  const pair = wins.length > 1;
+  dock.classList.toggle('zzz5-6-pair', pair);
+  if (!pair) wins.forEach(w => w.classList.remove('zzz5-6-solo'));
+  if (ws) {
+    ws.classList.toggle('zzz5-6-dockwork', hasWork);
+    if (!wins.length || pair) ws.classList.remove('zzz5-6-dockmax');
+  }
+}
 function zzz5_6_is_tab_entry(key) {
   return String(key || '').indexOf(ZZZ5_6_TAB_ENTRY_PREFIX) === 0;
 }
@@ -32495,7 +32525,10 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   let winShowChat = false;   // [Zzz5-6:WIN-CHAT]
   const returnToWs = inlineIn ? false : zzz5_6WsReturn;
   zzz5_6WsReturn = false;
-  if (inlineIn) document.querySelectorAll('.zzz5-6-inline').forEach(w => w.remove());
+  // [Zzz5-6:DOCK-PAIR] v doku sa tu nic nemaze - okno rovnakeho druhu uprace az vlozenie nizsie
+  if (inlineIn) document.querySelectorAll('.zzz5-6-inline').forEach(w => {
+    if (!(inlineIn.classList.contains('zzz5-6-wsdock') && w.parentNode === inlineIn)) w.remove();
+  });
   else document.querySelectorAll('.zzz1cn-list-window').forEach(w => w.remove());
   const win = document.createElement('div');
   // vlozene okno je od zaciatku MAXIMALIZOVANE (Vrso: "maximalizovane, ale pod neho")
@@ -32800,8 +32833,10 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       win.remove();
       // [Zzz5-6:WS-DOCK] dok ostava (je to miesto vo workspace, nie obal okna) - len sa vyprazdni
       if (inlineIn.classList.contains('zzz5-6-wsdock')) {
+        // [Zzz5-6:DOCK-PAIR] druhe okno v doku ostava - rozlozenie sa len prepocita
         const ws = inlineIn.closest('.zzz1cn-ws-window');
-        if (ws) { ws.classList.remove('zzz5-6-dockmax'); ws.classList.remove('zzz5-6-dockwork'); }
+        if (ws) ws.classList.remove('zzz5-6-dockmax');
+        zzz5_6_dock_layout(inlineIn);
       } else inlineIn.remove();
       return;
     }
@@ -32873,10 +32908,17 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       stripChat.title = winShowChat ? 'Showing the whole discussion (chat + notes) - tap shows Notes only'
                                     : 'Show the chat of this window too (unsaved chatnotes)';
     };
+    // [Zzz5-6:STRIP-CHAT-COMM] Vrso 2026-10-02 (16:09): "Som v 156 notes, tak CHAT button ma ma hodit do
+    // chatu/comm window pod touto entry!!!" - v okne ZAZNAMU je CHAT skok do jeho COMMUNICATION okna (to iste,
+    // co 3 s na +add NOTE), ziadny prepinac. Prepinac ostava len vo WORK NOTE tabu - ten zaznam nema.
+    const stripIsEntry = /^\d+$/.test(String(entryKey));
     stripChat.addEventListener('click', async () => {
-      winShowChat = !winShowChat; paintStripChat(); zzz_haptic_pulse(15); await render();
+      zzz_haptic_pulse(15);
+      if (stripIsEntry) { zzz5_6_open_chat_reply(String(entryKey), 0); return; }
+      winShowChat = !winShowChat; paintStripChat(); await render();
     });
     paintStripChat();
+    if (stripIsEntry) stripChat.title = 'Open the chat (COMMUNICATION window) of this entry';
     tabStrip.appendChild(stripChat);
     tabStrip.appendChild(stripAtt);
     win.insertBefore(tabStrip, win.firstChild);
@@ -32970,8 +33012,17 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     clearTimeout(titleTap);
     // [Zzz5-6:WS-DOCK] okno v doku sa nemaximalizuje samo - roztiahne sa DOK cez cely workspace a spat
     if (inlineIn && inlineIn.classList.contains('zzz5-6-wsdock')) {
-      const ws = inlineIn.closest('.zzz1cn-ws-window');
-      if (ws) ws.classList.toggle('zzz5-6-dockmax');
+      // [Zzz5-6:DOCK-PAIR] dve okna v doku = 2x tuk prepne LEN TOTO cez cely dok / spat na polovicu;
+      // jedno okno = cela obrazovka (zoznam aj jeho lista sa schovaju) / spat
+      if (inlineIn.classList.contains('zzz5-6-pair')) {
+        const solo = !win.classList.contains('zzz5-6-solo');
+        inlineIn.querySelectorAll(':scope > .zzz5-6-solo').forEach(w => w.classList.remove('zzz5-6-solo'));
+        win.classList.toggle('zzz5-6-solo', solo);
+      } else {
+        const ws = inlineIn.closest('.zzz1cn-ws-window');
+        if (ws) ws.classList.toggle('zzz5-6-dockmax');
+      }
+      zzz_haptic_pulse(20);
       requestAnimationFrame(alignGutter);
       return;
     }
@@ -33016,6 +33067,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   // [Zzz5-6:LINE-LIVE] otvoreny riadok nesmie zmazat prekreslenie, ktore pride samo (dotiahnute odkazy,
   // owner, outbox) - to ho doteraz mazalo, kym sa do neho pisalo, a predvyplneny riadok zmizol hned
   let zzz5_6LineLive = false;
+  let nlSaveOn = true;   // [Zzz5-6:NL-SAVE-TOGGLE] SAVE v note line - zapnuty, kym ho user v tomto okne nevypne
   const inlineAsk = (label, targetFixed, opts) => new Promise((resolve) => {
     const o = opts || {};
     zzz5_6LineLive = true;
@@ -33093,7 +33145,22 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     // [Zzz5-6:NL-CHAT] Vrso 2026-10-02 (15:43): "zmenit na SAVE a CHAT ... idealne aby to harmonizovalo ako
     // je to v comm window" - tie iste nazvy ako tam: SAVE NOTE uklada do Notes, ENTER CHATNOTE len do chatu.
     // Pri premenovani (nameOnly) ostava OK - nic sa tam neuklada ani neposiela.
-    if (!(opts && opts.nameOnly)) { ok.innerHTML = 'SAVE<br>NOTE'; ok.classList.add('zzz5-6-nl-save'); ok.title = 'Saves the note into Notes (it shows in the chat too)'; }
+    // [Zzz5-6:NL-SAVE-TOGGLE] Vrso 2026-10-02 (16:06): "tam mal byt SAVE ako toggle!!! Proste ak zaciarknuty
+    // SAVE, tak ENTER ide vzdy do chatu aj ulozi aj do daneho 156 notes". SAVE uz nie je druhe odosielacie
+    // tlacidlo, ale prepinac: odosiela sa VZDY cez ENTER CHATNOTE (aj klavesou Enter) - do chatu ide vzdy,
+    // zapnuty SAVE ho navyse ulozi do Notes tohto okna (zaznam #156 / WORK NOTE tabu). Stav si okno pamata,
+    // kym je otvorene (nlSaveOn) - kto ho raz vypne, nemusi ho vypinat pri kazdom riadku.
+    if (!(opts && opts.nameOnly)) {
+      ok.classList.add('zzz5-6-nl-save');
+      const paintSave = () => {
+        ok.innerHTML = (nlSaveOn ? '&#9745;' : '&#9744;') + '<br>SAVE';
+        ok.classList.toggle('is-on', nlSaveOn);
+        ok.title = nlSaveOn ? 'SAVE is on - ENTER CHATNOTE sends to the chat AND saves into these Notes'
+          : 'SAVE is off - ENTER CHATNOTE sends to the chat only';
+      };
+      paintSave();
+      ok.zzz5_6Toggle = () => { nlSaveOn = !nlSaveOn; paintSave(); zzz_haptic_pulse(10); };
+    }
     const cancel = document.createElement('button');
     cancel.type = 'button';
     cancel.className = 'zzz1cn-note-btn zzz1cn-note-btn-close';
@@ -33109,10 +33176,12 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       prio: prioCtl.get(),                         // [Zzz1-CN:PRIO3] '' | 'attention' | 'urgent'
       target: targetFixed || (parseInt(tgt.value, 10) || 0)
     });
-    ok.addEventListener('click', () => finish(pick()));
+    // [Zzz5-6:NL-SAVE-TOGGLE] pri premenovani je OK potvrdenie; inak prepina SAVE a odosiela ENTER CHATNOTE
+    const send = () => o.nameOnly ? pick() : Object.assign(pick(), { chat: !nlSaveOn });
+    ok.addEventListener('click', () => { if (ok.zzz5_6Toggle) ok.zzz5_6Toggle(); else finish(pick()); });
     cancel.addEventListener('click', () => finish(null));
     [nameIn, textIn, tgt].forEach(el => el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); finish(pick()); }
+      if (e.key === 'Enter') { e.preventDefault(); finish(send()); }
       if (e.key === 'Escape') { e.preventDefault(); finish(null); }
     }));
     // === [Zzz5-6:NL-CHAT] Vrso 2026-10-02 (15:13): "nebolo by zle mat moznost priamo v notes cez note line
@@ -33126,8 +33195,8 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       chatBtn.type = 'button';
       chatBtn.className = 'zzz1cn-note-btn zzz5-6-nl-chat';
       chatBtn.innerHTML = 'ENTER<br>CHATNOTE';
-      chatBtn.title = 'Send to the chat only - NOT saved to Notes (OK saves it to Notes)';
-      chatBtn.addEventListener('click', () => finish(Object.assign(pick(), { chat: true })));
+      chatBtn.title = 'Send to the chat (with SAVE on it is also saved into these Notes)';
+      chatBtn.addEventListener('click', () => finish(send()));   // [Zzz5-6:NL-SAVE-TOGGLE]
     }
     bar.appendChild(tag); bar.appendChild(tgt); bar.appendChild(nameIn); bar.appendChild(textIn);
     if (!o.nameOnly) bar.appendChild(flags);   // [Zzz5-W7:RENAME] privacy prevzala gesto po 3s podrzani
@@ -33199,7 +33268,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     if (author && zzz10v1_normalize(author) !== meN) {
       zzz6f22_record_copy_credit(`${entryKey}/${saved.note_number}/${part}`, author, `Chatnote #${label}`);
     }
-    zzz6f2_show_toast(got.chat ? `#${label} sent to the chat (not saved to Notes).` : `Note #${label} saved.`);
+    zzz6f2_show_toast(got.chat ? `#${label} sent to the chat (not saved to Notes).` : `#${label} sent to the chat and saved to Notes.`);
     await render();
   };
 
@@ -33219,7 +33288,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       zzz6f58_grant_access(mAtT.concat(mOnlyT));   // [Zzz6-F58:MENTIONS]
       const saved = await zzz1cn_add(entryKey, got.text,
         !!got.priv, { base: Number(got.target) }, got.name, !got.chat, !!got.prio, mOnlyT);
-      if (saved) zzz6f2_show_toast(got.chat ? `#${zzz5w7_label_of(saved)} sent to the chat (not saved to Notes).` : `Note #${zzz5w7_label_of(saved)} saved.`);
+      if (saved) zzz6f2_show_toast(got.chat ? `#${zzz5w7_label_of(saved)} sent to the chat (not saved to Notes).` : `#${zzz5w7_label_of(saved)} sent to the chat and saved to Notes.`);
       await render();
       return;
     }
@@ -33229,7 +33298,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     const saved = await zzz1cn_add(entryKey, got.text,
       !!got.priv, null, got.name, !got.chat, !!got.prio, mOnlyN);
     if (!saved) { await render(); return; }
-    zzz6f2_show_toast(got.chat ? `#${zzz5w7_label_of(saved)} sent to the chat (not saved to Notes).` : `Note #${zzz5w7_label_of(saved)} saved.`);
+    zzz6f2_show_toast(got.chat ? `#${zzz5w7_label_of(saved)} sent to the chat (not saved to Notes).` : `#${zzz5w7_label_of(saved)} sent to the chat and saved to Notes.`);
     await render();
   };
 
@@ -34019,15 +34088,20 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   // [Zzz5-6:ONE-IN-DOCK] Vrso 2026-10-02 (15:43): v doku boli DVA rovnake #156. Okno sa stava asynchronne
   // (await render) - druhe otvorenie, ktore prislo pocas prveho, zmazalo len to, co uz bolo vlozene, a obe
   // potom vlozili samy seba. Preto sa tesne PRED vlozenim upratuje este raz: v doku je vzdy len posledne.
-  if (inlineIn) inlineIn.querySelectorAll(':scope > .zzz5-6-inline').forEach(w => w.remove());
+  // [Zzz5-6:DOCK-PAIR] v doku sa upratuje len okno ROVNAKEHO druhu (WORK NOTE / zaznam)
+  const zzz56Kind = zzz5_6_is_tab_entry(entryKey) ? 'work' : 'entry';
+  win.dataset.zzz56Kind = zzz56Kind;
+  const zzz56IsDock = !!(inlineIn && inlineIn.classList.contains('zzz5-6-wsdock'));
+  if (inlineIn) inlineIn.querySelectorAll(':scope > .zzz5-6-inline').forEach(w => {
+    if (!zzz56IsDock || w.dataset.zzz56Kind === zzz56Kind) w.remove();
+  });
   // [Zzz5-6:WORK-COVER] Vrso 2026-10-02 (15:57): "ked otvorim WORK NOTES daneho tabu, tak ma aj prekryvat
   // note tab (aj show bar listu)". WORK NOTE v doku teda zaberie cely workspace pod tabmi - zoznam aj jeho
   // lista sa schovaju (nezatvoria - × ich vrati). Okno zaznamu (#156) ostava na polovicu ako doteraz.
-  if (inlineIn && inlineIn.classList.contains('zzz5-6-wsdock')) {
-    const ws = inlineIn.closest('.zzz1cn-ws-window');
-    if (ws) ws.classList.toggle('zzz5-6-dockwork', zzz5_6_is_tab_entry(entryKey));
-  }
-  (inlineIn || document.body).appendChild(win);   // [Zzz5-6:TAB-INLINE]
+  // [Zzz5-6:DOCK-PAIR] WORK NOTE ide vzdy navrch, zaznam pod neho; triedy rozlozenia nastavi jedna funkcia
+  if (zzz56IsDock && zzz56Kind === 'work') inlineIn.insertBefore(win, inlineIn.firstChild);
+  else (inlineIn || document.body).appendChild(win);   // [Zzz5-6:TAB-INLINE]
+  if (zzz56IsDock) zzz5_6_dock_layout(inlineIn);
   zzz5w7_watch_head(head);   // [Zzz5-W7:HEAD-FIT]
   // [Zzz6-F8:SUBS-OPEN] prislo sa sem z konkretneho chipu v SUBS - postav sa rovno na tu poznamku.
   // Ked tam nie je (odkaz na nieco, co uz nevidim alebo neexistuje), okno sa proste otvori cele a
