@@ -2990,6 +2990,15 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   /* [Zzz1-CN:CHAT-CELL] rovnaky ram a mierka ako NOTE bunka, len jednoriadkova - chat nema co pridat */
   .zzz1cn-chat-cell { font-size: 10px; font-weight: 700; }
   .zzz5w7-title-word { font-size: 10px; font-weight: 700; }
+  /* [Zzz5-6:TITLE-CENTER] Vrso 2026-10-02: "text nacentruj do stredu vzdy" - nazov okna (NOTES,
+     PRIVATE NOTES...) stal v bunke hore; +add NOTE uz centrovany bol, obycajny nazov nie */
+  .zzz1cn-list-head .zzz5w7-title {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1.05;
+  }
   .zzz1cn-list-head .zzz5w7-title,
   .zzz1cn-comm-tools .zzz1cn-chat-cell {
     margin-right: auto;   /* nazov vlavo, ovladace vpravo */
@@ -4082,7 +4091,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   /* panel otvorenej poznamky ide pod CELY riadok - inak by sa text tlacil do 1.5fr stlpca */
   .zzz1cn-ws-tbl > .zzz1cn-ws-subpanel { grid-column: 1 / -1; margin: 0 4px 4px 4px; }
   /* [Zzz5-6:TAB-INLINE] NOTES TAB okno vlozene pod riadkom zaznamu - cez celu sirku tabulky */
-  .zzz1cn-ws-tbl > .zzz5-6-tabwin-holder { grid-column: 1 / -1; margin: 0 4px 6px 4px; }
+  .zzz1cn-ws-tbl > .zzz5-6-tabwin-holder { grid-column: 1 / -1; margin: 0 0 6px 0; }
+  /* [Zzz5-6:TAB-WIDE] tabulka nesmie okno tabu orezat - siri sa az po okraje zoznamu (pocita JS) */
+  .zzz1cn-ws-tbl.has-tabwin { overflow: visible; }
   .zzz1cn-list-window.zzz5-6-inline {
     position: relative;
     top: auto !important;
@@ -4090,7 +4101,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     width: auto;
     max-width: none;
     z-index: auto;
-    border: 1px solid #7b2ff7;
+    border: 2px solid #7b2ff7;   /* [Zzz5-6:TAB-WIDE] odlisi otvorene okno tabu od toho, co sa edituje */
     border-radius: 9px;
     box-shadow: none;
     padding: 6px;
@@ -4128,7 +4139,17 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   /* [Zzz5-6:LIMIT-CONTENT] prepinac pola CONTENT v LIMIT */
   .zzz5w7-limittoggle { align-self: flex-start; margin: 4px 0 2px 0; padding: 2px 10px; font-size: 11px; }
   .zzz5w7-limittoggle.is-on { border-color: #D4AF37; color: #8a6d1f; }
-  .zzz5-6-tabstrip-attach { margin-left: auto; padding: 0 8px; font-size: 8px; }
+  /* [Zzz5-6:TAB-TITLE] Vrso 2026-10-02 (13:07): "v liste by sa mal zobrazovat nazov Notes (v strede),
+     vpravo attached daj fialovou". Nazov je v strede pasu, ATTACH sedi vpravo absolutne, aby ho
+     neposuval zo stredu. Fialova = farba pripnuteho zdroja vsade v appke. */
+  .zzz5-6-tabstrip { position: relative; justify-content: center; min-height: 18px; }
+  .zzz5-6-tabstrip > span { text-align: center; }
+  .zzz5-6-tabstrip-attach.zzz1cn-ws-subattach {
+    position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+    margin-left: 0; padding: 0 8px; font-size: 8px;
+    border-color: #7b2ff7; color: #7b2ff7;
+  }
+  .zzz5-6-tabstrip-attach.zzz1cn-ws-subattach.is-on { background-color: #7b2ff7; color: #fff; }
   /* cislo zaznamu je zapnute, kym su jeho SUBS rozbalene - inak by sa nedalo zistit, odkial su */
   .zzz1cn-ws-cardentry.is-on { background-color: #D4AF37; color: #171717; }
   .zzz1cn-ws-cardentry {
@@ -28977,7 +28998,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 12:44';
+const ZZZ5_6_BUILD = '2026-10-02 13:08';
 
 // === [Zzz5-6:TAB-NOTES] NOTES WINDOW jedneho tabu =================================================
 // Vrso 2026-10-01 (22:01): "podrzanim 1-2s pridaj do notes window pre tento tab (v nom ma byt attach
@@ -30221,6 +30242,20 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
       const holder = document.createElement('div');
       holder.className = 'zzz5-6-tabwin-holder';
       afterCell.after(holder);
+      // [Zzz5-6:TAB-WIDE] Vrso 2026-10-02 (13:07): "mozes sirsie az po konce stranky, ale tak, aby bolo
+      // vidiet ohranicenie fialovou". Okno sa vytiahne z tabulky na celu sirku zoznamu (body workspacu) -
+      // dalej nejde, lebo zoznam ma vlastny scroll a sirsie by sa orezalo aj s fialovym ramom.
+      const tblEl = holder.parentElement;
+      const scroller = holder.closest('.zzz1cn-ws-body') || tblEl;
+      if (tblEl) tblEl.classList.add('has-tabwin');
+      const fit = () => {
+        if (!holder.isConnected) { window.removeEventListener('resize', fit); return; }
+        const tr = tblEl.getBoundingClientRect(), br = scroller.getBoundingClientRect();
+        holder.style.marginLeft = Math.round(br.left - tr.left + 2) + 'px';
+        holder.style.width = Math.round(br.width - 4) + 'px';
+      };
+      fit();
+      window.addEventListener('resize', fit);
       zzz1cn_open_list(zzz5_6_tab_entry_key(activeTab), null, null, { inlineIn: holder })
         .then(() => holder.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
     };
