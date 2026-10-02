@@ -498,6 +498,13 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
   kedy, starý a nový stav pri každej zmene `verso_comm_users`, `comm_setup`, `tag_vocab`; čítať smie owner
   záznamu (a dotknutý user svoje riadky). Zápis len trigger, UPDATE/DELETE nikto. Neskôr spolu s presunom
   comm_setup do chránenej tabuľky.
+- **Rozšírenie (Vrso 3. 10., 00:54: „či budem môcť robiť restore z dátumu spätne… na to bude multiverifikácia"):**
+  história nie len pre comm, ale **pre všetky stavové zmeny** záznamu - jedna tabuľka `verso_history`
+  (kôš / obnova, `superseded_by` = nahradenie verziou, comm_setup, tag_vocab, entry_status, entry_refs,
+  `verso_comm_users`). Dnes chýba ČAS týchto zmien (`updated_at` sa prepisuje, `superseded_by` ani `is_trashed`
+  nemajú vlastný čas) - bez histórie sa stav k dátumu presne poskladať nedá. S ňou: **RESTORE K DÁTUMU** =
+  poskladať stav k času T z verzií + histórie; obnova **nič neprepisuje**, len zapíše nové stavy (append-only).
+  Spustenie restore schvaľuje **multiverifikácia** (Settings → Restore, vedľa Multi Verification).
 - **Slabina comm_setup:** textový reťazec čítaný regexom (`tags:delegate` ...) - krehké; presun do tabuľky s
   menovitými stĺpcami to odstráni.
 
