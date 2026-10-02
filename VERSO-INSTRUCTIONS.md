@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-02 17:35** · build appky v čase zápisu: `2026-10-02 17:30`
+**Verzia: 2026-10-02 17:50** · build appky v čase zápisu: `2026-10-02 17:45`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -189,14 +189,18 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
 1. V Notes okne **ťuk na `ATTACH`** (pás hore vpravo):
    - nič označené → pripne sa **celé okno**, zbalené (`▸ N sub notes`),
    - označené (SELECT) → pripnú sa **len označené**, každá ako mini sub.
-2. Pod hlavnou M4 CRM sa objaví fialový pás - jeden riadok vo výške MINI, stĺpce zarovnané s tabuľkou:
-   owner | projekt | `#156` | `ATTACHED` + poznámky | `CONT`.
+2. Pod hlavnou M4 CRM sa objaví fialový pás (`[Zzz5-6:ATTACH-MINI]`):
+   - hore tlačidlo **`ATTACHED`** - presne pod **MINI** a v jeho veľkosti,
+   - pod ním riadok zarovnaný so stĺpcami tabuľky: owner | projekt | `#156` | poznámky | `CONT`.
+   - **Ťuk na `ATTACHED`** → otvorí poznámky, z ktorých attachment je (#156 alebo WORK NOTE tabu) v doku;
+     pri jednotlivo pripnutých suboch ich rozbalí / zbalí.
 3. Ťuk na `▸ N sub notes` → rozbalí / zbalí; ťuk na sub → otvorí ho v doku; ťuk na `#156` → Notes
    záznamu v doku; `CONT` → obsah záznamu. Bez obsahu (napr. WORK NOTE) je vpravo hore `▾ / ▴` =
    rozbaliť / zbaliť (`[Zzz5-6:ATTACH-FIT]`).
    Pás má strop (asi 4 riadky); viac rozbalených poznámok sa scrolluje vnútri pásu, workspace pod ním
    ostáva použiteľný.
-4. **Odpojiť**: ťuk na `ATTACHED` (v páse alebo v okne).
+4. **Odpojiť** (rovnako ako ATTACH v hlavnej CRM): **podržať `ATTACHED` 3 s** alebo **podržať MINI 3 s**
+   (MINI odpojí aj pripnuté command lines). V okne poznámok ťuk na `ATTACHED` v páse hore.
 
 ### 4.11 Premenovať, privacy, priority, TAG, DELETE
 - **Premenovať**: podržať číslo poznámky **3 s** → riadok s menom (len vlastné; prázdne = bez mena).
@@ -217,6 +221,8 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
 | Číslo záznamu v tabuľke | zbalí / rozbalí subs | – | Notes okno záznamu | – | – |
 | `+add NOTE` | nová poznámka | celá obrazovka / split | sub note k označenej | chat záznamu (WORK NOTE: režim CHAT) | prepne preset |
 | `SAVE` v note line | SAVE zap/vyp | – | – | chat záznamu / CL (WORK NOTE: režim CHAT) | – |
+| `ATTACHED` (pás pod CRM) | otvorí jeho poznámky | – | – | odpojiť | – |
+| `MINI` (hlavná CRM) | (CRM) | – | – | odpojiť všetko vrátane poznámok | – |
 | `CHAT` v páse okna | záznam: COMMUNICATION okno · WORK NOTE: režim CHAT | – | – | – | – |
 | Číslo poznámky (ľavý stĺpec) | skok na text (v SELECT: označí) | – | sub note k nej | premenovať | – |
 | `COPY` | do schránky | – | **COPY TO** | – | – |
