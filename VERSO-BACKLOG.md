@@ -482,7 +482,7 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
 | `verso_verification` UPDATE rezervácie | ktokoľvek mohol prepísať cudziu rezerváciu - `verso_verification_close_open_policies_v1.sql` (4.) NASADENÉ 3. 10. 00:38 - zrušené |
 | `verso_verification_trash` | SELECT pre anon = verejne čitateľná - zrušené v (4.) 00:38 (appka ju už nepoužíva) |
 | všetky tabuľky | TRUNCATE/TRIGGER/REFERENCES pre anon - `verso_revoke_truncate_v1.sql` (1.) NASADENÉ 3. 10. 00:30 - OK |
-| `verso_audit_log` | INSERT `true` (aj pred loginom) - ďalší krok |
+| `verso_audit_log` | INSERT `true` (aj pred loginom) -> `verso_audit_log_check_v1.sql` (9b, poslané 3. 10. 02:00): meno a čas zapíše server (prihlásený), pred loginom len `user_register` pre meno s heslom na serveri |
 | `verso_pre_register_support`, `verso_username_setup` | INSERT `true` - zámer (pred registráciou), ponechané |
 | `verso_auth_credentials`, `verso_sessions`, `verso_recovery_tokens` | RLS bez policies = zavreté, len server - OK |
 | `verso_trash` | len SELECT vlastných, zápis cez server - OK |
