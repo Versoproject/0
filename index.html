@@ -29005,7 +29005,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 13:26';
+const ZZZ5_6_BUILD = '2026-10-02 13:42';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -29022,6 +29022,37 @@ function zzz5_6_bind_dbltap(root, zones, fn) {
     const now = Date.now();
     if (now - at < 400) { at = 0; fn(e); } else { at = now; }
   });
+}
+
+// === [Zzz5-6:SUB-CHAT] podrzanie subu 1-2s = chatnote line zaznamu, odpoved na tento sub ===========
+// Vrso 2026-10-02 (13:40): "ak v notes (tabe) podrzim na sub 1-2s, otvor chatnote line, ktorou sa chatuje
+// / note line save, ako na druhej foto". Je to COMMUNICATION okno zaznamu (chat + note line so SAVE NOTE)
+// a v jeho reply bunke uz stoji cislo subu - pise sa rovno do toho vlakna.
+// Okno sa otvara PRESNE tak ako z Database workspace (rovnaka cesta, nic nove): najprv sa zaznam ticho
+// skopiruje do CL, potom sa otvori jeho okno - comm okno pracuje vzdy s CL. Rozpisana CL sa tym nahradi,
+// rovnako ako pri tuku na COMMUNICATION bunku v Database workspace.
+async function zzz5_6_open_chat_reply(entryKey, num) {
+  const k = String(entryKey || '');
+  if (!/^\d+$/.test(k)) { zzz6f2_show_toast('This note belongs to a tab, not to a record - it has no chat.', 'warn'); return; }
+  try {
+    const { data, error } = await sb.from('verso_entries').select('*').eq('entry_id', Number(k)).limit(1);
+    if (error) throw error;
+    if (!data || !data.length) { zzz6f2_show_toast(`Record #${k} was not found (or you cannot see it).`, 'warn'); return; }
+    zzz1r17b_silent_copy_row_to_cl(data[0]);
+    zzz6f18_open_context_select_modal(data[0]);
+    // reply bunka vznika az so stavbou okna - jeden snimok po nom
+    setTimeout(() => {
+      const w = document.querySelector('.zzz1r17b-comm-window');
+      const t = w && w.querySelector('.zzz1cn-target');
+      if (t && num) {
+        t.value = String(num);
+        t.dispatchEvent(new Event('input', { bubbles: true }));
+        t.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }, 350);
+  } catch (e) {
+    zzz6f2_show_toast(`Chat of #${k} could not be opened: ${(e && e.message) || e}`, 'warn');
+  }
 }
 
 // === [Zzz5-6:NEW-VERSION] upozornenie, ze na serveri je novsia verzia ===============================
@@ -30172,7 +30203,17 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
   });
   head.appendChild(box.el);
   // [Zzz5-6:DBLTAP] 2x tuk na NOTES bunku alebo volne miesto listy = WS-MAX (to iste, co 2x tuk na tab)
+  // [Zzz5-6:WS-NOTE-TAP] Vrso 2026-10-02 (13:40): "stlac note button otvori chatnote window (prazdny
+  // oznacujem ako chatnote module)". Prazdny = COMMUNICATION okno nad rozpisanou CL, nie nad ulozenym
+  // zaznamom. Tuk sa vyhodnoti az po 320 ms - druhy tuk v tom case je dvojtuk (maximalizacia) a tuk zrusi.
+  let wsTitleTap = 0;
+  title.addEventListener('click', () => {
+    clearTimeout(wsTitleTap);
+    wsTitleTap = setTimeout(() => { zzz6f18_open_context_select_modal(); }, 320);
+  });
+  title.title = 'Tap = chatnote module / double tap = maximise (and back)';
   zzz5_6_bind_dbltap(win, [head], () => {
+    clearTimeout(wsTitleTap);
     wsMax = !wsMax;
     zzz_haptic_pulse(20);
     wsApplyMax();
@@ -30561,6 +30602,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     // Poznamka je zase CELY RIADOK (hlavicka + text), nie pilulka - rovnako, ako vyzera pripnuta.
     const tbl = document.createElement('div');
     tbl.className = 'zzz1cn-ws-tbl';
+    const contPairs = [];   // [Zzz5-6:CONT-SIZE] kocka CONT + bunka SUBS toho isteho riadku
     // [Zzz1-CN:WS-TABLE] Vrso 2026-10-01 (22:42): "project name len premenuj na PROJECT OWNER. Vpravo od
     // ownera dopis PROJECT NAME a pod nim ma byt 1-ka (ale s funkciou ako filter, ako ostatne kriteria).
     // Vsetky bunky/riadky co najviac natesnaj, ale tak, aby si NEZALOMOVAL text... a tak, aby SUBS bol
@@ -30677,6 +30719,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
           zzz6f29_open_readonly_viewer('CONTENT #' + ek, cVal, null);
         });
         tdCont.appendChild(cBtn);
+        contPairs.push([cBtn, tdSubs]);   // [Zzz5-6:CONT-SIZE]
 
         if (!rowOpen()) {
           const f = document.createElement('button');
@@ -30757,7 +30800,14 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
               notesWin.openInline(tdCont);          // [Zzz5-6:TAB-INLINE]
               return;
             }
-            if (dt >= 1100) {                       // 1-2s = ULOZ poznamku ZNOVU do NOTES TAB okna
+            if (dt >= 1100) {                       // 1-2s = CHATNOTE LINE zaznamu s odpovedou na tento sub
+              zzz_haptic_pulse(20);
+              zzz5_6_open_chat_reply(String(n.entry_key || ''), Number(n.note_number) || 0);   // [Zzz5-6:SUB-CHAT]
+              return;
+            }
+            // [Zzz5-6:SUB-CHAT] ULOZ ZNOVU do NOTES TAB okna stratilo 1-2s (Vrso 2. 10., 13:40). Kod ostava
+            // pod podmienkou, ktora sa nesplni, kym Vrso nepovie, ake gesto ma dostat.
+            if (false && dt >= 1100) {              // (byvale 1-2s) ULOZ poznamku ZNOVU do NOTES TAB okna
               // [Zzz5-6:TAB-ENTRY] ide to cez zzz1cn_add() - jedinu zapisovaciu cestu poznamok v appke.
               // Poznamka tak dostane vlastne cislo v ramci tabu a spravuje sa ako kazda ina: da sa v
               // tom okne citat, oznacit, kopirovat aj mazat.
@@ -30811,6 +30861,14 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
       });
     });
     body.appendChild(tbl);
+    // [Zzz5-6:CONT-SIZE] Vrso 2026-10-02 (13:40): "content bunka ma byt ako mriezka zarovno so sub bunkou,
+    // vyskou najma". Pevna vyska v CSS sedi len kym sa nezmeni pismo alebo zalomenie - meria sa preto
+    // PRVY sub v tom istom riadku a kocka dostane presne jeho vysku (aj horna hrana sedi, obe bunky maju
+    // rovnake odsadenie). Pri zlozenych SUBS ostava CSS vyska.
+    requestAnimationFrame(() => contPairs.forEach(([c, sub]) => {
+      const first = sub.querySelector('.zzz1cn-ws-subbtn');
+      if (first && first.offsetHeight) c.style.height = first.offsetHeight + 'px';
+    }));
     if (!count) {
       const none = document.createElement('div');
       none.className = 'zzz1cn-empty';
