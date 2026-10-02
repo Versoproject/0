@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-02 22:35** · build appky v čase zápisu: `2026-10-02 22:30`
+**Verzia: 2026-10-02 23:40** · build appky v čase zápisu: `2026-10-02 22:30`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -246,6 +246,38 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
   (cudzie sa preskočia).
 
 ---
+
+## 4C. CONTACTS - KONTAKTY A PÁROVANIE
+
+### 4C.1 Pridať kontakt do CL (komu je záznam určený / s kým sa o ňom komunikuje)
+1. V hlavnej CRM ťukni na bunku **COMMUNICATION** (nie USER - USER je zoznam užívateľov projektu).
+   Otvorí sa okno s riadkom `CONTACTS` a oranžovým poľom `+`.
+2. Do poľa napíš meno (`[Zzz1-R17b:CONTACT-MATCH]`):
+   - **zelené písmená** = taký user v databáze je; **červené** = nie je (alebo preklep) - pridal by sa len text,
+   - keď celé meno sedí, ukáže sa pod poľom zoznam → **ťuk na meno** ho pridá ako chip,
+   - **podržať pole 1,5 s** → zoznam všetkých userov (aj s prázdnym poľom), stiahne sa nanovo.
+3. Potvrdenie: ťuk na meno v zozname, Enter, alebo ťuk mimo poľa. Kláves „Ďalší" na mobile nemusí fungovať
+   ako Enter - preto radšej ťuk na meno.
+4. Odobrať kontakt: `×` na chipe (len kto smie upravovať - owner, alebo podľa comm setup „cont").
+5. **Uložiť: zelené `ENTER`.** Dovtedy sú kontakty len v rozpísanej CL; do databázy idú až so záznamom.
+- Prihlásený user (owner CL) je v kontaktoch automaticky - seba nepridávaj.
+- Cudzí kontakt má bronzový rám, vlastný zlatý (`[Zzz1-R17b:FOREIGN-BRONZE]`).
+- Pridať NOVÉ meno smie len ten, kto smie pridávať kontakty (comm setup „cont"); menovať už prítomných
+  v chate (`@meno`) smie každý (`[Zzz6-F58:MENTION-GATE]`).
+
+### 4C.2 Iné cesty k contacts
+- Tlačidlo **`CONTACTS`** v tom istom okne: **ťuk** = contacts module (Communication workspace),
+  **podržať 2 s** = Communication Pairing (`[Zzz1-R17b:CONTACTS-LINK]`).
+- V chate **`@meno` podržať 1–2 s** = meno sa pridá do COMMUNICATION; **3 s** = po potvrdení sa rovno založí
+  párovací záznam a otvoria sa pairing taby (`[Zzz6-F58]`).
+
+### 4C.3 Párovanie (pairing) - čo sa stane po uložení
+1. Pomenovaný user po tvojom `ENTER` uvidí riadok vo svojom **Preset comm module → Pairing**
+   („entry lines appear once you are named in a saved COMMUNICATION cell").
+2. Zapne **COMM CONSENT** (prípadne PERMANENT) → ste spárovaní; riadok prejde do **Paired**.
+3. Taby modulu: Preset pairing / Pairing / Paired / Unpaired / Trashed / Blocked users. Nič sa z nich
+   nemaže - presúva sa (pravidlo v rules).
+- Pairing v contacts module sa ešte dorába (backlog „CONTACTS MODULE — PAIRING").
 
 ## 5. GESTÁ - PREHĽAD
 
