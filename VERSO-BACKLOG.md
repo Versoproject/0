@@ -510,6 +510,11 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
   prehliadači - reload, login alebo nová úprava CL ju zmaže). Test: #159 ← presunutý do koša, → „nie je čo vrátiť
   vpred" (v simulácii ← → funguje; príčina na telefóne neznáma). **POSTAVENÉ 01:15** `[Zzz6-F35:TRASH-RESTORE]`:
   TRASH → RESTORE pri vlastnom zázname (server overí ownera, `verso_history` zapíše `restore`).
+- **PAMÄŤ KROKOV (Vrso 3. 10., 01:16: „nedá sa riešiť? prípadne neskôr cez PWA lokálnu cache vrstvu?"):** návrh
+  rozdeliť na dve vrstvy: (1) úpravy v CL = lokálne, uložiť per user do úložiska zariadenia (teraz localStorage,
+  s PWA IndexedDB) - prežijú reload; (2) uložené záznamy (ENTER / kôš / obnova / verzia) = **zdroj pravdy je
+  `verso_history` na serveri** - → pri prázdnej pamäti vráti môj posledný `trash` z histórie, takže sa nestratí ani
+  pri inom zariadení. Plus diagnostika, kto pamäť vyprázdnil (príčina z testu #159/#160 neznáma). Čaká na súhlas.
 - **Slabina comm_setup:** textový reťazec čítaný regexom (`tags:delegate` ...) - krehké; presun do tabuľky s
   menovitými stĺpcami to odstráni.
 
