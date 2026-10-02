@@ -4126,6 +4126,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     user-select: none;
     cursor: pointer;
   }
+  /* [Zzz5-6:NEW-VERSION] pas navrchu, nad vsetkym */
+  .zzz5-6-newver {
+    position: fixed; left: 0; right: 0; top: 0; z-index: 99999;
+    padding: 6px 10px; border: none; border-bottom: 2px solid #171717;
+    background-color: #D4AF37; color: #171717;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.03em; text-align: center; cursor: pointer;
+  }
   /* [Zzz5-6:LIMIT-GRID] LIMIT: skupiny pod sebou, v skupine dva stlpce (popis nad polom) */
   .zzz5w7-limitgrp.is-next { margin-top: 6px; padding-top: 6px; border-top: 1px solid #e0d7bd; }
   .zzz5w7-limitgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; }
@@ -28998,7 +29005,59 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 13:08';
+const ZZZ5_6_BUILD = '2026-10-02 13:26';
+
+// === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
+// Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
+// `dblclick` - ten Chrome na Androide pri dotyku spolahlivo neposiela (Author workspace to vie od 1. 10.
+// a dvojtuk na taboch si meria sam). Tu je to iste pravidlo ako jedna funkcia: dva tuky do 400 ms
+// v niektorej zo "zon" (volne miesta listy a kostry okna) = povel. Tuk na tlacidlo/pole zonu prerusi,
+// takze dvojtuk na SELECT nikdy nezmeni velkost okna.
+function zzz5_6_bind_dbltap(root, zones, fn) {
+  let at = 0;
+  root.addEventListener('click', (e) => {
+    const t = e.target;
+    if (!zones.some(z => z && z.contains(t))) { at = 0; return; }
+    if (t.closest && t.closest('button, input, select, textarea, a, label')) { at = 0; return; }
+    const now = Date.now();
+    if (now - at < 400) { at = 0; fn(e); } else { at = now; }
+  });
+}
+
+// === [Zzz5-6:NEW-VERSION] upozornenie, ze na serveri je novsia verzia ===============================
+// Vrso 2026-10-02: "ako sa takto inak spolahnut, ci si ty nahodila na git??" - push aj Vercel boli
+// v poriadku, ale otvorena karta drzala verziu z 11:59 este o 13:18 (stranka sa neobnovila). Appka sa
+// preto sama pyta servera: HEAD dopyt (bez stahovania 2 MB suboru) vrati ETag; ked sa zmeni oproti
+// tomu, s ktorym sa stranka nacitala, navrchu sa ukaze pas "NEW VERSION - tap to reload".
+// Pyta sa pri navrate do karty a kazdych 5 minut. Nic sa nenacita samo - rozpisany text by sa stratil.
+(function zzz5_6NewVersionWatch() {
+  if (!/^https?:/.test(location.protocol)) return;
+  let first = null, shown = false;
+  const tag = async () => {
+    const r = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' });
+    return r.ok ? (r.headers.get('etag') || r.headers.get('last-modified') || '') : '';
+  };
+  const show = () => {
+    if (shown) return; shown = true;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'zzz5-6-newver';
+    b.textContent = 'NEW VERSION ON THE SERVER - tap to reload (yours: ' + ZZZ5_6_BUILD + ')';
+    b.addEventListener('click', () => location.reload());
+    document.body.appendChild(b);
+  };
+  const check = async () => {
+    try {
+      const t = await tag();
+      if (!t) return;
+      if (first === null) { first = t; return; }
+      if (t !== first) show();
+    } catch (e) { /* offline - skusi sa pri dalsom navrate */ }
+  };
+  check();
+  setInterval(check, 5 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+})();
 
 // === [Zzz5-6:TAB-NOTES] NOTES WINDOW jedneho tabu =================================================
 // Vrso 2026-10-01 (22:01): "podrzanim 1-2s pridaj do notes window pre tento tab (v nom ma byt attach
@@ -30112,6 +30171,13 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     }
   });
   head.appendChild(box.el);
+  // [Zzz5-6:DBLTAP] 2x tuk na NOTES bunku alebo volne miesto listy = WS-MAX (to iste, co 2x tuk na tab)
+  zzz5_6_bind_dbltap(win, [head], () => {
+    wsMax = !wsMax;
+    zzz_haptic_pulse(20);
+    wsApplyMax();
+    zzz6f2_show_toast(wsMax ? 'Maximised - covers the main module.' : 'Main module is back above.');
+  });
   // === [Zzz5-6:BAR-CONTENT] prepinac CONTENT v liste, hned za SHOW ===============================
   // Vrso 2026-10-02 (12:43): "ten content toggle (vyuzil by iba vyhladavanie v liste, pripadne
   // v kombinacii s limitom v show window) by som dal do show baru na listu napravo od show button."
@@ -32314,9 +32380,8 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     zzz1cn_fit_comm_window();
     requestAnimationFrame(alignGutter);   // [Zzz5-W7:GUTTER-WRAP] ina sirka = ine zalamovanie
   };
-  head.addEventListener('dblclick', zzz5w7ToggleFull);
+  // [Zzz5-6:DBLTAP] nativny dblclick uz nie - meria ho zzz5_6_bind_dbltap() nizsie (aj pre pas tabu)
   if (tabStrip) {   // [Zzz5-6:TAB-TITLE] pas nad hlavickou, 2x tuk = maximalizacia
-    tabStrip.addEventListener('dblclick', zzz5w7ToggleFull);
     // [Zzz5-6:TAB-ATTACH] Vrso 2026-10-02 (03:13): "attach pojde do listy, kde je aj nazov tohto notes...
     // ale uz celeho notes tab window ako attach". ATTACH zo zruseneho pasu vo workspace je teda TU, vedla
     // nazvu, a pripina CELE okno tabu - vsetky jeho poznamky, nie len suby odlozene v tomto otvoreni.
@@ -32406,7 +32471,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   // tak maximalizuj okno". Gesto tym ma uz TRI volne miesta okna (hlavicka, spodny pas, cislovaci stlpik)
   // a vsade znamena to iste. Samotne cisla su z neho vynate rovnakym pravidlom ako inde (BUTTON/INPUT):
   // dvojtuk na cislo je stale skok na riadok, nie zmena velkosti okna. ===
-  numsCol.addEventListener('dblclick', zzz5w7ToggleFull);
+  // [Zzz5-6:DBLTAP] dvojtuk na stlpik meria zzz5_6_bind_dbltap() nizsie
   const area = document.createElement('textarea');
   area.className = 'zzz5w7-text';
   area.spellcheck = false;
@@ -32416,8 +32481,17 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   // [Zzz5-W7:ADD-NOTE] pod telom, aby ho absolutne pozicovany stlpik neodtlacil a bol vzdy vidno
   const addRow = document.createElement('div');
   addRow.className = 'zzz5w7-addrow';
-  addRow.addEventListener('dblclick', zzz5w7ToggleFull);
   win.appendChild(addRow);
+  // [Zzz5-6:DBLTAP] 2x tuk na NOTE tlacidlo, volne miesta listy, cislovaci stlpik, spodny pas a pas tabu
+  // = maximalizacia / spat. NOTE tlacidlo je <span>, takze pravidlo "tlacidla nie" ho nevynima; jeho
+  // odlozeny klik (+add) sa pri dvojtuku zrusi, aby sa popri maximalizacii neotvoril aj riadok na pridanie.
+  zzz5_6_bind_dbltap(win, [head, numsCol, addRow, tabStrip], () => {
+    clearTimeout(titleTap);
+    win.classList.toggle('zzz5w7-full');
+    zzz5w7_dock_place();
+    zzz1cn_fit_comm_window();
+    requestAnimationFrame(alignGutter);
+  });
 
   let allNotes = [];
   // [Zzz5-W7:WORK-ORDER] @N kazdej poznamky - poradie v CELOM ulozenom zozname, nie vo vyfiltrovanom.
