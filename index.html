@@ -4115,6 +4115,16 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     user-select: none;
     cursor: pointer;
   }
+  /* [Zzz5-6:LIMIT-GRID] LIMIT: skupiny pod sebou, v skupine dva stlpce (popis nad polom) */
+  .zzz5w7-limitgrp.is-next { margin-top: 6px; padding-top: 6px; border-top: 1px solid #e0d7bd; }
+  .zzz5w7-limitgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; }
+  .zzz5w7-limitcell { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+  .zzz5w7-limitcell > span { font-size: 8.5px; font-weight: 700; letter-spacing: 0.03em; color: #6b6b6b; }
+  .zzz5w7-limitcell > input { width: 100%; min-width: 0; box-sizing: border-box; }
+  .zzz1cn-ws-window:not(.zzz5-6-with-content) .zzz5w7-limitcell[data-limit="CONTENT"] { display: none; }
+  /* [Zzz5-6:BAR-CONTENT] prepinac v liste za SHOW */
+  .zzz5-6-contenttg { flex: 0 0 auto; padding: 2px 6px; font-size: 10px; letter-spacing: 0.02em; }
+  .zzz5-6-contenttg.is-on { border-color: #D4AF37; background-color: #D4AF37; color: #171717; }
   /* [Zzz5-6:LIMIT-CONTENT] prepinac pola CONTENT v LIMIT */
   .zzz5w7-limittoggle { align-self: flex-start; margin: 4px 0 2px 0; padding: 2px 10px; font-size: 11px; }
   .zzz5w7-limittoggle.is-on { border-color: #D4AF37; color: #8a6d1f; }
@@ -4143,7 +4153,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   /* Vrso 2026-10-01: "content bunku mozes urobit ako STVOREC (vo velkosti sub bunky)." */
   .zzz1cn-ws-cardcontent {
     width: 30px;
-    height: 30px;
+    /* [Zzz5-6:CONT-SIZE] Vrso 2. 10.: "content ma byt vo velkosti sub bunky" - vyska ako tlacidlo subu */
+    height: 42px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -28966,7 +28977,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 12:17';
+const ZZZ5_6_BUILD = '2026-10-02 12:44';
 
 // === [Zzz5-6:TAB-NOTES] NOTES WINDOW jedneho tabu =================================================
 // Vrso 2026-10-01 (22:01): "podrzanim 1-2s pridaj do notes window pre tento tab (v nom ma byt attach
@@ -30021,6 +30032,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
                  priority: false, users: {},
                  usersq: '', open: false, progress: false, done: false, final: false, nameq: '' };
   let allNotes = [];
+  let wsContentOn = false;   // [Zzz5-6:BAR-CONTENT] hore, aby ho render() videl uz pri stavbe boxu
   let wsLoadErr = '';   // [Zzz5-6:WS-LOADSTATE] chyba nacitania - prazdny zoznam ju musi povedat
   let entryMap = {};
   // [Zzz1-CN:WS-FOLD] co je prave zlozene. Pohlad na TOTO otvorenie okna, nie nastavenie - preto nikam
@@ -30036,13 +30048,13 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     // [Zzz5-W7:FILTER-EXTRA] styri kriteria, ktore Vrso vymenoval ako "kam poznamka patri"
     // [Zzz5-6:SHOW-LIMIT] kriteria o ZAZNAME stoja v tabe LIMIT, nie medzi kriteriami poznamok
     limitPane: true,
-    extraFilters: [
-      { key: 'owner',   label: 'OWNER',   placeholder: 'project owner' },
-      { key: 'pname',   label: 'NAME',    placeholder: 'project name' },
-      { key: 'project', label: 'PROJECT', placeholder: 'project number' },
-      { key: 'entry',   label: 'ENTRY',   placeholder: 'entry number' },
-      { key: 'tag',     label: 'TAG',     placeholder: 'tag' },
-      { key: 'content', label: 'CONTENT', placeholder: 'in the record content', toggle: true }   // [Zzz5-6:LIMIT-CONTENT]
+    // [Zzz5-6:LIMIT-GRID] poradie a skupiny podla Vrsa (2. 10., 12:43); CONTENT je vidno, len ked je
+    // v liste zapnuty prepinac CONTENT ([Zzz5-6:BAR-CONTENT])
+    limitGroups: [
+      ['ENTRY NUMBER', 'PROJECT OWNER', 'PROJECT NAME', 'PROJECT NUMBER'],
+      ['SUBS', 'TAG', 'PRIVACY', 'SCHEDULE'],
+      ['PROJECT CATEGORY', 'THEME', 'DESCRIPTION', 'ENTRY DATE', 'LOCALIZATION', 'CONTENT'],
+      ['SIZE', 'PRIORITY', 'LINK', 'USER', 'COMMUNICATION', 'AMOUNT', 'CURRENCY', 'ACKNOWLEDGEMENT', 'STATUS']
     ],
     extraUsers: () => Object.keys(entryMap).map(k => entryMap[k].owner),
     // [Zzz1-CN:TAGS] slovnik je na zazname, workspace ich vidi mnoho - ponukne teda ZJEDNOTENIE
@@ -30079,6 +30091,30 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     }
   });
   head.appendChild(box.el);
+  // === [Zzz5-6:BAR-CONTENT] prepinac CONTENT v liste, hned za SHOW ===============================
+  // Vrso 2026-10-02 (12:43): "ten content toggle (vyuzil by iba vyhladavanie v liste, pripadne
+  // v kombinacii s limitom v show window) by som dal do show baru na listu napravo od show button."
+  // Zapnuty: hladanie v liste (‹ search ›) najde aj OBSAH zaznamu - zasah sa oznaci na jeho kocke CONT -
+  // a v SHOW > LIMIT sa objavi pole CONTENT. Vypnuty: obe zmiznu a pole CONTENT sa VYCISTI, aby skryte
+  // kriterium dalej netichlo filtrovalo. Vychodzi stav je VYPNUTY: CONTENT byva dlhy a kratke slovo by
+  // v nom naslo skoro vsetko.
+  const contentTg = document.createElement('button');
+  contentTg.type = 'button';
+  contentTg.className = 'zzz1cn-note-btn zzz5-6-contenttg';
+  contentTg.textContent = 'CONTENT';
+  contentTg.title = 'Off: search looks only in the notes. On: also in the CONTENT of their records (+ CONTENT in SHOW > LIMIT)';
+  contentTg.addEventListener('click', () => {
+    wsContentOn = !wsContentOn;
+    contentTg.classList.toggle('is-on', wsContentOn);
+    win.classList.toggle('zzz5-6-with-content', wsContentOn);
+    if (!wsContentOn && view.limit && String(view.limit.CONTENT || '').trim()) {
+      view.limit.CONTENT = '';
+      win.querySelectorAll('.zzz5w7-limitcell[data-limit="CONTENT"] input').forEach(i => { i.value = ''; });
+    }
+    zzz_haptic_pulse(15);
+    render();
+  });
+  head.appendChild(contentTg);
   // [Zzz5-W7:FILTER-MOVE] to iste aj tu - box zije v okne workspacu a da sa podrzanim presunut
   box.enableMove(win, head);
 
@@ -30282,8 +30318,16 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     if (!has(c.project, ex.project)) return false;
     if (!has(c.owner, ex.owner)) return false;
     if (!has(c.tag, ex.tag)) return false;
-    if (!has(c.projectName, ex.pname)) return false;      // [Zzz5-6:SHOW-LIMIT]
-    if (!has(c.content, ex.content)) return false;        // [Zzz5-6:LIMIT-CONTENT]
+    // [Zzz5-6:LIMIT-GRID] stlpce zaznamu z LIMIT - ciarka = ALEBO; zaznam, ktory sa nenacital, neprejde
+    const lim = view.limit || {};
+    for (const label of Object.keys(lim)) {
+      const toks = String(lim[label] || '').split(',').map(t => zzz10v1_normalize(t.trim())).filter(Boolean);
+      if (!toks.length) continue;
+      const rec = entryMap[String(n.entry_key || '')];
+      if (!rec) return false;
+      const val = zzz10v1_normalize(zzz1cn_scrm_value(rec, label));
+      if (!toks.some(t => val.includes(t))) return false;
+    }
     // [Zzz1-CN:TAGS] pozor na dve rozne veci s podobnym nazvom: kriterium TAG hore je stitok ZAZNAMU
     // (pole zaznamu), zaskrtnute chipy TAGS su stitky POZNAMKY. Chipy su medzi sebou ALEBO.
     const tagPick = Object.keys(view.tags || {});
@@ -30319,7 +30363,9 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
 
   // --- vykreslenie: PROJECT -> ENTRY -> # poznamky ---
   let findIdx = -1;
-  const shown = () => Array.from(body.querySelectorAll('.zzz1cn-ws-note'));
+  // [Zzz5-6:BAR-CONTENT] so zapnutym CONTENT su zasahom aj kocky CONT (nesu obsah zaznamu v dataset)
+  const shown = () => Array.from(body.querySelectorAll(
+    wsContentOn ? '.zzz1cn-ws-note, .zzz1cn-ws-cardcontent[data-zzz1cn-hay]' : '.zzz1cn-ws-note'));
   const findHits = () => {
     const q = zzz10v1_normalize(searchIn.value.trim());
     if (!q) return [];
@@ -30524,6 +30570,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
         cBtn.textContent = cVal ? 'CONT' : '—';
         cBtn.classList.toggle('is-empty', !cVal);
         cBtn.title = cVal ? 'CONTENT of #' + ek + ' - tap opens it' : 'This record has no CONTENT';
+        if (cVal) cBtn.dataset.zzz1cnHay = cVal;   // [Zzz5-6:BAR-CONTENT]
         cBtn.addEventListener('click', () => {
           if (!cVal) { zzz6f2_show_toast('This record has no CONTENT.', 'warn'); return; }
           zzz6f29_open_readonly_viewer('CONTENT #' + ek, cVal, null);
@@ -31122,8 +31169,10 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
   // sklada z chipov vsetkych prave viditelnych zaznamov; ked okno ziadne nedodá (Notes okno jedneho
   // zaznamu), riadok sa vobec nekresli - jeden zaznam ma jeden SUBS a filtrovat sa v nom nema co.
   let paintSubs = () => {};
+  let subsRowEl = null;   // [Zzz5-6:LIMIT-GRID] LIMIT si ho zaradi medzi svoje skupiny
   if (typeof opts.subsList === 'function') {
     const sRow = document.createElement('div');
+    subsRowEl = sRow;
     sRow.className = 'zzz5w7-filteritem zzz5w7-tagrow';
     const sLab = document.createElement('span');
     sLab.textContent = 'SUBS';
@@ -31358,6 +31407,46 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
   // project owner, tag). Su to obycajne textove polia, ktore pisu do view.extra[key]; okno si ich potom
   // vyhodnoti samo, lebo len ono vie, co tie hodnoty v jeho svete znamenaju. Zdielany box tak nemusi
   // vediet nic o projektoch - ostava tym, cim je: spolocnym tvarom kriterii. ===
+  // === [Zzz5-6:LIMIT-GRID] LIMIT podla COMMAND LINE ==============================================
+  // Vrso 2026-10-02 (12:43): "urob teda tab limitu podla command lines... zakladne ako entry num, project
+  // owner, project name, potom subs/tags/privacy/schedule a potom project category/theme/description/
+  // entry date/localisation/content... na spodok asi zvysok... kludne ich do riadkov rozlis a do stlpcov."
+  // Kazde pole je STLPEC zaznamu z command line (ZZZ_FULL_DISPLAY_FIELDS) a hodnotu cita to iste
+  // zzz1cn_scrm_value(), ktore pouzivala notes CRM - takze LIMIT a CRM nemozu ten isty stlpec citat inak.
+  // Skupiny su riadky podla toho, ako casto sa pouziju; v skupine dva stlpce, aby sa to zmestilo.
+  // Ciarka v poli = ALEBO (ako v CRM). SUBS je chipovy riadok zo zaznamov ([Zzz1-CN:WS-SUBS]).
+  if (!view.limit) view.limit = {};
+  const limitInputs = [];
+  (opts.limitGroups || []).forEach((grp, gi) => {
+    const g = document.createElement('div');
+    g.className = 'zzz5w7-limitgrp' + (gi ? ' is-next' : '');
+    const grid = document.createElement('div');
+    grid.className = 'zzz5w7-limitgrid';
+    grp.forEach(label => {
+      if (label === 'SUBS') {           // chipy maju vlastny riadok cez celu sirku
+        if (subsRowEl) g.appendChild(subsRowEl);
+        return;
+      }
+      const cell = document.createElement('label');
+      cell.className = 'zzz5w7-limitcell';
+      cell.dataset.limit = label;
+      const lab = document.createElement('span');
+      lab.textContent = label;
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'zzz5w7-namefil zzz5w7-limitfil';
+      inp.placeholder = 'contains (a, b = or)';
+      inp.value = view.limit[label] || '';
+      inp.addEventListener('input', () => { view.limit[label] = inp.value; onChange(); });
+      cell.appendChild(lab); cell.appendChild(inp);
+      grid.appendChild(cell);
+      limitInputs.push(inp);
+      reg('limit:' + label, inp, () => view.limit[label] || '',
+        (v) => { view.limit[label] = v || ''; inp.value = v || ''; });
+    });
+    g.appendChild(grid);
+    paneLimit.appendChild(g);
+  });
   if (!view.extra) view.extra = {};
   (opts.extraFilters || []).forEach(f => {
     const row = document.createElement('div');
@@ -31641,6 +31730,7 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
     view.dfrom = ''; view.dto = ''; view.sort = ''; sortPaint();   // [Zzz1-CN:TIME]
     view.extra = {};                                  // [Zzz5-W7:FILTER-EXTRA]
     extraInputs.forEach(el => { el.value = ''; });
+    view.limit = {}; limitInputs.forEach(el => { el.value = ''; });   // [Zzz5-6:LIMIT-GRID]
     hide.time = false;                                // [Zzz1-CN:TIME]
     hide.attention = false; hide.urgent = false;      // [Zzz1-CN:PRIO3]
     hide.txt = ''; hide.ord = false; hide.ordq = 0; hide.name = false; hide.user = false;
@@ -31724,6 +31814,7 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
       + Object.keys(view.users).filter(k => view.users[k]).length
       + (zzz5w7_user_tokens(view.usersq).length ? 1 : 0)
       + Object.keys(view.extra || {}).filter(k => String(view.extra[k] || '').trim()).length
+      + Object.keys(view.limit || {}).filter(k => String(view.limit[k] || '').trim()).length   // [Zzz5-6:LIMIT-GRID]
       + ((view.dfrom || view.dto) ? 1 : 0)            // [Zzz1-CN:TIME]
       + (view.sort ? 1 : 0)
       + (String(view.q || '').trim() ? 1 : 0);
