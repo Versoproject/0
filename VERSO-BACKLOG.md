@@ -472,8 +472,8 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
 | `verso_chat_notes` | RLS podľa `verso_jwt_username()` (autor) - OK |
 | `verso_comm_users` | trigger `verso_comm_users_can_write` + zákaz eskalácie (v6) - OK |
 | `verso_placements` | RLS vlastné riadky (v1) - OK |
-| `verso_entries` INSERT | `verso_entries_owner_is_session_v1.sql` (5., poslané 00:39; owner = prihlásený) |
-| `verso_entries` UPDATE / SELECT | `true` - návrh `verso_entries_rls_update_v1` čaká; SELECT podľa pravidiel viditeľnosti |
+| `verso_entries` INSERT | `verso_entries_owner_is_session_v1.sql` (5.) NASADENÉ 3. 10. 00:39 - nový CL aj nová verzia (#158 z #157) otestované OK |
+| `verso_entries` UPDATE / SELECT | `true` - čaká na výsledok `verso_entries_dump_v1.sql` (6.), potom návrh; SELECT podľa pravidiel viditeľnosti |
 | `verso_entries.comm_setup` | presunúť do vlastnej chránenej tabuľky `verso_comm_setup` - návrh |
 | `verso_consents` | OK (dump 3. 10.): INSERT len za seba (trigger prepíše username = prihlásený), člen USER/COMMUNICATION alebo owner podľa záznamu; UPDATE/DELETE nie je |
 | `verso_comm_users` policy | chyba `d.entry_key = d.entry_key` (vždy true) - trigger to kryl; `verso_comm_users_policy_fix_v1.sql` (2.) NASADENÉ 3. 10. 00:31 - OK |
