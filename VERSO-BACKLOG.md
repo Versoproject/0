@@ -488,6 +488,19 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
 | `verso_trash` | len SELECT vlastných, zápis cez server - OK |
 | `verso_note_tabs` | neoverené (nie je v dumpe) |
 
+### DELEGÁT - STOPA ZMIEN (Vrso 3. 10., 00:50: „owner má záznamy, čo urobil delegát v owner projekte, tak?")
+- **Práva** delegáta stráži server (comm_setup mení len owner; `verso_comm_users_can_write` + zákaz eskalácie;
+  `verso_entries_restrict_update`; `verso_chat_notes_check_private`) - delegát nemôže prekročiť, čo mu owner dal.
+- **Stopa NIE JE úplná (stav 3. 10.):** poznámky/chat delegáta áno (autor + nemenný text). Ale zmeny v
+  `verso_comm_users` (zaškrtávatká) a v `tag_vocab` sa **prepisujú na mieste** - ostane len posledný stav a čas,
+  nie KTO a ČO zmenil. `verso_audit_log` zapisuje appka sama (dá sa sfalšovať) - nie je dôkaz.
+- **Návrh:** serverová append-only história (`verso_comm_history`) - trigger zapíše kto (`verso_jwt_username()`),
+  kedy, starý a nový stav pri každej zmene `verso_comm_users`, `comm_setup`, `tag_vocab`; čítať smie owner
+  záznamu (a dotknutý user svoje riadky). Zápis len trigger, UPDATE/DELETE nikto. Neskôr spolu s presunom
+  comm_setup do chránenej tabuľky.
+- **Slabina comm_setup:** textový reťazec čítaný regexom (`tags:delegate` ...) - krehké; presun do tabuľky s
+  menovitými stĺpcami to odstráni.
+
 ### CONTACTS REGISTER (Vrso 2. 10., 23:55 / 3. 10., 00:14)
 - **Postavené:** register = verifikačná databáza (registrované usernames, `verso_verification_public`, bez
   emailov); doplňovanie mien v CONTACTS = moje záznamy + registrované usernames (`[Zzz1-R17b:CONTACTS-REGISTRY]`).
