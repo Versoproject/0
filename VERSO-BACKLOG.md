@@ -571,6 +571,27 @@ Ak ti prepisovanie začne prekážať, je to ten smer.
 
 ---
 
+## B2. NÁPADY / IDEAS (neskôr, zatiaľ sa nestavia)
+
+### I1. VERSO HISTORY → RESTORE TO DATE (Vrso 3. 10., 01:26)
+- `verso_history` (nasadené 3. 10.) neskôr prepojiť s **Restore to date** v Settings → Restore: poskladať stav
+  k zvolenému času z verzií + histórie, obnova nič neprepisuje (len zapíše nové stavy), spustenie schvaľuje
+  **multiverifikácia**. Podrobne v časti „DELEGÁT - STOPA ZMIEN".
+
+### I2. CUDZIE ZARIADENIE - ROZPRACOVANÉ DÁTA V SÚBORE `.verso` (Vrso 3. 10., 01:26)
+- Cieľ: na cudzom zariadení nič neostane, ale ani sa nestratí rozpracovaná práca.
+- **Rozdelenie EL / CL:** EL (uložené záznamy) idú online hneď a automaticky; CL (rozpracované) sa pri odchode /
+  výpadku zabalí do **komprimovaného, zašifrovaného súboru `.verso`**, ktorý prečíta **len Verso po
+  multiverifikácii**.
+- **Prenos:** USB / Bluetooth / Wi-Fi na vlastný mobil (systémové „Zdieľať" / stiahnutie súboru).
+- **Nahratie:** na vlastnom zariadení IMPORT `.verso` → do **fronty** (outbox) → po multiverifikácii sa rozbalí
+  do CL / fronty → ENTER ako bežne (server overí owner = prihlásený, zapíše históriu).
+- Otvorené otázky: kto drží kľúč (návrh: verejný kľúč Versa / usera na šifrovanie, dešifruje len server po
+  multiverifikácii - cudzie zariadenie nemá nič čitateľné); online cesta bez súboru (zašifrovaný koncept rovno do
+  vlastnej serverovej fronty, keď je sieť); podpis/hash proti podvrhnutiu súboru.
+
+---
+
 ## C. PRAVIDLÁ, KTORÉ PLATIA (nie úlohy, ale záväzné pri každej zmene)
 
 ### C0. GITHUB — odkiaľ sa berie a kam sa zapisuje `index.html`
