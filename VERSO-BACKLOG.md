@@ -515,6 +515,13 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
   s PWA IndexedDB) - prežijú reload; (2) uložené záznamy (ENTER / kôš / obnova / verzia) = **zdroj pravdy je
   `verso_history` na serveri** - → pri prázdnej pamäti vráti môj posledný `trash` z histórie, takže sa nestratí ani
   pri inom zariadení. Plus diagnostika, kto pamäť vyprázdnil (príčina z testu #159/#160 neznáma). Čaká na súhlas.
+- **CUDZIE ZARIADENIE = LOKÁLNA CACHE NA MINIMUM (Vrso 3. 10., 01:17):** Verso je online systém, zdroj pravdy je
+  server. Návrh: pri logine voľba **MY DEVICE / FOREIGN DEVICE** (predvolené FOREIGN - bezpečnejšie). FOREIGN: nič sa
+  neukladá do úložiska zariadenia (len pamäť stránky), žiadna PWA dátová cache (len samotná appka), pri výpadku DB
+  sa neukladá do fronty, ale upozorní; pri LOG OUT / zatvorení sa zmaže všetko Verso z prehliadača; kratší
+  auto-logout. MY DEVICE: lokálna cache a offline povolené (pamäť krokov, koncepty, fronta). Dnes appka ukladá
+  lokálne ~25 druhov údajov (koncepty CL, neodoslané záznamy, fronta chatnotes, taby, cache comm setup / refs,
+  posledné meno ...) - treba audit, čo z toho ostáva po LOG OUT. Súvisí s pamäťou krokov vyššie (vrstva 1 len na MY DEVICE).
 - **Slabina comm_setup:** textový reťazec čítaný regexom (`tags:delegate` ...) - krehké; presun do tabuľky s
   menovitými stĺpcami to odstráni.
 
