@@ -9759,7 +9759,9 @@ function zzz_flash_elements(elements, ms) {
 // selectstart/contextmenu a priebezne rusenie uz vzniknuteho vyberu POCAS drzania (80ms interval, rovnaky
 // vzor ako zzz1m4a_bind_mini_checklist_only). Pouziva sa VZDY spolu so zzz_bind_long_press, nikdy namiesto
 // neho. | Vrso -> Claude AI | 2026-09-19 ===
-function zzz_bind_hold_selection_guard(el) {
+// [Zzz5-6:SCROLL-SUBS] opts.allowScroll = prst smie po prvku scrollovat (zoznam subov vo workspace) -
+// vyber textu a kontextove menu ostavaju zablokovane, len sa nezakazuje posun.
+function zzz_bind_hold_selection_guard(el, opts) {
   // [Zzz6-X:NATIVE-PASTE-IN-FIELDS] 2026-09-21 - poistka do buducna: ak by sa guard niekedy pouzil na kontajner,
   // ktory obsahuje textove pole, nativne menu (Vlozit/Kopirovat) a vyber textu v POLI zostanu funkcne. | Vrso -> Claude AI | 2026-09-21
   const zzzIsTextField = (e) => !!(e.target && e.target.closest && e.target.closest('input, textarea'));
@@ -9794,7 +9796,10 @@ function zzz_bind_hold_selection_guard(el) {
   // Bez toho staci, ze sa stranka posunie o par pixelov, a dotyk sa zmeni na scroll gesto - 3s casovac sa
   // zrusi a vyzera to, ze "podrzanie nefunguje". Samotne CSS touch-action:none na to na tomto Android/
   // Chrome kombe nestacilo. | Vrso -> Claude AI | 2026-09-19 ===
-  el.addEventListener('touchmove', (e) => { if (isHolding && e.cancelable) e.preventDefault(); }, { passive: false });
+  el.addEventListener('touchmove', (e) => {
+    if (opts && opts.allowScroll) return;   // [Zzz5-6:SCROLL-SUBS]
+    if (isHolding && e.cancelable) e.preventDefault();
+  }, { passive: false });
   ['touchend', 'touchcancel', 'mouseup', 'mouseleave'].forEach(ev => el.addEventListener(ev, holdEnd));
   return holdEnd;
 }
@@ -29110,7 +29115,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 14:43';
+const ZZZ5_6_BUILD = '2026-10-02 14:45';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -30787,7 +30792,9 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     // jedneho stlpca". Myslel to, co bolo na obrazovke - VLASTNE STLPCE, ale slova v hlavicke POD SEBOU.
     // Prave to je ten trik: stlpec potom plati sirku najdlhsieho SLOVA ("PROJECT" ~28 px), nie celeho
     // popisu ("PROJECT OWNER" ~58 px). Tri kriteria tak zaberu ~110 px namiesto 164 a zvysok ide SUBS.
-    [['PROJECT', 'OWNER'], ['PROJECT', 'NAME'], ['ENTRY', 'NUMBER'], ['SUBS'], ['CONTENT']].forEach(labels => {
+    // [Zzz5-6:SUB-NOTES] Vrso 2026-10-02 (14:45): "lepsie by bolo ich oznacovat ako SUB NOTES, aspon kym sa
+    // nezauziva" - v stlpci su POZNAMKY zaznamu, nie pole SUBS zaznamu; dve rozne veci s jednym nazvom
+    [['PROJECT', 'OWNER'], ['PROJECT', 'NAME'], ['ENTRY', 'NUMBER'], ['SUB', 'NOTES'], ['CONTENT']].forEach(labels => {
       const th = document.createElement('div');
       th.className = 'zzz1cn-ws-th';
       labels.forEach(l => { const d = document.createElement('div'); d.textContent = l; th.appendChild(d); });
@@ -30890,7 +30897,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
           const f = document.createElement('button');
           f.type = 'button';
           f.className = 'zzz1cn-ws-subfold';
-          f.textContent = '▸ ' + notesOf.length + ' sub' + (notesOf.length === 1 ? '' : 's');
+          f.textContent = '▸ ' + notesOf.length + ' sub note' + (notesOf.length === 1 ? '' : 's');
           f.title = 'Folded - tap shows them again';
           f.addEventListener('click', () => {
             // otvori VSETKY urovne naraz: clovek tukol na "ukaz mi ich", nie na "ktoru zlozku"
@@ -31030,7 +31037,11 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
           // 3s otvor note tab window - neviem, preco si nespravila"): dlhe podrzanie na texte spusti
           // nativny vyber a kontextove menu, a tie zhltnu touchend, takze sa povel nikdy nevyhodnoti.
           // Ten isty guard uz drzi kazde ine podrzanie v tomto subore.
-          zzz_bind_hold_selection_guard(b);
+          // [Zzz5-6:SCROLL-SUBS] Vrso 2026-10-02 (14:45): "nejde scrollovat subs". Guard zakazoval prehliadacu
+          // posun, kym prst lezi na tlacidle - a suby pokryvaju takmer cely zoznam, takze sa nedalo scrollovat
+          // vobec. Tu sa posun povoli: pohnuty prst = scroll a tlacidlo sa nespusti ([Zzz5-6:TAP-VS-SCROLL]),
+          // nepohnuty prst = tuk alebo podrzanie ako doteraz.
+          zzz_bind_hold_selection_guard(b, { allowScroll: true });
           tdSubs.appendChild(b);
         });
         // (b) SUBS ZAPISANE V ZAZNAME sa tu UZ NEKRESLIA.
