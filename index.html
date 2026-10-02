@@ -4092,6 +4092,17 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz1cn-ws-tbl > .zzz1cn-ws-subpanel { grid-column: 1 / -1; margin: 0 4px 4px 4px; }
   /* [Zzz5-6:TAB-INLINE] NOTES TAB okno vlozene pod riadkom zaznamu - cez celu sirku tabulky */
   .zzz1cn-ws-tbl > .zzz5-6-tabwin-holder { grid-column: 1 / -1; margin: 0 0 6px 0; }
+  /* [Zzz5-6:WS-DOCK] spodna polovica workspacu - zoznam hore a okno dole maju kazdy svoj scroll */
+  .zzz5-6-wsdock { flex: 0 0 50%; min-height: 0; display: flex; flex-direction: column; margin-top: 4px; }
+  .zzz5-6-wsdock:empty { display: none; }
+  .zzz5-6-wsdock > .zzz1cn-list-window.zzz5-6-inline {
+    flex: 1 1 auto; min-height: 0; height: auto !important; max-height: none !important; margin: 0;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .zzz5-6-wsdock > .zzz1cn-list-window.zzz5-6-inline > .zzz5w7-body { flex: 1 1 auto; min-height: 0; }
+  .zzz5-6-wsdock > .zzz1cn-list-window.zzz5-6-inline .zzz5w7-text { height: 100% !important; min-height: 0; resize: none; }
+  .zzz1cn-ws-window.zzz5-6-dockmax > .zzz5-6-wsdock { flex: 1 1 100%; }
+  .zzz1cn-ws-window.zzz5-6-dockmax > .zzz1cn-ws-body { display: none; }
   /* [Zzz5-6:WORK-NOTE] slot pre prilepeny rozpracovany note - nad zoznamom, mimo prekreslovania */
   .zzz5-6-wspin { flex: 0 0 auto; margin: 0 0 6px 0; }
   .zzz5-6-wspin:empty { display: none; }
@@ -4158,8 +4169,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
      sirku - text v poli sa da doscrollovat, takze zmrastenie nic nestoji. */
   .zzz1cn-list-head .zzz1cn-note-btn.zzz5-6-contenttg { padding: 0 !important; font-size: 7.5px !important; }
   .zzz1cn-list-head .zzz5-6-contenttg > span { padding: 0 2px; }
-  .zzz1cn-ws-window .zzz1cn-list-head.is-wrapped .zzz5w7-findwrap,
-  .zzz1cn-ws-window .zzz1cn-list-head.is-tight .zzz5w7-findwrap { flex: 1 1 70px; min-width: 0; }
+  /* LEN v zalomenej liste: v "is-tight" by nulova min. sirka zabranila zisteniu, ze lista pretieka
+     ([Zzz5-W7:HEAD-FIT] meria pretecenie), a hladanie by sa zmackalo pod ostatne tlacidla */
+  .zzz1cn-ws-window .zzz1cn-list-head.is-wrapped .zzz5w7-findwrap { flex: 1 1 70px; min-width: 0; }
   .zzz1cn-ws-window .zzz1cn-list-head .zzz5w7-findwrap .zzz5w7-search { min-width: 16px; }
   .zzz5-6-contenttg > .is-note { background-color: #7b2ff7; color: #fff; }
   .zzz5-6-contenttg > .is-cont { background-color: #fff; color: #171717; }
@@ -29116,7 +29128,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 14:49';
+const ZZZ5_6_BUILD = '2026-10-02 15:01';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -30364,15 +30376,13 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
   const openWorkNote = () => {
     const key = zzz5_6WorkKey || zzz1cn_key_for(null);
     document.querySelectorAll('.zzz5-6-tabwin-holder').forEach(h => h.remove());
-    if (!wsPin.isConnected && body && body.parentNode) body.parentNode.insertBefore(wsPin, body);
-    wsPin.innerHTML = '';
     const rec = entryMap[key];
     const info = /^\d+$/.test(key)
       ? { owner: (rec && rec.owner) || '', name: (rec && rec.projectName) || '', project: (rec && rec.project) || '',
           category: String(((rec && rec.f) || {}).r5 || '') }
       : { draft: true };
     zzz_haptic_pulse(15);
-    zzz1cn_open_list(key, null, null, { inlineIn: wsPin, stripInfo: info });
+    zzz1cn_open_list(key, null, null, { inlineIn: wsDock, stripInfo: info });   // [Zzz5-6:WS-DOCK]
   };
   title.addEventListener('click', () => {
     clearTimeout(wsTitleTap);
@@ -30516,27 +30526,11 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     // poznamky. Je to stale to iste Notes okno (zzz1cn_open_list), len vlozene, nie plavajuce.
     // [Zzz5-6:NOTE-INLINE] key/focus/info: okno ZAZNAMU (tuk na sub) - inak okno tabu (3s)
     const openInline = (afterCell, key, focus, info) => {
+      // [Zzz5-6:WS-DOCK] uz nie pod riadok tabulky, ale do doku (afterCell ostava kvoli volaniam, nepouziva sa)
       zzz_haptic_pulse(20);
       document.querySelectorAll('.zzz5-6-tabwin-holder').forEach(h => h.remove());
-      const holder = document.createElement('div');
-      holder.className = 'zzz5-6-tabwin-holder';
-      afterCell.after(holder);
-      // [Zzz5-6:TAB-WIDE] Vrso 2026-10-02 (13:07): "mozes sirsie az po konce stranky, ale tak, aby bolo
-      // vidiet ohranicenie fialovou". Okno sa vytiahne z tabulky na celu sirku zoznamu (body workspacu) -
-      // dalej nejde, lebo zoznam ma vlastny scroll a sirsie by sa orezalo aj s fialovym ramom.
-      const tblEl = holder.parentElement;
-      const scroller = holder.closest('.zzz1cn-ws-body') || tblEl;
-      if (tblEl) tblEl.classList.add('has-tabwin');
-      const fit = () => {
-        if (!holder.isConnected) { window.removeEventListener('resize', fit); return; }
-        const tr = tblEl.getBoundingClientRect(), br = scroller.getBoundingClientRect();
-        holder.style.marginLeft = Math.round(br.left - tr.left + 2) + 'px';
-        holder.style.width = Math.round(br.width - 4) + 'px';
-      };
-      fit();
-      window.addEventListener('resize', fit);
-      zzz1cn_open_list(key || zzz5_6_tab_entry_key(activeTab), null, focus || null, { inlineIn: holder, stripInfo: info || null })
-        .then(() => holder.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+      zzz1cn_open_list(key || zzz5_6_tab_entry_key(activeTab), null, focus || null,
+        { inlineIn: wsDock, stripInfo: info || null });
     };
     return { el: w, paint, open, openInline };
   })();
@@ -30595,6 +30589,22 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
   const body = document.createElement('div');
   body.className = 'zzz1cn-ws-body';
   win.appendChild(body);
+  // === [Zzz5-6:WS-DOCK] spodna polovica workspacu pre JEDNO otvorene okno poznamok =====================
+  // Vrso 2026-10-02 (14:59): "ked otvorim sub/note, tak nejde scrollovat ten hore, co je tab note... ak ich
+  // pootvaram v inom poradi, ide to aj scrollovat, ale chaoticky" + "potrebujem, aby som otvoril 156 napr.
+  // na polku obrazovky, kde ju kotvi show bar resp. notes lista. Hore chcem mat vyfiltrovany notes tab, ale
+  // hlavne ho ma prekryvat (ked stlacim NOTE button) rozpracovany... ked pozatvaram otvorene notes, ostane
+  // obsah note tabu."
+  // Okna sa uz NEVKLADAJU do tabulky (scroll vnutri scrollu = chaos) ani nad nu. Workspace je rozdeleny:
+  //   hore  = zoznam tabu (vlastny scroll)
+  //   dole  = DOK na polovicu vysky; v nom vzdy LEN JEDNO okno - sub (tuk), okno tabu (3 s), rozpracovany
+  //           note (tuk na NOTES). Nove okno to predosle NAHRADI. Hlavicka okna (+add NOTE / SHOW...) je
+  //           horna hrana doku, takze okno "kotvi" jeho lista.
+  // Zatvorenim okna dok zmizne a zoznam tabu ma znova celu vysku. 2x tuk na volne miesto okna = dok cez
+  // celu vysku workspacu (zoznam sa schova) a spat.
+  const wsDock = document.createElement('div');
+  wsDock.className = 'zzz5-6-wsdock';
+  win.appendChild(wsDock);
 
   // --- co prejde filtrom ---
   const ctxOf = (n) => entryMap[String(n.entry_key || '')] || { entry: String(n.entry_key || ''),
@@ -32662,7 +32672,15 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   close.title = 'Close';
   close.addEventListener('click', () => {
     // [Zzz5-6:TAB-INLINE] vlozene okno zavrie len samo seba - workspace okolo neho ostava
-    if (inlineIn) { win.remove(); inlineIn.remove(); return; }
+    if (inlineIn) {
+      win.remove();
+      // [Zzz5-6:WS-DOCK] dok ostava (je to miesto vo workspace, nie obal okna) - len sa vyprazdni
+      if (inlineIn.classList.contains('zzz5-6-wsdock')) {
+        const ws = inlineIn.closest('.zzz1cn-ws-window');
+        if (ws) ws.classList.remove('zzz5-6-dockmax');
+      } else inlineIn.remove();
+      return;
+    }
     zzz5w7_dock_stop(); win.remove(); zzz1cn_fit_comm_window();
     // [Zzz5-6:WS-RETURN] prisiel som sem z Author workspacu - vratim sa don, nie na hlavnu stranku
     if (returnToWs) zzz1cn_open_notes_workspace(null);
@@ -32792,6 +32810,13 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   // odlozeny klik (+add) sa pri dvojtuku zrusi, aby sa popri maximalizacii neotvoril aj riadok na pridanie.
   zzz5_6_bind_dbltap(win, [head, numsCol, addRow, tabStrip], () => {
     clearTimeout(titleTap);
+    // [Zzz5-6:WS-DOCK] okno v doku sa nemaximalizuje samo - roztiahne sa DOK cez cely workspace a spat
+    if (inlineIn && inlineIn.classList.contains('zzz5-6-wsdock')) {
+      const ws = inlineIn.closest('.zzz1cn-ws-window');
+      if (ws) ws.classList.toggle('zzz5-6-dockmax');
+      requestAnimationFrame(alignGutter);
+      return;
+    }
     win.classList.toggle('zzz5w7-full');
     zzz5w7_dock_place();
     zzz1cn_fit_comm_window();
