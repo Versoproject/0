@@ -4275,6 +4275,11 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz5-6-tabstrip.is-entry { gap: 4px; text-transform: none; }
   .zzz5-6-tabstrip-lab { color: #8a7bb0; font-weight: 600; font-size: 7.5px; letter-spacing: 0.05em; }
   .zzz5-6-tabstrip-val { color: #4a2a8a; font-weight: 700; font-size: 9px; margin-right: 6px; }
+  /* [Zzz5-6:COPY-RIGHT] kopirovanie zakazane v comm setup - tlacidlo zasedne (klik povie preco) */
+  .zzz1cn-list-head .zzz5-6-copy-off { opacity: 0.35; filter: grayscale(1); }
+  .zzz5w7-inline-tag.is-ref { cursor: pointer; text-decoration: underline dotted; }   /* [Zzz5-6:REF-ON-SAVE] */
+  .zzz5w7-inline-tag.is-dropped { text-decoration: none; opacity: 0.7; }
+  .zzz5-6-tabstrip-val.is-unset { color: #a89668; font-weight: 600; font-style: italic; }   /* [Zzz5-6:WORK-STRIP] */
   .zzz5-6-tabstrip .zzz5-6-strip-entry { margin-right: 6px; padding: 0 6px; font-size: 9px; line-height: 1.5; }
   .zzz5-6-tabstrip-attach.zzz1cn-ws-subattach {
     position: absolute; right: 4px; top: 50%; transform: translateY(calc(-50% - 3px));   /* [Zzz5-6:STRIP-UP] o kustik vyssie */
@@ -12419,8 +12424,11 @@ const ZZZ1CN_NOTIFY_KEYS = { owner: 'notify_owner', delegate: 'notify_delegate',
 // [Zzz1-CN:PRIVATE-GATE] "private" = kto smie v tomto zazname napisat PRIVATNU poznamku. Vychodzi stav
 // je ZAMERNE 'all', na rozdiel od ostatnych riadkov: tak sa appka spravala doteraz a nove pravidlo nesmie
 // ticho zamknut projekty, ktore o nom nevedia. Prisnost si owner zapne vedome.
+// [Zzz5-6:COPY-RIGHT] "copy" = kto smie z poznamok tohto zaznamu KOPIROVAT (COPY, COPY ALL, COPY TO,
+// odkaz na poznamku vo WORK NOTE). Vychodzie 'all' z toho isteho dovodu ako private: nove pravidlo nesmie
+// ticho zamknut projekty, ktore o nom nevedia - prisnost si owner zapne vedome. (Vrso 2026-10-02 21:45)
 const ZZZ1CN_SETUP_DEF = {
-  contacts: 'owner', chats: 'owner', tags: 'owner', private: 'all',
+  contacts: 'owner', chats: 'owner', tags: 'owner', private: 'all', copy: 'all',
   notify_owner: 'all', notify_delegate: 'all', notify_users: 'all'
 };
 function zzz1cn_level_rank(v) {
@@ -12442,14 +12450,14 @@ function zzz1cn_setup_parse(raw) {
       return;
     }
     if (/^notify_(owner|delegate|users)$/.test(k)) { if (v === 'all' || v === 'mentions') out[k] = v; return; }
-    if ((k === 'contacts' || k === 'chats' || k === 'tags' || k === 'private')
+    if ((k === 'contacts' || k === 'chats' || k === 'tags' || k === 'private' || k === 'copy')
         && ZZZ1CN_LEVELS.indexOf(v) >= 0) out[k] = v;
   });
   return out;
 }
 function zzz1cn_setup_build(s) {
   const v = Object.assign({}, ZZZ1CN_SETUP_DEF, s || {});
-  return `contacts:${v.contacts}, chats:${v.chats}, tags:${v.tags}, private:${v.private}, `
+  return `contacts:${v.contacts}, chats:${v.chats}, tags:${v.tags}, private:${v.private}, copy:${v.copy}, `
        + `notify_owner:${v.notify_owner}, notify_delegate:${v.notify_delegate}, notify_users:${v.notify_users}`;
 }
 // akú ROLU ma tento user na tomto zazname
@@ -12465,7 +12473,7 @@ function zzz1cn_role_of(entryKey, name) {
 // neriadi - jeho tri zaskrtavatka platia miesto nich. Preto sa vynimka pyta PRVA.
 // [Zzz1-CN:ROLE-WINDOWS] od v4 nesie vlastne zaskrtavatka aj DELEGAT, nielen vynimka - preto sa pyta
 // na RIADOK cloveka, nie na vynimku. Styri prava, jedno pomenovanie v oboch smeroch.
-const ZZZ1CN_CAN_OF = { contacts: 'can_contacts', chats: 'can_chats', tags: 'can_tags', private: 'can_private' };
+const ZZZ1CN_CAN_OF = { contacts: 'can_contacts', chats: 'can_chats', tags: 'can_tags', private: 'can_private', copy: 'can_copy' };
 // [Zzz1-CN:SETUP-GRID] SKUPINA JE PODLAHA, NIE PREPIS (Vrso 2026-10-01).
 // Co ma skupina, ma kazdy v nej - a zobrat sa mu to uz neda; vlastne zaskrtnutie cloveka je len to, co
 // ma NAVYSE. Preto ALEBO, nie "riadok prebije maticu": zmena skupiny sa tym prejavi u vsetkych sama,
@@ -12630,7 +12638,9 @@ async function zzz1cn_cu_load(entryKey) {
   if (zzz1cnCommUsersOk === false) return null;
   try {
     const { data, error } = await sb.from('verso_comm_users')
-      .select('username, is_delegate, notify_level, is_exception, can_contacts, can_chats, can_tags, can_private')
+      // [Zzz5-6:COPY-RIGHT] '*' a nie zoznam stlpcov: can_copy pribudne az SQL verso_comm_users_v5 - kym tam
+      // nie je, menovany stlpec by zhodil CELE citanie a s nim aj delegatov
+      .select('*')
       .eq('entry_key', k);
     if (error) throw error;
     zzz1cnCommUsersOk = true;
@@ -12639,8 +12649,9 @@ async function zzz1cn_cu_load(entryKey) {
       map[zzz10v1_normalize(r.username)] = {
         is_delegate: !!r.is_delegate, notify_level: String(r.notify_level || ''),
         is_exception: !!r.is_exception, can_contacts: !!r.can_contacts, can_chats: !!r.can_chats,
-        can_tags: !!r.can_tags, can_private: !!r.can_private
+        can_tags: !!r.can_tags, can_private: !!r.can_private, can_copy: !!r.can_copy
       };
+      if ('can_copy' in r) zzz1cnCuHasCopy = true;
     });
     zzz1cnCommUsers[k] = map;
     return map;
@@ -12656,7 +12667,8 @@ async function zzz1cn_cu_load(entryKey) {
   }
 }
 const ZZZ1CN_CU_BLANK = { is_delegate: false, notify_level: '', is_exception: false,
-  can_contacts: false, can_chats: false, can_tags: false, can_private: false };
+  can_contacts: false, can_chats: false, can_tags: false, can_private: false, can_copy: false };
+let zzz1cnCuHasCopy = null;   // [Zzz5-6:COPY-RIGHT] null = nevieme, true = stlpec can_copy v DB je
 // zapis jedneho riadku. patch = {is_delegate} / {is_exception, can_contacts, can_chats, notify_level}
 // Kto smie co, rozhoduje server (RLS + verso_comm_users_can_write) - tu sa len ukazuje vysledok.
 async function zzz1cn_cu_save(entryKey, name, patch) {
@@ -12669,14 +12681,22 @@ async function zzz1cn_cu_save(entryKey, name, patch) {
   const after = Object.assign({}, ZZZ1CN_CU_BLANK, before, patch);
   rows[who] = after;   // okno reaguje hned, server potvrdi o chvilu
   try {
-    const { error } = await sb.from('verso_comm_users')
-      .upsert({ entry_key: k, username: who,
+    const row = { entry_key: k, username: who,
                 is_delegate: !!after.is_delegate, notify_level: String(after.notify_level || ''),
                 is_exception: !!after.is_exception,
                 can_contacts: !!after.can_contacts, can_chats: !!after.can_chats,
-                can_tags: !!after.can_tags, can_private: !!after.can_private },
-              { onConflict: 'entry_key,username' });
-    if (error) throw error;
+                can_tags: !!after.can_tags, can_private: !!after.can_private };
+    // [Zzz5-6:COPY-RIGHT] can_copy sa posiela, len ked ho DB pozna alebo ked ho niekto prave nastavuje
+    if (zzz1cnCuHasCopy || 'can_copy' in (patch || {})) row.can_copy = !!after.can_copy;
+    const { error } = await sb.from('verso_comm_users').upsert(row, { onConflict: 'entry_key,username' });
+    if (error) {
+      if (/can_copy/.test(String(error.message || ''))) {
+        rows[who] = before;
+        zzz6f2_show_toast('Copy right per person needs the SQL update verso_comm_users_v5 first.', 'warn');
+        return false;
+      }
+      throw error;
+    }
     return true;
   } catch (e) {
     rows[who] = before;   // neprislo to na server - nepredstieraj, ze ano
@@ -12894,6 +12914,7 @@ function zzz1cn_open_comm_setup(host, api) {
     { k: 'chats',    f: 'can_chats',    t: 'chats' },
     { k: 'tags',     f: 'can_tags',     t: 'tags' },
     { k: 'private',  f: 'can_private',  t: 'priv' },
+    { k: 'copy',     f: 'can_copy',     t: 'copy' },   // [Zzz5-6:COPY-RIGHT]
     { k: 'ment',     f: 'notify_level', t: 'ment' }
   ];
 
@@ -16171,6 +16192,13 @@ function zzz1cn_open_tags(host, entryKey, onChange) {
 // UI-gate; zamok je trigger verso_chat_notes_check_private (SQL verso_private_notes_v1).
 function zzz1cn_private_ok(entryKey) {
   return zzz1cn_setup_allows(zzz1cn_setup_get(entryKey).private, entryKey, 'private');
+}
+// [Zzz5-6:COPY-RIGHT] smiem z poznamok tohto zaznamu kopirovat? UI-gate (cita cache ako ostatne riadky).
+// WORK NOTE tabu a rozpisana CL su vlastne poznamky - tam sa nepyta nikto.
+function zzz1cn_copy_ok(entryKey) {
+  const k = String(entryKey || '');
+  if (!/^\d+$/.test(k)) return true;
+  return zzz1cn_setup_allows(zzz1cn_setup_get(k).copy, k, 'copy');
 }
 
 // smie TATO poznamka niest tento stitok? Privatna cokolvek, zdielana len zo slovnika (ako v DB triggeri).
@@ -29273,7 +29301,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 21:15';
+const ZZZ5_6_BUILD = '2026-10-02 22:00';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -31061,8 +31089,12 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     }
   };
   const visible = () => zzz5w7_sort_time(allNotes.filter(n => inTab(n) && passes(n)), view);
-  const copyList = async (list, what) => {
-    if (!list.length) { zzz6f2_show_toast('Nothing to copy.', 'warn'); return; }
+  const copyList = async (list0, what) => {
+    // [Zzz5-6:COPY-RIGHT] zo zaznamov, kde kopirovanie nie je dovolene, sa nekopiruje nic - a povie sa to
+    const list = list0.filter(n => zzz1cn_copy_ok(n.entry_key));
+    const blocked = list0.length - list.length;
+    if (blocked) zzz6f2_show_toast(`${blocked} note(s) skipped - copying is not allowed in their record (comm setup).`, 'warn');
+    if (!list.length) { if (!blocked) zzz6f2_show_toast('Nothing to copy.', 'warn'); return; }
     // [Zzz5-W7:PROVENANCE] kazdy riadok nesie, z ktorej entry je - inak je zoznam naprieč zaznamami nepouzitelny
     const txt = list.map(n => zzz5w7_block_of(n, String(n.entry_key || ''), 0, hide)).join('\n\n');
     try { await navigator.clipboard.writeText(txt); zzz6f2_show_toast(`${what} copied (${list.length}).`); }
@@ -31381,9 +31413,17 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
               // riadok: odkaz na sub uz stoji v texte (aby sa nestratilo, z coho poznamka vznikla), meno
               // prevezme od subu. OK = ulozit do Notes tabu, CHAT = len do chatu tabu.
               // Chat ZAZNAMU (COMMUNICATION okno) je odteraz na 3 s podrzani +add NOTE v okne zaznamu.
+              // [Zzz5-6:REF-ON-SAVE] Vrso 2026-10-02 (17:01 / 21:45): "musi to byt takto oznacene v texte? Tam by
+              // som chcel uz iba pisat" + "v celku fajn, ale to iba podla comm setup". Pole na text je prazdne,
+              // vazbu ukazuje stitok "re #156/2-a" a odkaz [#156/2-a] sa doplni na zaciatok AZ PRI ULOZENI.
+              // Tuk na stitok vazbu zrusi. Odkaz na poznamku cudzieho zaznamu riadi comm setup (riadok copy).
+              if (!zzz1cn_copy_ok(n.entry_key)) {
+                zzz6f2_show_toast('Linking notes of this record is not allowed (comm setup - copy).', 'warn');
+                return;
+              }
               const ref = '#' + String(n.entry_key || '') + '/' + zzz5w7_label_of(n);
               zzz1cn_open_list(zzz5_6_tab_entry_key(activeTab), null, null,
-                { inlineIn: wsDock, openLine: { label: 're ' + ref, name: String(n.note_name || ''), text: '[' + ref + '] ' } });
+                { inlineIn: wsDock, openLine: { label: 're ' + ref, name: String(n.note_name || ''), text: '', ref: '[' + ref + ']' } });
               return;
             }
             // [Zzz5-6:SUB-CHAT] ULOZ ZNOVU do NOTES TAB okna stratilo 1-2s (Vrso 2. 10., 13:40). Kod ostava
@@ -32843,11 +32883,29 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       tabStrip.title = (stripInfo.draft ? 'Notes of the command line' : 'Notes of record #' + entryKey)
         + ' - double tap maximizes / restores the window';
     } else {
-      const stripName = document.createElement('span');
-      // [Zzz5-6:WORK-NOTE-TAB] okno vlastnych poznamok tabu = WORK NOTE toho tabu
-      stripName.textContent = 'WORK NOTE \u00b7 ' + zzz5_6_tab_entry_label(entryKey);
-      tabStrip.appendChild(stripName);
-      tabStrip.title = 'Notes of this tab (no entry number) - double tap maximizes / restores the window';
+      // === [Zzz5-6:WORK-STRIP] Vrso 2026-10-02 (20:12 / 21:45): "WORK NOTE je skor pre teba (kodove
+      // oznacenie)... oznacenie listy by malo byt ako na foto 156 notes (owner, ...)". Pas ma ten isty tvar
+      // ako okno zaznamu: zlaty chip (nazov tabu namiesto cisla), OWNER = ten, komu tab patri (vlastne taby
+      // ma kazdy svoje), PROJECT = este nepriradeny - k projektu sa poznamky dostanu kopiou (COPY TO),
+      // nie prepisom. "WORK NOTE" ostava uz len v kode a v napovede.
+      tabStrip.classList.add('is-entry');
+      const tBtn = document.createElement('button');
+      tBtn.type = 'button';
+      tBtn.className = 'zzz1cn-ws-cardentry zzz5-6-strip-entry';
+      tBtn.textContent = zzz5_6_tab_entry_label(entryKey);
+      tBtn.title = 'Notes of tab ' + zzz5_6_tab_entry_label(entryKey) + ' (work note - no entry number)';
+      tabStrip.appendChild(tBtn);
+      [['OWNER', String(zzz0r1_get_current_username() || '').trim()], ['PROJECT', 'not assigned']].forEach(([l, v]) => {
+        if (!v) return;
+        const lab = document.createElement('span');
+        lab.className = 'zzz5-6-tabstrip-lab';
+        lab.textContent = l;
+        const val = document.createElement('span');
+        val.className = 'zzz5-6-tabstrip-val' + (l === 'PROJECT' ? ' is-unset' : '');
+        val.textContent = v;
+        tabStrip.appendChild(lab); tabStrip.appendChild(val);
+      });
+      tabStrip.title = 'Work note of this tab (no entry number; copy it into a project with COPY TO) - double tap maximizes / restores the window';
     }
   }
 
@@ -33313,6 +33371,17 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     const tag = document.createElement('span');
     tag.className = 'zzz5w7-inline-tag';
     tag.textContent = label;
+    // [Zzz5-6:REF-ON-SAVE] stitok "re #156/2-a" nesie vazbu - tuk ju zrusi (poznamka bude obycajna nova)
+    let refDropped = false;
+    if (o.refDrop) {
+      tag.classList.add('is-ref');
+      tag.title = 'Linked to ' + label.replace(/^re\s+/, '') + ' - the link is added when saved; tap = drop the link';
+      tag.addEventListener('click', () => {
+        refDropped = !refDropped;
+        tag.textContent = refDropped ? 'new' : label;
+        tag.classList.toggle('is-dropped', refDropped);
+      });
+    }
     const nameIn = document.createElement('input');
     nameIn.type = 'text';
     nameIn.className = 'zzz5w7-inline-name';
@@ -33428,7 +33497,8 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       name: nameIn.value.trim(),
       priv: privChk.checked,
       prio: prioCtl.get(),                         // [Zzz1-CN:PRIO3] '' | 'attention' | 'urgent'
-      target: targetFixed || (parseInt(tgt.value, 10) || 0)
+      target: targetFixed || (parseInt(tgt.value, 10) || 0),
+      noRef: refDropped   // [Zzz5-6:REF-ON-SAVE]
     });
     // [Zzz5-6:NL-SAVE-TOGGLE] pri premenovani je OK potvrdenie; inak prepina SAVE a odosiela ENTER CHATNOTE
     const send = () => o.nameOnly ? pick() : Object.assign(pick(), { chat: !nlSaveOn });
@@ -33532,8 +33602,9 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   const addNewNote = async (preset) => {
     const pr = preset || null;
     const got = await inlineAsk(pr && pr.label ? pr.label : 'new', 0,
-      pr ? { nameValue: pr.name || '', textValue: pr.text || '' } : undefined);
+      pr ? { nameValue: pr.name || '', textValue: pr.text || '', refDrop: !!pr.ref } : undefined);
     if (!got || !got.text) { await render(); return; }
+    if (pr && pr.ref && !got.noRef) got.text = pr.ref + ' ' + got.text;   // [Zzz5-6:REF-ON-SAVE]
     // [Zzz5-W7:ADD-TARGET] vyplnene "k #" -> sub-poznamka toho cisla; prazdne -> nova s novym cislom
     if (got.target) {
       const parent = allNotes.find(x => Number(x.note_number) === Number(got.target) && !zzz5w7_sub_of(x));
@@ -34248,6 +34319,20 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     await render();
   });
 
+  // [Zzz5-6:COPY-RIGHT] Vrso 2026-10-02 (21:45): kopirovanie poznamok tohto zaznamu riadi comm setup (riadok
+  // "copy"). Bez prava su COPY, COPY ALL aj COPY TO zasedene a pri pokuse sa povie preco.
+  const zzz5_6CopyOk = () => {
+    if (zzz1cn_copy_ok(entryKey)) return true;
+    zzz6f2_show_toast('Copying notes is not allowed in this record (comm setup - copy).', 'warn');
+    return false;
+  };
+  const zzz5_6PaintCopy = () => {
+    const ok = zzz1cn_copy_ok(entryKey);
+    [copySel, copyAll].forEach(b => b.classList.toggle('zzz5-6-copy-off', !ok));
+  };
+  zzz5_6PaintCopy();
+  copySel.addEventListener('click', (e) => { if (!zzz1cn_copy_ok(entryKey)) { e.stopImmediatePropagation(); zzz5_6CopyOk(); } }, true);
+  copyAll.addEventListener('click', (e) => { if (!zzz1cn_copy_ok(entryKey)) { e.stopImmediatePropagation(); zzz5_6CopyOk(); } }, true);
   copySel.addEventListener('click', () => {
     // 1. oznacene cisla maju prednost
     if (selected.size) {
@@ -34274,6 +34359,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   //         pri COPY). Privatna alebo adresna (&user) ostane privatna; ked cie privatne nedovoli, PRESKOCI SA
   //         a povie sa to - radsej nic, nez aby sa privatny text potichu zverejnil.
   const zzz5_6CopyTo = async () => {
+    if (!zzz5_6CopyOk()) return;   // [Zzz5-6:COPY-RIGHT]
     const src = selected.size ? allNotes.filter(n => selected.has(n.id)) : viewNotes.slice();
     if (!src.length) { zzz6f2_show_toast('Nothing to copy - select notes or change the filter.', 'warn'); return; }
     const dock = win.parentNode && win.parentNode.classList && win.parentNode.classList.contains('zzz5-6-wsdock') ? win.parentNode : null;

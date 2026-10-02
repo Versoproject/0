@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-02 21:20** · build appky v čase zápisu: `2026-10-02 21:15`
+**Verzia: 2026-10-02 22:05** · build appky v čase zápisu: `2026-10-02 22:00`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -144,8 +144,12 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
 - **Ťuk na `NOTES`** (prvé tlačidlo lišty zoznamu) → WORK NOTE aktívneho tabu sa otvorí v doku na polovicu;
   zoznam tabu nad ním ostáva a dá sa scrollovať. Cez celú obrazovku ide až 2x ťukom (kap. 4.8).
   (Od 2. 10. 20:30 WORK NOTE zoznam už neprekrýva - `[Zzz5-6:WORK-COVER]` zrušené.)
-- **Podržať sub note v tabuľke 1–2 s** → WORK NOTE s otvorenou note line, predvyplnenou odkazom
-  `[#156/2-a] ` a menom poznámky - ukladá sa do WORK NOTE tabu (`[Zzz5-6:SUB-WORKLINE]`).
+- **Pás WORK NOTE** vyzerá ako pri zázname (`[Zzz5-6:WORK-STRIP]`): zlatý chip s názvom tabu, `OWNER` = ty,
+  `PROJECT not assigned`. K projektu sa poznámky dostanú kópiou (COPY TO), nie prepisom.
+- **Podržať sub note v tabuľke 1–2 s** → WORK NOTE s otvorenou note line; štítok vľavo `re #156/2-a` ukazuje
+  väzbu, pole na text je **prázdne** a odkaz `[#156/2-a]` sa doplní na začiatok až pri uložení
+  (`[Zzz5-6:REF-ON-SAVE]`). **Ťuk na štítok** väzbu zruší (bude to obyčajná nová poznámka). Ak comm setup
+  záznamu nedovoľuje kopírovanie, odkaz sa nevytvorí a hláška povie prečo.
 - **CHAT v páse WORK NOTE** → COMMUNICATION okno nad rozpísanou CL (`[Zzz5-6:WORK-COMM]`). To isté robí
   podržanie `+add NOTE` 3 s a podržanie `SAVE` 3 s vo WORK NOTE. (Režim chatu v okne zo 17:06 je zrušený.)
 
@@ -209,6 +213,18 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
    ostáva použiteľný.
 4. **Odpojiť** (rovnako ako ATTACH v hlavnej CRM): **podržať `ATTACHED` 3 s** alebo **podržať MINI 3 s**
    (MINI odpojí aj pripnuté command lines). V okne poznámok ťuk na `ATTACHED` v páse hore.
+
+### 4.10b Právo kopírovať (comm setup) (`[Zzz5-6:COPY-RIGHT]`)
+- V COMMUNICATION okne → comm setup je stĺpec **`copy`** (popri cont / chats / tags / priv / ment).
+- Riadi, kto smie z poznámok záznamu **kopírovať**: COPY, COPY ALL, COPY TO a odkaz na poznámku vo WORK NOTE.
+- Úrovne ako ostatné stĺpce: owner má vždy; zaškrtnuté delegate = aj delegáti; zaškrtnuté users = všetci.
+  Menovitý človek môže mať právo navyše (riadok v USER ROLES / delegát) - na to treba SQL `verso_comm_users_v5`.
+- **Východzie je „všetci"** (rovnako ako priv), aby nové pravidlo nezamklo existujúce projekty; prísnosť
+  si owner zapne sám.
+- Bez práva sú `COPY` a `COPY ALL` v Notes okne zasedené; klik/podržanie povie dôvod. V liste tabu sa
+  poznámky zo zakázaných záznamov pri kopírovaní preskočia (hláška povie koľko).
+- Pozn.: je to ochrana v appke. Text, ktorý človek vidí na obrazovke, sa úplne zastaviť nedá - preto sa
+  pri každom kopírovaní cudzieho textu zapisuje aj acknowledgement.
 
 ### 4.11 Premenovať, privacy, priority, TAG, DELETE
 - **Premenovať**: podržať číslo poznámky **3 s**, alebo **podržať `+add NOTE` 5 s** (označená, inak posledná
