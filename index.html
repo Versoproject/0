@@ -5322,6 +5322,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
      meno, cierna = samotny text poznamky). Zjednocuje sa LEN mriezka: vyska, hrubka ramu, radius, odsadenie
      a velkost pisma - takze bunky stoja v jednom pase a maju rovnaku vahu, ako ju maju bunky vpravo. === */
   .zzz5w7-inline > * { box-sizing: border-box; }
+  /* [Zzz5-6:NL-MULTI] text poznamky je textarea - rastie s vlozenym blokom (JS meria), potom scroll */
+  .zzz5w7-inline textarea.zzz5w7-inline-text { resize: none; padding: 6px 7px !important; line-height: 1.3 !important;
+    max-height: 40vh; overflow-y: auto; font-family: inherit; white-space: pre-wrap; }
   .zzz5w7-inline .zzz5w7-inline-tag,
   .zzz5w7-inline .zzz5w7-inline-tgt,
   .zzz5w7-inline .zzz5w7-inline-name,
@@ -29224,7 +29227,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 16:45';
+const ZZZ5_6_BUILD = '2026-10-02 17:05';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -29399,6 +29402,7 @@ function zzz5_6_dock_layout(dock) {
 // [Zzz5-6:DOCK-FULL] dok cez celu obrazovku a spat. Pouziva tu istu maximalizaciu workspacu ako 2x tuk na
 // tab (WS-MAX, cez hlavny modul) a pamata si, ci bola zapnuta uz predtym - spat sa vrati presne tam.
 let zzz5_6WsSetMax = null;   // workspace sem vlozi (on) => {...}, vracia predosly stav
+let zzz5_6WsWorkKey = null;   // [Zzz5-6:COPY-TO] workspace sem vlozi kluc WORK NOTE aktivneho tabu
 function zzz5_6_dock_full(dock, on) {
   const ws = dock && dock.closest('.zzz1cn-ws-window');
   if (!ws) return;
@@ -30596,6 +30600,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
   });
   zzz5w7_bind_tiered_hold(title, [{ ms: 1100, fn: () => { clearTimeout(wsTitleTap); zzz6f18_open_context_select_modal(); } }]);
   title.title = 'Tap = WORK NOTE of this tab (its own notes, below the list) / hold 1-2s = chatnote module / double tap = maximise';
+  zzz5_6WsWorkKey = () => zzz5_6_tab_entry_key(activeTab);   // [Zzz5-6:COPY-TO]
   zzz5_6WsSetMax = (on) => { const was = wsMax; wsMax = !!on; wsApplyMax(); return was; };   // [Zzz5-6:DOCK-FULL]
   zzz5_6_bind_dbltap(win, [head], () => {
     clearTimeout(wsTitleTap);
@@ -33158,11 +33163,22 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     nameIn.placeholder = o.nameOnly ? 'new name (empty = no name)' : 'name (chat)';
     nameIn.maxLength = 60;
     if (o.nameValue) nameIn.value = o.nameValue;
-    const textIn = document.createElement('input');
-    textIn.type = 'text';
+    // === [Zzz5-6:NL-MULTI] Vrso 2026-10-02 (16:37): "mozem v note filter/hide a potom copy manualne do WORK
+    // NOTE... akurat ze musim vkladat postupne cez chatnote line?" Pole bolo <input> - JEDEN riadok, takze
+    // vlozeny blok viacerych poznamok stratil zalomenia a zlepil sa do jedneho dlheho riadku. Teraz je to
+    // <textarea>, ktora rastie s textom (najviac 40 % vysky obrazovky, potom scroll): vlozeny blok si drzi
+    // riadky a ulozi sa ako JEDNA poznamka. Enter dalej odosiela (ENTER CHATNOTE), novy riadok = Shift+Enter.
+    const textIn = document.createElement('textarea');
+    textIn.rows = 1;
     textIn.className = 'zzz5w7-inline-text';
     textIn.placeholder = 'note text...';
     if (o.textValue) textIn.value = o.textValue;   // [Zzz5-6:SUB-WORKLINE]
+    const growText = () => {
+      textIn.style.height = 'auto';
+      textIn.style.height = Math.max(28, textIn.scrollHeight + 4) + 'px';
+    };
+    textIn.addEventListener('input', growText);
+    requestAnimationFrame(growText);
     // === [Zzz5-W7:ADD-TARGET] Vrso 2026-09-26: "#13 som chcel cez +addnote pridelit do 4b, ale takto sa to
     // zobrazilo v texte... lepsie by bolo addnote pouzit iba ako nove cislo, alebo ak sa dopise presne 4b,
     // tak ho pridelit k #4".
@@ -33255,6 +33271,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     ok.addEventListener('click', () => { if (ok.zzz5_6Toggle) ok.zzz5_6Toggle(); else finish(pick()); });
     cancel.addEventListener('click', () => finish(null));
     [nameIn, textIn, tgt].forEach(el => el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.shiftKey && el === textIn) return;   // [Zzz5-6:NL-MULTI] novy riadok
       if (e.key === 'Enter') { e.preventDefault(); finish(send()); }
       if (e.key === 'Escape') { e.preventDefault(); finish(null); }
     }));
@@ -34083,6 +34100,53 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     zzz6f2_show_toast('Mark numbers (SELECT) or select text in the field first.', 'warn');
   });
 
+  // === [Zzz5-6:COPY-TO] Vrso 2026-10-02 (16:35-16:43): "ako urobit, ze sa selected skopiruju, ale do
+  // ineho notu (napr. WORK NOTE v note tabe)" -> dohodnute: COPY podrzat 1-2 s = COPY TO.
+  //   CO:   oznacene (SELECT); nic oznacene -> to, co je prave vidno (po FILTER / HIDE)
+  //   KAM:  DRUHE okno v doku (split screen). Ked druhe okno nie je, WORK NOTE aktivneho tabu - otvori sa
+  //         ako druhe okno, aby bolo hned vidno, kam to prislo.
+  //   AKO:  kazda poznamka = NOVA samostatna poznamka v cieli (autor = ja), na zaciatku textu odkaz na povod
+  //         [#156/2-a]; meno aj priorita idu s nou. Cudzia poznamka -> acknowledgement (ten isty zapis ako
+  //         pri COPY). Privatna alebo adresna (&user) ostane privatna; ked cie privatne nedovoli, PRESKOCI SA
+  //         a povie sa to - radsej nic, nez aby sa privatny text potichu zverejnil.
+  const zzz5_6CopyTo = async () => {
+    const src = selected.size ? allNotes.filter(n => selected.has(n.id)) : viewNotes.slice();
+    if (!src.length) { zzz6f2_show_toast('Nothing to copy - select notes or change the filter.', 'warn'); return; }
+    const dock = win.parentNode && win.parentNode.classList && win.parentNode.classList.contains('zzz5-6-wsdock') ? win.parentNode : null;
+    const other = dock ? Array.from(dock.querySelectorAll(':scope > .zzz1cn-list-window.zzz5-6-inline')).find(w => w !== win) : null;
+    let target = other ? other.dataset.zzz56Key : (typeof zzz5_6WsWorkKey === 'function' ? zzz5_6WsWorkKey() : '');
+    if (!target || String(target) === String(entryKey)) {
+      zzz6f2_show_toast('Open the target notes window next to this one first (split screen).', 'warn');
+      return;
+    }
+    const srcLab = zzz5_6_is_tab_entry(entryKey) ? zzz5_6_tab_entry_label(entryKey) : String(entryKey);
+    const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+    const privOk = zzz1cn_private_ok(target);
+    let done = 0, skipped = 0;
+    const authors = [];
+    for (const n of src) {
+      const priv = !!n.is_private || !!String(n.note_to || '').trim();
+      if (priv && !privOk) { skipped++; continue; }
+      const lab = zzz5w7_label_of(n);
+      const body = `[#${srcLab}/${lab}] ${String(n.note_text || '').trim()}`;
+      const saved = await zzz1cn_add(target, body, priv, null, n.note_name || '', true, n.note_priority || !!n.is_priority, []);
+      if (!saved) { skipped++; continue; }
+      done++;
+      const a = (n.username || '').trim();
+      if (a && zzz10v1_normalize(a) !== meN) {
+        zzz6f22_record_copy_credit(`${entryKey}/${n.note_number}/${String(n.note_part || '').trim()}`, a, `Chatnote #${lab}`);
+        if (!authors.includes(a)) authors.push(a);
+      }
+    }
+    const tLab = zzz5_6_is_tab_entry(target) ? zzz5_6_tab_entry_label(target) : '#' + target;
+    zzz6f2_show_toast(`${done} note(s) copied to ${tLab}` + (authors.length ? ` + acknowledgement (${authors.join(', ')})` : '')
+      + (skipped ? ` - ${skipped} skipped (private notes are off there, or saving failed).` : '.'), skipped ? 'warn' : undefined);
+    // cielove okno sa otvori nanovo (alebo prvy raz), nech su nove poznamky hned vidno
+    if (done && typeof zzz5_6DockOpen === 'function' && dock) zzz5_6DockOpen(target, null);
+  };
+  zzz5w7_bind_tiered_hold(copySel, [{ ms: 1100, fn: () => { zzz5_6CopyTo(); } }]);
+  copySel.title = 'Tap = copy the selected notes (or marked text) / hold 1-2s = COPY TO the other window (split screen) or the WORK NOTE of this tab';
+
   copyAll.addEventListener('click', () => {
     // [Zzz5-W7:PROVENANCE] do schranky ide PRESNE to, co je vidno (vratane HIDE), len s jednym riadkom
     // povodu navrch - preto nie holy area.value.
@@ -34165,6 +34229,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   // [Zzz5-6:DOCK-PAIR] v doku sa upratuje len okno ROVNAKEHO druhu (WORK NOTE / zaznam)
   const zzz56Kind = zzz5_6_is_tab_entry(entryKey) ? 'work' : 'entry';
   win.dataset.zzz56Kind = zzz56Kind;
+  win.dataset.zzz56Key = String(entryKey);   // [Zzz5-6:COPY-TO] druhe okno v doku = ciel kopirovania
   const zzz56IsDock = !!(inlineIn && inlineIn.classList.contains('zzz5-6-wsdock'));
   if (inlineIn) inlineIn.querySelectorAll(':scope > .zzz5-6-inline').forEach(w => {
     if (!zzz56IsDock || w.dataset.zzz56Kind === zzz56Kind) w.remove();
