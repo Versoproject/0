@@ -473,7 +473,7 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
 | `verso_comm_users` | trigger `verso_comm_users_can_write` + zákaz eskalácie (v6) - OK |
 | `verso_placements` | RLS vlastné riadky (v1) - OK |
 | `verso_entries` INSERT | `verso_entries_owner_is_session_v1.sql` (5.) NASADENÉ 3. 10. 00:39 - nový CL aj nová verzia (#158 z #157) otestované OK |
-| `verso_entries` UPDATE | dump (6.) 3. 10.: obsah nemenný pre všetkých, comm_setup/status/refs len owner, tag_vocab owner alebo povolený delegát - OK. DIERA: cudzí smel meniť `is_trashed`, `superseded_by`, `copied_from` a DELETE policy `…_delete_only_trashed_not_verso` (anon, bez kontroly ownera) dovolila zmazať cudzí záznam v koši -> `verso_entries_owner_only_state_v1.sql` (7., poslané 00:48) |
+| `verso_entries` UPDATE | dump (6.) 3. 10.: obsah nemenný pre všetkých, comm_setup/status/refs len owner, tag_vocab owner alebo povolený delegát - OK. DIERA: cudzí smel meniť `is_trashed`, `superseded_by`, `copied_from` a DELETE policy `…_delete_only_trashed_not_verso` (anon, bez kontroly ownera) dovolila zmazať cudzí záznam v koši -> `verso_entries_owner_only_state_v1.sql` (7.) NASADENÉ 3. 10. ~00:55, nový CL #159 OK |
 | `verso_entries` SELECT | `true` - podľa pravidiel viditeľnosti neskôr; SELECT podľa pravidiel viditeľnosti |
 | `verso_entries.comm_setup` | presunúť do vlastnej chránenej tabuľky `verso_comm_setup` - návrh |
 | `verso_consents` | OK (dump 3. 10.): INSERT len za seba (trigger prepíše username = prihlásený), člen USER/COMMUNICATION alebo owner podľa záznamu; UPDATE/DELETE nie je |
@@ -505,6 +505,7 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
   nemajú vlastný čas) - bez histórie sa stav k dátumu presne poskladať nedá. S ňou: **RESTORE K DÁTUMU** =
   poskladať stav k času T z verzií + histórie; obnova **nič neprepisuje**, len zapíše nové stavy (append-only).
   Spustenie restore schvaľuje **multiverifikácia** (Settings → Restore, vedľa Multi Verification).
+- **SQL 8 `verso_history_v1.sql` poslané 3. 10. 00:57** (entries + comm_users + stav notes).
 - **Slabina comm_setup:** textový reťazec čítaný regexom (`tags:delegate` ...) - krehké; presun do tabuľky s
   menovitými stĺpcami to odstráni.
 
