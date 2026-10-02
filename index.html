@@ -4177,6 +4177,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz5-6-tabstrip.is-entry { gap: 4px; text-transform: none; }
   .zzz5-6-tabstrip-lab { color: #8a7bb0; font-weight: 600; font-size: 7.5px; letter-spacing: 0.05em; }
   .zzz5-6-tabstrip-val { color: #4a2a8a; font-weight: 700; font-size: 9px; margin-right: 6px; }
+  .zzz5-6-tabstrip .zzz5-6-strip-entry { margin-right: 6px; padding: 0 6px; font-size: 9px; line-height: 1.5; }
   .zzz5-6-tabstrip-attach.zzz1cn-ws-subattach {
     position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
     margin-left: 0; padding: 0 8px; font-size: 8px;
@@ -29115,7 +29116,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 14:45';
+const ZZZ5_6_BUILD = '2026-10-02 14:49';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -30367,7 +30368,8 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     wsPin.innerHTML = '';
     const rec = entryMap[key];
     const info = /^\d+$/.test(key)
-      ? { owner: (rec && rec.owner) || '', name: (rec && rec.projectName) || '' }
+      ? { owner: (rec && rec.owner) || '', name: (rec && rec.projectName) || '', project: (rec && rec.project) || '',
+          category: String(((rec && rec.f) || {}).r5 || '') }
       : { draft: true };
     zzz_haptic_pulse(15);
     zzz1cn_open_list(key, null, null, { inlineIn: wsPin, stripInfo: info });
@@ -30964,7 +30966,8 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
             // zakrylo hlavny modul a nebolo jasne, ku ktoremu zaznamu patri.
             zzz5_6WorkKey = String(n.entry_key || '') || zzz5_6WorkKey;   // [Zzz5-6:WORK-NOTE]
             notesWin.openInline(tdCont, String(n.entry_key || ''), { num: n.note_number, part },
-              { owner: c.owner || '', name: c.projectName || '' });
+              { owner: c.owner || '', name: c.projectName || '', project: c.project || '',
+                category: String(((c.f || {}).r5) || '') });
           };
           // [Zzz5-6:TAP-VS-SCROLL] Vrso 2026-10-02 (13:57): "tuk na sub je velmi senzitivny - skus tak, aby sa
           // dalo skrolovat, ale ked jasne tuknem (ako na webe linky), tak otvori dany note". Prst, ktory sa
@@ -32401,7 +32404,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   // vlastne cita. Teraz stoji hned za NOTE a je to ten isty zlaty chip ako v tabulke workspacu.
   // Pri ROZPISANEJ CL (draft kluc) cislo este neexistuje - vtedy sa chip nekresli vobec; vypisat tam
   // interny draft kluc by bolo horsie nez nic, lebo userovi nehovori nic.
-  if (/^\d+$/.test(String(entryKey))) {
+  if (/^\d+$/.test(String(entryKey)) && !(openOpts && openOpts.stripInfo)) {   // [Zzz5-6:STRIP-ENTRY]
     const eNum = document.createElement('span');
     eNum.className = 'zzz5-6-note-entry';
     eNum.textContent = '#' + entryKey;
@@ -32423,8 +32426,21 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     tabStrip.className = 'zzz5-6-tabstrip';
     if (stripInfo) {
       tabStrip.classList.add('is-entry');
+      // [Zzz5-6:STRIP-ENTRY] Vrso 2026-10-02 (14:48): "mas tam dvakrat 156... idealne mat v liste viac info,
+      // aj project name... ale tak, aby entry number bolo ako button (budem to vediet vyuzit pri inych
+      // taskoch)". Cislo zaznamu je teda TLACIDLO na zaciatku pasu (ten isty zlaty chip ako v tabulke),
+      // zatial bez povelu; zlaty chip vedla +add NOTE sa v takomto okne uz nekresli - bol to ten isty udaj.
+      if (!stripInfo.draft) {
+        const eBtn = document.createElement('button');
+        eBtn.type = 'button';
+        eBtn.className = 'zzz1cn-ws-cardentry zzz5-6-strip-entry';
+        eBtn.textContent = '#' + entryKey;
+        eBtn.title = 'Record #' + entryKey + ' (commands for this button come later)';
+        tabStrip.appendChild(eBtn);
+      }
       (stripInfo.draft ? [['NOTES OF', 'the command line (not saved yet)']]
-        : [['ENTRY', '#' + entryKey], ['OWNER', stripInfo.owner], ['NAME', stripInfo.name]]).forEach(([l, v]) => {
+        : [['OWNER', stripInfo.owner], ['PROJECT', stripInfo.project], ['NAME', stripInfo.name],
+           ['CATEGORY', stripInfo.category]]).forEach(([l, v]) => {
         if (!String(v || '').trim()) return;   // prazdne kriterium sa nekresli (ako v tabulke)
         const lab = document.createElement('span');
         lab.className = 'zzz5-6-tabstrip-lab';
