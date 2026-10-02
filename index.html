@@ -28963,7 +28963,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 03:14';
+const ZZZ5_6_BUILD = '2026-10-02 11:59';
 
 // === [Zzz5-6:TAB-NOTES] NOTES WINDOW jedneho tabu =================================================
 // Vrso 2026-10-01 (22:01): "podrzanim 1-2s pridaj do notes window pre tento tab (v nom ma byt attach
@@ -29216,6 +29216,17 @@ function zzz1cn_build_note_module(opts) {
     lay.querySelectorAll('button, .circle').forEach(b => {
       b.title = 'Main module control - not wired to notes yet';
     });
+    // [Zzz5-6:OPEN-GOLD] Vrso 2026-10-02: "este si nezapracovala, ze ked otvorim author workspace, tak sa
+    // pismenka oznacia zlatou... rovnakym povelom zatvori."
+    // Zlatu dostavalo ORIGINALNE tlacidlo - lenze to je pod workspacom a nie je ho vidno. Na obrazovke
+    // je KLON z tohto layoutu, a ten sa robil skor, nez original zozlatol. Klon teda svieti sam a ten
+    // isty tuk, ktorym sa workspace otvoril, ho z neho zatvori. Je to jedine tlacidlo klonu s funkciou.
+    const authC = lay.querySelector('.author-credits-button');
+    if (authC) {
+      authC.classList.add('zzz2r23-active');
+      authC.title = 'Author workspace is open - tap closes it';
+      authC.addEventListener('click', () => zzz5_6_close_workspace());
+    }
     const dash = lay.querySelector('.zzz3-0-dashboard');
     if (dash) {
       dash.classList.add('zzz1cn-nm-dash');
@@ -30005,6 +30016,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
                  priority: false, users: {},
                  usersq: '', open: false, progress: false, done: false, final: false, nameq: '' };
   let allNotes = [];
+  let wsLoadErr = '';   // [Zzz5-6:WS-LOADSTATE] chyba nacitania - prazdny zoznam ju musi povedat
   let entryMap = {};
   // [Zzz1-CN:WS-FOLD] co je prave zlozene. Pohlad na TOTO otvorenie okna, nie nastavenie - preto nikam
   // neuklada; po zatvoreni workspace sa zacina rozbalene.
@@ -30636,8 +30648,15 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
       none.className = 'zzz1cn-empty';
       // [Zzz5-6:TABS] tab, ktory este nema podla coho triedit, povie PRECO je prazdny. "No note matches
       // the filter" by tu klamalo - ziadny filter nebezi, chyba samotny priznak.
+      // [Zzz5-6:WS-LOADSTATE] Vrso 2026-10-02 (11:58): "preco mi zmizli notes v tabe? nic nevyzera byt
+      // filtrovane". Na screenshote bolo v kruhu "username" namiesto mena - appka v tej chvili nepoznala
+      // prihlaseneho usera, RLS teda vratila prazdny zoznam BEZ CHYBY a okno povedalo "No saved notes yet".
+      // To bola LOZ: poznamky existovali, len sa nedali nacitat. Prazdny zoznam teraz povie PRECO je prazdny.
       none.textContent = ZZZ5_6_TAB_PENDING[activeTab]
-        || (allNotes.length ? 'No note matches the filter.' : 'No saved notes yet.');
+        || (wsLoadErr ? `Notes could not be loaded: ${wsLoadErr}. Close and open the workspace again.`
+          : !String(zzz0r1_get_current_username() || '').trim()
+            ? 'Not signed in - notes cannot be loaded. Sign in and open the workspace again.'
+          : allNotes.length ? 'No note matches the filter.' : 'No saved notes yet.');
       body.appendChild(none);
       // [Zzz5-6:TAB-ENTRY] Vrso: "ked odfiltrujem vsetko v danom tabe, tak sa zobrazi tento notes."
       // Prazdny zoznam je prave ta chvila, ked ma zmysel ponuknut vlastne poznamky tabu - tie
@@ -30700,7 +30719,8 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     // [Zzz1-CN:IS-SAVED] workspace je EVIDENCIA - patria don ulozene poznamky, nie bezne spravy v chate
     allNotes = notes.filter(n => !zzz1cn_opt_has('is_saved') || !!n.is_saved);
   } catch (e) {
-    zzz6f2_show_toast(`Notes workspace: ${(e && e.message) || e}`, 'warn');
+    wsLoadErr = String((e && e.message) || e);   // [Zzz5-6:WS-LOADSTATE]
+    zzz6f2_show_toast(`Notes workspace: ${wsLoadErr}`, 'warn');
   }
   render();
   return win;
