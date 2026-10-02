@@ -27986,13 +27986,49 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   const savePrivTxt = document.createElement('span');
   savePrivTxt.textContent = 'privacy';
   savePrivLbl.appendChild(savePrivTxt);
-  saveBtn.title = 'Saves this note into Notes as a sub-note of #' + (Number(note.note_number) || 0)
-    + ' (16 -> 16-a); the checkbox decides private or shared';
+  saveBtn.title = 'Your note: saves THIS note into Notes (same number, no copy). Someone else\'s note: saves a copy as a sub-note of #'
+    + (Number(note.note_number) || 0) + ' with acknowledgement. The checkbox decides private or shared';
   saveBtn.addEventListener('click', async () => {
     saveBtn.disabled = true;
     const author = (note.username || '').trim();
     const isOwn = !!me && zzz10v1_normalize(author) === me;
     const base = Number(note.note_number) || 0;
+    // === [Zzz1-CN:SAVE-IN-PLACE] Vrso 2026-10-02 (14:08), "zasadna vec": "chcel som save chatnote z chatu
+    // a namiesto ulozenia # spravilo novy chatnote, ale pod #-a ako reply. Cize duplicitne, a este sa aj
+    // ulozil v notes ako duplikat."
+    // Mal pravdu: chat aj Notes su JEDNA tabulka a "je v Notes" je len stav riadku (is_saved). Pre VLASTNU
+    // poznamku teda ulozenie NEMA vyrabat kopiu - prepne sa is_saved (a privacy podla policka) na TOM ISTOM
+    // riadku. Cislo ostava, nic sa nezdvoji. Je to STAV, nie obsah (pravidlo OBSAH vs STAV), takze
+    // bez novej verzie.
+    // CUDZIU poznamku prepnut nejde a ani nesmie (RLS: riadok meni len autor) - tam ostava kopia ako
+    // sub-poznamka s acknowledgementom ([Zzz1-CN:SAVE-UNDER]), lebo prevzatie cudzieho obsahu ma nechat stopu.
+    if (isOwn && zzz1cn_opt_has('is_saved')) {
+      if (note.zzz0ob_pending || zzz0ob_is_pending(note.id) || String(note.id || '').indexOf('local-') === 0) {
+        zzz6f2_show_toast('The note has not been sent yet - save it once it is sent.', 'warn');
+        saveBtn.disabled = false; return;
+      }
+      const lbl0 = zzz5w7_label_of(note);
+      if (note.is_saved && !!note.is_private === !!savePriv.checked) {
+        zzz6f2_show_toast(`#${lbl0} is already in Notes.`);
+        saveBtn.disabled = false; return;
+      }
+      if (savePriv.checked && !zzz1cn_private_ok(entryKey)) {
+        zzz6f2_show_toast('Private notes are off in this record - everything written here is shared.', 'warn');
+        saveBtn.disabled = false; return;
+      }
+      try {
+        const { error } = await sb.from(ZZZ1CN_TABLE)
+          .update({ is_saved: true, is_private: !!savePriv.checked }).eq('id', note.id);
+        if (error) throw error;
+        note.is_saved = true; note.is_private = !!savePriv.checked;
+        zzz6f2_show_toast(`#${lbl0} saved to Notes (${savePriv.checked ? 'private' : 'shared'}) - same number, no copy.`);
+        if (onChanged) await onChanged();
+      } catch (e) {
+        zzz6f2_show_toast(`Not saved: ${(e && e.message) || e}`, 'warn');
+      }
+      saveBtn.disabled = false;
+      return;
+    }
     // [Zzz1-CN:IS-SAVED] SAVE CHATNOTE je to druhe miesto, kde sa ULOZI do Notes ("alebo neskor ulozenim
     // z chatu") - preto is_saved = true
     const saved = await zzz1cn_add(entryKey, isOwn ? note.note_text : `${author}: ${note.note_text}`,
@@ -29041,7 +29077,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 14:01';
+const ZZZ5_6_BUILD = '2026-10-02 14:09';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -29058,6 +29094,25 @@ function zzz5_6_bind_dbltap(root, zones, fn) {
     const now = Date.now();
     if (now - at < 400) { at = 0; fn(e); } else { at = now; }
   });
+}
+
+// === [Zzz5-6:NO-JUMP] poloha obrazovky pred otvorenim okna a jej navrat ==========================
+// Pravidlo "okna a workspacy sa nesmu hybat" plati aj pre OTVORENIE okna. Drzi sa stranka a vsetky
+// scrollovatelne kontajnery, v ktorych user prave stoji (hlavicka, comm feed, workspace).
+function zzz5_6_scroll_snapshot() {
+  const els = [document.getElementById('versoFullHeaderAnchor')]
+    .concat(Array.from(document.querySelectorAll('.zzz1r17b-comm-window, .zzz1cn-feed, .zzz1cn-ws-body')))
+    .filter(Boolean).map(el => [el, el.scrollTop]);
+  return { x: window.scrollX, y: window.scrollY, els };
+}
+function zzz5_6_scroll_restore(k) {
+  if (!k) return;
+  const put = () => {
+    if (Math.abs(window.scrollY - k.y) > 1 || Math.abs(window.scrollX - k.x) > 1) window.scrollTo(k.x, k.y);
+    k.els.forEach(([el, t]) => { if (el.isConnected && Math.abs(el.scrollTop - t) > 1) el.scrollTop = t; });
+  };
+  put();
+  requestAnimationFrame(() => { put(); requestAnimationFrame(put); });
 }
 
 // === [Zzz5-6:SUB-CHAT] podrzanie subu 1-2s = chatnote line zaznamu, odpoved na tento sub ===========
@@ -32210,6 +32265,10 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   // odteraz patri TOMUTO oknu. Keby ostala v globale, zatvorenie Notes okna otvoreneho inokade (z CRM
   // riadku) by workspace vytiahlo bez dovodu - a to je presne ten druh prekvapenia, ktory sa potom
   // hlada hodinu.
+  // [Zzz5-6:NO-JUMP] Vrso 2026-10-02 (14:08): "niekedy, ked chcem 3s ENTER CHATNOTE, tak skoci obrazovka".
+  // Otvorenie okna (dokovanie, prepocet vysky comm okna, focus) posunulo stranku aj hlavicku. Poloha sa
+  // preto zapamata PRED otvorenim a po nom sa vrati - okno sa ma objavit, obrazovka sa nema hnut.
+  const zzz5_6Keep = zzz5_6_scroll_snapshot();
   const returnToWs = inlineIn ? false : zzz5_6WsReturn;
   zzz5_6WsReturn = false;
   if (inlineIn) document.querySelectorAll('.zzz5-6-inline').forEach(w => w.remove());
@@ -33668,6 +33727,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   if (inlineIn) { requestAnimationFrame(() => requestAnimationFrame(alignGutter)); return; }   // [Zzz5-6:TAB-INLINE] vlozene sa nedokuje
   zzz5w7_dock_start();   // [Zzz5-W7:NOTES-DOCK] az po vlozeni do DOM - skor sa neda zmerat
   zzz1cn_fit_comm_window();   // [Zzz1-CN:COMM-FULL] comm okno sa zastavi nad Notes, nech sa neprekryvaju
+  zzz5_6_scroll_restore(zzz5_6Keep);   // [Zzz5-6:NO-JUMP]
   // [Zzz5-W7:GUTTER-WRAP] prve skutocne zarovnanie - teraz uz ma pole sirku a da sa merat zalamovanie
   requestAnimationFrame(() => requestAnimationFrame(alignGutter));
 }

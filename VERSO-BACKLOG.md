@@ -1,7 +1,7 @@
 # VERSO — BACKLOG (aktuálny stav)
 
 > **HLAVNÉ INŠTRUKCIE sú v tomto súbore v kapitole C.** Plná verzia (aj s GitHub postupom a blokom do
-> custom instructions) je `VERSO-HLAVNE-INSTRUKCIE.md`, verzia 2026-10-02 12:20. Keď pribudne pravidlo,
+> custom instructions) je `VERSO-HLAVNE-INSTRUKCIE.md`, verzia 2026-10-02 14:10. Keď pribudne pravidlo,
 > zapíše sa na OBE miesta a súbor sa prenáša vždy CELÝ, nikdy len prírastok.
 
 
@@ -496,7 +496,9 @@ authorized repository set"*; čítať sa dá, pushovať nie. Nie je to chyba kó
 
 - **Základná verzia Versa je po anglicky** — všetky viditeľné popisy, tlačidlá, placeholdery a hlášky
 - **SQL vždy s menom**, v samostatnom skopírovateľnom bloku
-- Okná a workspacy sa **nesmú hýbať** pri bežnej práci
+- Okná a workspacy sa **nesmú hýbať** pri bežnej práci — ani pri **otváraní okien a povelov** (podržanie
+  3 s, otvorenie Notes/chat okna, note line): obrazovka nesmie poskočiť, poloha stránky aj scrollu v okne
+  sa drží (Vrso 2. 10., 14:08; `[Zzz5-6:NO-JUMP]`)
 - Každý modul je **adaptívny** naprieč zariadeniami; najprv zmenšiť, zalomiť až ako posledné
 - `cl` = command line (obsadené), `chl`/`chat` = chat line, `nl` = note line, `w` = workspace
 - **Chatnote sa VKLADÁ, note sa UKLADÁ** (`[Zzz1-CN:ENTER-VS-SAVE]`, 30. 9.) — `ENTER CHATNOTE` pošle

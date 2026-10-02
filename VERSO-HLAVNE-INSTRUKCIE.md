@@ -1,6 +1,6 @@
 # VERSO — HLAVNÉ INŠTRUKCIE
 
-**Verzia: 2026-10-02 12:20**
+**Verzia: 2026-10-02 14:10**
 
 > **Ako sa tento súbor udržiava:** je JEDEN a prenáša sa VŽDY CELÝ. Keď pribudne pravidlo, Claude
 > prepíše tento súbor a dá ti ho; ty ním nahradíš starú kópiu v ostatných projektoch. Nikdy sa
@@ -28,7 +28,9 @@ Návrh, čo tam dať, je na konci tohto dokumentu.
 
 - **Základná verzia Versa je po anglicky** — všetky viditeľné popisy, tlačidlá, placeholdery a hlášky
 - **SQL vždy s menom**, v samostatnom skopírovateľnom bloku
-- Okná a workspacy sa **nesmú hýbať** pri bežnej práci
+- Okná a workspacy sa **nesmú hýbať** pri bežnej práci — ani pri **otváraní okien a povelov** (podržanie
+  3 s, otvorenie Notes/chat okna, note line): obrazovka nesmie poskočiť, poloha stránky aj scrollu v okne
+  sa drží (Vrso 2. 10., 14:08; `[Zzz5-6:NO-JUMP]`)
 - Každý modul je **adaptívny** naprieč zariadeniami; najprv zmenšiť, zalomiť až ako posledné
 - `cl` = command line (obsadené), `chl`/`chat` = chat line, `nl` = note line, `w` = workspace
 - **Hlavný Verso modul je HLAVNÝ COMMAND MODUL a vždy musí ísť ovládať tlačidlami na obrazovke**
