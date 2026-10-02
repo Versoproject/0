@@ -10943,6 +10943,7 @@ function zzz6f38_flush_pending_edit() {
   const newValue = entryData[id] || '';
   if (prevValue === newValue) return; // napr. dopisane a potom zmazane spat na povodnu hodnotu - ziadna skutocna zmena
   zzz6f38_push_bounded(zzz6f38_undoStack, { type: 'edit', id, prevValue, newValue });
+  zzz6f39_note_redo_clear(`edit of CL cell R${id}`); // [Zzz6-F39:FORWARD-HISTORY] diagnostika
   zzz6f39_redoStack = []; // novy krok zmaze "buducnost" (klasicke undo/redo spravanie)
 }
 
@@ -10966,6 +10967,7 @@ function zzz6f38_record_submit(payload) {
   if (zzz6f38_isReplaying) return;
   zzz6f38_flush_pending_edit(); // najprv uzavri prip. rozpisany edit, aby poradie krokov na stacku bolo spravne
   zzz6f38_push_bounded(zzz6f38_undoStack, { type: 'submit', payload: Object.assign({}, payload) });
+  zzz6f39_note_redo_clear('new ENTER'); // [Zzz6-F39:FORWARD-HISTORY] diagnostika
   zzz6f39_redoStack = [];
 }
 
@@ -10982,7 +10984,38 @@ function zzz6f38_flash_cl_cell(id, cssClass, duration = 600) {
 }
 // === [/Zzz6-F38:FLASH-CELL] ===
 
+// === [Zzz6-F39:FORWARD-HISTORY] Vrso 3. 10. 01:46 ("pokracuj" - pamat krokov napojena na historiu na serveri):
+//  1) Forward pri prazdnej pamati krokov sa pozrie do verso_history: ak bol MOJ posledny krok na zaznamoch presun do
+//     kosa, ponukne jeho obnovu (TRASH -> RESTORE cesta). Funguje po reloade, po logine aj na inom zariadeni.
+//  2) Diagnostika: zapamata si, co naposledy vyprazdnilo pamat Forward (uprava bunky / novy ENTER) a povie to.
+//  3) Poistka proti dvojitemu dotyku: kym Back/Forward este bezi (cakanie na server), dalsi dotyk sa ignoruje. | Vrso -> Claude AI | 2026-10-03
+let zzz6f39_lastClear = null;
+function zzz6f39_note_redo_clear(reason) {
+  if (zzz6f39_redoStack && zzz6f39_redoStack.length > 0) {
+    zzz6f39_lastClear = { reason, steps: zzz6f39_redoStack.length, at: new Date().toLocaleTimeString() };
+  }
+}
+async function zzz6f39_forward_from_history() {
+  let me = '';
+  try { me = zzz10v1_normalize(zzz0r1_get_current_username() || ''); } catch (e) {}
+  if (!me || !zzz6f7_isLoggedIn) return false;
+  try {
+    const { data, error } = await sb.from('verso_history')
+      .select('entry_key, action')
+      .eq('table_name', 'verso_entries').eq('actor', me)
+      .in('action', ['create', 'version', 'trash', 'restore', 'delete'])
+      .order('id', { ascending: false }).limit(1);
+    if (error || !data || !data.length || data[0].action !== 'trash') return false;
+    const id = Number(data[0].entry_key);
+    if (!confirm(`Forward: restore #${id} from Trash? (the last record you moved to Trash)`)) return true;
+    await zzz6f35_restore_from_trash({ entry_id: id, username: me });
+    return true;
+  } catch (e) { return false; }
+}
+// === [/Zzz6-F39:FORWARD-HISTORY] (pomocne funkcie) ===
+
 async function zzz6f38_undo() {
+  if (zzz6f38_isReplaying) return; // [Zzz6-F39:FORWARD-HISTORY] predosly Back/Forward este bezi - dvojity dotyk ignorovat
   zzz6f38_flush_pending_edit(); // uzavri prip. rozpisany text - Back ma vratit CELY prave napisany obsah, nie cast
   const action = zzz6f38_undoStack[zzz6f38_undoStack.length - 1];
   if (!action) {
@@ -11023,10 +11056,19 @@ async function zzz6f38_undo() {
 }
 
 async function zzz6f39_redo() {
+  if (zzz6f38_isReplaying) return; // [Zzz6-F39:FORWARD-HISTORY] predosly Back/Forward este bezi - dvojity dotyk ignorovat
   zzz6f38_flush_pending_edit(); // konzistentnost s Back-om (viz vyssie)
   const action = zzz6f39_redoStack[zzz6f39_redoStack.length - 1];
   if (!action) {
-    zzz6f2_show_toast('Zzz6-F39 Forward: nie je co vratit vpred');
+    // [Zzz6-F39:FORWARD-HISTORY] prazdna pamat -> skus historiu na serveri; inak povedz, co pamat vyprazdnilo
+    zzz6f38_isReplaying = true;
+    let handled = false;
+    try { handled = await zzz6f39_forward_from_history(); } finally { zzz6f38_isReplaying = false; }
+    if (handled) return;
+    const why = zzz6f39_lastClear
+      ? ` (memory was cleared at ${zzz6f39_lastClear.at} by ${zzz6f39_lastClear.reason})`
+      : '';
+    zzz6f2_show_toast('Zzz6-F39 Forward: nie je co vratit vpred' + why);
     return;
   }
   zzz6f38_isReplaying = true;
@@ -24767,12 +24809,15 @@ async function zzz6f35_restore_from_trash(row, btn) {
     zzz0r1_set_db_connection_state(true);
     zzz6f37_write_audit_log('entry_restore_from_trash', { entry_id: row.entry_id }); // Zzz6-F37:AUDIT-LOG
     zzz6f2_show_toast(`#${row.entry_id} restored from Trash`);
-    open_trash_workspace();
+    if (document.querySelector('#versoWorkspaceSection .trash-workspace')) open_trash_workspace(); // [Zzz6-F39:FORWARD-HISTORY] obnova moze prist aj z Forward mimo kosa
+    else refresh_database_workspace_if_open();
+    return true;
   } catch (err) {
     const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
     console.error(`Zzz6-F35:TRASH-RESTORE #${row.entry_id} zlyhal. DOVOD: ${errDetail}`);
     zzz6f2_show_toast(`#${row.entry_id} could not be restored: ${errDetail.replace(/^.*verso_entries:\s*/i, '')}`);
     if (btn) btn.disabled = false;
+    return false;
   }
 }
 // === [/Zzz6-F35:TRASH-RESTORE] ===
@@ -29474,7 +29519,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-03 02:00';
+const ZZZ5_6_BUILD = '2026-10-03 02:15';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny

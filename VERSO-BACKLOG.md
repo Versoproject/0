@@ -514,7 +514,9 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
   rozdeliť na dve vrstvy: (1) úpravy v CL = lokálne, uložiť per user do úložiska zariadenia (teraz localStorage,
   s PWA IndexedDB) - prežijú reload; (2) uložené záznamy (ENTER / kôš / obnova / verzia) = **zdroj pravdy je
   `verso_history` na serveri** - → pri prázdnej pamäti vráti môj posledný `trash` z histórie, takže sa nestratí ani
-  pri inom zariadení. Plus diagnostika, kto pamäť vyprázdnil (príčina z testu #159/#160 neznáma). Čaká na súhlas.
+  pri inom zariadení. Plus diagnostika, kto pamäť vyprázdnil (príčina z testu #159/#160 neznáma).
+  **Vrstva 2 + diagnostika + poistka dvojitého dotyku POSTAVENÉ 3. 10. 02:15** `[Zzz6-F39:FORWARD-HISTORY]`. Vrstva 1
+  (CL úpravy do úložiska zariadenia) čaká - potrebuje aj ukladanie rozpísanej CL (MY DEVICE).
 - **CUDZIE ZARIADENIE = LOKÁLNA CACHE NA MINIMUM (Vrso 3. 10., 01:17):** Verso je online systém, zdroj pravdy je
   server. Návrh: pri logine voľba **MY DEVICE / FOREIGN DEVICE** (predvolené FOREIGN - bezpečnejšie). FOREIGN: nič sa
   neukladá do úložiska zariadenia (len pamäť stránky), žiadna PWA dátová cache (len samotná appka), pri výpadku DB
