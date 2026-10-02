@@ -4115,6 +4115,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     user-select: none;
     cursor: pointer;
   }
+  /* [Zzz5-6:LIMIT-CONTENT] prepinac pola CONTENT v LIMIT */
+  .zzz5w7-limittoggle { align-self: flex-start; margin: 4px 0 2px 0; padding: 2px 10px; font-size: 11px; }
+  .zzz5w7-limittoggle.is-on { border-color: #D4AF37; color: #8a6d1f; }
   .zzz5-6-tabstrip-attach { margin-left: auto; padding: 0 8px; font-size: 8px; }
   /* cislo zaznamu je zapnute, kym su jeho SUBS rozbalene - inak by sa nedalo zistit, odkial su */
   .zzz1cn-ws-cardentry.is-on { background-color: #D4AF37; color: #171717; }
@@ -28963,7 +28966,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 11:59';
+const ZZZ5_6_BUILD = '2026-10-02 12:17';
 
 // === [Zzz5-6:TAB-NOTES] NOTES WINDOW jedneho tabu =================================================
 // Vrso 2026-10-01 (22:01): "podrzanim 1-2s pridaj do notes window pre tento tab (v nom ma byt attach
@@ -29897,6 +29900,8 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     ZZZ1CN_WS_TABS.forEach(t => tabBtns[t.key].classList.toggle('zzz1cn-ws-tabmax', wsMax));
     // mimo tabu NOTES modul nestoji ani tak - podmienka je rovnaka ako v render()
     noteMod.el.style.display = (!wsMax && activeTab === 'notes') ? '' : 'none';
+    // [Zzz5-6:WS-MAIN] maximalizacia = okno cez hlavicku; spat = znova pod nu
+    if (typeof zzz5_6PlaceUnder === 'function') zzz5_6PlaceUnder();
   }
   const tabBtns = {};
   ZZZ1CN_WS_TABS.forEach(t => {
@@ -29914,8 +29919,8 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
         wsMax = !wsMax;
         zzz_haptic_pulse(20);
         wsApplyMax();
-        zzz6f2_show_toast(wsMax ? 'Maximised - layout and dashboard hidden.'
-                                : 'Layout and dashboard are back.');
+        zzz6f2_show_toast(wsMax ? 'Maximised - covers the main module.'
+                                : 'Main module is back above.');
         return;
       }
       tabTapAt = now; tabTapKey = t.key;
@@ -30029,11 +30034,15 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     withOrder: false,                     // poradie v osnove tu nema zmysel - riadky su naprieč zaznamami
     alsoClear: () => [searchRef],
     // [Zzz5-W7:FILTER-EXTRA] styri kriteria, ktore Vrso vymenoval ako "kam poznamka patri"
+    // [Zzz5-6:SHOW-LIMIT] kriteria o ZAZNAME stoja v tabe LIMIT, nie medzi kriteriami poznamok
+    limitPane: true,
     extraFilters: [
-      { key: 'entry',   label: 'ENTRY',   placeholder: 'entry number' },
-      { key: 'project', label: 'PROJECT', placeholder: 'project number' },
       { key: 'owner',   label: 'OWNER',   placeholder: 'project owner' },
-      { key: 'tag',     label: 'TAG',     placeholder: 'tag' }
+      { key: 'pname',   label: 'NAME',    placeholder: 'project name' },
+      { key: 'project', label: 'PROJECT', placeholder: 'project number' },
+      { key: 'entry',   label: 'ENTRY',   placeholder: 'entry number' },
+      { key: 'tag',     label: 'TAG',     placeholder: 'tag' },
+      { key: 'content', label: 'CONTENT', placeholder: 'in the record content', toggle: true }   // [Zzz5-6:LIMIT-CONTENT]
     ],
     extraUsers: () => Object.keys(entryMap).map(k => entryMap[k].owner),
     // [Zzz1-CN:TAGS] slovnik je na zazname, workspace ich vidi mnoho - ponukne teda ZJEDNOTENIE
@@ -30088,8 +30097,17 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
   // Vrso 2026-10-01: "kedze notes CRM nastavime trochu inak, zrus hore attach/attached aj search."
   // Z layoutu ostava LEN dashboard: tri tlacidla nad modulom boli moj navrh, nie jeho, a funkcie, ktore
   // niesli, su odteraz inde (SEARCH = samotne bunky CL, ATTACH = pri texte poznamky v note linku).
-  nmAnchor.appendChild(noteMod.el);   // 3-dashboard
-  nmAnchor.appendChild(scrm.el);      // notes CRM (duplikat M4a templatu) - RL kriteria + CL hladanie
+  // === [Zzz5-6:WS-MAIN] Vrso 2026-10-02 (12:15): "ano ostava (layout), ale tentokrat tam daj uz HLAVNU
+  // M4 CRM! Nebude na ucely notes, ale je to s ostatnymi hlavny command modul (hlavne aj ovladacie prvky)."
+  // Klon layoutu (noteMod) ani notes CRM (scrm) sa uz NEKRESLIA. Workspace sa namiesto toho otvara
+  // POD skutocnou hlavickou stranky (#versoFullHeaderAnchor = layout + hlavna M4 CRM, sticky navrchu),
+  // takze nad nim stoji ORIGINAL so vsetkymi funkciami - nie hluchy obraz. Kriteria o zazname, ktore
+  // niesla notes CRM, su v SHOW > LIMIT ([Zzz5-6:SHOW-LIMIT]).
+  // Oba objekty sa dalej stavaju, len sa nevkladaju: render() a WS-MAX na ne siahaju a bez nich by sa
+  // museli prepisat aj tie - vratit ich spat je jeden riadok.
+  // Pas ATTACHED (pripnuty tab) zil v notes CRM; vytiahne sa z nej a ostava navrchu workspacu.
+  const zzz5_6AttEl = scrm.el.querySelector('.zzz1cn-ncrm-attach');
+  if (zzz5_6AttEl) nmAnchor.appendChild(zzz5_6AttEl);
 
   // === [Zzz5-6:TAB-NOTES] NOTES WINDOW tohto tabu =================================================
   // Vrso 2026-10-01: "podrzanim 1-2s pridaj do notes window pre tento tab, v nom ma byt attach button,
@@ -30264,6 +30282,8 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     if (!has(c.project, ex.project)) return false;
     if (!has(c.owner, ex.owner)) return false;
     if (!has(c.tag, ex.tag)) return false;
+    if (!has(c.projectName, ex.pname)) return false;      // [Zzz5-6:SHOW-LIMIT]
+    if (!has(c.content, ex.content)) return false;        // [Zzz5-6:LIMIT-CONTENT]
     // [Zzz1-CN:TAGS] pozor na dve rozne veci s podobnym nazvom: kriterium TAG hore je stitok ZAZNAMU
     // (pole zaznamu), zaskrtnute chipy TAGS su stitky POZNAMKY. Chipy su medzi sebou ALEBO.
     const tagPick = Object.keys(view.tags || {});
@@ -30707,6 +30727,33 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
 
   document.body.appendChild(win);
   zzz5w7_watch_head(head);   // [Zzz5-W7:HEAD-FIT]
+  // [Zzz5-6:WS-MAIN] okno zacina tam, kde konci hlavicka - meria sa, nie odhaduje (hlavicka meni vysku,
+  // ked sa v nej otvori ATTACH/MINI okno). Pri WS-MAX ide okno cez celu obrazovku, tak ako doteraz.
+  const zzz5_6Hdr = document.getElementById('versoFullHeaderAnchor');
+  const zzz5_6Ro = (typeof ResizeObserver === 'function' && zzz5_6Hdr) ? new ResizeObserver(() => zzz5_6PlaceUnder()) : null;
+  if (zzz5_6Ro) zzz5_6Ro.observe(zzz5_6Hdr);
+  window.addEventListener('scroll', zzz5_6PlaceUnder, { passive: true });
+  window.addEventListener('resize', zzz5_6PlaceUnder);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', zzz5_6PlaceUnder);
+  function zzz5_6PlaceUnder() {
+    if (!win.isConnected) {
+      if (zzz5_6Ro) zzz5_6Ro.disconnect();
+      window.removeEventListener('scroll', zzz5_6PlaceUnder);
+      window.removeEventListener('resize', zzz5_6PlaceUnder);
+      if (window.visualViewport) window.visualViewport.removeEventListener('resize', zzz5_6PlaceUnder);
+      return;
+    }
+    if (wsMax || !zzz5_6Hdr) {
+      ['top', 'height', 'max-height'].forEach(k => win.style.removeProperty(k));
+      return;
+    }
+    const b = Math.max(0, Math.round(zzz5_6Hdr.getBoundingClientRect().bottom));
+    const h = `calc(var(--zzz5w7-full-h, 100dvh) - ${b}px)`;
+    win.style.setProperty('top', b + 'px', 'important');
+    win.style.setProperty('height', h, 'important');
+    win.style.setProperty('max-height', h, 'important');
+  }
+  zzz5_6PlaceUnder();
   try {
     // [Zzz5-6:USER-TABS] druha linia sa tiahne SPOLU so zvyskom - jedno cakanie, nie tri za sebou
     const [notes, entries] = await Promise.all([
@@ -30908,6 +30955,24 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
   tabHide.type = 'button';
   tabHide.className = 'zzz1cn-note-btn zzz5w7-tab zzz5w7-tab-hide';
   tabHide.textContent = 'HIDE';
+  // === [Zzz5-6:SHOW-LIMIT] treti tab LIMIT - len ked ho okno pyta (Author workspace) =============
+  // Vrso 2026-10-02: "v taboch pridat aj LIMIT... ten by filtroval uz celu entry/bunky, cize projekt,
+  // owner... filter s hide by ostal iba pre subs, kde su notes" + "pripadne nechat limit celkovo v show
+  // bare". Tri kroky, tri urovne, v poradi, v akom sa uplatnuju:
+  //   LIMIT  = KTORE ZAZNAMY (owner, projekt, cislo, tag, SUBS zaznamu, volitelne CONTENT)
+  //   FILTER = KTORE POZNAMKY z nich
+  //   HIDE   = CO z textu poznamok nevidno
+  // Notes window jedneho zaznamu LIMIT nema - ma jeden zaznam a nie je co obmedzovat.
+  const withLimit = !!opts.limitPane;
+  let tabLimit = null;
+  if (withLimit) {
+    tabLimit = document.createElement('button');
+    tabLimit.type = 'button';
+    tabLimit.className = 'zzz1cn-note-btn zzz5w7-tab zzz5w7-tab-limit';
+    tabLimit.textContent = 'LIMIT';
+    tabLimit.title = 'Which RECORDS the notes come from - owner, project, entry, tag, subs, content';
+    tabs.appendChild(tabLimit);
+  }
   tabs.appendChild(tabFilter); tabs.appendChild(tabHide);
   filterBox.appendChild(tabs);
 
@@ -30932,18 +30997,36 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
   noteH.textContent = 'Removes PARTS of each line from the text. No note disappears.';
   // [Zzz5-W7:STATUS-LINE] poradie kriterii kopiruje poradie znakov v riadku, nech sa da najst okom
   paneHide.appendChild(noteH);
+  // [Zzz5-6:SHOW-LIMIT] LIMIT lezi v tej istej mriezke na sebe ako FILTER a HIDE ([Zzz5-W7:PANE-SIZE])
+  const paneLimit = document.createElement('div');
+  paneLimit.className = 'zzz5w7-pane zzz5w7-pane-limit';
+  paneLimit.style.visibility = 'hidden';
+  if (withLimit) {
+    const noteL = document.createElement('div');
+    noteL.className = 'zzz5w7-panenote';
+    noteL.textContent = 'Narrows WHICH RECORDS the notes come from. FILTER then works inside them.';
+    paneLimit.appendChild(noteL);
+    panes.appendChild(paneLimit);
+  }
   panes.appendChild(paneFilter);
   panes.appendChild(paneHide);
   filterBox.appendChild(panes);
-  const tabGo = (onHide) => {
-    tabFilter.classList.toggle('is-on', !onHide);
-    tabHide.classList.toggle('is-on', onHide);
-    paneFilter.style.visibility = onHide ? 'hidden' : '';
-    paneHide.style.visibility = onHide ? '' : 'hidden';
-    filterTitle.classList.toggle('is-hide', !!onHide);
+  // which: 'filter' | 'hide' | 'limit' (stare volania posielaju true/false = hide/filter)
+  const tabGo = (which) => {
+    const w = which === true ? 'hide' : (which === false || !which) ? 'filter' : which;
+    tabFilter.classList.toggle('is-on', w === 'filter');
+    tabHide.classList.toggle('is-on', w === 'hide');
+    if (tabLimit) tabLimit.classList.toggle('is-on', w === 'limit');
+    paneFilter.style.visibility = w === 'filter' ? '' : 'hidden';
+    paneHide.style.visibility = w === 'hide' ? '' : 'hidden';
+    paneLimit.style.visibility = w === 'limit' ? '' : 'hidden';
+    filterTitle.classList.toggle('is-hide', w === 'hide');
   };
-  tabFilter.addEventListener('click', () => tabGo(false));
-  tabHide.addEventListener('click', () => tabGo(true));
+  tabFilter.addEventListener('click', () => tabGo('filter'));
+  tabHide.addEventListener('click', () => tabGo('hide'));
+  if (tabLimit) tabLimit.addEventListener('click', () => tabGo('limit'));
+  // kam idu kriteria o ZAZNAME: do LIMIT, ked ho okno ma, inak tam, kde boli doteraz
+  const paneRecord = withLimit ? paneLimit : paneFilter;
 
   // === [Zzz5-W7:FILTER-NOT] Vrso 2026-09-26: "na jeho mieste dorob filter, ale OPACNY - ktory by filtroval,
   // co v texte mat NECHCEM. Napr. vyfiltrujem '1a name verso project', ale chcem iba '1a name' alebo inokedy
@@ -31047,7 +31130,7 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
     const sChips = document.createElement('div');
     sChips.className = 'zzz5w7-tagchips';
     sRow.appendChild(sLab); sRow.appendChild(sChips);
-    paneFilter.appendChild(sRow);
+    paneRecord.appendChild(sRow);   // [Zzz5-6:SHOW-LIMIT] SUBS je struktura ZAZNAMU
     paintSubs = () => {
       sChips.innerHTML = '';
       // Ponuku dodava okno, ktore box prave stavia - a jeho zoznam poznamok v tej chvili este nemusi
@@ -31288,7 +31371,28 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
     inp.dataset.zzz5w7Extra = f.key;
     inp.addEventListener('input', () => { view.extra[f.key] = inp.value; onChange(); });
     row.appendChild(lab); row.appendChild(inp);
-    paneFilter.appendChild(row);
+    paneRecord.appendChild(row);   // [Zzz5-6:SHOW-LIMIT] kriteria o zazname
+    // [Zzz5-6:LIMIT-CONTENT] Vrso 2026-10-02: "aj priradeny content - mozno by sa dalo lahko urobit
+    // daky prepinaci toggle na content, ak treba". Pole s togglom je SKRYTE, kym sa nezapne: CONTENT
+    // je dlhy a kratke slovo by v nom naslo skoro vsetko, takze nema byt v ceste, ked ho netreba.
+    // Vypnutie pole aj VYCISTI - skryte kriterium, ktore by dalej filtrovalo, by bolo neviditelna pasca.
+    if (f.toggle) {
+      const tg = document.createElement('button');
+      tg.type = 'button';
+      tg.className = 'zzz1cn-note-btn zzz5w7-limittoggle';
+      tg.textContent = '+ ' + f.label;
+      tg.title = 'Also limit by the ' + f.label + ' of the record';
+      row.style.display = 'none';
+      const set = (on) => {
+        row.style.display = on ? '' : 'none';
+        tg.classList.toggle('is-on', on);
+        tg.textContent = (on ? '\u2212 ' : '+ ') + f.label;
+        if (!on && inp.value) { inp.value = ''; view.extra[f.key] = ''; onChange(); }
+      };
+      tg.addEventListener('click', () => set(row.style.display === 'none'));
+      paneRecord.insertBefore(tg, row);
+      if (view.extra[f.key]) set(true);
+    }
     extraInputs.push(inp);
     reg('extra:' + f.key, inp, () => view.extra[f.key] || '',
       (v) => { view.extra[f.key] = v || ''; inp.value = v || ''; });

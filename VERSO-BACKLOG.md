@@ -1,7 +1,7 @@
 # VERSO — BACKLOG (aktuálny stav)
 
 > **HLAVNÉ INŠTRUKCIE sú v tomto súbore v kapitole C.** Plná verzia (aj s GitHub postupom a blokom do
-> custom instructions) je `VERSO-HLAVNE-INSTRUKCIE.md`, verzia 2026-10-02 01:30. Keď pribudne pravidlo,
+> custom instructions) je `VERSO-HLAVNE-INSTRUKCIE.md`, verzia 2026-10-02 12:20. Keď pribudne pravidlo,
 > zapíše sa na OBE miesta a súbor sa prenáša vždy CELÝ, nikdy len prírastok.
 
 
@@ -425,6 +425,18 @@ inak sa to o mesiac postaví znova rovnako zle.
   Cudzia poznámka sa tak dá prevziať pod vlastným menom bez stopy. Treba rozhodnúť, kde má log žiť
   (pri kópii samotnej, alebo v acknowledgement bunke) — mechanizmus copy-credit už existuje.
 
+### ÚROVNE OVLÁDANIA A ŠPECIALIZÁCIE MODULOV (Vrso 2. 10., 12:15 — „časom doriešime")
+
+Zapísané tak, ako to Vrso povedal; nič z toho sa zatiaľ nestavia.
+
+- **2, resp. 3 úrovne ovládania** (= inštrukcie systému):
+  1. **bez počítača**, ale s **rovnakou organizáciou dát**,
+  2. **Verso PC verzia**, ktorá musí byť ovládateľná **iba tlačidlami na obrazovke**,
+  3. **komerčná – sofistikovaná**.
+- **Špecializácie modulov** môžu existovať popri sebe — napr. jeden modul na ovládanie systému, iný
+  rieši projekty (ako nastaviť, …).
+- Platí už teraz: gestá sú skratky, tlačidlá na obrazovke ostávajú vždy (pravidlo v kap. C1).
+
 ### B10. Ďalšie nedoriešené
 
 - **Zápis do záznamu BEZ razenia novej verzie** — už tri veci to potrebujú: status na entry, owner gate
@@ -473,6 +485,14 @@ authorized repository set"*; čítať sa dá, pushovať nie. Nie je to chyba kó
 (`[Zzz5-6:BUILD]`, vpravo v riadku vlastných tabov) povie, ktorá verzia práve beží.
 
 ### C1. Ostatné pravidlá
+
+- **Hlavný Verso modul je HLAVNÝ COMMAND MODUL a vždy musí ísť ovládať tlačidlami na obrazovke**
+  (Vrso 2. 10., 12:15). Layout (kruhy povelov, Web line, dashboard) + **hlavná M4 CRM** sú spolu
+  s ostatnými ovládacími prvkami jadro ovládania. Workspacy (napr. Author workspace) ich **neprekrývajú
+  klonom**, ale otvárajú sa pod nimi, aby nad nimi stál originál so všetkými funkciami
+  (`[Zzz5-6:WS-MAIN]`). Gestá ich smú časom schovať, ale **vždy musí ostať aj „jednoduché" ovládanie**
+  viditeľnými tlačidlami, keby gesto nefungovalo (iné zariadenie, porucha, nový user). Gesto je skratka,
+  nikdy jediná cesta.
 
 - **Základná verzia Versa je po anglicky** — všetky viditeľné popisy, tlačidlá, placeholdery a hlášky
 - **SQL vždy s menom**, v samostatnom skopírovateľnom bloku

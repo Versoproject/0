@@ -1,6 +1,6 @@
 # VERSO — HLAVNÉ INŠTRUKCIE
 
-**Verzia: 2026-10-02 01:30**
+**Verzia: 2026-10-02 12:20**
 
 > **Ako sa tento súbor udržiava:** je JEDEN a prenáša sa VŽDY CELÝ. Keď pribudne pravidlo, Claude
 > prepíše tento súbor a dá ti ho; ty ním nahradíš starú kópiu v ostatných projektoch. Nikdy sa
@@ -31,6 +31,13 @@ Návrh, čo tam dať, je na konci tohto dokumentu.
 - Okná a workspacy sa **nesmú hýbať** pri bežnej práci
 - Každý modul je **adaptívny** naprieč zariadeniami; najprv zmenšiť, zalomiť až ako posledné
 - `cl` = command line (obsadené), `chl`/`chat` = chat line, `nl` = note line, `w` = workspace
+- **Hlavný Verso modul je HLAVNÝ COMMAND MODUL a vždy musí ísť ovládať tlačidlami na obrazovke**
+  (Vrso 2. 10., 12:15). Layout (kruhy povelov, Web line, dashboard) + **hlavná M4 CRM** sú spolu
+  s ostatnými ovládacími prvkami jadro ovládania. Workspacy (napr. Author workspace) ich **neprekrývajú
+  klonom**, ale otvárajú sa pod nimi, aby nad nimi stál originál so všetkými funkciami
+  (`[Zzz5-6:WS-MAIN]`). Gestá ich smú časom schovať, ale **vždy musí ostať aj „jednoduché" ovládanie**
+  viditeľnými tlačidlami, keby gesto nefungovalo (iné zariadenie, porucha, nový user). Gesto je skratka,
+  nikdy jediná cesta.
 - **Chatnote sa VKLADÁ, note sa UKLADÁ** (`[Zzz1-CN:ENTER-VS-SAVE]`, 30. 9.) — `ENTER CHATNOTE` pošle
   záznam **iba do chatu** (`is_saved = false`), `SAVE NOTE` v note line ho uloží **do Notes**. Názvy
   tlačidiel musia túto hranicu držať; „save" sa nesmie objaviť na ceste, ktorá do Notes nezapisuje
@@ -127,4 +134,6 @@ Verso = jednosúborová CRM (index.html, Supabase, Vercel). Pri každej zmene pl
    ako posledné.
 9. Nevymýšľaj, čo som nepovedal. Keď na niečo chýba podklad, nechaj to prázdne a napíš prečo.
 10. Nikdy nemeň viac, než o čo som žiadal. Zmena mimo zadania sa najprv ohlási.
+11. Hlavný Verso modul (layout + hlavná M4 CRM) je hlavný command modul. Gestá ho smú schovať, ale vždy
+    musí ostať ovládanie tlačidlami na obrazovke. Workspacy sa otvárajú POD ním, neklonujú ho.
 ```
