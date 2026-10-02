@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-03 01:00** · build appky v čase zápisu: `2026-10-03 00:55`
+**Verzia: 2026-10-03 00:40** · build appky v čase zápisu: `2026-10-03 00:40`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -244,6 +244,30 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
 - **TAG**: označené vlastné poznámky dostanú štítok (zdieľané len zo slovníka záznamu, privátne čokoľvek).
 - **DELETE**: zčervená, keď je niečo označené; zmaže len **vlastné** označené po potvrdení
   (cudzie sa preskočia).
+
+### 4.12 Prihlásenie (login) - čo appka ukáže (`[Zzz6-F36:LOGIN-QUIET]`, `[Zzz10-R1:USERNAME-GUARD]`)
+- **Postup:** SETTINGS → Login setup → USER + heslo → LOGIN. Server (`verso-auth-gate`) overí heslo a vydá
+  podpísaný token; odvtedy každý zápis do DB server overuje proti tomuto loginu (`verso_jwt_username()`).
+- **Úspešný login nemá hlášku (toast).** Poznáš ho podľa toho, že:
+  - meno v ľavom kruhu je **zelené**,
+  - otvorí sa **Login setup** s LOG OUT a CHANGE PASSWORD,
+  - CL má predvyplnené PROJECT OWNER, USER (a COMMUNICATION) na prihláseného.
+- **Iné meno než naposledy na tomto zariadení:** meno v kruhu je **5 s červené**, potom normálne. Je to
+  len upozornenie (napr. Verso → Vrso), nie chyba; hláška sa už neukazuje.
+- **Databáza nedostupná pri logine:** jediná hláška, ktorá ostala - „prihlaseny lokalne … oranzovy ram".
+  Meno má oranžový rám, appka beží lokálne a zápisy do DB počkajú.
+- **Čo server pri logine zapíše:** `login_event` do verifikačnej databázy - smie ho zapísať len prihlásený
+  sám za seba (`verso_verification_insert_check_v1`, 3. 10.).
+
+### 4.13 Verifikačná databáza - čo do nej smie appka zapísať (od 3. 10.)
+Kontrola na serveri (trigger `zz_verso_verification_check_insert_trg`):
+- **registrácia** (`register-meno`) - len ak meno už má heslo na serveri (vytvára ho `verso-auth-gate` pri
+  REGISTER ešte pred týmto zápisom). Falošné meno v registri kontaktov tak nevznikne;
+- **login** a **potvrdenie čísla záznamu** - len prihlásený za seba;
+- **rezervácia mena** - cez serverovú funkciu `write_username_reservation`;
+- **iné typy** - len serverové funkcie.
+Ak support vidí chybu „…write refused" / „…only for yourself", appka sa pokúsila zapísať za iné meno
+alebo bez loginu - riešenie: odhlásiť, prihlásiť a zopakovať.
 
 ---
 
