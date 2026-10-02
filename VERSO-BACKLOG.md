@@ -449,6 +449,20 @@ Pravidlo je v C1 a v rules. Čo treba postaviť:
 - **Zobrazenie:** tab ukáže svoje položky podľa umiestnenia; položka bez umiestnenia nesmie vzniknúť
   (staré bez umiestnenia → predvolený tab pri prvom načítaní).
 
+**Krok 1 POSTAVENÝ (2. 10., 22:30, `[Zzz5-6:PLACEMENT]`, SQL `verso_placements_v1`):** umiestnenie je
+na každého svoje (vlastné taby má každý svoje) - riadok (user, položka) → tab; bez riadku = NOTES.
+Záznam sa presúva podržaním čísla záznamu 3 s; nová CL dostane označený vlastný tab; označený vlastný
+tab ukazuje len svoje záznamy, NOTES ukazuje všetko. Zmazaný tab → položky späť v NOTES (nič nie je nikde).
+
+**Ďalšie kroky:** umiestnenie jednotlivej poznámky (nielen záznamu), log presunov, umiestnenie EL mimo
+Author workspace, pripnuté notes na mriežke hlavnej CRM (Vrso 22:03: *„ešte počkaj… skôr áno, ale nech
+reflektuje notes kategórie - neskôr a oddelene skúsime, čo bude lepšie"*).
+
+**FOLDERS / TECHS (Vrso 2. 10., 22:03 - neskôr):** umiestnením sú zatiaľ taby; môžu pribudnúť **foldre**
+(technicky asi to isté) - napr. na technické súčasti projektu: keď niekto využije Verso na programovanie
+hry, uložia sa tam dáta, ktoré nie sú reálne využiteľné pre bežných užívateľov. Programátor ich nájde
+podľa entry numbers alebo podľa nových subs (pracovný názov **„techs"**).
+
 ### B10. Ďalšie nedoriešené
 
 - **Zápis do záznamu BEZ razenia novej verzie** — už tri veci to potrebujú: status na entry, owner gate

@@ -4279,6 +4279,16 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz1cn-list-head .zzz5-6-copy-off { opacity: 0.35; filter: grayscale(1); }
   .zzz5w7-inline-tag.is-ref { cursor: pointer; text-decoration: underline dotted; }   /* [Zzz5-6:REF-ON-SAVE] */
   .zzz5w7-inline-tag.is-dropped { text-decoration: none; opacity: 0.7; }
+  /* [Zzz5-6:PLACEMENT] vyber tabu pre polozku */
+  .zzz5-6-placepick { position: fixed; z-index: 9000; min-width: 160px; max-width: 220px; padding: 4px;
+    border: 2px solid #D4AF37; border-radius: 9px; background: #fffdf6; box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+    display: flex; flex-direction: column; gap: 3px; }
+  .zzz5-6-placepick-head { font-size: 8px; font-weight: 700; letter-spacing: 0.05em; color: #8a6d1f; padding: 2px 4px; }
+  .zzz5-6-placepick-item { text-align: left; padding: 5px 8px; border: 1px solid #e0d7bd; border-radius: 7px;
+    background: #fff; color: #171717; font-size: 11px; cursor: pointer; }
+  .zzz5-6-placepick-item.is-on { background: #D4AF37; border-color: #b8860b; font-weight: 700; }
+  .zzz5-6-placepick-item.is-close { text-align: center; color: #8a6d1f; }
+  .zzz5-6-placepick-hint { font-size: 9px; color: #8a6d1f; padding: 2px 4px; }
   .zzz5-6-tabstrip-val.is-unset { color: #a89668; font-weight: 600; font-style: italic; }   /* [Zzz5-6:WORK-STRIP] */
   .zzz5-6-tabstrip .zzz5-6-strip-entry { margin-right: 6px; padding: 0 6px; font-size: 9px; line-height: 1.5; }
   .zzz5-6-tabstrip-attach.zzz1cn-ws-subattach {
@@ -27105,6 +27115,7 @@ function zzz1cn_promote_payload(entryId, n, noteNumber, notePart, noteText) {
 async function zzz1cn_promote_draft(entryId) {
   const id = Number(entryId);
   if (!id) return;
+  try { await zzz5_6_place_new_entry(id); } catch (e) {}   // [Zzz5-6:PLACEMENT] CL ostava v oznacenom tabe
   let draftId = null;
   try { draftId = localStorage.getItem(ZZZ1CN_DRAFT_ID_KEY); } catch (e) {}
   if (!draftId) return;
@@ -29301,7 +29312,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 22:00';
+const ZZZ5_6_BUILD = '2026-10-02 22:30';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -29655,6 +29666,109 @@ async function zzz5_6_add_user_tab(name) {
       : `Tab not saved: ${msg}`, 'warn');
     return false;
   }
+}
+
+// === [Zzz5-6:PLACEMENT] UMIESTNENIE KAZDEJ POLOZKY (krok 1) ======================================
+// PRAVIDLO (rules, Vrso 2026-10-02 21:49): "vzdy musi mat nejake umiestnenie! Inak ho ani nenajdem".
+// Umiestnenie je STRUKTURA a STAV (nie stitok, nie obsah) - zapisuje sa na mieste, ziadna nova verzia.
+// Vlastne taby ma kazdy svoje, preto je umiestnenie TIEZ kazdeho svoje: riadok (user, polozka) -> tab
+// v tabulke verso_placements (SQL verso_placements_v1). Polozka BEZ riadku je v predvolenom tabe NOTES -
+// takze nic nie je nikde: ked sa vlastny tab zmaze, riadok sa vyprazdni (on delete set null) a polozka
+// je zase v NOTES.
+// Krok 1 = zaznamy (CL/EL): presun podrzanim cisla zaznamu 3 s, CL pri ulozeni dostane oznaceny vlastny
+// tab, oznaceny vlastny tab ukazuje LEN svoje zaznamy. Poznamky idu so svojim zaznamom; WORK NOTE je
+// umiestneny uz klucom tab:<tab>.
+const ZZZ5_6_PLACE_TABLE = 'verso_placements';
+const zzz5_6Placement = {};        // item_key -> tab key ('u<id>'); chyba = NOTES
+let zzz5_6PlacementOk = null;      // null = neoverene, false = tabulka nie je nasadena
+async function zzz5_6_load_placements() {
+  try {
+    const { data, error } = await sb.from(ZZZ5_6_PLACE_TABLE).select('item_key, tab_id');
+    if (error) throw error;
+    Object.keys(zzz5_6Placement).forEach(k => delete zzz5_6Placement[k]);
+    (data || []).forEach(r => { if (r.tab_id) zzz5_6Placement[String(r.item_key)] = 'u' + r.tab_id; });
+    zzz5_6PlacementOk = true;
+  } catch (e) {
+    zzz5_6PlacementOk = false;
+  }
+}
+function zzz5_6_placement_of(itemKey) { return zzz5_6Placement[String(itemKey)] || 'notes'; }
+// tabKey: 'u<id>' = vlastny tab, 'notes' alebo nic = predvoleny (riadok sa zmaze)
+async function zzz5_6_place(itemKey, tabKey) {
+  const k = String(itemKey || '');
+  const me = String(zzz0r1_get_current_username() || '').trim();
+  if (!k || !me) return false;
+  if (zzz5_6PlacementOk === false) {
+    zzz6f2_show_toast('Placement needs the SQL update verso_placements_v1 first.', 'warn');
+    return false;
+  }
+  const tabId = /^u\d+$/.test(String(tabKey || '')) ? Number(String(tabKey).slice(1)) : null;
+  try {
+    if (tabId) {
+      const { error } = await sb.from(ZZZ5_6_PLACE_TABLE)
+        .upsert({ username: me, item_key: k, tab_id: tabId, updated_at: new Date().toISOString() },
+                { onConflict: 'username,item_key' });
+      if (error) throw error;
+      zzz5_6Placement[k] = 'u' + tabId;
+    } else {
+      const { error } = await sb.from(ZZZ5_6_PLACE_TABLE).delete().eq('item_key', k).eq('username', me);
+      if (error) throw error;
+      delete zzz5_6Placement[k];
+    }
+    return true;
+  } catch (e) {
+    const msg = String((e && e.message) || e);
+    if (/verso_placements|42P01|does not exist/i.test(msg)) zzz5_6PlacementOk = false;
+    zzz6f2_show_toast(zzz5_6PlacementOk === false ? 'Placement needs the SQL update verso_placements_v1 first.'
+      : `Placement not saved: ${msg}`, 'warn');
+    return false;
+  }
+}
+// nova CL -> zaznam: dostane OZNACENY vlastny tab (inak ostava v NOTES)
+async function zzz5_6_place_new_entry(entryId) {
+  if (!entryId || !zzz5_6ActiveUserTab) return;
+  if (zzz5_6PlacementOk === null) await zzz5_6_load_placements();
+  if (zzz5_6PlacementOk) await zzz5_6_place(String(entryId), zzz5_6ActiveUserTab);
+}
+// vyber tabu pri polozke - maly zoznam pri tlacidle (vlastne taby + NOTES)
+function zzz5_6_place_picker(anchor, itemKey, onDone) {
+  document.querySelectorAll('.zzz5-6-placepick').forEach(x => x.remove());
+  const box = document.createElement('div');
+  box.className = 'zzz5-6-placepick';
+  const cur = zzz5_6_placement_of(itemKey);
+  const head = document.createElement('div');
+  head.className = 'zzz5-6-placepick-head';
+  head.textContent = 'MOVE #' + itemKey + ' TO';
+  box.appendChild(head);
+  [{ key: 'notes', label: 'NOTES (default)' }].concat(zzz5_6UserTabs).forEach(t => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'zzz5-6-placepick-item' + (cur === t.key ? ' is-on' : '');
+    b.textContent = t.label;
+    b.addEventListener('click', async () => {
+      box.remove();
+      if (cur === t.key) return;
+      if (await zzz5_6_place(itemKey, t.key)) {
+        zzz6f2_show_toast(`#${itemKey} placed in ${t.key === 'notes' ? 'NOTES' : t.label}.`);
+        if (onDone) onDone();
+      }
+    });
+    box.appendChild(b);
+  });
+  if (!zzz5_6UserTabs.length) {
+    const h = document.createElement('div');
+    h.className = 'zzz5-6-placepick-hint';
+    h.textContent = 'No own tabs yet - add one with + (your own tabs).';
+    box.appendChild(h);
+  }
+  const x = document.createElement('button');
+  x.type = 'button'; x.className = 'zzz5-6-placepick-item is-close'; x.textContent = '\u00d7';
+  x.addEventListener('click', () => box.remove());
+  box.appendChild(x);
+  const r = anchor.getBoundingClientRect();
+  box.style.left = Math.max(4, Math.min(r.left, window.innerWidth - 200)) + 'px';
+  box.style.top = Math.min(r.bottom + 4, window.innerHeight - 40) + 'px';
+  document.body.appendChild(box);
 }
 
 // vsetky poznamky bez filtra na entry - RLS urci rozsah, nie klient
@@ -30573,11 +30687,12 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
       b.className = 'zzz5t0-tab zzz5-6-usertab'
         + (zzz5_6ActiveUserTab === t.key ? ' is-marked' : '');
       b.textContent = t.label;
-      b.title = t.label + ' - tap marks it';
+      b.title = t.label + ' - tap shows only what is placed here (and new CLs get placed here) / tap again = all';
       b.addEventListener('click', () => {
         // to iste tuknutie oznacuje aj odznacuje - dve tlacidla na jednu vec by boli zbytocne
         zzz5_6ActiveUserTab = (zzz5_6ActiveUserTab === t.key) ? null : t.key;
         paintUserTabs();
+        render();   // [Zzz5-6:PLACEMENT] oznaceny tab ukazuje svoje zaznamy
       });
       userRow.appendChild(b);
     });
@@ -31078,6 +31193,8 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     // takze by tvorili prazdny riadok, a kazda ulozena poznamka by v zozname stala dvakrat. Vidno ich
     // v ich vlastnom okne. Toto je to "ako ho ignorovat" - vylucenim, nie podmienkou v kazdom filtri.
     if (zzz5_6_is_tab_entry(n.entry_key)) return false;
+    // [Zzz5-6:PLACEMENT] oznaceny vlastny tab = ukaz LEN zaznamy umiestnene v nom (NOTES ukazuje vsetko)
+    if (zzz5_6ActiveUserTab && zzz5_6_placement_of(n.entry_key) !== zzz5_6ActiveUserTab) return false;
     switch (activeTab) {
       case 'private': return !!n.is_private;                                    // [Zzz5-6 Tab Private Notes]
       case 'project': return !n.is_private && !!ctxOf(n).project;               // [Zzz5-6 Tab Project Notes]
@@ -31235,13 +31352,22 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
         eBtn.type = 'button';
         eBtn.className = 'zzz1cn-ws-cardentry' + (openOf(ekKey) ? ' is-on' : '');
         eBtn.textContent = '#' + ek;
-        eBtn.title = 'Tap folds / unfolds the SUBS of this entry / hold 1-2s opens its Notes';
+        eBtn.title = 'Tap folds / unfolds the SUBS of this entry / hold 1-2s opens its Notes / hold 3s moves it to a tab';
         eBtn.addEventListener('click', () => { wsFold[ekKey] = !openOf(ekKey); render(); });
-        zzz_bind_long_press(eBtn, 1200, () => {
-          zzz_haptic_pulse(20);
-          zzz5_6WsReturn = true;   // [Zzz5-6:WS-RETURN] aj odtialto sa vraciam do workspacu
-          zzz1cn_open_list(ek, eBtn);
-        });
+        // [Zzz5-6:PLACEMENT] 1-2 s = jeho Notes (ako doteraz), 3 s = PRESUN do tabu (umiestnenie)
+        zzz5w7_bind_tiered_hold(eBtn, [
+          { ms: 1200, fn: () => {
+            zzz_haptic_pulse(20);
+            zzz5_6WsReturn = true;   // [Zzz5-6:WS-RETURN] aj odtialto sa vraciam do workspacu
+            zzz1cn_open_list(ek, eBtn);
+          } },
+          { ms: 3000, fn: () => zzz5_6_place_picker(eBtn, ek, () => render()) }
+        ]);
+        const plc = zzz5_6_placement_of(ek);
+        if (plc !== 'notes') {
+          const t = zzz5_6UserTabs.find(x => x.key === plc);
+          if (t) eBtn.title += ' · placed in ' + t.label;
+        }
         tdEntry.appendChild(eBtn);
         // [Zzz5-6:ATTACH-COL] tuk = pripni VSETKY poznamky tohto zaznamu pod CRM (zbalene) / znova = odopni
         const aKey = 'entry:' + ek;
@@ -31589,7 +31715,8 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
   try {
     // [Zzz5-6:USER-TABS] druha linia sa tiahne SPOLU so zvyskom - jedno cakanie, nie tri za sebou
     const [notes, entries] = await Promise.all([
-      zzz1cn_ws_load_notes(), zzz1cn_ws_load_entries(), zzz5_6_load_user_tabs()]);
+      zzz1cn_ws_load_notes(), zzz1cn_ws_load_entries(), zzz5_6_load_user_tabs(),
+      zzz5_6_load_placements()]);   // [Zzz5-6:PLACEMENT]
     paintUserTabs();
     entryMap = entries;
     // [Zzz1-CN:TAGS] box sa stavia prv, nez su zaznamy - ponuka stitkov vznikla prazdna, teraz uz je z coho

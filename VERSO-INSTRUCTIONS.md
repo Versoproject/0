@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-02 22:05** · build appky v čase zápisu: `2026-10-02 22:00`
+**Verzia: 2026-10-02 22:35** · build appky v čase zápisu: `2026-10-02 22:30`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -226,6 +226,16 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
 - Pozn.: je to ochrana v appke. Text, ktorý človek vidí na obrazovke, sa úplne zastaviť nedá - preto sa
   pri každom kopírovaní cudzieho textu zapisuje aj acknowledgement.
 
+### 4.10c Umiestnenie (placement) - kam záznam patrí (`[Zzz5-6:PLACEMENT]`)
+- **Pravidlo:** každá položka má vždy umiestnenie. Zatiaľ sú to **vlastné taby** (your own tabs);
+  čo nie je inde, je v predvolenom **NOTES**. Umiestnenie je na každého svoje.
+- **Presunúť záznam:** v tabuľke **podržať číslo záznamu (#156) 3 s** → zoznam `NOTES (default)` + vlastné
+  taby → ťuk na cieľ. Aktuálny tab je zlatý.
+- **Ťuk na vlastný tab** (riadok your own tabs) → zoznam ukáže **len záznamy umiestnené v ňom**; nová CL,
+  uložená kým je tab označený, sa do neho umiestni sama. Ťuk znova → späť všetko.
+- **Zmazaný tab** → jeho záznamy sú späť v NOTES (nič nezostane „nikde").
+- Presun je zmena stavu - **nevytvára novú verziu** záznamu.
+
 ### 4.11 Premenovať, privacy, priority, TAG, DELETE
 - **Premenovať**: podržať číslo poznámky **3 s**, alebo **podržať `+add NOTE` 5 s** (označená, inak posledná
   poznámka) → riadok s menom (len vlastné; prázdne = bez mena). Meno sa zmení v celom vlákne - v chate aj
@@ -244,7 +254,7 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
 | Tab workspacu | prepne tab | maximalizuje workspace | – | – | – |
 | `NOTES` (lišta zoznamu) | WORK NOTE tabu | maximalizuje workspace | chatnote module (comm) | – | – |
 | Sub note v tabuľke | okno záznamu v doku | – | WORK NOTE + note line s odkazom | pripnúť / odopnúť pod CRM | – |
-| Číslo záznamu v tabuľke | zbalí / rozbalí subs | – | Notes okno záznamu | – | – |
+| Číslo záznamu v tabuľke | zbalí / rozbalí subs | – | Notes okno záznamu | presunúť do tabu (placement) | – |
 | `+add NOTE` | nová poznámka | celá obrazovka / split | sub note k označenej | COMMUNICATION okno (záznam / CL) | premenovať (edit chat name) |
 | `SAVE` v note line | SAVE zap/vyp | – | – | COMMUNICATION okno (záznam / CL) | – |
 | `ATTACHED` (pás pod CRM) | otvorí jeho poznámky | – | zbaliť / rozbaliť subs | odpojiť | – |
