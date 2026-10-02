@@ -463,6 +463,12 @@ reflektuje notes kategórie - neskôr a oddelene skúsime, čo bude lepšie"*).
 hry, uložia sa tam dáta, ktoré nie sú reálne využiteľné pre bežných užívateľov. Programátor ich nájde
 podľa entry numbers alebo podľa nových subs (pracovný názov **„techs"**).
 
+### CONTACTS MODULE — PAIRING (Vrso 2. 10., 23:29: „ešte musíme potom doriešiť contacts module pairing hlavne")
+- Čaká na zadanie. Stav k 2. 10.: meno sa do kontaktov CL dostane cez bunku COMMUNICATION (CONTACTS riadok,
+  zelené písmená = známy user) alebo podržaním @mena; do DB ide až s ENTER. Pomenovaný user potom vidí
+  riadok v Preset comm module → Pairing a páruje sa COMM CONSENT. Screenshoty z 23:25-23:27 (Preset comm
+  module prázdny, USER okno, CONTACTS pole) sú východisko.
+
 ### B10. Ďalšie nedoriešené
 
 - **Zápis do záznamu BEZ razenia novej verzie** — už tri veci to potrebujú: status na entry, owner gate
