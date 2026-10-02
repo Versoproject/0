@@ -463,12 +463,13 @@ reflektuje notes kategórie - neskôr a oddelene skúsime, čo bude lepšie"*).
 hry, uložia sa tam dáta, ktoré nie sú reálne využiteľné pre bežných užívateľov. Programátor ich nájde
 podľa entry numbers alebo podľa nových subs (pracovný názov **„techs"**).
 
-### CONTACTS REGISTER (Vrso 2. 10., 23:55 — planned)
-- **Postavené:** doplňovanie mien v CONTACTS berie mená z mojich záznamov + z registra (PROJECT 1 / owner Verso /
-  CATEGORY Contacts), nie zo všetkých registrovaných (`[Zzz1-R17b:CONTACTS-REGISTRY]`).
-- **Ďalej:** pri registrácii nového usera automaticky založiť jeho záznam v registri (owner Verso → zápis
-  musí ísť cez serverovú funkciu, user sám pod menom Verso zapisovať nesmie); RLS registra (kto smie čítať
-  ktoré mená); prístup autorít bez párovania len ku konkrétnemu projektu (napr. zdravotné záležitosti).
+### CONTACTS REGISTER (Vrso 2. 10., 23:55 / 3. 10., 00:14)
+- **Postavené:** register = verifikačná databáza (registrované usernames, `verso_verification_public`, bez
+  emailov); doplňovanie mien v CONTACTS = moje záznamy + registrované usernames (`[Zzz1-R17b:CONTACTS-REGISTRY]`).
+  Pokus z 00:20 (register ako záznamy PROJECT 1 / owner Verso / CATEGORY Contacts) je zrušený.
+- **Ďalej:** autority - kompletný zoznam + párovanie na vlastný projekt (prístup len k nemu); oddeliť časť
+  verifikačnej databázy pre lokálny (offline) prístup; RLS `verso_entries` (SELECT aj UPDATE sú dnes `true`
+  - návrh `verso_entries_rls_update_v1` z 3. 10. 00:40 čaká).
 
 ### CONTACTS MODULE — PAIRING (Vrso 2. 10., 23:29: „ešte musíme potom doriešiť contacts module pairing hlavne")
 - Čaká na zadanie. Stav k 2. 10.: meno sa do kontaktov CL dostane cez bunku COMMUNICATION (CONTACTS riadok,
@@ -571,13 +572,15 @@ authorized repository set"*; čítať sa dá, pushovať nie. Nie je to chyba kó
   prihlásené username** - nikto nevloží záznam za iného. Ten istý user je automaticky v **USER (consent)** aj
   v **COMMUNICATION (contacts)** - pripája sa sám, takže jeho vlastný chip je **needitovateľný** (nedá sa
   odobrať) a ostatní ho vidia. Vynútené pred zápisom na jednom mieste (`[Zzz0-R1:OWNER-IS-ME]`,
-  `[Zzz0-R1:SELF-CHIP]`). Register kontaktov (owner Verso) preto zakladá len Verso, alebo neskôr serverová funkcia.
-- **KONTAKTY - REGISTER A VLASTNÉ ZOZNAMY** (Vrso 2. 10., 23:55). **Každý kontakt musí byť registrovaný
-  v PROJECT 1 / owner Verso / CATEGORY Contacts** - tým je reálne dohľadateľný (záznam s menom v USER /
-  COMMUNICATION). Zoznam kontaktov sa ale **neviaže na všetkých registrovaných** - **každý si buduje vlastný**
-  (mená z jeho záznamov + register). Kto je kto, vie len málokto; čo komu register ukáže, určuje **oprávnenie**
-  (RLS), nie appka. Prístup **bez párovania** budú mať zrejme **autority**, a to **len ku konkrétnemu
-  projektu** (napr. zdravotné záležitosti), nikdy k celému zoznamu (`[Zzz1-R17b:CONTACTS-REGISTRY]`).
+  `[Zzz0-R1:SELF-CHIP]`).
+- **KONTAKTY - REGISTER A VLASTNÉ ZOZNAMY** (Vrso 2. 10., 23:55 a 3. 10., 00:14). **Registrom kontaktov je
+  VERIFIKAČNÁ DATABÁZA** - registrácia usera prebieha cez ňu (`user_registration`) a má RLS; nie záznamy
+  v `verso_entries` (tie ešte nemajú dorobené RLS). **Username môžu vidieť všetci** (aj tak ho vidno pri
+  záznamoch) - vidieť meno ale **nie je spárovanie**: spojenie vždy vyžaduje consent (pairing). **Zoznam
+  kontaktov si buduje každý sám** (mená z jeho záznamov), neviaže sa na všetkých registrovaných.
+  **Autorita** musí mať **kompletný zoznam**, aby si vedela spárovať userov na **svoj projekt** - a prístup
+  len k tomu projektu (napr. zdravotné záležitosti). Neskôr: časť verifikačnej databázy oddeliť tak, aby
+  fungovala aj lokálne (dnes je len online) (`[Zzz1-R17b:CONTACTS-REGISTRY]`).
 - **TABY NESMÚ MAŤ NIKDY ROVNAKÝ NÁZOV** (Vrso 1. 10.: „*tabs nemozu mat nikdy rovnaky nazov. Daj do
   rules!"). Platí **naprieč všetkými líniami tabov toho istého modulu** — človek vidí jeden rad názvov,
   nie dva nezávislé zoznamy — a **necitlivo na veľkosť písmen a medzery**: „Work", „work" a „work " sú

@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-03 00:45** · build appky v čase zápisu: `2026-10-03 00:40`
+**Verzia: 2026-10-03 01:00** · build appky v čase zápisu: `2026-10-03 00:55`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -250,22 +250,19 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
 ## 4C. CONTACTS - KONTAKTY A PÁROVANIE
 
 ### 4C.0 Register kontaktov (pravidlo)
-- **Každý kontakt je registrovaný** ako záznam v **PROJECT 1 / owner Verso / CATEGORY Contacts** (meno v USER /
-  COMMUNICATION) - tým je reálne dohľadateľný.
-- **Zoznam kontaktov si buduje každý sám** - nie je to zoznam všetkých registrovaných. Doplňovanie mien
-  ponúka mená z tvojich záznamov + z registra (`[Zzz1-R17b:CONTACTS-REGISTRY]`).
-- Čo komu register ukáže, určuje oprávnenie (RLS). Autority môžu mať prístup bez párovania, ale len ku
-  konkrétnemu projektu (napr. zdravotné záležitosti).
-- **Zaregistrovať kontakt ručne (dnes) - len prihlásený ako Verso:** nová CL → PROJECT NUMBER `1`, PROJECT
-  CATEGORY `Contacts`, do USER / COMMUNICATION meno kontaktu → ENTER (owner je automaticky Verso). (Automaticky pri registrácii usera -
-  plánované, backlog „CONTACTS REGISTER".)
+- **Register kontaktov = verifikačná databáza.** Každý user sa do nej dostane **registráciou** (USERNAME +
+  EMAIL + ACTIVATION CODE + PASSWORD) - nič iné netreba zakladať.
+- **Username vidia všetci**, ale vidieť meno nie je spárovanie - spojenie vždy vyžaduje consent (4C.3).
+- **Zoznam kontaktov si buduje každý sám** (mená z jeho záznamov); doplňovanie mien navyše pozná všetkých
+  registrovaných (`[Zzz1-R17b:CONTACTS-REGISTRY]`).
+- **Autorita** má kompletný zoznam, aby si vedela spárovať userov na svoj projekt - prístup len k nemu.
 
 ### 4C.1 Pridať kontakt do CL (komu je záznam určený / s kým sa o ňom komunikuje)
 1. V hlavnej CRM ťukni na bunku **COMMUNICATION** (nie USER - USER je zoznam užívateľov projektu).
    Otvorí sa okno s riadkom `CONTACTS` a oranžovým poľom `+`.
 2. Do poľa napíš meno (`[Zzz1-R17b:CONTACT-MATCH]`):
-   - **zelené písmená** = meno je v tvojich kontaktoch alebo v registri; **červené** = nie je (alebo preklep) -
-     pridal by sa len text; kontakt treba najprv zaregistrovať (4C.0),
+   - **zelené písmená** = registrovaný user (alebo meno z tvojich záznamov); **červené** = taký user nie je
+     (alebo preklep) - pridal by sa len text; ten človek sa musí najprv zaregistrovať (4C.0),
    - keď celé meno sedí, ukáže sa pod poľom zoznam → **ťuk na meno** ho pridá ako chip,
    - **podržať pole 1,5 s** → zoznam všetkých userov (aj s prázdnym poľom), stiahne sa nanovo.
 3. Potvrdenie: ťuk na meno v zozname, Enter, alebo ťuk mimo poľa. Kláves „Ďalší" na mobile nemusí fungovať
@@ -348,7 +345,7 @@ Pohyb prsta viac ako ~10 px počas ťuku/podržania = scroll, nie povel.
 
 ---
 | Registrácia: pole PASSWORD sa nedá vyplniť | heslo sa odomkne až keď USERNAME + EMAIL + ACTIVATION CODE sedia s posledným odoslaným kódom | vyplniť **aj EMAIL** (ten istý, na ktorý prišiel kód) a kód; od 23:50 to funguje aj po obnovení stránky (appka si kód overí v databáze, `[Zzz10-V1:GATE-RECOVER]`) |
-| Pri pridávaní kontaktu sú písmená červené, hoci user existuje | meno nie je v tvojich záznamoch ani v registri kontaktov | zaregistrovať kontakt (4C.0: PROJECT 1 / owner Verso / CATEGORY Contacts), potom podržať pole 1,5 s = čerstvý zoznam |
+| Pri pridávaní kontaktu sú písmená červené | taký user nie je registrovaný (alebo preklep) | user sa musí zaregistrovať; potom podržať pole 1,5 s = čerstvý zoznam |
 | Po zatvorení COMMUNICATION okna ostal contacts modul „visieť" | opravené 23:50 | contacts modul otvorený z okna sa teraz zavrie spolu s oknom (`[Zzz5-W5:OVER-COMM-CLOSE]`) |
 
 ## 8. OTVORENÉ (ešte nerozhodnuté)

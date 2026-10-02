@@ -26604,29 +26604,24 @@ async function zzz1r17b_load_contact_names(force) {
     const own = String(r.username || '').trim();
     if (own) seen[zzz10v1_normalize(own)] = own;
   });
-  // === [Zzz1-R17b:CONTACTS-REGISTRY] (nahradza [Zzz1-R17b:REGISTERED-NAMES] z 23:50) =====================
-  // Vrso 2026-10-02 (23:55): "nechcem viazat contacts zoznam na vsetky [registrovane]... naco... bude si kazdy
-  // budovat sam, ale realne dohladatelny bude kazdy kontakt: kazdy kontakt musi byt registrovany v PROJECT 1,
-  // owner Verso, category CONTACTS." Zoznam na doplnanie preto NIE su vsetci registrovani useri, ale:
+  // === [Zzz1-R17b:CONTACTS-REGISTRY] REGISTER KONTAKTOV = VERIFIKACNA DATABAZA ========================
+  // Vrso 2026-10-03 (00:14): "kontakt bude vo verification databaze... registracia prebehne cez ver databazu,
+  // kde uz je RLS. Username mozu vidiet vsetci (uvidia ho aj tak pri roznych entries), ale sparovat bude iny
+  // oriesok... autorita musi mat komplet zoznam, aby si vedela sparovat na svoj projekt."
+  // (Nahradza pokus z 00:20 - register ako zaznamy PROJECT 1 / owner Verso / CATEGORY Contacts v entries,
+  // ktore este nemaju doriesene RLS.)
+  // Zdroj farbenia a ponuky mien:
   //   1. mena z mojich zaznamov (owner + USER + COMMUNICATION) - kontakty, ktore si budujem sam
-  //   2. REGISTER KONTAKTOV = zaznamy PROJECT 1 / owner Verso / CATEGORY Contacts (ich USER a COMMUNICATION)
-  // Co z registra smiem vidiet, urcuje RLS databazy, nie tento zoznam.
+  //   2. REGISTROVANE usernames z verifikacnej databazy (verso_verification_public - bez emailov, s RLS);
+  //      registracia uz dnes zapisuje prave tam (record_type user_registration)
+  // Vidiet meno NIE JE parovanie - spojenie dalej vyzaduje consent (pairing).
   try {
-    const { data: reg, error: regErr } = await sb.from('verso_entries')
-      .select('fields_json').eq('is_trashed', false)
-      .filter('fields_json->>r2', 'eq', '1')
-      .filter('fields_json->>r4', 'ilike', 'verso')
-      .filter('fields_json->>r5', 'ilike', 'contacts')
-      .limit(1000);
-    if (regErr) throw regErr;
-    (reg || []).forEach(r => {
-      const f = r.fields_json || {};
-      [f.r17, f.r18].forEach(cell => zzz6f21_parse_tags(cell || '').forEach(u => {
-        const t = String(u).trim();
-        if (t && t !== '-' && !seen[zzz10v1_normalize(t)]) seen[zzz10v1_normalize(t)] = t;
-      }));
+    const regd = await zzz10v1_fetch_known_registrations();
+    ((regd && regd.usernames) || []).forEach(u => {
+      const t = String(u || '').trim();
+      if (t && !seen[zzz10v1_normalize(t)]) seen[zzz10v1_normalize(t)] = t;
     });
-  } catch (e) { /* bez registra sa farbi podla mojich zaznamov ako doteraz */ }
+  } catch (e) { /* bez verifikacnej databazy sa farbi podla mojich zaznamov ako doteraz */ }
   zzz1r17bNamesCache = Object.keys(seen).sort().map(k => ({ norm: k, name: seen[k] }));
   zzz1r17bNamesAt = Date.now();
   return zzz1r17bNamesCache;
@@ -29408,7 +29403,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-03 00:40';
+const ZZZ5_6_BUILD = '2026-10-03 00:55';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
