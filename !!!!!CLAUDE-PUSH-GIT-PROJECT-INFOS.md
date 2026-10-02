@@ -1,6 +1,6 @@
 # !!!!! VERSO — CLAUDE: PUSH, GIT + PROJECT INFOS
 
-**Verzia: 2026-10-02 02:00**
+**Verzia: 2026-10-02 17:15**
 
 > Prikladá sa na začiatok každého nového chatu. Platí na celý chat.
 > Názov začína `!!!!!`, aby bol v repe vždy prvý. Do 2. 10. 01:58 sa volal `VERSO-CLAUDE-GIT-PUSH.md`.
@@ -40,9 +40,12 @@
 | `index.html` | appka |
 | `VERSO-HLAVNE-INSTRUKCIE.md` | **rules** |
 | `!!!!!CLAUDE-PUSH-GIT-PROJECT-INFOS.md` | tento súbor |
+| `VERSO-INSTRUCTIONS.md` | **instructions** - ako sa appka používa (postupy, gestá, support/AI); 4. hlavný súbor (Vrso 2. 10., 16:54) |
 | *ideas (planned)* | až keď bude vytvorený, názov sa sem dopíše |
 | *nextup (todo)* | až keď bude vytvorený, názov sa sem dopíše |
 
+- `VERSO-INSTRUCTIONS.md` sa prepisuje v **tom istom kroku** ako zmena kódu, ktorá mení postup alebo gesto,
+  a pushuje sa **automaticky** spolu s ňou.
 - Súbory **rules, ideas a nextup** sa pushujú **automaticky** pri každej ich zmene, bez pýtania. Pred
   pushom sa aj tak stručne napíše, čo sa mení.
 - Ďalší `.md` pribudne do repa **iba keď ho Vrso pomenuje**. Potom sa zapíše do tabuľky vyššie.
