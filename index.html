@@ -1126,6 +1126,18 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     border-radius: 6px;
     cursor: pointer;
   }
+  /* [Zzz6-F35:TRASH-RESTORE] RESTORE pri vlastnom zazname v kosi - zelena = vratit spat */
+  .zzz6f35-restore-btn {
+    padding: 2px 8px;
+    font-size: 9px;
+    font-weight: 700;
+    background-color: #171717;
+    color: #22c55e;
+    border: 1px solid #22c55e;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .zzz6f35-restore-btn:disabled { opacity: 0.5; cursor: default; }
   .db-workspace-loading,
   .db-workspace-empty {
     font-size: 9px;
@@ -24685,6 +24697,21 @@ async function open_trash_workspace() {
       // trashol zaznam sa momentalne nesleduje - moze sa doplnit neskor ako samostatny stlpec, ak treba.
       const trashedAt = row.updated_at ? new Date(row.updated_at).toLocaleString() : '?';
       meta.textContent = `#${row.entry_id} - trashnute: ${trashedAt}`;
+      // [Zzz6-F35:TRASH-RESTORE] Vrso 3. 10. 01:13 ("ano" - obnova z kosa nezavisla od pamate krokov v prehliadaci):
+      // vlastny zaznam v kosi ma RESTORE. Zapis je jeden UPDATE is_trashed=false; server overi ownera
+      // (verso_entries_restrict_update) a sam ho zapise do verso_history ako 'restore'. Cudzi zaznam tlacidlo nema. | Vrso -> Claude AI | 2026-10-03
+      if (zzz6f35_is_own_row(row)) {
+        meta.style.display = 'flex';
+        meta.style.alignItems = 'center';
+        meta.style.gap = '6px';
+        const restoreBtn = document.createElement('button');
+        restoreBtn.type = 'button';
+        restoreBtn.className = 'zzz6f35-restore-btn';
+        restoreBtn.textContent = 'RESTORE';
+        restoreBtn.title = 'Return this record from Trash to the Database';
+        restoreBtn.addEventListener('click', (ev) => { ev.stopPropagation(); zzz6f35_restore_from_trash(row, restoreBtn); });
+        meta.appendChild(restoreBtn);
+      }
       rowsWrap.appendChild(meta);
 
       const gridRow = zzz4_0_build_entry_row(row); // rovnaky renderer ako Database Workspace (Vrso ziadost)
@@ -24705,6 +24732,42 @@ async function open_trash_workspace() {
   workspace.appendChild(wrap);
 }
 // === [/Zzz6-F35:TRASH-WORKSPACE] ===
+
+// === [Zzz6-F35:TRASH-RESTORE] obnova vlastneho zaznamu z kosa (viz tlacidlo v open_trash_workspace) ===
+function zzz6f35_is_own_row(row) {
+  try {
+    const me = zzz10v1_normalize(zzz0r1_get_current_username() || '');
+    return !!me && zzz10v1_normalize(row.username || '') === me;
+  } catch (e) { return false; }
+}
+
+async function zzz6f35_restore_from_trash(row, btn) {
+  if (!row || row.entry_id === undefined) return;
+  if (btn) btn.disabled = true;
+  try {
+    const { data, error } = await sb.from('verso_entries')
+      .update({ is_trashed: false, updated_at: new Date().toISOString() })
+      .eq('entry_id', row.entry_id)
+      .select();
+    if (error) throw error;
+    if (!data || data.length === 0) throw new Error('no row was restored (record not found or not yours)');
+    // cakajuci presun do kosa toho isteho zaznamu (offline fronta) by ho inak hned vratil spat do kosa
+    if (typeof zzz6f34_pendingMoves === 'object' && zzz6f34_pendingMoves[row.entry_id]) {
+      delete zzz6f34_pendingMoves[row.entry_id];
+      zzz6f34_save_pending_to_storage(ZZZ6F34_PENDING_MOVES_KEY, zzz6f34_pendingMoves);
+    }
+    zzz0r1_set_db_connection_state(true);
+    zzz6f37_write_audit_log('entry_restore_from_trash', { entry_id: row.entry_id }); // Zzz6-F37:AUDIT-LOG
+    zzz6f2_show_toast(`#${row.entry_id} restored from Trash`);
+    open_trash_workspace();
+  } catch (err) {
+    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
+    console.error(`Zzz6-F35:TRASH-RESTORE #${row.entry_id} zlyhal. DOVOD: ${errDetail}`);
+    zzz6f2_show_toast(`#${row.entry_id} could not be restored: ${errDetail.replace(/^.*verso_entries:\s*/i, '')}`);
+    if (btn) btn.disabled = false;
+  }
+}
+// === [/Zzz6-F35:TRASH-RESTORE] ===
 
 (function bindZzz6F35TrashButton() {
   const trashBtn = document.getElementById('versoTrashButton'); // Zzz2-R24
@@ -29403,7 +29466,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-03 00:40';
+const ZZZ5_6_BUILD = '2026-10-03 01:15';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny

@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-03 00:40** · build appky v čase zápisu: `2026-10-03 00:40`
+**Verzia: 2026-10-03 01:15** · build appky v čase zápisu: `2026-10-03 01:15`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -268,6 +268,17 @@ Kontrola na serveri (trigger `zz_verso_verification_check_insert_trg`):
 - **iné typy** - len serverové funkcie.
 Ak support vidí chybu „…write refused" / „…only for yourself", appka sa pokúsila zapísať za iné meno
 alebo bez loginu - riešenie: odhlásiť, prihlásiť a zopakovať.
+
+### 4.14 Kôš a obnova (`[Zzz6-F35:TRASH-RESTORE]`)
+- **Do koša:** DELETE na označenom zázname, alebo **←** hneď po ENTER (vráti posledný zápis). Záznam sa nemaže,
+  len dostane príznak kôš (`is_trashed`) a zmizne z Database Workspace.
+- **Obnova (odporúčaná):** **TRASH** → pri vlastnom zázname zelené **RESTORE** → záznam sa vráti do Database
+  Workspace. Cudzí záznam RESTORE nemá; server to aj tak dovolí len ownerovi.
+- **Obnova šípkou →:** funguje len v tej istej relácii, kým sa pamäť krokov nevymaže (reload, login, nová úprava
+  v CL). Keď hlási „nie je co vratit vpred", použi TRASH → RESTORE.
+- **Stopa:** server každý presun do koša aj obnovu zapíše do histórie (`verso_history`: `trash` / `restore`, kto a
+  kedy). Support si ju pozrie SQL `verso_history_last_v1.sql`.
+- **Natrvalo zmazať** sa dá len z koša (vlastný záznam, nie Verso, bez aktívneho PERMANENT); kópia ide do ARCHIVE.
 
 ---
 

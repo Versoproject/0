@@ -508,8 +508,8 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
 - **SQL 8 `verso_history_v1.sql` NASADENÉ 3. 10. ~01:00** (entries + comm_users + stav notes; 4 triggre OK). História platí od nasadenia, nie spätne. Overené 01:11: #160 `create` 01:06:57 a `trash` 01:07:27, actor vrso. `restore` neprišiel - Forward sa k serveru vôbec nedostal (chyba je v pamäti krokov v appke, nie v DB).
 - **OBNOVA Z KOŠA chýba v UI (3. 10., 00:58):** dnes len Back → Forward v tej istej relácii (pamäť krokov je len v
   prehliadači - reload, login alebo nová úprava CL ju zmaže). Test: #159 ← presunutý do koša, → „nie je čo vrátiť
-  vpred" (v simulácii ← → funguje; príčina na telefóne neznáma). #159 ostáva v koši. Treba: TRASH → vybrať → RESTORE
-  (owner) + zápis do `verso_history`.
+  vpred" (v simulácii ← → funguje; príčina na telefóne neznáma). **POSTAVENÉ 01:15** `[Zzz6-F35:TRASH-RESTORE]`:
+  TRASH → RESTORE pri vlastnom zázname (server overí ownera, `verso_history` zapíše `restore`).
 - **Slabina comm_setup:** textový reťazec čítaný regexom (`tags:delegate` ...) - krehké; presun do tabuľky s
   menovitými stĺpcami to odstráni.
 
