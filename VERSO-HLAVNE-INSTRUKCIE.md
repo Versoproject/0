@@ -1,6 +1,6 @@
 # VERSO — HLAVNÉ INŠTRUKCIE
 
-**Verzia: 2026-10-02 14:10**
+**Verzia: 2026-10-02 22:15**
 
 > **Ako sa tento súbor udržiava:** je JEDEN a prenáša sa VŽDY CELÝ. Keď pribudne pravidlo, Claude
 > prepíše tento súbor a dá ti ho; ty ním nahradíš starú kópiu v ostatných projektoch. Nikdy sa
@@ -56,6 +56,17 @@ Návrh, čo tam dať, je na konci tohto dokumentu.
   Preto priority, privacy a status ostávajú stĺpcami (CHECK constraint, počítadlá ich čítajú priamo,
   farba je pevná), hoci sa správajú ako štítky. V ROZHRANÍ sa ale zobrazujú v jednom páse a v jednej
   skupine kritérií SHOW — zjednotenie zobrazenia, nie uloženia
+- **KAŽDÁ POLOŽKA MUSÍ MAŤ VŽDY UMIESTNENIE** (Vrso 2. 10., 21:49: *„vždy musí mať nejaké umiestnenie!
+  Inak ho ani nenájdem — aj keby sa nestratil v kóde, ale kde inde ho hľadať?"*). Platí pre **note, CL,
+  EL aj akúkoľvek bunku / položku**, ktorá sa dá uložiť: nič nesmie existovať „nikde". Zatiaľ je
+  umiestnením **vlastný tab** (your own tabs) — neskôr môžu pribudnúť priečinky.
+  - Umiestnenie dostane položka **už pri vzniku** (najmenej tab, v ktorom vznikla). Appka nesmie ponúknuť
+    uloženie, po ktorom by položka nemala kde byť.
+  - Umiestnenie je **ŠTRUKTÚRA, nie štítok** (pravidlo SUBS = štruktúra, TAGS = vlastnosti) a je to
+    **STAV, nie obsah** (pravidlo OBSAH vs STAV: „placement"). Presun do iného tabu sa preto zapisuje na
+    mieste a **nevytvára novú verziu** — nemennosť uloženého záznamu tým nie je dotknutá.
+  - CL s notes: pri uložení poznámky prechádzajú pod číslo záznamu (`[Zzz1-CN:DRAFT-KEY]`) a záznam
+    ostáva v tom umiestnení, kde CL bola.
 - **TABY NESMÚ MAŤ NIKDY ROVNAKÝ NÁZOV** (Vrso 1. 10.: „*tabs nemozu mat nikdy rovnaky nazov. Daj do
   rules!"). Platí **naprieč všetkými líniami tabov toho istého modulu** — človek vidí jeden rad názvov,
   nie dva nezávislé zoznamy — a **necitlivo na veľkosť písmen a medzery**: „Work", „work" a „work " sú
@@ -138,4 +149,6 @@ Verso = jednosúborová CRM (index.html, Supabase, Vercel). Pri každej zmene pl
 10. Nikdy nemeň viac, než o čo som žiadal. Zmena mimo zadania sa najprv ohlási.
 11. Hlavný Verso modul (layout + hlavná M4 CRM) je hlavný command modul. Gestá ho smú schovať, ale vždy
     musí ostať ovládanie tlačidlami na obrazovke. Workspacy sa otvárajú POD ním, neklonujú ho.
+12. Každá položka (note, CL, EL, akákoľvek uložiteľná bunka) má VŽDY umiestnenie — zatiaľ vlastný tab.
+    Dostane ho pri vzniku. Umiestnenie je štruktúra a stav: presun nevytvára novú verziu.
 ```

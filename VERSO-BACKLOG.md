@@ -437,6 +437,18 @@ Zapísané tak, ako to Vrso povedal; nič z toho sa zatiaľ nestavia.
   rieši projekty (ako nastaviť, …).
 - Platí už teraz: gestá sú skratky, tlačidlá na obrazovke ostávajú vždy (pravidlo v kap. C1).
 
+### PLACEMENT — umiestnenie každej položky (Vrso 2. 10., 21:49 — planned)
+
+Pravidlo je v C1 a v rules. Čo treba postaviť:
+- **Kde je umiestnenie uložené:** stavový údaj na zázname a na poznámke (nie štítok, nie `fields_json`)
+  — návrh: stĺpec `placement` (názov vlastného tabu), SQL s menom pri stavbe.
+- **Pri vzniku:** CL/EL dostane tab, ktorý je práve aktívny (označený vlastný tab), inak predvolený tab.
+  WORK NOTE poznámky ho majú už dnes (kľúč `tab:<tab>`).
+- **Pri uložení CL:** záznam si nesie umiestnenie CL; poznámky idú pod číslo záznamu (`[Zzz1-CN:DRAFT-KEY]`).
+- **Presun:** zmena na mieste (stav), s logom kto/kedy.
+- **Zobrazenie:** tab ukáže svoje položky podľa umiestnenia; položka bez umiestnenia nesmie vzniknúť
+  (staré bez umiestnenia → predvolený tab pri prvom načítaní).
+
 ### B10. Ďalšie nedoriešené
 
 - **Zápis do záznamu BEZ razenia novej verzie** — už tri veci to potrebujú: status na entry, owner gate
@@ -517,6 +529,17 @@ authorized repository set"*; čítať sa dá, pushovať nie. Nie je to chyba kó
   Preto priority, privacy a status ostávajú stĺpcami (CHECK constraint, počítadlá ich čítajú priamo,
   farba je pevná), hoci sa správajú ako štítky. V ROZHRANÍ sa ale zobrazujú v jednom páse a v jednej
   skupine kritérií SHOW — zjednotenie zobrazenia, nie uloženia
+- **KAŽDÁ POLOŽKA MUSÍ MAŤ VŽDY UMIESTNENIE** (Vrso 2. 10., 21:49: *„vždy musí mať nejaké umiestnenie!
+  Inak ho ani nenájdem — aj keby sa nestratil v kóde, ale kde inde ho hľadať?"*). Platí pre **note, CL,
+  EL aj akúkoľvek bunku / položku**, ktorá sa dá uložiť: nič nesmie existovať „nikde". Zatiaľ je
+  umiestnením **vlastný tab** (your own tabs) — neskôr môžu pribudnúť priečinky.
+  - Umiestnenie dostane položka **už pri vzniku** (najmenej tab, v ktorom vznikla). Appka nesmie ponúknuť
+    uloženie, po ktorom by položka nemala kde byť.
+  - Umiestnenie je **ŠTRUKTÚRA, nie štítok** (pravidlo SUBS = štruktúra, TAGS = vlastnosti) a je to
+    **STAV, nie obsah** (pravidlo OBSAH vs STAV: „placement"). Presun do iného tabu sa preto zapisuje na
+    mieste a **nevytvára novú verziu** — nemennosť uloženého záznamu tým nie je dotknutá.
+  - CL s notes: pri uložení poznámky prechádzajú pod číslo záznamu (`[Zzz1-CN:DRAFT-KEY]`) a záznam
+    ostáva v tom umiestnení, kde CL bola.
 - **TABY NESMÚ MAŤ NIKDY ROVNAKÝ NÁZOV** (Vrso 1. 10.: „*tabs nemozu mat nikdy rovnaky nazov. Daj do
   rules!"). Platí **naprieč všetkými líniami tabov toho istého modulu** — človek vidí jeden rad názvov,
   nie dva nezávislé zoznamy — a **necitlivo na veľkosť písmen a medzery**: „Work", „work" a „work " sú
