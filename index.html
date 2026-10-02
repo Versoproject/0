@@ -4142,7 +4142,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz5-6-wsdock { flex: 0 0 50%; min-height: 0; display: flex; flex-direction: column; margin-top: 4px; }
   /* [Zzz5-6:WIN-EDGE] Vrso 2026-10-02 (20:12): "fialove ohranicenie okna daj az po okraj svojho okna, nech sa
      setri miesto. V podstate aj u ostatnych." Dok siahne az po okraje workspacu (ten ma 4 px bocny okraj). */
-  .zzz1cn-ws-window > .zzz5-6-wsdock { margin-left: -4px; margin-right: -4px; }
+  .zzz1cn-ws-window > .zzz5-6-wsdock { margin-left: -4px; margin-right: -4px; margin-bottom: -10px; }
+  /* [Zzz5-6:WIN-EDGE] Vrso 20:23: "toto okno moze byt trochu uzsie na vysku - po fialovu ciaru a na spodku tiez"
+     - dok siaha az po spodnu hranu workspacu (ten ma 10 px spodny okraj), pri celej obrazovke aj po hornu */
+  .zzz1cn-ws-window.zzz5-6-dockfull > .zzz5-6-wsdock { margin-top: -10px; }
   .zzz5-6-wsdock:empty { display: none; }
   .zzz5-6-wsdock > .zzz1cn-list-window.zzz5-6-inline {
     flex: 1 1 auto; min-height: 0; height: auto !important; max-height: none !important; margin: 0;
@@ -29252,7 +29255,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 20:30';
+const ZZZ5_6_BUILD = '2026-10-02 20:45';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -33116,12 +33119,11 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     // co 3 s na +add NOTE), ziadny prepinac. Prepinac ostava len vo WORK NOTE tabu - ten zaznam nema.
     const stripIsEntry = /^\d+$/.test(String(entryKey));
     stripChat.addEventListener('click', async () => {
-      zzz_haptic_pulse(15);
-      if (stripIsEntry) { zzz5_6_open_chat_reply(String(entryKey), 0); return; }
-      await zzz5_6ChatMode(!winShowChat);   // [Zzz5-6:WORK-CHAT]
+      zzz5_6OpenComm();   // [Zzz5-6:WORK-COMM]
     });
     paintStripChat();
-    if (stripIsEntry) stripChat.title = 'Open the chat (COMMUNICATION window) of this entry';
+    stripChat.title = stripIsEntry ? 'Open the chat (COMMUNICATION window) of this entry'
+                                   : 'Open the COMMUNICATION window of the current CL';   // [Zzz5-6:WORK-COMM]
     tabStrip.appendChild(stripChat);
     tabStrip.appendChild(stripAtt);
     win.insertBefore(tabStrip, win.firstChild);
@@ -33166,13 +33168,24 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     { ms: 3000, fn: async () => {
       titleHeldAt = Date.now();
       clearTimeout(titleTap);
-      if (/^\d+$/.test(String(entryKey))) { zzz5_6_open_chat_reply(String(entryKey), 0); return; }
-      await zzz5_6ChatMode(!winShowChat);   // [Zzz5-6:WORK-CHAT]
+      zzz5_6OpenComm();   // [Zzz5-6:WORK-COMM]
     } },
-    { ms: 5000, fn: () => {
+    // [Zzz5-6:ADD-RENAME] Vrso 2026-10-02 (20:23): "+add NOTE (podrzanie) chce stale filtrovat (PRESET), ale to
+    // uz davno nie je potrebne. Tato funkcia by mohla byt vhodna na EDIT CHAT NAME (upravilo by to vsade)."
+    // Najdlhsie podrzanie preto premenuje oznacenu (inak poslednu) VLASTNU poznamku - cez to iste
+    // zzz5w7_rename_thread ako 3 s na cisle, takze meno sa zmeni v celom vlakne, v chate aj v Notes.
+    // Preset sa prepina v SHOW okne.
+    { ms: 5000, fn: async () => {
       titleHeldAt = Date.now();
       clearTimeout(titleTap);
-      notesFilter.togglePreset();
+      const meR = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+      const n = allNotes.find(x => selected.has(x.id)) || allNotes[allNotes.length - 1];
+      if (!n) { zzz6f2_show_toast('There is no note to rename yet.', 'warn'); return; }
+      if (zzz10v1_normalize(n.username || '') !== meR) { zzz6f2_show_toast('Only the author can rename their own notes.', 'warn'); return; }
+      const base = (zzz5w7_sub_of(n) || {}).base || Number(n.note_number);
+      const got = await inlineAsk(`name #${base}`, base, { nameOnly: true, nameValue: String(n.note_name || '') });
+      if (got === null) { await render(); return; }
+      if (await zzz5w7_rename_thread(n, got.name)) await render();
     } }
   ]);
   win.appendChild(head);
@@ -33262,27 +33275,16 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   // owner, outbox) - to ho doteraz mazalo, kym sa do neho pisalo, a predvyplneny riadok zmizol hned
   let zzz5_6LineLive = false;
   let nlSaveOn = true;   // [Zzz5-6:NL-SAVE-TOGGLE] SAVE v note line - zapnuty, kym ho user v tomto okne nevypne
-  // === [Zzz5-6:WORK-CHAT] Vrso 2026-10-02 (17:06): "nechapem, co robi ten CHAT button v liste... pripadne ho
-  // naviaz na chatnote line tohto notu". Doteraz CHAT vo WORK NOTE len prepinal, ci okno ukazuje aj neulozene
-  // chatnotes - bez riadku na pisanie to nebolo poznat. Teraz je to REZIM CHATU tohto okna:
-  //   CHAT ON  = okno ukaze celu diskusiu (aj neulozene) + otvori sa chatnote line so SAVE VYPNUTYM
-  //              (pise sa do chatu); ked uz riadok otvoreny je, len sa mu vypne SAVE - rozpisany text ostava
-  //   CHAT     = spat len Notes; SAVE v riadku sa znova zapne
-  // V okne ZAZNAMU je CHAT jeho COMMUNICATION okno ([Zzz5-6:STRIP-CHAT-COMM]) - to sa nemeni.
-  const zzz5_6ChatMode = async (on) => {
-    winShowChat = !!on;
-    const sc = win.querySelector('.zzz5-6-tabstrip-chat');
-    if (sc) {
-      sc.textContent = winShowChat ? 'CHAT ON' : 'CHAT';
-      sc.classList.toggle('is-on', winShowChat);
-      sc.title = winShowChat ? 'Chat mode: the whole discussion + chatnote line (SAVE off) - tap = Notes only'
-                             : 'Chat mode: show the discussion and open the chatnote line to chat';
-    }
-    nlSaveOn = !winShowChat;
-    const sv = win.querySelector('.zzz5-6-nl-save');
-    if (sv && sv.zzz5_6Toggle && sv.classList.contains('is-on') !== nlSaveOn) { nlSaveOn = !nlSaveOn; sv.zzz5_6Toggle(); }
-    await render();
-    if (winShowChat && !zzz5_6LineLive) addNewNote();
+  // === [Zzz5-6:WORK-COMM] Vrso 2026-10-02 (20:23): "ked kliknem CHAT, tak sa zasedi SAVE toggle v chatnote
+  // line... to ma aky vyznam? Chcel som sa dostat do COMM WINDOW danej CL/EL... je problem tym CHAT buttonom
+  // proste otvorit dane comm window?" - Nie je. Rezim chatu v okne ([Zzz5-6:WORK-CHAT], 17:06) je ZRUSENY.
+  // Jedna cesta do chatu pre vsetky gesta okna (CHAT v pase, +add NOTE 3 s, SAVE 3 s):
+  //   zaznam (cislo)      -> jeho COMMUNICATION okno
+  //   WORK NOTE / CL      -> COMMUNICATION okno nad rozpisanou CL (chatnote module)
+  const zzz5_6OpenComm = () => {
+    zzz_haptic_pulse(15);
+    if (/^\d+$/.test(String(entryKey))) { zzz5_6_open_chat_reply(String(entryKey), 0); return; }
+    zzz6f18_open_context_select_modal();
   };
   const inlineAsk = (label, targetFixed, opts) => new Promise((resolve) => {
     const o = opts || {};
@@ -33392,11 +33394,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       // Zrkadlo k [Zzz5-W7:TIERED-HOLD] v comm okne: tam SAVE 3 s = Notes okno, tu SAVE 3 s = comm okno.
       //   zaznam (cislo) -> jeho COMMUNICATION okno; rozpisana CL (draft) -> chatnote module nad CL;
       //   WORK NOTE tabu comm okno nema -> zapne rezim CHAT ([Zzz5-6:WORK-CHAT]).
-      zzz5w7_bind_tiered_hold(ok, [{ ms: 3000, fn: () => {
-        if (/^\d+$/.test(String(entryKey))) { zzz5_6_open_chat_reply(String(entryKey), 0); return; }
-        if (zzz5_6_is_tab_entry(entryKey)) { zzz5_6ChatMode(true); return; }
-        zzz6f18_open_context_select_modal();
-      } }]);
+      zzz5w7_bind_tiered_hold(ok, [{ ms: 3000, fn: () => zzz5_6OpenComm() }]);   // [Zzz5-6:WORK-COMM]
       ok.title += ' / hold 3s = COMMUNICATION window of this record';
     }
     const cancel = document.createElement('button');
