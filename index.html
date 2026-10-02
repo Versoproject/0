@@ -4069,6 +4069,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     color: #4a2a8a;
   }
   .zzz1cn-ncrm-attach-head .zzz1cn-setup-chipx { margin-left: auto; }
+  /* [Zzz5-6:ATTACH-SEL] ATTACHED/DETACH vlavo (pod MINI hlavnej CRM): zapnute = fialova vypln, biele pismo */
+  .zzz5-6-attach-toggle { padding: 2px 9px; border: 2px solid #7b2ff7; border-radius: 8px; background: transparent;
+    color: #7b2ff7; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; cursor: pointer; }
+  .zzz5-6-attach-toggle.is-on { background-color: #7b2ff7; color: #fff; }
+  .zzz5-6-attach-sub { margin-top: 3px; }
+  .zzz5-6-attach-fold { display: block; margin-top: 2px; }
   .zzz1cn-ncrm-attach-row {
     display: block;
     width: 100%;
@@ -29182,7 +29188,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 15:45';
+const ZZZ5_6_BUILD = '2026-10-02 15:49';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -29349,6 +29355,10 @@ let zzz5_6RepaintAttach = null;
 // Nie je to zdroj pravdy: ten je v databaze, v poznamkach pod klucom tabu.
 const zzz5_6TabNotes = {};        // { tabKey: [ {key, entryKey, num, part, label, name, username, text} ] }
 let zzz5_6AttachedTab = null;     // ktory tab je prave pripnuty pod notes CRM
+// [Zzz5-6:ATTACH-SEL] 'all' = pripnute cele okno (kresli sa ZBALENE ako jeden riadok), 'some' = len oznacene
+const zzz5_6AttachMode = {};
+let zzz5_6AttachExpanded = false;
+let zzz5_6DockOpen = null;        // workspace sem vlozi "otvor v doku" - pripnuty riadok sa otvori tam
 function zzz5_6_tabnote_list(tab) {
   if (!zzz5_6TabNotes[tab]) zzz5_6TabNotes[tab] = [];
   return zzz5_6TabNotes[tab];
@@ -30112,26 +30122,57 @@ function zzz1cn_build_notes_crm(view, onChange) {
     const tabLab = (ZZZ1CN_WS_TABS.find(t => t.key === zzz5_6AttachedTab) || {}).label
       || (zzz5_6UserTabs.find(t => t.key === zzz5_6AttachedTab) || {}).label
       || (String(zzz5_6AttachedTab).indexOf('entry:') === 0 ? '#' + String(zzz5_6AttachedTab).slice(6) : zzz5_6AttachedTab);
-    head.textContent = `ATTACHED · ${tabLab} (${pinned.length})`;
-    const off = document.createElement('button');
-    off.type = 'button';
-    off.className = 'zzz1cn-setup-chipx';
-    off.textContent = '×';
-    off.title = 'Detach this tab';
-    off.addEventListener('click', () => { zzz5_6AttachedTab = null; paintAttach(); onChange(); });
-    head.appendChild(off);
+    // === [Zzz5-6:ATTACH-SEL] Vrso 2026-10-02 (15:48): "nemozu sa pripajat vsetky subs v notes window, iba ak
+    // su selected. Ak vsetky, tak pripnut iba ako subs, ale zbalene vsetky spolu; ak sa attachne iba jedna
+    // note, tak pod subs zaclenena ako je teraz v note tabe... pod MINI v CRM musi byt attach/detach button
+    // (ked attached, fialovo s kontrastnym pismom)".
+    //   tlacidlo ATTACHED vlavo (pod MINI hlavnej CRM) = fialova vypln, biele pismo; tuk = DETACH
+    //   cele okno  -> JEDEN zbaleny riadok "▸ #156 · 30 sub notes", tuk ho rozbali/zbali
+    //   oznacene   -> kazda poznamka ako sub (meno + text), rovnako ako v tabulke tabu
+    //   tuk na sub -> otvori ho v doku workspacu (alebo v Notes okne, ked workspace nie je otvoreny)
+    const detach = document.createElement('button');
+    detach.type = 'button';
+    detach.className = 'zzz5-6-attach-toggle is-on';
+    detach.textContent = 'ATTACHED';
+    detach.title = 'Attached - tap to detach';
+    detach.addEventListener('click', () => { zzz5_6AttachedTab = null; zzz5_6AttachExpanded = false; paintAttach(); onChange(); });
+    head.appendChild(detach);
+    const capt = document.createElement('span');
+    capt.textContent = `${tabLab} (${pinned.length})`;
+    head.appendChild(capt);
     att.appendChild(head);
-    pinned.forEach(a => {
+    const openOne = (a) => {
+      if (typeof zzz5_6DockOpen === 'function') zzz5_6DockOpen(a.entryKey, { num: a.num, part: a.part });
+      else zzz1cn_open_list(a.entryKey, null, { num: a.num, part: a.part });
+    };
+    const subRow = (a) => {
       const r = document.createElement('button');
       r.type = 'button';
-      r.className = 'zzz1cn-ncrm-attach-row';
-      const txt = String(a.text || '').replace(/\s+/g, ' ').trim();
-      r.textContent = a.label + (a.username ? ' · ' + a.username : '')
-        + (a.name ? ' · ' + a.name : '') + (txt ? ' · ' + txt : '');
-      r.title = 'Open it in Notes';
-      r.addEventListener('click', () => zzz1cn_open_list(a.entryKey, null, { num: a.num, part: a.part }));
-      att.appendChild(r);
-    });
+      r.className = 'zzz1cn-ws-subbtn zzz5-6-attach-sub';
+      const top = document.createElement('div');
+      top.className = 'zzz1cn-ws-subbtn-name';
+      top.textContent = String(a.name || '').trim() || a.label;
+      const bod = document.createElement('div');
+      bod.className = 'zzz1cn-ws-subbtn-text';
+      bod.textContent = String(a.text || '').replace(/\s+/g, ' ').trim();
+      r.appendChild(top); r.appendChild(bod);
+      r.title = a.label + (a.username ? ' · ' + a.username : '') + ' - tap opens it';
+      r.addEventListener('click', () => openOne(a));
+      return r;
+    };
+    const mode = zzz5_6AttachMode[zzz5_6AttachedTab] || 'some';
+    if (mode === 'all') {
+      const f = document.createElement('button');
+      f.type = 'button';
+      f.className = 'zzz1cn-ws-subfold zzz5-6-attach-fold';
+      f.textContent = (zzz5_6AttachExpanded ? '\u25be ' : '\u25b8 ') + tabLab + ' \u00b7 ' + pinned.length + ' sub notes';
+      f.title = zzz5_6AttachExpanded ? 'Tap folds them' : 'The whole window is attached - tap shows the sub notes';
+      f.addEventListener('click', () => { zzz5_6AttachExpanded = !zzz5_6AttachExpanded; paintAttach(); });
+      att.appendChild(f);
+      if (zzz5_6AttachExpanded) pinned.forEach(a => att.appendChild(subRow(a)));
+    } else {
+      pinned.forEach(a => att.appendChild(subRow(a)));
+    }
   };
 
   const paint = () => {
@@ -30658,6 +30699,16 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
   const wsDock = document.createElement('div');
   wsDock.className = 'zzz5-6-wsdock';
   win.appendChild(wsDock);
+  // [Zzz5-6:ATTACH-SEL] pripnuty riadok (pas ATTACHED) sa otvori v tomto doku
+  zzz5_6DockOpen = (key, focus) => {
+    if (!wsDock.isConnected) { zzz5_6DockOpen = null; zzz1cn_open_list(key, null, focus); return; }
+    const rec = entryMap[String(key)];
+    const info = /^\d+$/.test(String(key))
+      ? { owner: (rec && rec.owner) || '', name: (rec && rec.projectName) || '', project: (rec && rec.project) || '',
+          category: String(((rec && rec.f) || {}).r5 || '') }
+      : null;
+    zzz1cn_open_list(String(key), null, focus || null, { inlineIn: wsDock, stripInfo: info });
+  };
 
   // --- co prejde filtrom ---
   const ctxOf = (n) => entryMap[String(n.entry_key || '')] || { entry: String(n.entry_key || ''),
@@ -32793,7 +32844,11 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       if (zzz5_6AttachedTab === tabKey) {
         zzz5_6AttachedTab = null;
       } else {
-        zzz5_6_tabnote_set_all(tabKey, allNotes);
+        // [Zzz5-6:ATTACH-SEL] oznacene (SELECT) -> len tie, ako suby; nic oznacene -> cele okno, zbalene
+        const picked = allNotes.filter(n => selected.has(n.id));
+        zzz5_6_tabnote_set_all(tabKey, picked.length ? picked : allNotes);
+        zzz5_6AttachMode[tabKey] = picked.length ? 'some' : 'all';
+        zzz5_6AttachExpanded = false;
         zzz5_6AttachedTab = tabKey;
       }
       zzz_haptic_pulse(20);
