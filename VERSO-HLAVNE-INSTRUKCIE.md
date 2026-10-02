@@ -28,7 +28,9 @@ Návrh, čo tam dať, je na konci tohto dokumentu.
 
 - **Základná verzia Versa je po anglicky** — všetky viditeľné popisy, tlačidlá, placeholdery a hlášky
 - **SQL vždy s menom**, v samostatnom skopírovateľnom bloku. Keď Claude niečo z DB potrebuje (dump, overenie,
-  migráciu), **hneď dá celé SQL s menom na copy**, nikdy len odkaz na meno (Vrso 3. 10., 00:26). Dump je
+  migráciu), **hneď dá celé SQL s menom na copy**, nikdy len odkaz na meno (Vrso 3. 10., 00:26). **Meno sa
+  dáva tiež na copy, celé ako názov súboru `nazov.sql`** (napr. `verso_security_hardening_v1.sql`), v
+  samostatnom bloku nad SQL (Vrso 3. 10., 00:29). Dump je
   read-only a vracia **jeden výsledok** (SQL editor ukáže len posledný).
 - Okná a workspacy sa **nesmú hýbať** pri bežnej práci — ani pri **otváraní okien a povelov** (podržanie
   3 s, otvorenie Notes/chat okna, note line): obrazovka nesmie poskočiť, poloha stránky aj scrollu v okne
@@ -160,7 +162,7 @@ Keď push zlyhá takto, nie je to chyba kódu ani tokenu: treba to zapnúť na s
 Verso = jednosúborová CRM (index.html, Supabase, Vercel). Pri každej zmene platí:
 
 1. Základná verzia Versa je PO ANGLICKY — všetky viditeľné popisy, tlačidlá, placeholdery, hlášky.
-2. SQL vždy s menom, v samostatnom skopírovateľnom bloku. Keď niečo z DB potrebuješ, hneď daj celé SQL s menom, nie len meno.
+2. SQL vždy s menom, v samostatnom skopírovateľnom bloku. Keď niečo z DB potrebuješ, hneď daj celé SQL s menom, nie len meno. Meno daj na copy celé ako `nazov.sql`.
 3. localStorage je CACHE, nikdy zdroj pravdy. Pravda je v databáze, oprávnenia vynucuje RLS.
 4. Chatnote sa VKLADÁ, note sa UKLADÁ. "Save" sa nesmie objaviť na ceste, ktorá do Notes nezapisuje.
 5. SUBS = štruktúra, TAGS = vlastnosti.
