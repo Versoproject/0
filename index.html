@@ -3897,7 +3897,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
        fit-content(64px) = stlpec je presne taky siroky ako jeho najsirsi obsah (najcastejsie slovo
        v hlavicke), no najviac 64 px - dlhe meno ownera sa oreze troma bodkami, nezoberie miesto SUBS.
        Funguje len preto, ze .zzz1cn-ws-td ma min-width: 0 (inak by nowrap text roztiahol stlpec). */
-    grid-template-columns: fit-content(64px) fit-content(64px) fit-content(64px) minmax(0, 1fr) 34px;
+    /* [Zzz5-6:ATTACH-COL] prvy stlpec ATTACH - siroky ako MINI hlavnej CRM, nech pas ATTACHED aj tabulka
+       stoja na jednej mriezke */
+    grid-template-columns: var(--zzz56-mini-w, 34px) fit-content(64px) fit-content(64px) fit-content(64px) minmax(0, 1fr) 34px;
     margin: 0 0 8px 0;
     border: 1px solid #e0d7bd;
     border-radius: 9px;
@@ -4081,7 +4083,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
      zvysok sa scrolluje VNUTRI neho. */
   .zzz1cn-ncrm-attach:has(> .zzz5-6-attgrid) { max-height: min(26vh, 132px); overflow-y: auto; overscroll-behavior: contain; }
   .zzz5-6-attmini.is-foldbtn { font-size: 10px; color: #7b2ff7; border-color: #7b2ff7; }
-  .zzz5-6-attgrid { display: grid; grid-template-columns: fit-content(64px) fit-content(64px) fit-content(64px) minmax(0, 1fr) 34px;
+  .zzz5-6-attgrid { display: grid; grid-template-columns: var(--zzz56-mini-w, 34px) fit-content(64px) fit-content(64px) fit-content(64px) minmax(0, 1fr) 34px;
     row-gap: 2px; align-items: start; }
   .zzz5-6-attcell { min-width: 0; padding: 0 2px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
     min-height: 18px; font-size: 8px; line-height: 18px; color: #171717; }
@@ -4096,9 +4098,14 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz5-6-attmini.is-sub { flex: 1 1 100%; min-width: 0; }
   .zzz5-6-attmini.is-cont { width: 100%; padding: 0; text-align: center; font-weight: 700; }
   .zzz5-6-attmini.is-cont.is-empty { color: #a89668; }
-  .zzz5-6-atttop { position: relative; height: 26px; margin-bottom: 2px; }
-  .zzz5-6-atttop > .zzz5-6-att-mini { position: absolute; top: 0; left: 0; padding: 0 2px; border-width: 2px;
-    border-radius: 999px; overflow: hidden; white-space: nowrap; text-overflow: clip; letter-spacing: -0.02em; }
+  .zzz5-6-attcell.is-att { padding: 0; overflow: visible; }
+  .zzz5-6-attgrid .zzz5-6-att-mini.zzz5-6-attach-toggle { padding: 0 1px; border-color: #7b2ff7; overflow: hidden;
+    white-space: nowrap; text-overflow: clip; line-height: 1; }
+  /* [Zzz5-6:ATTACH-COL] mensie ATTACH v stlpci tabulky - tvar MINI, vyska ako mini bunky pasu */
+  .zzz5-6-tblatt { width: 100%; height: 18px; padding: 0 1px; border: 2px solid #c9bc93; border-radius: 999px;
+    background-color: #fff; color: #8a6d1f; font-size: 6.5px; font-weight: 700; overflow: hidden; white-space: nowrap;
+    cursor: pointer; }
+  .zzz5-6-tblatt.is-on { background-color: #7b2ff7; border-color: #7b2ff7 !important; color: #fff; }
   .zzz5-6-attgrid .zzz5-6-attach-toggle { height: 18px; padding: 0 6px; border-width: 1px; border-radius: 9px; font-size: 8px; line-height: 16px; }
   .zzz5-6-attach-fold { display: block; margin-top: 2px; }
   .zzz1cn-ncrm-attach-row {
@@ -29241,7 +29248,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 17:45';
+const ZZZ5_6_BUILD = '2026-10-02 18:00';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -29457,24 +29464,27 @@ let zzz5_6AttCols = null;          // naposledy namerane stlpce tabulky - plati 
 function zzz5_6_attach_align() {
   const grid = document.querySelector('.zzz1cn-ncrm-attach .zzz5-6-attgrid');
   const ths = Array.from(document.querySelectorAll('.zzz1cn-ws-window .zzz1cn-ws-tbl > .zzz1cn-ws-th'));
-  if (ths.length === 5 && ths[0].offsetWidth) {
+  if (ths.length === 6 && ths[0].offsetWidth) {
     const r = ths.map(t => t.getBoundingClientRect());
     zzz5_6AttCols = { left: r[0].left, w: r.map(x => x.width) };
   }
-  // [Zzz5-6:ATTACH-MINI] ATTACHED = presna poloha a rozmer MINI tlacidla hlavnej CRM
-  const top = document.querySelector('.zzz1cn-ncrm-attach .zzz5-6-atttop');
+  // [Zzz5-6:ATTACH-COL] ATTACHED = PRESNY tvar MINI tlacidla hlavnej CRM (Vrso 17:33: "ma mat presny tvar
+  // buttonu/bunky ako MINI!!!") - rozmer aj tvar sa beru z MINI samotneho, farba ostava fialova (attached).
   const mini = document.getElementById('zzz6f48MiniButton');
-  if (top && mini && mini.offsetWidth) {
+  if (mini && mini.offsetWidth) {
     const m = mini.getBoundingClientRect();
-    const b = top.querySelector('.zzz5-6-att-mini');
-    const tl = top.getBoundingClientRect().left;
-    top.style.height = m.height + 'px';
-    if (b) {
-      b.style.left = (m.left - tl).toFixed(1) + 'px';
-      b.style.width = m.width.toFixed(1) + 'px';
-      b.style.height = m.height.toFixed(1) + 'px';
-      b.style.fontSize = getComputedStyle(mini).fontSize;
-    }
+    const cs = getComputedStyle(mini);
+    document.documentElement.style.setProperty('--zzz56-mini-w', m.width.toFixed(1) + 'px');
+    document.documentElement.style.setProperty('--zzz56-mini-h', m.height.toFixed(1) + 'px');
+    document.querySelectorAll('.zzz5-6-att-mini, .zzz5-6-tblatt').forEach(b => {
+      ['borderRadius', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderStyle',
+       'fontFamily', 'fontWeight', 'letterSpacing', 'boxShadow'].forEach(k => { b.style[k] = cs[k]; });
+      if (b.classList.contains('zzz5-6-att-mini')) {
+        b.style.width = m.width.toFixed(1) + 'px';
+        b.style.height = m.height.toFixed(1) + 'px';
+        b.style.fontSize = cs.fontSize;
+      }
+    });
   }
   if (!grid) return;
   if (!zzz5_6AttCols) { grid.style.gridTemplateColumns = ''; grid.style.marginLeft = ''; return; }
@@ -30266,13 +30276,19 @@ function zzz1cn_build_notes_crm(view, onChange) {
     //   - 3 s  = DETACH (rovnako ako ATTACH pod hlavnou CRM); MINI 3 s odpoji aj tento pas
     const ownKey = String(zzz5_6AttachedTab).indexOf('entry:') === 0 ? String(zzz5_6AttachedTab).slice(6)
       : (zzz5_6AttachedTab === 'picked' ? '' : zzz5_6_tab_entry_key(zzz5_6AttachedTab));
-    detach.title = (ownKey ? 'Tap = open these notes' : 'Tap = show / fold the attached sub notes') + ' / hold 3s = detach';
+    // [Zzz5-6:ATTACH-COL] Vrso 2026-10-02 (17:33): "ATTACH podrz 1-2 s, tak dane suby skomprimuj do klikatelnej
+    // bunky (+ 30 subs) a opacne povelom" - 1-2 s = zbalit / rozbalit (oba rezimy, aj vybrane suby).
+    detach.title = (ownKey ? 'Tap = open these notes' : 'Tap = show / fold the attached sub notes')
+      + ' / hold 1-2s = fold / unfold the sub notes / hold 3s = detach';
     let detHeld = 0;
-    zzz5w7_bind_tiered_hold(detach, [{ ms: 3000, fn: () => {
-      detHeld = Date.now();
-      zzz5_6AttachedTab = null; zzz5_6AttachExpanded = false; paintAttach(); onChange();
-      zzz6f2_show_toast('Notes attachment detached.');
-    } }]);
+    zzz5w7_bind_tiered_hold(detach, [
+      { ms: 1100, fn: () => { detHeld = Date.now(); zzz5_6AttachExpanded = !zzz5_6AttachExpanded; paintAttach(); } },
+      { ms: 3000, fn: () => {
+        detHeld = Date.now();
+        zzz5_6AttachedTab = null; zzz5_6AttachExpanded = false; paintAttach(); onChange();
+        zzz6f2_show_toast('Notes attachment detached.');
+      } }
+    ]);
     detach.addEventListener('click', () => {
       if (Date.now() - detHeld < 800) return;
       if (!ownKey) { zzz5_6AttachExpanded = !zzz5_6AttachExpanded; paintAttach(); return; }
@@ -30315,6 +30331,9 @@ function zzz1cn_build_notes_crm(view, onChange) {
     groups.forEach((g, gi) => {
       const info = (typeof zzz5_6WsEntryOf === 'function' && zzz5_6WsEntryOf(g.key)) || {};
       const cell = (cls) => { const d = document.createElement('div'); d.className = 'zzz5-6-attcell ' + cls; grid.appendChild(d); return d; };
+      // [Zzz5-6:ATTACH-COL] prvy stlpec = ATTACHED (pod MINI hlavnej CRM, nad stlpcom ATTACH tabulky)
+      const cAtt = cell('is-att');
+      if (gi === 0) cAtt.appendChild(detach);
       const cOwn = cell('is-owner'); cOwn.textContent = info.owner || '';
       const cName = cell('is-name'); cName.textContent = [info.projectName, info.project].filter(Boolean).join(' · ');
       const cEnt = cell('is-entry');
@@ -30322,20 +30341,19 @@ function zzz1cn_build_notes_crm(view, onChange) {
       cEnt.appendChild(mini('is-entry', isTab ? zzz5_6_tab_entry_label(g.key) : '#' + g.key,
         'Open the Notes of ' + (isTab ? 'this tab' : '#' + g.key), () => openOne({ entryKey: g.key })));
       const cSubs = cell('is-subs');
-      if (mode === 'all') {
+      // [Zzz5-6:ATTACH-COL] zbalene = jedna klikatelna bunka "▸ N sub notes" v OBOCH rezimoch
+      if (!zzz5_6AttachExpanded || mode === 'all') {
         cSubs.appendChild(mini('is-fold', (zzz5_6AttachExpanded ? '\u25be ' : '\u25b8 ') + g.items.length + ' sub note' + (g.items.length === 1 ? '' : 's'),
-          zzz5_6AttachExpanded ? 'Tap folds them' : 'The whole window is attached - tap shows the sub notes',
+          zzz5_6AttachExpanded ? 'Tap folds them' : 'Tap shows the sub notes',
           () => { zzz5_6AttachExpanded = !zzz5_6AttachExpanded; paintAttach(); }));
-        if (zzz5_6AttachExpanded) g.items.forEach(a => cSubs.appendChild(subRow(a)));
-      } else {
-        g.items.forEach(a => cSubs.appendChild(subRow(a)));
       }
+      if (zzz5_6AttachExpanded) g.items.forEach(a => cSubs.appendChild(subRow(a)));
       const cCont = cell('is-content');
       const cVal = String(info.content || '').trim();
       if (cVal) {
         cCont.appendChild(mini('is-cont', 'CONT', 'CONTENT of #' + g.key + ' - tap opens it',
           () => zzz6f29_open_readonly_viewer('CONTENT #' + g.key, cVal, null)));
-      } else if (mode === 'all' && gi === 0) {
+      } else if (gi === 0) {
         // [Zzz5-6:ATTACH-FIT] Vrso 2026-10-02 (17:03): "nejde spat minimalizovat cez dany button vpravo hore".
         // Prazdna pomlcka v CONTENT vyzerala ako tlacidlo na zbalenie - bez obsahu je to teda ono: ▴ zbali, ▾ rozbali.
         cCont.appendChild(mini('is-cont is-foldbtn', zzz5_6AttachExpanded ? '\u25b4' : '\u25be',
@@ -30343,10 +30361,6 @@ function zzz1cn_build_notes_crm(view, onChange) {
           () => { zzz5_6AttachExpanded = !zzz5_6AttachExpanded; paintAttach(); }));
       }
     });
-    const top = document.createElement('div');
-    top.className = 'zzz5-6-atttop';   // [Zzz5-6:ATTACH-MINI] riadok pod MINI hlavnej CRM
-    top.appendChild(detach);
-    att.appendChild(top);
     att.appendChild(grid);
     requestAnimationFrame(zzz5_6_attach_align);
   };
@@ -31089,7 +31103,9 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     // popisu ("PROJECT OWNER" ~58 px). Tri kriteria tak zaberu ~110 px namiesto 164 a zvysok ide SUBS.
     // [Zzz5-6:SUB-NOTES] Vrso 2026-10-02 (14:45): "lepsie by bolo ich oznacovat ako SUB NOTES, aspon kym sa
     // nezauziva" - v stlpci su POZNAMKY zaznamu, nie pole SUBS zaznamu; dve rozne veci s jednym nazvom
-    [['PROJECT', 'OWNER'], ['PROJECT', 'NAME'], ['ENTRY', 'NUMBER'], ['SUB', 'NOTES'], ['CONTENT']].forEach(labels => {
+    // [Zzz5-6:ATTACH-COL] Vrso 2026-10-02 (17:33): "urob pre neho aj miesto v note tabe... pred kriteria, na
+    // zaciatku tiez mensi (ako MINI) ATTACHED" - stlpec ATTACH, nad ktorym presne stoji ATTACHED pasu.
+    [['ATTACH'], ['PROJECT', 'OWNER'], ['PROJECT', 'NAME'], ['ENTRY', 'NUMBER'], ['SUB', 'NOTES'], ['CONTENT']].forEach(labels => {
       const th = document.createElement('div');
       th.className = 'zzz1cn-ws-th';
       labels.forEach(l => { const d = document.createElement('div'); d.textContent = l; th.appendChild(d); });
@@ -31108,6 +31124,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
           tbl.appendChild(d);
           return d;
         };
+        const tdAtt = td('is-att');        // 0. ATTACH [Zzz5-6:ATTACH-COL]
         const tdOwner = td('is-owner-c');  // 1. PROJECT OWNER
         const tdProj = td('is-proj');      // 2. PROJECT NAME + pod nim CISLO PROJEKTU
         const tdEntry = td('is-entry');    // 3. ENTRY NUMBER
@@ -31169,6 +31186,27 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
           zzz1cn_open_list(ek, eBtn);
         });
         tdEntry.appendChild(eBtn);
+        // [Zzz5-6:ATTACH-COL] tuk = pripni VSETKY poznamky tohto zaznamu pod CRM (zbalene) / znova = odopni
+        const aKey = 'entry:' + ek;
+        const aBtn = document.createElement('button');
+        aBtn.type = 'button';
+        aBtn.className = 'zzz5-6-tblatt' + (zzz5_6AttachedTab === aKey ? ' is-on' : '');
+        aBtn.textContent = zzz5_6AttachedTab === aKey ? 'ATTACHED' : 'ATTACH';
+        aBtn.title = zzz5_6AttachedTab === aKey ? 'Attached under the CRM - tap detaches'
+          : 'Attach all notes of #' + ek + ' under the CRM (folded)';
+        aBtn.addEventListener('click', () => {
+          zzz_haptic_pulse(20);
+          if (zzz5_6AttachedTab === aKey) { zzz5_6AttachedTab = null; }
+          else {
+            zzz5_6_tabnote_set_all(aKey, notesOf);
+            zzz5_6AttachMode[aKey] = 'all';
+            zzz5_6AttachExpanded = false;
+            zzz5_6AttachedTab = aKey;
+          }
+          if (zzz5_6RepaintAttach) zzz5_6RepaintAttach();
+          render();
+        });
+        tdAtt.appendChild(aBtn);
 
         // [Zzz1-CN:WS-TABLE] CONTENT stoji VPRAVO OD SUBS (Vrso: "ma byt v linii, kde su vzdy kriteria
         // vsetky, aby sa nestalo, ze chyba aspon jedno oznacenie v ramci obrazovky"). Nezobrazuje obsah,
@@ -31301,6 +31339,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
               if (pk === 'picked' && zzz5_6AttachedTab !== 'picked') zzz5_6_tabnote_list('picked').length = 0;
               const added = zzz5_6_tabnote_toggle(pk, n);
               zzz5_6AttachMode[pk] = 'some';
+              if (added) zzz5_6AttachExpanded = true;   // [Zzz5-6:ATTACH-COL] prave pripnuty sub je vidno
               zzz5_6AttachedTab = zzz5_6_tabnote_list(pk).length ? pk : null;
               if (zzz5_6RepaintAttach) zzz5_6RepaintAttach();
               zzz6f2_show_toast(added ? `#${String(n.entry_key || '')}/${zzz5w7_label_of(n)} attached under the CRM.`
@@ -33047,7 +33086,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
         const picked = allNotes.filter(n => selected.has(n.id));
         zzz5_6_tabnote_set_all(tabKey, picked.length ? picked : allNotes);
         zzz5_6AttachMode[tabKey] = picked.length ? 'some' : 'all';
-        zzz5_6AttachExpanded = false;
+        zzz5_6AttachExpanded = picked.length > 0;   // [Zzz5-6:ATTACH-COL] vybrane rozbalene, cele okno zbalene
         zzz5_6AttachedTab = tabKey;
       }
       zzz_haptic_pulse(20);
