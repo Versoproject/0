@@ -4074,6 +4074,24 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     color: #7b2ff7; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; cursor: pointer; }
   .zzz5-6-attach-toggle.is-on { background-color: #7b2ff7; color: #fff; }
   .zzz5-6-attach-sub { margin-top: 3px; }
+  /* [Zzz5-6:ATTACH-GRID] pas ATTACHED = riadok mriezky tabulky, vo vyske MINI bunky */
+  .zzz1cn-ncrm-attach:has(> .zzz5-6-attgrid) { padding: 2px 0; overflow: hidden; }
+  .zzz5-6-attgrid { display: grid; grid-template-columns: fit-content(64px) fit-content(64px) fit-content(64px) minmax(0, 1fr) 34px;
+    row-gap: 2px; align-items: start; }
+  .zzz5-6-attcell { min-width: 0; padding: 0 2px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    min-height: 18px; font-size: 8px; line-height: 18px; color: #171717; }
+  .zzz5-6-attcell.is-owner { font-weight: 700; }
+  .zzz5-6-attcell.is-name { color: #6b6b6b; }
+  .zzz5-6-attcell.is-subs { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; }
+  .zzz5-6-attmini { height: 18px; max-width: 100%; padding: 0 6px; border: 1px solid #d4d4d4; border-radius: 9px;
+    background-color: #fff; color: #171717; font-size: 8px; line-height: 16px; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; text-align: left; cursor: pointer; }
+  .zzz5-6-attmini.is-entry { padding: 0 3px; background-color: #D4AF37; border-color: #b8860b; font-weight: 700; text-overflow: clip; }
+  .zzz5-6-attmini.is-fold { border-style: dashed; border-color: #c9bc93; color: #8a6d1f; background: transparent; }
+  .zzz5-6-attmini.is-sub { flex: 1 1 100%; min-width: 0; }
+  .zzz5-6-attmini.is-cont { width: 100%; padding: 0; text-align: center; font-weight: 700; }
+  .zzz5-6-attmini.is-cont.is-empty { color: #a89668; }
+  .zzz5-6-attgrid .zzz5-6-attach-toggle { height: 18px; padding: 0 6px; border-width: 1px; border-radius: 9px; font-size: 8px; line-height: 16px; }
   .zzz5-6-attach-fold { display: block; margin-top: 2px; }
   .zzz1cn-ncrm-attach-row {
     display: block;
@@ -29201,7 +29219,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 16:20';
+const ZZZ5_6_BUILD = '2026-10-02 16:35';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -29393,6 +29411,26 @@ let zzz5_6AttachedTab = null;     // ktory tab je prave pripnuty pod notes CRM
 const zzz5_6AttachMode = {};
 let zzz5_6AttachExpanded = false;
 let zzz5_6DockOpen = null;        // workspace sem vlozi "otvor v doku" - pripnuty riadok sa otvori tam
+// [Zzz5-6:ATTACH-GRID] workspace sem vlozi "co viem o zazname" (owner, projekt, content) pre pas ATTACHED
+let zzz5_6WsEntryOf = null;
+let zzz5_6AttCols = null;          // naposledy namerane stlpce tabulky - plati aj ked je zoznam prekryty
+// Stlpce pasu ATTACHED = stlpce hlavicky tabulky tabu, na pixel. Meria sa skutocna poloha a sirka kazdej
+// bunky hlavicky (fit-content sa meni podla obsahu), nie CSS predpis - inak by sa pri inom mene ownera rozisli.
+function zzz5_6_attach_align() {
+  const grid = document.querySelector('.zzz1cn-ncrm-attach .zzz5-6-attgrid');
+  const ths = Array.from(document.querySelectorAll('.zzz1cn-ws-window .zzz1cn-ws-tbl > .zzz1cn-ws-th'));
+  if (ths.length === 5 && ths[0].offsetWidth) {
+    const r = ths.map(t => t.getBoundingClientRect());
+    zzz5_6AttCols = { left: r[0].left, w: r.map(x => x.width) };
+  }
+  if (!grid) return;
+  if (!zzz5_6AttCols) { grid.style.gridTemplateColumns = ''; grid.style.marginLeft = ''; return; }
+  grid.style.gridTemplateColumns = zzz5_6AttCols.w.map(x => x.toFixed(1) + 'px').join(' ');
+  grid.style.marginLeft = '0px';
+  const g = grid.getBoundingClientRect().left;
+  grid.style.marginLeft = (zzz5_6AttCols.left - g).toFixed(1) + 'px';
+}
+window.addEventListener('resize', () => requestAnimationFrame(zzz5_6_attach_align));
 function zzz5_6_tabnote_list(tab) {
   if (!zzz5_6TabNotes[tab]) zzz5_6TabNotes[tab] = [];
   return zzz5_6TabNotes[tab];
@@ -30151,62 +30189,81 @@ function zzz1cn_build_notes_crm(view, onChange) {
     const pinned = zzz5_6AttachedTab ? zzz5_6_tabnote_list(zzz5_6AttachedTab) : [];
     if (!zzz5_6AttachedTab || !pinned.length) { att.style.display = 'none'; return; }
     att.style.display = '';
-    const head = document.createElement('div');
-    head.className = 'zzz1cn-ncrm-attach-head';
-    const tabLab = (ZZZ1CN_WS_TABS.find(t => t.key === zzz5_6AttachedTab) || {}).label
-      || (zzz5_6UserTabs.find(t => t.key === zzz5_6AttachedTab) || {}).label
-      || (String(zzz5_6AttachedTab).indexOf('entry:') === 0 ? '#' + String(zzz5_6AttachedTab).slice(6) : zzz5_6AttachedTab);
-    // === [Zzz5-6:ATTACH-SEL] Vrso 2026-10-02 (15:48): "nemozu sa pripajat vsetky subs v notes window, iba ak
-    // su selected. Ak vsetky, tak pripnut iba ako subs, ale zbalene vsetky spolu; ak sa attachne iba jedna
-    // note, tak pod subs zaclenena ako je teraz v note tabe... pod MINI v CRM musi byt attach/detach button
-    // (ked attached, fialovo s kontrastnym pismom)".
-    //   tlacidlo ATTACHED vlavo (pod MINI hlavnej CRM) = fialova vypln, biele pismo; tuk = DETACH
-    //   cele okno  -> JEDEN zbaleny riadok "▸ #156 · 30 sub notes", tuk ho rozbali/zbali
-    //   oznacene   -> kazda poznamka ako sub (meno + text), rovnako ako v tabulke tabu
-    //   tuk na sub -> otvori ho v doku workspacu (alebo v Notes okne, ked workspace nie je otvoreny)
+    // === [Zzz5-6:ATTACH-GRID] Vrso 2026-10-02 (16:13): "ATTACHED ma byt vo velkosti MINI (resp. stylom
+    // attached), farba je ok... najprv attach, kde je 156 cela vyfiltrovana, ale vo velkosti mini buttonu, a
+    // vsetky kriteria/bunky musia byt zarovnane ako mriezka (bez ohladu na to, ze je medzi nimi SHOW bar a pod.)".
+    // Pas uz nie je nadpis + zoznam, ale RIADOK TEJ ISTEJ MRIEZKY ako tabulka tabu pod nim:
+    //   PROJECT OWNER | PROJECT NAME (+cislo) | ENTRY NUMBER | SUB NOTES | CONTENT
+    // Sirky stlpcov sa NEPOCITAJU zvlast - preberu sa z hlavicky tabulky (zzz5_6_attach_align), takze
+    // stlpce lezia presne nad sebou, aj ked medzi nimi su taby a SHOW bar. Vsetko vo vyske MINI bunky.
+    //   ATTACHED (fialove, tuk = DETACH) stoji na zaciatku SUB NOTES - je to stav prave tychto poznamok
+    //   cele okno -> zbalene "▸ N sub notes", tuk rozbali/zbali; oznacene -> kazda ako mini sub
+    //   tuk na sub = otvori ho v doku; tuk na #zaznam = jeho Notes v doku; CONT = obsah ako v tabulke
     const detach = document.createElement('button');
     detach.type = 'button';
     detach.className = 'zzz5-6-attach-toggle is-on';
     detach.textContent = 'ATTACHED';
     detach.title = 'Attached - tap to detach';
     detach.addEventListener('click', () => { zzz5_6AttachedTab = null; zzz5_6AttachExpanded = false; paintAttach(); onChange(); });
-    head.appendChild(detach);
-    const capt = document.createElement('span');
-    capt.textContent = `${tabLab} (${pinned.length})`;
-    head.appendChild(capt);
-    att.appendChild(head);
     const openOne = (a) => {
-      if (typeof zzz5_6DockOpen === 'function') zzz5_6DockOpen(a.entryKey, { num: a.num, part: a.part });
-      else zzz1cn_open_list(a.entryKey, null, { num: a.num, part: a.part });
+      const focus = a.num ? { num: a.num, part: a.part } : null;
+      if (typeof zzz5_6DockOpen === 'function') zzz5_6DockOpen(a.entryKey, focus);
+      else zzz1cn_open_list(a.entryKey, null, focus);
+    };
+    const mini = (cls, txt, tip, fn) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'zzz5-6-attmini ' + cls;
+      b.textContent = txt;
+      if (tip) b.title = tip;
+      if (fn) b.addEventListener('click', fn);
+      return b;
     };
     const subRow = (a) => {
-      const r = document.createElement('button');
-      r.type = 'button';
-      r.className = 'zzz1cn-ws-subbtn zzz5-6-attach-sub';
-      const top = document.createElement('div');
-      top.className = 'zzz1cn-ws-subbtn-name';
-      top.textContent = String(a.name || '').trim() || a.label;
-      const bod = document.createElement('div');
-      bod.className = 'zzz1cn-ws-subbtn-text';
-      bod.textContent = String(a.text || '').replace(/\s+/g, ' ').trim();
-      r.appendChild(top); r.appendChild(bod);
-      r.title = a.label + (a.username ? ' · ' + a.username : '') + ' - tap opens it';
-      r.addEventListener('click', () => openOne(a));
+      const r = mini('is-sub', '', a.label + (a.username ? ' · ' + a.username : '') + ' - tap opens it', () => openOne(a));
+      const nm = document.createElement('b');
+      nm.textContent = String(a.name || '').trim() || a.label;
+      r.appendChild(nm);
+      r.appendChild(document.createTextNode(' ' + String(a.text || '').replace(/\s+/g, ' ').trim()));
       return r;
     };
     const mode = zzz5_6AttachMode[zzz5_6AttachedTab] || 'some';
-    if (mode === 'all') {
-      const f = document.createElement('button');
-      f.type = 'button';
-      f.className = 'zzz1cn-ws-subfold zzz5-6-attach-fold';
-      f.textContent = (zzz5_6AttachExpanded ? '\u25be ' : '\u25b8 ') + tabLab + ' \u00b7 ' + pinned.length + ' sub notes';
-      f.title = zzz5_6AttachExpanded ? 'Tap folds them' : 'The whole window is attached - tap shows the sub notes';
-      f.addEventListener('click', () => { zzz5_6AttachExpanded = !zzz5_6AttachExpanded; paintAttach(); });
-      att.appendChild(f);
-      if (zzz5_6AttachExpanded) pinned.forEach(a => att.appendChild(subRow(a)));
-    } else {
-      pinned.forEach(a => att.appendChild(subRow(a)));
-    }
+    const grid = document.createElement('div');
+    grid.className = 'zzz5-6-attgrid';
+    const groups = [];
+    pinned.forEach(a => {
+      const k = String(a.entryKey || '');
+      let g = groups.find(x => x.key === k);
+      if (!g) { g = { key: k, items: [] }; groups.push(g); }
+      g.items.push(a);
+    });
+    groups.forEach((g, gi) => {
+      const info = (typeof zzz5_6WsEntryOf === 'function' && zzz5_6WsEntryOf(g.key)) || {};
+      const cell = (cls) => { const d = document.createElement('div'); d.className = 'zzz5-6-attcell ' + cls; grid.appendChild(d); return d; };
+      const cOwn = cell('is-owner'); cOwn.textContent = info.owner || '';
+      const cName = cell('is-name'); cName.textContent = [info.projectName, info.project].filter(Boolean).join(' · ');
+      const cEnt = cell('is-entry');
+      const isTab = zzz5_6_is_tab_entry(g.key);
+      cEnt.appendChild(mini('is-entry', isTab ? zzz5_6_tab_entry_label(g.key) : '#' + g.key,
+        'Open the Notes of ' + (isTab ? 'this tab' : '#' + g.key), () => openOne({ entryKey: g.key })));
+      const cSubs = cell('is-subs');
+      if (gi === 0) cSubs.appendChild(detach);
+      if (mode === 'all') {
+        cSubs.appendChild(mini('is-fold', (zzz5_6AttachExpanded ? '\u25be ' : '\u25b8 ') + g.items.length + ' sub note' + (g.items.length === 1 ? '' : 's'),
+          zzz5_6AttachExpanded ? 'Tap folds them' : 'The whole window is attached - tap shows the sub notes',
+          () => { zzz5_6AttachExpanded = !zzz5_6AttachExpanded; paintAttach(); }));
+        if (zzz5_6AttachExpanded) g.items.forEach(a => cSubs.appendChild(subRow(a)));
+      } else {
+        g.items.forEach(a => cSubs.appendChild(subRow(a)));
+      }
+      const cCont = cell('is-content');
+      const cVal = String(info.content || '').trim();
+      cCont.appendChild(mini('is-cont' + (cVal ? '' : ' is-empty'), cVal ? 'CONT' : '\u2014',
+        cVal ? 'CONTENT of #' + g.key + ' - tap opens it' : 'No CONTENT',
+        () => { if (cVal) zzz6f29_open_readonly_viewer('CONTENT #' + g.key, cVal, null); }));
+    });
+    att.appendChild(grid);
+    requestAnimationFrame(zzz5_6_attach_align);
   };
 
   const paint = () => {
@@ -30429,6 +30486,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
   let wsContentOn = false;   // [Zzz5-6:BAR-CONTENT] hore, aby ho render() videl uz pri stavbe boxu
   let wsLoadErr = '';   // [Zzz5-6:WS-LOADSTATE] chyba nacitania - prazdny zoznam ju musi povedat
   let entryMap = {};
+  zzz5_6WsEntryOf = (k) => entryMap[String(k)] || null;   // [Zzz5-6:ATTACH-GRID]
   // [Zzz1-CN:WS-FOLD] co je prave zlozene. Pohlad na TOTO otvorenie okna, nie nastavenie - preto nikam
   // neuklada; po zatvoreni workspace sa zacina rozbalene.
   const wsFold = {};
@@ -31231,6 +31289,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
       const first = sub.querySelector('.zzz1cn-ws-subbtn');
       if (first && first.offsetHeight) c.style.height = first.offsetHeight + 'px';
     }));
+    requestAnimationFrame(zzz5_6_attach_align);   // [Zzz5-6:ATTACH-GRID] stlpce pasu ATTACHED podla tejto hlavicky
     if (!count) {
       const none = document.createElement('div');
       none.className = 'zzz1cn-empty';
