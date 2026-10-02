@@ -14521,6 +14521,8 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   };
   // [Zzz1-CN:NL-HOLD] openAt = cislo, pod ktore sa ma nl rovno zaparkovat (podrzanie # v chate).
   // Bez neho sa otvara na vychodzom mieste, teda zadokovana v chatnote line.
+  // [Zzz1-CN:NL-ENTER-CHAT] ked je note line otvorena, ENTER CHATNOTE posle JEJ text do chatu bez ulozenia
+  let cnNlSendChat = null;
   const cnOpenOptions = (openAt) => {
     cnOptionsBar.innerHTML = '';
     cnOptionsBar.style.display = '';
@@ -14618,6 +14620,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     cancel.type = 'button'; cancel.className = 'zzz1cn-note-btn zzz1cn-note-btn-close'; cancel.textContent = '\u00d7';
     cancel.title = 'Close the note line - back to the plain chat line (the reverse of holding ENTER CHATNOTE)';
     const close = () => {
+      cnNlSendChat = null;         // [Zzz1-CN:NL-ENTER-CHAT] zatvorena line uz nic neposiela
       cnOptionsBar.style.display = 'none';
       cnOptionsBar.innerHTML = '';
       cnPlaceOptions(0);           // [Zzz1-CN:NL-DOCK] vzdy spat do chatnote line
@@ -14635,6 +14638,23 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     };
     ok.addEventListener('click', send);
     cancel.addEventListener('click', close);
+    // === [Zzz1-CN:NL-ENTER-CHAT] Vrso 2026-10-02 (13:42): "treba doriesit, aby sa cez chatnote line dal
+    // potvrdit chat cez ten ENTER CHATNOTE button, ale bez save!"
+    // Note line mala jedine tlacidlo - SAVE NOTE (do Notes). Text z nej sa teraz da poslat aj ENTER
+    // CHATNOTE: ide do chatu ako obycajna chatnote (is_saved = false), s tym istym cielom (reply bunka),
+    // menom, privacy aj prioritou ako by isiel cez SAVE NOTE - len sa NEULOZI do Notes. Drzi sa tym
+    // pravidlo "chatnote sa VKLADA, note sa UKLADA": kazde z dvoch tlacidiel robi stale len svoje.
+    // Ked je note line prazdna, ENTER CHATNOTE posiela ako doteraz text z velkeho pola Chat-Notes.
+    cnNlSendChat = async () => {
+      const t = textIn.value.trim();
+      if (!t) return false;
+      const tnum = parseInt(cnTarget.value, 10) || 0;
+      if (!cnTargetCheck(tnum)) return true;   // [Zzz1-CN:CHL-EXISTS] text ostane, nic sa neposlalo
+      const nm = nameIn.value.trim() || String(nlThreadName(tnum) || '').trim();
+      await cnSendToChat(t, nm, tnum, privChk.checked, false, prioCtl.get());  // ENTER = iba do chatu
+      close();
+      return true;
+    };
     // [Zzz1-CN:NL-ONE-TARGET] vlastne "to #" uz nl nema - premiestnenie riadka pod dane cislo aj napovedu
     // s menom vlakna teraz riadi VYLUCNE reply bunka (cnTarget), ktora to robila aj predtym
     [nameIn, textIn].forEach(el => el.addEventListener('keydown', (e) => {
@@ -14678,7 +14698,8 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   // [Zzz1-CN:CHL-NEW] Meno ide do zapisu v OBOCH pripadoch, len pochadza odinakial: pri odpovedi sa
   // prevezme z vlakna (aby sa poznamky pod rovnakym name drzali pokope), pri novom chate je to to, co
   // user vypisal do odomknutej bunky - a tym padom aj novy chat moze vzniknut rovno s nazvom. ===
-  cnSave.addEventListener('click', () => {
+  cnSave.addEventListener('click', async () => {
+    if (cnNlSendChat && await cnNlSendChat()) return;   // [Zzz1-CN:NL-ENTER-CHAT] text z note line
     const tnum = parseInt(cnTarget.value, 10) || 0;
     if (!cnTargetCheck(tnum)) return;   // [Zzz1-CN:CHL-EXISTS] radsej neposlat nez zaseknut v outboxe
     cnSendToChat(notesArea.value, String(cnTargetNameVal || '').trim(), tnum, false, false);  // ENTER = iba do chatu
@@ -29005,7 +29026,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 13:42';
+const ZZZ5_6_BUILD = '2026-10-02 13:43';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
