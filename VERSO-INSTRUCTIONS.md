@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-03 00:25** · build appky v čase zápisu: `2026-10-03 00:20`
+**Verzia: 2026-10-03 00:45** · build appky v čase zápisu: `2026-10-03 00:40`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -256,8 +256,8 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
   ponúka mená z tvojich záznamov + z registra (`[Zzz1-R17b:CONTACTS-REGISTRY]`).
 - Čo komu register ukáže, určuje oprávnenie (RLS). Autority môžu mať prístup bez párovania, ale len ku
   konkrétnemu projektu (napr. zdravotné záležitosti).
-- **Zaregistrovať kontakt ručne (dnes):** nová CL → PROJECT NUMBER `1`, PROJECT OWNER `Verso`, PROJECT
-  CATEGORY `Contacts`, do USER / COMMUNICATION meno kontaktu → ENTER. (Automaticky pri registrácii usera -
+- **Zaregistrovať kontakt ručne (dnes) - len prihlásený ako Verso:** nová CL → PROJECT NUMBER `1`, PROJECT
+  CATEGORY `Contacts`, do USER / COMMUNICATION meno kontaktu → ENTER (owner je automaticky Verso). (Automaticky pri registrácii usera -
   plánované, backlog „CONTACTS REGISTER".)
 
 ### 4C.1 Pridať kontakt do CL (komu je záznam určený / s kým sa o ňom komunikuje)
@@ -272,7 +272,10 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
    ako Enter - preto radšej ťuk na meno.
 4. Odobrať kontakt: `×` na chipe (len kto smie upravovať - owner, alebo podľa comm setup „cont").
 5. **Uložiť: zelené `ENTER`.** Dovtedy sú kontakty len v rozpísanej CL; do databázy idú až so záznamom.
-- Prihlásený user (owner CL) je v kontaktoch automaticky - seba nepridávaj.
+- **Prihlásený user je v kontaktoch vždy** - pridá sa sám a jeho chip **nemá ×** (bodkovaný zlatý rám);
+  odobrať sa nedá ani omylom (`[Zzz0-R1:SELF-CHIP]`). To isté v okne USER.
+- **PROJECT OWNER novej CL = vždy prihlásený user.** Ak je v bunke iné meno, pri ENTER sa prepíše a hláška to
+  povie (`[Zzz0-R1:OWNER-IS-ME]`). Záznam za iného usera vložiť nejde.
 - Cudzí kontakt má bronzový rám, vlastný zlatý (`[Zzz1-R17b:FOREIGN-BRONZE]`).
 - Pridať NOVÉ meno smie len ten, kto smie pridávať kontakty (comm setup „cont"); menovať už prítomných
   v chate (`@meno`) smie každý (`[Zzz6-F58:MENTION-GATE]`).

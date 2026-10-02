@@ -1,6 +1,6 @@
 # VERSO — HLAVNÉ INŠTRUKCIE
 
-**Verzia: 2026-10-03 00:20**
+**Verzia: 2026-10-03 00:40**
 
 > **Ako sa tento súbor udržiava:** je JEDEN a prenáša sa VŽDY CELÝ. Keď pribudne pravidlo, Claude
 > prepíše tento súbor a dá ti ho; ty ním nahradíš starú kópiu v ostatných projektoch. Nikdy sa
@@ -67,6 +67,11 @@ Návrh, čo tam dať, je na konci tohto dokumentu.
     mieste a **nevytvára novú verziu** — nemennosť uloženého záznamu tým nie je dotknutá.
   - CL s notes: pri uložení poznámky prechádzajú pod číslo záznamu (`[Zzz1-CN:DRAFT-KEY]`) a záznam
     ostáva v tom umiestnení, kde CL bola.
+- **OWNER = PRIHLÁSENÝ USER** (Vrso 3. 10., 00:02): pri vkladaní CL je PROJECT OWNER **vždy a iba
+  prihlásené username** - nikto nevloží záznam za iného. Ten istý user je automaticky v **USER (consent)** aj
+  v **COMMUNICATION (contacts)** - pripája sa sám, takže jeho vlastný chip je **needitovateľný** (nedá sa
+  odobrať) a ostatní ho vidia. Vynútené pred zápisom na jednom mieste (`[Zzz0-R1:OWNER-IS-ME]`,
+  `[Zzz0-R1:SELF-CHIP]`). Register kontaktov (owner Verso) preto zakladá len Verso, alebo neskôr serverová funkcia.
 - **KONTAKTY - REGISTER A VLASTNÉ ZOZNAMY** (Vrso 2. 10., 23:55). **Každý kontakt musí byť registrovaný
   v PROJECT 1 / owner Verso / CATEGORY Contacts** - tým je reálne dohľadateľný (záznam s menom v USER /
   COMMUNICATION). Zoznam kontaktov sa ale **neviaže na všetkých registrovaných** - **každý si buduje vlastný**
@@ -159,4 +164,6 @@ Verso = jednosúborová CRM (index.html, Supabase, Vercel). Pri každej zmene pl
     Dostane ho pri vzniku. Umiestnenie je štruktúra a stav: presun nevytvára novú verziu.
 13. Každý kontakt je registrovaný v PROJECT 1 / owner Verso / CATEGORY Contacts. Zoznam kontaktov sa
     neviaže na všetkých - každý si buduje vlastný; čo komu register ukáže, určuje oprávnenie (RLS).
+14. Owner novej CL je vždy a iba prihlásený user; ten je automaticky aj v USER (consent) aj v
+    COMMUNICATION (contacts) a svoj chip si odobrať nemôže.
 ```
