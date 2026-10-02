@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-02 21:05** · build appky v čase zápisu: `2026-10-02 21:00`
+**Verzia: 2026-10-02 21:20** · build appky v čase zápisu: `2026-10-02 21:15`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -100,7 +100,11 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
 ### 4.2 Nájsť poznámku v tabe
 1. **Hľadanie**: napíš do `search` → `‹ ›` skáče medzi zásahmi, číslo ukazuje *ktorý / z koľkých*,
    `×` vymaže hľadanie.
-2. **NOTE|CONTENT**: zapnutý `CONTENT` hľadá len v CONTENT záznamov (zásah sa označí na kocke `CONT`).
+2. **NOTE|CONTENT** (`[Zzz5-6:SEARCH-MODE]`) - kde sa hľadá, ukazuje farba:
+   - `NOTE` (oranžové, východzie) → hľadá v poznámkach; hľadanie je oranžové,
+   - `CONTENT` (fialové) → hľadá len v CONTENT záznamov (zásah sa označí na kocke `CONT`); pole, `‹ ›`,
+     počítadlo aj `×` sú fialové a v SHOW > LIMIT sa automaticky objaví fialové pole CONTENT.
+   Aktívna polovica prepínača je plná, neaktívna biela.
 3. **SHOW** otvorí okno filtrov s oddielmi:
    - **LIMIT** (strieborný) - obmedzenie podľa polí záznamu (ENTRY NUMBER, PROJECT OWNER, PROJECT NAME,
      PROJECT NUMBER, SUBS, TAG, PRIVACY, SCHEDULE, PROJECT CATEGORY, THEME, DESCRIPTION, ENTRY DATE,
