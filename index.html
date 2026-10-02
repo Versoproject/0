@@ -4203,6 +4203,15 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     border-color: #7b2ff7; color: #7b2ff7;
   }
   .zzz5-6-tabstrip-attach.zzz1cn-ws-subattach.is-on { background-color: #7b2ff7; color: #fff; }
+  /* [Zzz5-6:WIN-CHAT] CHAT v pase - vlavo od ATTACH, ta ista mierka */
+  .zzz5-6-tabstrip-chat.zzz1cn-ws-subattach {
+    position: absolute; right: 78px; top: 50%; transform: translateY(-50%);
+    margin-left: 0; padding: 0 8px; font-size: 8px; border-color: #b8860b; color: #8a6d1f;
+  }
+  .zzz5-6-tabstrip-chat.zzz1cn-ws-subattach.is-on { background-color: #D4AF37; color: #171717; }
+  .zzz5-6-nl-chat { border-color: #171717 !important; color: #171717 !important; font-weight: 700;
+    padding: 0 6px !important; font-size: 9px !important; flex: 0 0 auto; }
+  .zzz5w7-inline:has(.zzz5-6-nl-chat) { gap: 3px; }
   /* cislo zaznamu je zapnute, kym su jeho SUBS rozbalene - inak by sa nedalo zistit, odkial su */
   .zzz1cn-ws-cardentry.is-on { background-color: #D4AF37; color: #171717; }
   .zzz1cn-ws-cardentry {
@@ -29171,7 +29180,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 15:07';
+const ZZZ5_6_BUILD = '2026-10-02 15:32';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -31050,7 +31059,14 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
               // Vrso 13:57: "zvyrazneny je dobre" - fialovy okraj povie, na ktory sub sa prave odpoveda
               body.querySelectorAll('.zzz1cn-ws-subbtn.is-inwin').forEach(x => x.classList.remove('is-inwin'));
               b.classList.add('is-inwin');
-              zzz5_6_open_chat_reply(String(n.entry_key || ''), Number(n.note_number) || 0);   // [Zzz5-6:SUB-CHAT]
+              // [Zzz5-6:SUB-WORKLINE] Vrso 2026-10-02 (15:13): "ked 1-2s sub, tak sa otvori WORK NOTE tabu
+              // chatnote line... najlepsie dat iba chat line". Otvori sa WORK NOTE tabu v doku a rovno jeho
+              // riadok: odkaz na sub uz stoji v texte (aby sa nestratilo, z coho poznamka vznikla), meno
+              // prevezme od subu. OK = ulozit do Notes tabu, CHAT = len do chatu tabu.
+              // Chat ZAZNAMU (COMMUNICATION okno) je odteraz na 3 s podrzani +add NOTE v okne zaznamu.
+              const ref = '#' + String(n.entry_key || '') + '/' + zzz5w7_label_of(n);
+              zzz1cn_open_list(zzz5_6_tab_entry_key(activeTab), null, null,
+                { inlineIn: wsDock, openLine: { label: 're ' + ref, name: String(n.note_name || ''), text: '[' + ref + '] ' } });
               return;
             }
             // [Zzz5-6:SUB-CHAT] ULOZ ZNOVU do NOTES TAB okna stratilo 1-2s (Vrso 2. 10., 13:40). Kod ostava
@@ -32412,6 +32428,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   // Otvorenie okna (dokovanie, prepocet vysky comm okna, focus) posunulo stranku aj hlavicku. Poloha sa
   // preto zapamata PRED otvorenim a po nom sa vrati - okno sa ma objavit, obrazovka sa nema hnut.
   const zzz5_6Keep = zzz5_6_scroll_snapshot();
+  let winShowChat = false;   // [Zzz5-6:WIN-CHAT]
   const returnToWs = inlineIn ? false : zzz5_6WsReturn;
   zzz5_6WsReturn = false;
   if (inlineIn) document.querySelectorAll('.zzz5-6-inline').forEach(w => w.remove());
@@ -32775,6 +32792,24 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       if (zzz5_6RepaintAttach) zzz5_6RepaintAttach();
     });
     paintStripAtt();
+    // === [Zzz5-6:WIN-CHAT] Vrso 2026-10-02 (15:13): WORK NOTE musi mat cestu do svojho chatu - "tlacidlo CHAT
+    // v pase". WORK NOTE tabu nema zaznam, takze nema ani COMMUNICATION okno; jeho chat su neulozene
+    // chatnotes pod tym istym klucom. CHAT ich prida do tohto okna (cela diskusia), druhy tuk ich skryje
+    // a okno ukazuje zase len Notes.
+    const stripChat = document.createElement('button');
+    stripChat.type = 'button';
+    stripChat.className = 'zzz1cn-ws-subattach zzz5-6-tabstrip-chat';
+    const paintStripChat = () => {
+      stripChat.textContent = winShowChat ? 'CHAT ON' : 'CHAT';
+      stripChat.classList.toggle('is-on', winShowChat);
+      stripChat.title = winShowChat ? 'Showing the whole discussion (chat + notes) - tap shows Notes only'
+                                    : 'Show the chat of this window too (unsaved chatnotes)';
+    };
+    stripChat.addEventListener('click', async () => {
+      winShowChat = !winShowChat; paintStripChat(); zzz_haptic_pulse(15); await render();
+    });
+    paintStripChat();
+    tabStrip.appendChild(stripChat);
     tabStrip.appendChild(stripAtt);
     win.insertBefore(tabStrip, win.firstChild);
   }
@@ -32812,7 +32847,19 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       const target = allNotes.find(n => selected.has(n.id)) || allNotes[allNotes.length - 1];
       addSubNote(target);
     } },
-    { ms: 3000, fn: () => {
+    // [Zzz5-6:NOTE-3S-CHAT] Vrso 2026-10-02 (15:13): "podrz 3s add note button povelom" = chat tohto okna.
+    // Zaznam -> jeho COMMUNICATION okno; tab (WORK NOTE) nema zaznam -> zapne/vypne CHAT v tomto okne.
+    // Prepnutie presetu, ktore tu bolo na 3 s, sa posunulo na 5 s.
+    { ms: 3000, fn: async () => {
+      titleHeldAt = Date.now();
+      clearTimeout(titleTap);
+      if (/^\d+$/.test(String(entryKey))) { zzz5_6_open_chat_reply(String(entryKey), 0); return; }
+      winShowChat = !winShowChat;
+      const sc = win.querySelector('.zzz5-6-tabstrip-chat');
+      if (sc) { sc.textContent = winShowChat ? 'CHAT ON' : 'CHAT'; sc.classList.toggle('is-on', winShowChat); }
+      await render();
+    } },
+    { ms: 5000, fn: () => {
       titleHeldAt = Date.now();
       clearTimeout(titleTap);
       notesFilter.togglePreset();
@@ -32898,8 +32945,12 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   // targetFixed: ked je zadane (podrzanie na cisle), pole "k #" sa neukazuje - ciel uz je jasny.
   // opts.nameOnly  = riadok sluzi na PREMENOVANIE (text poznamky sa nepyta)
   // opts.nameValue = predvyplnene meno (pri premenovani sucasne)
+  // [Zzz5-6:LINE-LIVE] otvoreny riadok nesmie zmazat prekreslenie, ktore pride samo (dotiahnute odkazy,
+  // owner, outbox) - to ho doteraz mazalo, kym sa do neho pisalo, a predvyplneny riadok zmizol hned
+  let zzz5_6LineLive = false;
   const inlineAsk = (label, targetFixed, opts) => new Promise((resolve) => {
     const o = opts || {};
+    zzz5_6LineLive = true;
     addRow.innerHTML = '';
     const bar = document.createElement('div');
     bar.className = 'zzz5w7-inline';
@@ -32917,6 +32968,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     textIn.type = 'text';
     textIn.className = 'zzz5w7-inline-text';
     textIn.placeholder = 'note text...';
+    if (o.textValue) textIn.value = o.textValue;   // [Zzz5-6:SUB-WORKLINE]
     // === [Zzz5-W7:ADD-TARGET] Vrso 2026-09-26: "#13 som chcel cez +addnote pridelit do 4b, ale takto sa to
     // zobrazilo v texte... lepsie by bolo addnote pouzit iba ako nove cislo, alebo ak sa dopise presne 4b,
     // tak ho pridelit k #4".
@@ -32975,7 +33027,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     cancel.className = 'zzz1cn-note-btn zzz1cn-note-btn-close';
     cancel.textContent = '×';
     let closed = false;
-    const finish = (val) => { if (closed) return; closed = true; resolve(val); };
+    const finish = (val) => { if (closed) return; closed = true; zzz5_6LineLive = false; resolve(val); };
     // [Zzz5-W7:RENAME] pri premenovani je PRAZDNE meno platna odpoved (zrusenie nazvu), preto sa
     // nesmie vyhodnocovat ako "nic nezadane" - od zrusenia riadku ho odlisi len ×/Escape
     const pick = () => ({
@@ -32991,9 +33043,25 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       if (e.key === 'Enter') { e.preventDefault(); finish(pick()); }
       if (e.key === 'Escape') { e.preventDefault(); finish(null); }
     }));
+    // === [Zzz5-6:NL-CHAT] Vrso 2026-10-02 (15:13): "nebolo by zle mat moznost priamo v notes cez note line
+    // poslat chat priamo, ci uz ulozenim note alebo nie (nadobudlo by to uz diskusnu funkciu - aj na to
+    // maju chatnotes sluzit)". OK uklada do Notes (a v chate je tiez - je to ta ista tabulka); CHAT posle
+    // ten isty riadok LEN do chatu, bez ulozenia do Notes. To iste rozdelenie ako v comm okne
+    // (SAVE NOTE / ENTER CHATNOTE) - chatnote sa VKLADA, note sa UKLADA.
+    let chatBtn = null;
+    if (!o.nameOnly) {
+      chatBtn = document.createElement('button');
+      chatBtn.type = 'button';
+      chatBtn.className = 'zzz1cn-note-btn zzz5-6-nl-chat';
+      chatBtn.textContent = 'CHAT';
+      chatBtn.title = 'Send to the chat only - NOT saved to Notes (OK saves it to Notes)';
+      chatBtn.addEventListener('click', () => finish(Object.assign(pick(), { chat: true })));
+    }
     bar.appendChild(tag); bar.appendChild(tgt); bar.appendChild(nameIn); bar.appendChild(textIn);
     if (!o.nameOnly) bar.appendChild(flags);   // [Zzz5-W7:RENAME] privacy prevzala gesto po 3s podrzani
-    bar.appendChild(ok); bar.appendChild(cancel);
+    bar.appendChild(ok);
+    if (chatBtn) bar.appendChild(chatBtn);
+    bar.appendChild(cancel);
     addRow.appendChild(bar);
     (o.nameOnly ? nameIn : textIn).focus();
     // [Zzz5-W7:NL-UNDER] riadok ma stat POD tym #, ktore edituje. Do textoveho pola sa vlozit neda (je to
@@ -33044,7 +33112,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     const clean = text.trim();
     zzz6f58_grant_access(mAt.concat(mOnly));
     // [Zzz6-F58:MENTIONS-ONLY] privacy je volba autora, adresnost nesie note_to - viz rozbor v cnSendToChat
-    const saved = await zzz1cn_add(entryKey, clean, !!got.priv, { base }, got.name, true, !!got.prio, mOnly);
+    const saved = await zzz1cn_add(entryKey, clean, !!got.priv, { base }, got.name, !got.chat, !!got.prio, mOnly);   // [Zzz5-6:NL-CHAT]
     if (!saved) return;
     // === [Zzz6-F22-copy-credit:SUB-NOTE] jedinecny zaznam presne ako ziadal Vrso: <entry>/<chatnote>/<sub>
     // - takze je vzdy jasne, ku ktoremu zaznamu, ktorej poznamke a ktorej sub-poznamke sa acknowledgement
@@ -33059,13 +33127,16 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     if (author && zzz10v1_normalize(author) !== meN) {
       zzz6f22_record_copy_credit(`${entryKey}/${saved.note_number}/${part}`, author, `Chatnote #${label}`);
     }
-    zzz6f2_show_toast(`Note #${label} saved.`);
+    zzz6f2_show_toast(got.chat ? `#${label} sent to the chat (not saved to Notes).` : `Note #${label} saved.`);
     await render();
   };
 
   // samostatna NOVA poznamka (dostane dalsie cele cislo, nie je priradena k nicomu)
-  const addNewNote = async () => {
-    const got = await inlineAsk('new');
+  // [Zzz5-6:SUB-WORKLINE] preset = {label, name, text} - riadok sa otvori uz predvyplneny
+  const addNewNote = async (preset) => {
+    const pr = preset || null;
+    const got = await inlineAsk(pr && pr.label ? pr.label : 'new', 0,
+      pr ? { nameValue: pr.name || '', textValue: pr.text || '' } : undefined);
     if (!got || !got.text) { await render(); return; }
     // [Zzz5-W7:ADD-TARGET] vyplnene "k #" -> sub-poznamka toho cisla; prazdne -> nova s novym cislom
     if (got.target) {
@@ -33075,8 +33146,8 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       const mOnlyT = zzz6f58_names(got.text, true);
       zzz6f58_grant_access(mAtT.concat(mOnlyT));   // [Zzz6-F58:MENTIONS]
       const saved = await zzz1cn_add(entryKey, got.text,
-        !!got.priv, { base: Number(got.target) }, got.name, true, !!got.prio, mOnlyT);
-      if (saved) zzz6f2_show_toast(`Note #${zzz5w7_label_of(saved)} saved.`);
+        !!got.priv, { base: Number(got.target) }, got.name, !got.chat, !!got.prio, mOnlyT);
+      if (saved) zzz6f2_show_toast(got.chat ? `#${zzz5w7_label_of(saved)} sent to the chat (not saved to Notes).` : `Note #${zzz5w7_label_of(saved)} saved.`);
       await render();
       return;
     }
@@ -33084,9 +33155,9 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     const mOnlyN = zzz6f58_names(got.text, true);
     zzz6f58_grant_access(mAtN.concat(mOnlyN));   // [Zzz6-F58:MENTIONS]
     const saved = await zzz1cn_add(entryKey, got.text,
-      !!got.priv, null, got.name, true, !!got.prio, mOnlyN);
+      !!got.priv, null, got.name, !got.chat, !!got.prio, mOnlyN);
     if (!saved) { await render(); return; }
-    zzz6f2_show_toast(`Note #${zzz5w7_label_of(saved)} saved.`);
+    zzz6f2_show_toast(got.chat ? `#${zzz5w7_label_of(saved)} sent to the chat (not saved to Notes).` : `Note #${zzz5w7_label_of(saved)} saved.`);
     await render();
   };
 
@@ -33367,8 +33438,9 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     // uz NIE JE zrkadlo chatu - ukazuje LEN to, co niekto vedome ulozil (note line alebo SAVE CHATNOTE).
     // Obycajny ENTER z chat line sa sem nedostane. Kym nie je nasadeny stlpec is_saved (v7 SQL), filter sa
     // NEAPLIKUJE a okno sa sprava po starom - inak by po nasadeni samotneho HTML vyzeralo prazdne. ===
+    // [Zzz5-6:WIN-CHAT] CHAT v pase okna ukaze aj neulozene chatnotes - celu diskusiu, nielen Notes
     allNotes = (await zzz1cn_load_for_feed(entryKey))
-      .filter(n => !zzz1cn_opt_has('is_saved') || !!(n && n.is_saved));
+      .filter(n => winShowChat || !zzz1cn_opt_has('is_saved') || !!(n && n.is_saved));
     applyFilter();
     grow.innerHTML = '';
     area.value = zzz5w7_format_notes(viewNotes, 0, ordOf, hide);   // [Zzz5-W7:WORK-ORDER] @N aj v texte
@@ -33570,7 +33642,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     //   PODRZANIE  = poznamka PRIRADENA k oznacenej (alebo poslednej) poznamke -> 1-a, 1-b, ...
     // [Zzz5-W7:ADD-IN-TITLE] gesto uz zije v hlavicke (NOTES = "+add / NOTE"), tento riadok je uz len
     // miesto, kam sa note line vykresli. Prazdny nezabera nic.
-    addRow.innerHTML = '';
+    if (!zzz5_6LineLive) addRow.innerHTML = '';   // [Zzz5-6:LINE-LIVE]
   };
 
   // === [Zzz5-W7:NOTE-SELECT] spolocne kopirovanie - jedno miesto, kde sa zapisuje aj acknowledgement,
@@ -33898,7 +33970,12 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       if (win.isConnected) await render();
     } catch (e) { /* ostava povodny zdroj - okno funguje dalej */ }
   })();
-  if (inlineIn) { requestAnimationFrame(() => requestAnimationFrame(alignGutter)); return; }   // [Zzz5-6:TAB-INLINE] vlozene sa nedokuje
+  if (inlineIn) {
+    requestAnimationFrame(() => requestAnimationFrame(alignGutter));
+    // [Zzz5-6:SUB-WORKLINE] okno sa otvorilo uz s otvorenym riadkom
+    if (openOpts && openOpts.openLine) addNewNote(openOpts.openLine);
+    return;
+  }   // [Zzz5-6:TAB-INLINE] vlozene sa nedokuje
   zzz5w7_dock_start();   // [Zzz5-W7:NOTES-DOCK] az po vlozeni do DOM - skor sa neda zmerat
   zzz1cn_fit_comm_window();   // [Zzz1-CN:COMM-FULL] comm okno sa zastavi nad Notes, nech sa neprekryvaju
   zzz5_6_scroll_restore(zzz5_6Keep);   // [Zzz5-6:NO-JUMP]
