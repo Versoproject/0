@@ -475,8 +475,17 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
 | `verso_entries` INSERT | návrh `verso_entries_owner_is_session_v1` (owner = prihlásený) - čaká |
 | `verso_entries` UPDATE / SELECT | `true` - návrh `verso_entries_rls_update_v1` čaká; SELECT podľa pravidiel viditeľnosti |
 | `verso_entries.comm_setup` | presunúť do vlastnej chránenej tabuľky `verso_comm_setup` - návrh |
-| `verso_consents` | RLS neoverené - čaká na výsledok `verso_protected_tables_dump` (SQL dané 3. 10. 00:26) |
-| `verso_note_tabs`, `verso_trash`, `verso_audit_log` | neoverené |
+| `verso_consents` | OK (dump 3. 10.): INSERT len za seba (trigger prepíše username = prihlásený), člen USER/COMMUNICATION alebo owner podľa záznamu; UPDATE/DELETE nie je |
+| `verso_comm_users` policy | chyba `d.entry_key = d.entry_key` (vždy true) - trigger to kryl; oprava `verso_comm_users_policy_fix_v1.sql` (2.) |
+| `verso_verification` INSERT | bolo `CHECK true` pre kohokoľvek - `verso_verification_insert_check_v1.sql` (3.): registrácia len s heslom na serveri, login/entrynum len sám za seba, iné typy len cez RPC |
+| `verso_verification` UPDATE rezervácie | ktokoľvek mohol prepísať cudziu rezerváciu - zrušiť `verso_verification_close_open_policies_v1.sql` (4., rezervácia ide cez RPC) |
+| `verso_verification_trash` | SELECT pre anon = verejne čitateľná - zrušiť v (4.) (appka ju už nepoužíva) |
+| všetky tabuľky | TRUNCATE/TRIGGER/REFERENCES pre anon - odobrať `verso_revoke_truncate_v1.sql` (1., poslané 3. 10. 00:31) |
+| `verso_audit_log` | INSERT `true` (aj pred loginom) - ďalší krok |
+| `verso_pre_register_support`, `verso_username_setup` | INSERT `true` - zámer (pred registráciou), ponechané |
+| `verso_auth_credentials`, `verso_sessions`, `verso_recovery_tokens` | RLS bez policies = zavreté, len server - OK |
+| `verso_trash` | len SELECT vlastných, zápis cez server - OK |
+| `verso_note_tabs` | neoverené (nie je v dumpe) |
 
 ### CONTACTS REGISTER (Vrso 2. 10., 23:55 / 3. 10., 00:14)
 - **Postavené:** register = verifikačná databáza (registrované usernames, `verso_verification_public`, bez
@@ -553,7 +562,8 @@ authorized repository set"*; čítať sa dá, pushovať nie. Nie je to chyba kó
 - **SQL vždy s menom**, v samostatnom skopírovateľnom bloku. Keď Claude niečo z DB potrebuje (dump, overenie,
   migráciu), **hneď dá celé SQL s menom na copy**, nikdy len odkaz na meno (Vrso 3. 10., 00:26). **Meno sa
   dáva tiež na copy, celé ako názov súboru `nazov.sql`** (napr. `verso_security_hardening_v1.sql`), v
-  samostatnom bloku nad SQL (Vrso 3. 10., 00:29). Dump je
+  samostatnom bloku nad SQL (Vrso 3. 10., 00:29). **SQL posielať po jednom** - plán celého radu sa smie
+  spomenúť, ale ďalšie SQL až po výsledku predchádzajúceho (Vrso 3. 10., 00:29). Dump je
   read-only a vracia **jeden výsledok** (SQL editor ukáže len posledný).
 - Okná a workspacy sa **nesmú hýbať** pri bežnej práci — ani pri **otváraní okien a povelov** (podržanie
   3 s, otvorenie Notes/chat okna, note line): obrazovka nesmie poskočiť, poloha stránky aj scrollu v okne
