@@ -506,6 +506,10 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
   poskladať stav k času T z verzií + histórie; obnova **nič neprepisuje**, len zapíše nové stavy (append-only).
   Spustenie restore schvaľuje **multiverifikácia** (Settings → Restore, vedľa Multi Verification).
 - **SQL 8 `verso_history_v1.sql` poslané 3. 10. 00:57** (entries + comm_users + stav notes).
+- **OBNOVA Z KOŠA chýba v UI (3. 10., 00:58):** dnes len Back → Forward v tej istej relácii (pamäť krokov je len v
+  prehliadači - reload, login alebo nová úprava CL ju zmaže). Test: #159 ← presunutý do koša, → „nie je čo vrátiť
+  vpred" (v simulácii ← → funguje; príčina na telefóne neznáma). #159 ostáva v koši. Treba: TRASH → vybrať → RESTORE
+  (owner) + zápis do `verso_history`.
 - **Slabina comm_setup:** textový reťazec čítaný regexom (`tags:delegate` ...) - krehké; presun do tabuľky s
   menovitými stĺpcami to odstráni.
 
