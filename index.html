@@ -29232,7 +29232,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 17:15';
+const ZZZ5_6_BUILD = '2026-10-02 17:30';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -31197,7 +31197,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
           b.appendChild(top); b.appendChild(bod);
           b.title = zzz5w7_head_line(n, 0, 0, hide)
             + ' - tap opens it where it was written / double tap shows the full sub link'
-            + ' / hold 1-2s saves it to this tab\'s notes window / hold 3s opens that window';
+            + ' / hold 1-2s = WORK NOTE line with a link to it / hold 3s = attach under the CRM (again = detach)';
 
           let pressAt = 0;
           const openWhereWritten = () => {
@@ -31241,8 +31241,22 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
             if (e && e.type === 'mouseup' && Date.now() - touchAt < 800) return;   // [Zzz5-6:ONE-IN-DOCK]
             const t = pressAt; pressAt = 0; if (!t) return;
             const dt = Date.now() - t;
-            if (dt >= 3000) {                       // 3s = OTVOR NOTES TAB okno pod tymto riadkom
-              notesWin.openInline(tdCont);          // [Zzz5-6:TAB-INLINE]
+            if (dt >= 3000) {
+              // === [Zzz5-6:SUB-ATTACH] Vrso 2026-10-02 (17:07): "jednotlive subs podrzanim 3 s attachuj pod CRM".
+              // (Predtym 3 s otvaralo Notes okno tabu - na to je uz WORK NOTE.) Podrzanie prida TENTO sub do
+              // pasu ATTACHED pod hlavnou M4 CRM; to iste gesto na uz pripnutom ho odopne. Pripinaju sa do
+              // jedneho zoznamu "vybranych" (rezim 'some' - kazdy ako mini sub); ked bolo pripnute cele okno,
+              // nahradi ho tento vyber. Prazdny zoznam = pas zmizne.
+              zzz_haptic_pulse(30);
+              const pk = (zzz5_6AttachedTab && (zzz5_6AttachMode[zzz5_6AttachedTab] || 'some') === 'some')
+                ? zzz5_6AttachedTab : 'picked';
+              if (pk === 'picked' && zzz5_6AttachedTab !== 'picked') zzz5_6_tabnote_list('picked').length = 0;
+              const added = zzz5_6_tabnote_toggle(pk, n);
+              zzz5_6AttachMode[pk] = 'some';
+              zzz5_6AttachedTab = zzz5_6_tabnote_list(pk).length ? pk : null;
+              if (zzz5_6RepaintAttach) zzz5_6RepaintAttach();
+              zzz6f2_show_toast(added ? `#${String(n.entry_key || '')}/${zzz5w7_label_of(n)} attached under the CRM.`
+                                      : `#${String(n.entry_key || '')}/${zzz5w7_label_of(n)} detached.`);
               return;
             }
             if (dt >= 1100) {                       // 1-2s = CHATNOTE LINE zaznamu s odpovedou na tento sub
@@ -33013,7 +33027,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     stripChat.addEventListener('click', async () => {
       zzz_haptic_pulse(15);
       if (stripIsEntry) { zzz5_6_open_chat_reply(String(entryKey), 0); return; }
-      winShowChat = !winShowChat; paintStripChat(); await render();
+      await zzz5_6ChatMode(!winShowChat);   // [Zzz5-6:WORK-CHAT]
     });
     paintStripChat();
     if (stripIsEntry) stripChat.title = 'Open the chat (COMMUNICATION window) of this entry';
@@ -33062,10 +33076,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       titleHeldAt = Date.now();
       clearTimeout(titleTap);
       if (/^\d+$/.test(String(entryKey))) { zzz5_6_open_chat_reply(String(entryKey), 0); return; }
-      winShowChat = !winShowChat;
-      const sc = win.querySelector('.zzz5-6-tabstrip-chat');
-      if (sc) { sc.textContent = winShowChat ? 'CHAT ON' : 'CHAT'; sc.classList.toggle('is-on', winShowChat); }
-      await render();
+      await zzz5_6ChatMode(!winShowChat);   // [Zzz5-6:WORK-CHAT]
     } },
     { ms: 5000, fn: () => {
       titleHeldAt = Date.now();
@@ -33160,6 +33171,28 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   // owner, outbox) - to ho doteraz mazalo, kym sa do neho pisalo, a predvyplneny riadok zmizol hned
   let zzz5_6LineLive = false;
   let nlSaveOn = true;   // [Zzz5-6:NL-SAVE-TOGGLE] SAVE v note line - zapnuty, kym ho user v tomto okne nevypne
+  // === [Zzz5-6:WORK-CHAT] Vrso 2026-10-02 (17:06): "nechapem, co robi ten CHAT button v liste... pripadne ho
+  // naviaz na chatnote line tohto notu". Doteraz CHAT vo WORK NOTE len prepinal, ci okno ukazuje aj neulozene
+  // chatnotes - bez riadku na pisanie to nebolo poznat. Teraz je to REZIM CHATU tohto okna:
+  //   CHAT ON  = okno ukaze celu diskusiu (aj neulozene) + otvori sa chatnote line so SAVE VYPNUTYM
+  //              (pise sa do chatu); ked uz riadok otvoreny je, len sa mu vypne SAVE - rozpisany text ostava
+  //   CHAT     = spat len Notes; SAVE v riadku sa znova zapne
+  // V okne ZAZNAMU je CHAT jeho COMMUNICATION okno ([Zzz5-6:STRIP-CHAT-COMM]) - to sa nemeni.
+  const zzz5_6ChatMode = async (on) => {
+    winShowChat = !!on;
+    const sc = win.querySelector('.zzz5-6-tabstrip-chat');
+    if (sc) {
+      sc.textContent = winShowChat ? 'CHAT ON' : 'CHAT';
+      sc.classList.toggle('is-on', winShowChat);
+      sc.title = winShowChat ? 'Chat mode: the whole discussion + chatnote line (SAVE off) - tap = Notes only'
+                             : 'Chat mode: show the discussion and open the chatnote line to chat';
+    }
+    nlSaveOn = !winShowChat;
+    const sv = win.querySelector('.zzz5-6-nl-save');
+    if (sv && sv.zzz5_6Toggle && sv.classList.contains('is-on') !== nlSaveOn) { nlSaveOn = !nlSaveOn; sv.zzz5_6Toggle(); }
+    await render();
+    if (winShowChat && !zzz5_6LineLive) addNewNote();
+  };
   const inlineAsk = (label, targetFixed, opts) => new Promise((resolve) => {
     const o = opts || {};
     zzz5_6LineLive = true;
@@ -33263,6 +33296,17 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       };
       paintSave();
       ok.zzz5_6Toggle = () => { nlSaveOn = !nlSaveOn; paintSave(); zzz_haptic_pulse(10); };
+      // [Zzz5-6:SAVE-3S-COMM] Vrso 2026-10-02 (17:06): "chatnote line v note (kde je ENTER TO SUBS) - podrz 3 s
+      // naopak otvor dane COMM window tejto CL alebo entry (tam je to naopak, 3 s otvara notes window)".
+      // Zrkadlo k [Zzz5-W7:TIERED-HOLD] v comm okne: tam SAVE 3 s = Notes okno, tu SAVE 3 s = comm okno.
+      //   zaznam (cislo) -> jeho COMMUNICATION okno; rozpisana CL (draft) -> chatnote module nad CL;
+      //   WORK NOTE tabu comm okno nema -> zapne rezim CHAT ([Zzz5-6:WORK-CHAT]).
+      zzz5w7_bind_tiered_hold(ok, [{ ms: 3000, fn: () => {
+        if (/^\d+$/.test(String(entryKey))) { zzz5_6_open_chat_reply(String(entryKey), 0); return; }
+        if (zzz5_6_is_tab_entry(entryKey)) { zzz5_6ChatMode(true); return; }
+        zzz6f18_open_context_select_modal();
+      } }]);
+      ok.title += ' / hold 3s = COMMUNICATION window of this record';
     }
     const cancel = document.createElement('button');
     cancel.type = 'button';

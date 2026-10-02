@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-02 17:20** · build appky v čase zápisu: `2026-10-02 17:15`
+**Verzia: 2026-10-02 17:35** · build appky v čase zápisu: `2026-10-02 17:30`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -140,13 +140,18 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
   zoznam aj jeho lištu (taby ostávajú). `×` → zoznam je späť (`[Zzz5-6:WORK-COVER]`).
 - **Podržať sub note v tabuľke 1–2 s** → WORK NOTE s otvorenou note line, predvyplnenou odkazom
   `[#156/2-a] ` a menom poznámky - ukladá sa do WORK NOTE tabu (`[Zzz5-6:SUB-WORKLINE]`).
-- **Podržať sub note 3 s** → Notes okno tabu.
-- WORK NOTE nemá záznam, takže nemá COMMUNICATION okno: `CHAT` v jeho páse prepína, či okno ukazuje
-  aj neuložené chatnotes (`CHAT ON`).
+- **CHAT v páse WORK NOTE = režim chatu** (`[Zzz5-6:WORK-CHAT]`). WORK NOTE nemá záznam, takže nemá
+  COMMUNICATION okno; jeho chat sú neuložené chatnotes pod tým istým kľúčom.
+  - ťuk → `CHAT ON`: okno ukáže celú diskusiu (aj neuložené) a otvorí chatnote line so **SAVE vypnutým**
+    (píše sa do chatu); ak je riadok už otvorený, len sa mu vypne SAVE,
+  - ťuk znova → `CHAT`: späť len Notes, SAVE sa znova zapne.
+  - To isté robí podržanie `+add NOTE` 3 s a podržanie `SAVE` 3 s vo WORK NOTE.
 
 ### 4.7 Chat záznamu (COMMUNICATION okno)
 - V okne záznamu **ťuk na `CHAT`** (pás hore) → COMMUNICATION okno tohto záznamu (`[Zzz5-6:STRIP-CHAT-COMM]`).
-- Rovnako **podržať `+add NOTE` 3 s**.
+- Rovnako **podržať `+add NOTE` 3 s** alebo **podržať `SAVE` v note line 3 s** (`[Zzz5-6:SAVE-3S-COMM]`) -
+  zrkadlo COMMUNICATION okna, kde `SAVE` 3 s otvára Notes okno. Nad rozpísanou CL (draft) otvorí
+  chatnote module.
 - **Podržať `NOTES` 1–2 s** (lišta zoznamu) → chatnote module (COMMUNICATION okno nad rozpísanou CL).
 - V COMMUNICATION okne: `ENTER CHATNOTE` = len chat, `SAVE NOTE` = uložiť do Notes. Čierny pás
   COMMUNICATION ukazuje, ku ktorému záznamu chat patrí (`#entry` + owner · projekt · názov,
@@ -178,7 +183,9 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
 5. **Ručne:** FILTER/HIDE → COPY ALL → vložiť do note line v cieľovom okne → jedna poznámka s celým blokom.
 6. Pri každom kopírovaní cudzej poznámky sa zapíše **acknowledgement**.
 
-### 4.10 Pripnúť (ATTACH) pod hlavnú CRM (`[Zzz5-6:ATTACH-SEL]`, `[Zzz5-6:ATTACH-GRID]`)
+### 4.10 Pripnúť (ATTACH) pod hlavnú CRM (`[Zzz5-6:ATTACH-SEL]`, `[Zzz5-6:ATTACH-GRID]`, `[Zzz5-6:SUB-ATTACH]`)
+0. **Jednotlivý sub z tabuľky: podržať ho 3 s** → pripne sa pod CRM (ďalšie podržané sa pridávajú
+   k nemu). To isté gesto na pripnutom ho odopne. Ak bolo predtým pripnuté celé okno, nahradí ho tento výber.
 1. V Notes okne **ťuk na `ATTACH`** (pás hore vpravo):
    - nič označené → pripne sa **celé okno**, zbalené (`▸ N sub notes`),
    - označené (SELECT) → pripnú sa **len označené**, každá ako mini sub.
@@ -206,9 +213,11 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
 |---|---|---|---|---|---|
 | Tab workspacu | prepne tab | maximalizuje workspace | – | – | – |
 | `NOTES` (lišta zoznamu) | WORK NOTE tabu | maximalizuje workspace | chatnote module (comm) | – | – |
-| Sub note v tabuľke | okno záznamu v doku | – | WORK NOTE + note line s odkazom | Notes okno tabu | – |
+| Sub note v tabuľke | okno záznamu v doku | – | WORK NOTE + note line s odkazom | pripnúť / odopnúť pod CRM | – |
 | Číslo záznamu v tabuľke | zbalí / rozbalí subs | – | Notes okno záznamu | – | – |
-| `+add NOTE` | nová poznámka | celá obrazovka / split | sub note k označenej | chat záznamu (WORK NOTE: CHAT ON/OFF) | prepne preset |
+| `+add NOTE` | nová poznámka | celá obrazovka / split | sub note k označenej | chat záznamu (WORK NOTE: režim CHAT) | prepne preset |
+| `SAVE` v note line | SAVE zap/vyp | – | – | chat záznamu / CL (WORK NOTE: režim CHAT) | – |
+| `CHAT` v páse okna | záznam: COMMUNICATION okno · WORK NOTE: režim CHAT | – | – | – | – |
 | Číslo poznámky (ľavý stĺpec) | skok na text (v SELECT: označí) | – | sub note k nej | premenovať | – |
 | `COPY` | do schránky | – | **COPY TO** | – | – |
 | Voľné miesto Notes okna | – | celá obrazovka / split | – | – | – |
