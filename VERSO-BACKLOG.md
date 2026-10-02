@@ -463,6 +463,21 @@ reflektuje notes kategórie - neskôr a oddelene skúsime, čo bude lepšie"*).
 hry, uložia sa tam dáta, ktoré nie sú reálne využiteľné pre bežných užívateľov. Programátor ich nájde
 podľa entry numbers alebo podľa nových subs (pracovný názov **„techs"**).
 
+### AUDIT ZÁPISOV PROTI VERIFIKÁCII (Vrso 3. 10., 00:22 — planned)
+Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisujúci je ten, za koho sa vydáva
+(`verso_jwt_username()`), a že na to má právo. Stav (3. 10.):
+
+| Tabuľka | Stav |
+|---|---|
+| `verso_chat_notes` | RLS podľa `verso_jwt_username()` (autor) - OK |
+| `verso_comm_users` | trigger `verso_comm_users_can_write` + zákaz eskalácie (v6) - OK |
+| `verso_placements` | RLS vlastné riadky (v1) - OK |
+| `verso_entries` INSERT | návrh `verso_entries_owner_is_session_v1` (owner = prihlásený) - čaká |
+| `verso_entries` UPDATE / SELECT | `true` - návrh `verso_entries_rls_update_v1` čaká; SELECT podľa pravidiel viditeľnosti |
+| `verso_entries.comm_setup` | presunúť do vlastnej chránenej tabuľky `verso_comm_setup` - návrh |
+| `verso_consents` | RLS neoverené - čaká na `verso_protected_tables_dump` |
+| `verso_note_tabs`, `verso_trash`, `verso_audit_log` | neoverené |
+
 ### CONTACTS REGISTER (Vrso 2. 10., 23:55 / 3. 10., 00:14)
 - **Postavené:** register = verifikačná databáza (registrované usernames, `verso_verification_public`, bez
   emailov); doplňovanie mien v CONTACTS = moje záznamy + registrované usernames (`[Zzz1-R17b:CONTACTS-REGISTRY]`).
@@ -568,6 +583,14 @@ authorized repository set"*; čítať sa dá, pushovať nie. Nie je to chyba kó
     mieste a **nevytvára novú verziu** — nemennosť uloženého záznamu tým nie je dotknutá.
   - CL s notes: pri uložení poznámky prechádzajú pod číslo záznamu (`[Zzz1-CN:DRAFT-KEY]`) a záznam
     ostáva v tom umiestnení, kde CL bola.
+- **VERIFIKÁCIA JE HLAVNÉ OVERENIE PRI VŠETKÝCH ÚKONOCH** (Vrso 3. 10., 00:22). Každý zápis do databázy
+  (záznam, poznámka, consent, comm setup, kontakty, umiestnenie, kôš…) overuje **server** podľa overeného
+  prihlásenia z verifikácie (`verso_jwt_username()` - token vydá server až po overení hesla voči registrácii),
+  nie appka. Kontrola v appke (napr. `[Zzz0-R1:OWNER-IS-ME]`) je len pohodlie a hláška vopred; zámok je
+  v databáze (RLS / trigger). Platí aj po tom, čo dostane RLS `verso_entries` - RLS hovorí *kto smie*,
+  verifikácia hovorí *kto to naozaj je*. **CL** (rozpísaný záznam v prehliadači) sa chrániť nedá a netreba:
+  do databázy sa dostane až pri ENTER, a tam ju overí server. Prvý krok: `verso_entries_owner_is_session_v1`
+  (owner nového záznamu = prihlásený user).
 - **OWNER = PRIHLÁSENÝ USER** (Vrso 3. 10., 00:02): pri vkladaní CL je PROJECT OWNER **vždy a iba
   prihlásené username** - nikto nevloží záznam za iného. Ten istý user je automaticky v **USER (consent)** aj
   v **COMMUNICATION (contacts)** - pripája sa sám, takže jeho vlastný chip je **needitovateľný** (nedá sa

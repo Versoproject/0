@@ -1,6 +1,6 @@
 # VERSO — HLAVNÉ INŠTRUKCIE
 
-**Verzia: 2026-10-03 00:55**
+**Verzia: 2026-10-03 00:30**
 
 > **Ako sa tento súbor udržiava:** je JEDEN a prenáša sa VŽDY CELÝ. Keď pribudne pravidlo, Claude
 > prepíše tento súbor a dá ti ho; ty ním nahradíš starú kópiu v ostatných projektoch. Nikdy sa
@@ -67,6 +67,14 @@ Návrh, čo tam dať, je na konci tohto dokumentu.
     mieste a **nevytvára novú verziu** — nemennosť uloženého záznamu tým nie je dotknutá.
   - CL s notes: pri uložení poznámky prechádzajú pod číslo záznamu (`[Zzz1-CN:DRAFT-KEY]`) a záznam
     ostáva v tom umiestnení, kde CL bola.
+- **VERIFIKÁCIA JE HLAVNÉ OVERENIE PRI VŠETKÝCH ÚKONOCH** (Vrso 3. 10., 00:22). Každý zápis do databázy
+  (záznam, poznámka, consent, comm setup, kontakty, umiestnenie, kôš…) overuje **server** podľa overeného
+  prihlásenia z verifikácie (`verso_jwt_username()` - token vydá server až po overení hesla voči registrácii),
+  nie appka. Kontrola v appke (napr. `[Zzz0-R1:OWNER-IS-ME]`) je len pohodlie a hláška vopred; zámok je
+  v databáze (RLS / trigger). Platí aj po tom, čo dostane RLS `verso_entries` - RLS hovorí *kto smie*,
+  verifikácia hovorí *kto to naozaj je*. **CL** (rozpísaný záznam v prehliadači) sa chrániť nedá a netreba:
+  do databázy sa dostane až pri ENTER, a tam ju overí server. Prvý krok: `verso_entries_owner_is_session_v1`
+  (owner nového záznamu = prihlásený user).
 - **OWNER = PRIHLÁSENÝ USER** (Vrso 3. 10., 00:02): pri vkladaní CL je PROJECT OWNER **vždy a iba
   prihlásené username** - nikto nevloží záznam za iného. Ten istý user je automaticky v **USER (consent)** aj
   v **COMMUNICATION (contacts)** - pripája sa sám, takže jeho vlastný chip je **needitovateľný** (nedá sa
@@ -168,4 +176,6 @@ Verso = jednosúborová CRM (index.html, Supabase, Vercel). Pri každej zmene pl
     cez consent. Zoznam kontaktov si buduje každý sám; autorita má kompletný zoznam pre svoj projekt.
 14. Owner novej CL je vždy a iba prihlásený user; ten je automaticky aj v USER (consent) aj v
     COMMUNICATION (contacts) a svoj chip si odobrať nemôže.
+15. Verifikácia je hlavné overenie pri všetkých úkonoch: každý zápis overuje server podľa overeného
+    prihlásenia (verso_jwt_username()), nie appka. Kontrola v appke je len hláška vopred.
 ```
