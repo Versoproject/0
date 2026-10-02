@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-02 18:05** · build appky v čase zápisu: `2026-10-02 18:00`
+**Verzia: 2026-10-02 20:35** · build appky v čase zápisu: `2026-10-02 20:30`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -137,8 +137,9 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
 - Pri sub note na **cudziu** poznámku sa zapíše acknowledgement.
 
 ### 4.6 WORK NOTE tabu (pracovný zápisník)
-- **Ťuk na `NOTES`** (prvé tlačidlo lišty zoznamu) → WORK NOTE aktívneho tabu sa otvorí v doku a prekryje
-  zoznam aj jeho lištu (taby ostávajú). `×` → zoznam je späť (`[Zzz5-6:WORK-COVER]`).
+- **Ťuk na `NOTES`** (prvé tlačidlo lišty zoznamu) → WORK NOTE aktívneho tabu sa otvorí v doku na polovicu;
+  zoznam tabu nad ním ostáva a dá sa scrollovať. Cez celú obrazovku ide až 2x ťukom (kap. 4.8).
+  (Od 2. 10. 20:30 WORK NOTE zoznam už neprekrýva - `[Zzz5-6:WORK-COVER]` zrušené.)
 - **Podržať sub note v tabuľke 1–2 s** → WORK NOTE s otvorenou note line, predvyplnenou odkazom
   `[#156/2-a] ` a menom poznámky - ukladá sa do WORK NOTE tabu (`[Zzz5-6:SUB-WORKLINE]`).
 - **CHAT v páse WORK NOTE = režim chatu** (`[Zzz5-6:WORK-CHAT]`). WORK NOTE nemá záznam, takže nemá
@@ -161,8 +162,8 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
   vznikne sub kópia + acknowledgement (`[Zzz1-CN:SAVE-IN-PLACE]`).
 
 ### 4.8 Split screen a maximalizácia (`[Zzz5-6:DOCK-PAIR]`, `[Zzz5-6:DOCK-FULL]`)
-- V doku môžu byť naraz **dve** okná: **WORK NOTE hore + okno záznamu pod ním**, každé polovicu.
-  Otvorenie WORK NOTE okno záznamu nezavrie.
+- V doku môžu byť naraz **dve** okná: **WORK NOTE hore + okno záznamu pod ním**, každé polovicu doku
+  (zoznam tabu nad nimi ostáva). Otvorenie WORK NOTE okno záznamu nezavrie.
 - **2x ťuk na `+add NOTE`** (alebo na voľné miesto okna: lišta, ľavý stĺpec, spodný pás, pás s #entry):
   - jedno okno → cez **celú obrazovku** (aj cez hlavný modul a taby),
   - dve okná → celá obrazovka rozdelená **napoly** (split screen).
