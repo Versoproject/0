@@ -4209,9 +4209,11 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     margin-left: 0; padding: 0 8px; font-size: 8px; border-color: #b8860b; color: #8a6d1f;
   }
   .zzz5-6-tabstrip-chat.zzz1cn-ws-subattach.is-on { background-color: #D4AF37; color: #171717; }
-  .zzz5-6-nl-chat { border-color: #171717 !important; color: #171717 !important; font-weight: 700;
-    padding: 0 6px !important; font-size: 9px !important; flex: 0 0 auto; }
-  .zzz5w7-inline:has(.zzz5-6-nl-chat) { gap: 3px; }
+  /* ENTER CHATNOTE ako v comm okne: cierne, zlate pismo, dvojriadkove */
+  .zzz5-6-nl-chat { background-color: #171717 !important; border-color: #D4AF37 !important; color: #D4AF37 !important;
+    font-weight: 700; padding: 0 6px !important; font-size: 7.5px !important; line-height: 1.1; flex: 0 0 auto; }
+  .zzz5w7-inline:has(.zzz5-6-nl-chat) { gap: 3px; flex-wrap: wrap; row-gap: 4px; }
+  .zzz5-6-nl-save { padding: 0 6px !important; font-size: 7.5px !important; line-height: 1.1; flex: 0 0 auto; }
   /* cislo zaznamu je zapnute, kym su jeho SUBS rozbalene - inak by sa nedalo zistit, odkial su */
   .zzz1cn-ws-cardentry.is-on { background-color: #D4AF37; color: #171717; }
   .zzz1cn-ws-cardentry {
@@ -29180,7 +29182,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 15:32';
+const ZZZ5_6_BUILD = '2026-10-02 15:45';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -31034,7 +31036,13 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
           // dalo skrolovat, ale ked jasne tuknem (ako na webe linky), tak otvori dany note". Prst, ktory sa
           // pohol o viac nez 10 px, scrolluje - tlacidlo vtedy nerobi nic (presne tak sa spravaju odkazy).
           let downX = 0, downY = 0;
-          const down = (e) => { pressAt = Date.now();
+          // [Zzz5-6:ONE-IN-DOCK] po dotyku posle prehliadac aj napodobene mousedown/mouseup - bez tejto
+          // poistky sa jeden tuk vyhodnotil DVAKRAT (a otvoril dve okna)
+          let touchAt = 0;
+          const down = (e) => {
+            if (e && e.type === 'touchstart') touchAt = Date.now();
+            else if (Date.now() - touchAt < 800) return;
+            pressAt = Date.now();
             const p = (e && e.touches && e.touches[0]) || e || {};
             downX = p.clientX || 0; downY = p.clientY || 0;
             setTimeout(() => { if (pressAt) zzz_haptic_pulse(15); }, 1100);
@@ -31047,7 +31055,8 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
           b.addEventListener('touchmove', moved, { passive: true });
           b.addEventListener('touchcancel', () => { pressAt = 0; });
           b.addEventListener('mousemove', (e) => { if (e.buttons) moved(e); });
-          const up = () => {
+          const up = (e) => {
+            if (e && e.type === 'mouseup' && Date.now() - touchAt < 800) return;   // [Zzz5-6:ONE-IN-DOCK]
             const t = pressAt; pressAt = 0; if (!t) return;
             const dt = Date.now() - t;
             if (dt >= 3000) {                       // 3s = OTVOR NOTES TAB okno pod tymto riadkom
@@ -33022,6 +33031,10 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     ok.type = 'button';
     ok.className = 'zzz1cn-note-btn zzz1cn-note-btn-ok';
     ok.textContent = 'OK';
+    // [Zzz5-6:NL-CHAT] Vrso 2026-10-02 (15:43): "zmenit na SAVE a CHAT ... idealne aby to harmonizovalo ako
+    // je to v comm window" - tie iste nazvy ako tam: SAVE NOTE uklada do Notes, ENTER CHATNOTE len do chatu.
+    // Pri premenovani (nameOnly) ostava OK - nic sa tam neuklada ani neposiela.
+    if (!(opts && opts.nameOnly)) { ok.innerHTML = 'SAVE<br>NOTE'; ok.classList.add('zzz5-6-nl-save'); ok.title = 'Saves the note into Notes (it shows in the chat too)'; }
     const cancel = document.createElement('button');
     cancel.type = 'button';
     cancel.className = 'zzz1cn-note-btn zzz1cn-note-btn-close';
@@ -33053,7 +33066,7 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
       chatBtn = document.createElement('button');
       chatBtn.type = 'button';
       chatBtn.className = 'zzz1cn-note-btn zzz5-6-nl-chat';
-      chatBtn.textContent = 'CHAT';
+      chatBtn.innerHTML = 'ENTER<br>CHATNOTE';
       chatBtn.title = 'Send to the chat only - NOT saved to Notes (OK saves it to Notes)';
       chatBtn.addEventListener('click', () => finish(Object.assign(pick(), { chat: true })));
     }
@@ -33944,6 +33957,10 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
   });
 
   await render();
+  // [Zzz5-6:ONE-IN-DOCK] Vrso 2026-10-02 (15:43): v doku boli DVA rovnake #156. Okno sa stava asynchronne
+  // (await render) - druhe otvorenie, ktore prislo pocas prveho, zmazalo len to, co uz bolo vlozene, a obe
+  // potom vlozili samy seba. Preto sa tesne PRED vlozenim upratuje este raz: v doku je vzdy len posledne.
+  if (inlineIn) inlineIn.querySelectorAll(':scope > .zzz5-6-inline').forEach(w => w.remove());
   (inlineIn || document.body).appendChild(win);   // [Zzz5-6:TAB-INLINE]
   zzz5w7_watch_head(head);   // [Zzz5-W7:HEAD-FIT]
   // [Zzz6-F8:SUBS-OPEN] prislo sa sem z konkretneho chipu v SUBS - postav sa rovno na tu poznamku.
