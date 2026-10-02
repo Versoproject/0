@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-02 20:50** · build appky v čase zápisu: `2026-10-02 20:45`
+**Verzia: 2026-10-02 21:05** · build appky v čase zápisu: `2026-10-02 21:00`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -158,11 +158,13 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
   vznikne sub kópia + acknowledgement (`[Zzz1-CN:SAVE-IN-PLACE]`).
 
 ### 4.8 Split screen a maximalizácia (`[Zzz5-6:DOCK-PAIR]`, `[Zzz5-6:DOCK-FULL]`)
-- V doku môžu byť naraz **dve** okná: **WORK NOTE hore + okno záznamu pod ním**, každé polovicu doku
-  (zoznam tabu nad nimi ostáva). Otvorenie WORK NOTE okno záznamu nezavrie.
+- V doku môžu byť naraz **dve** okná (WORK NOTE a okno záznamu), každé polovicu doku; zoznam tabu nad nimi
+  ostáva. **Novo otvorené okno ide navrch, to, ktoré už bolo otvorené, ostáva dole na svojom mieste**
+  (`[Zzz5-6:PAIR-ORDER]`). Nahradenie okna (napr. #156 → #157) drží jeho miesto.
 - **2x ťuk na `+add NOTE`** (alebo na voľné miesto okna: lišta, ľavý stĺpec, spodný pás, pás s #entry):
   - jedno okno → cez **celú obrazovku** (aj cez hlavný modul a taby),
-  - dve okná → celá obrazovka rozdelená **napoly** (split screen).
+  - dve okná → celá obrazovka rozdelená **napoly** (split screen): spodné okno ide na spodnú polovicu,
+    druhé na hornú.
   - Znova 2x ťuk → späť.
 - **×** na jednom z dvoch → druhé ostáva. Po zavretí posledného sa vráti bežný pohľad.
 
