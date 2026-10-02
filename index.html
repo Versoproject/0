@@ -1126,6 +1126,14 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     border-radius: 6px;
     cursor: pointer;
   }
+  /* [Zzz10-DM:DEVICE-MODE] volba zariadenia pod login riadkom - zlata ako login, vybrana = plna */
+  .zzz10dm-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 0 0; flex-shrink: 0; }
+  .zzz10dm-label { font-size: 9px; font-weight: 700; color: #374151; letter-spacing: 0.5px; }
+  .zzz10dm-chip { padding: 4px 10px; font-size: 10px; font-weight: 700; border-radius: 999px; border: 1px solid #d4af37;
+    background: #171717; color: #d4af37; cursor: pointer; }
+  .zzz10dm-chip.zzz10dm-on { background: #d4af37; color: #171717; }
+  .zzz10dm-chip:disabled { cursor: default; }
+  .zzz10dm-chip:disabled:not(.zzz10dm-on) { opacity: 0.45; }
   /* [Zzz6-F35:TRASH-RESTORE] RESTORE pri vlastnom zazname v kosi - zelena = vratit spat */
   .zzz6f35-restore-btn {
     padding: 2px 8px;
@@ -29466,7 +29474,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-03 01:45';
+const ZZZ5_6_BUILD = '2026-10-03 02:00';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -38255,6 +38263,7 @@ function zzz6f36_render_login(body) {
   // === [/Zzz10-R1:MULTIVERIFICATION] ===
 
   body.appendChild(row);
+  body.appendChild(zzz10dm_build_row()); // [Zzz10-DM:DEVICE-MODE] MY DEVICE / TRUSTED / FOREIGN pod login riadkom
   // === [/Zzz6-F36:LOGIN-ROW] ===
 }
 
@@ -38955,6 +38964,84 @@ function zzz10r1_check_and_flag_username_mismatch(username) {
 // zamernym rucnym odhlasenim. Viz aj [Zzz6-X:AUTOLOGIN-VERSO] vyssie v subore (Verso sa navyse
 // AUTOMATICKY znova prihlasi pri kazdom nacitani stranky, takze aj manualny logout je v praxi len docasny,
 // kym sa stranka nenacita znova). | Vrso -> Claude AI | 2026-09-01 ===
+// === [Zzz10-DM:DEVICE-MODE] Vrso 3. 10. 01:33/01:41 ("do login module dat bunky, kde bude prednastavene vlastne zariadenie,
+// ale aj moznost ho zmenit na cudzie a mozno aj tretia moznost doveryhodne - PC v praci, rodinny mobil"):
+//  MY DEVICE (predvolene) = ako doteraz. TRUSTED = ako MY, pri LOG OUT sa zmaze aj strazca zariadenia (posledne meno)
+//  a vlastne kategorie. FOREIGN = appka NIC nezapise do ulozisko zariadenia: zapisy Verso klucov idu len do pamate
+//  stranky (Storage shim nizsie), pri LOG OUT zmizne vsetko. Rezim sa voli pred ENTRY a plati do LOG OUT; FOREIGN sa
+//  ako predvolba zariadenia NEULOZI (dalsi user by ho inak zdedil). | Vrso -> Claude AI | 2026-10-03
+const ZZZ10DM_KEY = 'verso_device_mode';
+const ZZZ10DM_MODES = [['my', 'MY DEVICE'], ['trusted', 'TRUSTED'], ['foreign', 'FOREIGN']];
+const zzz10dmOrig = { get: Storage.prototype.getItem, set: Storage.prototype.setItem, remove: Storage.prototype.removeItem };
+const zzz10dmMem = new Map();      // FOREIGN: kluc -> hodnota (null = zmazane v tejto relacii)
+function zzz10dm_stored_default() {
+  try { const v = zzz10dmOrig.get.call(window.localStorage, ZZZ10DM_KEY); return (v === 'trusted') ? 'trusted' : 'my'; }
+  catch (e) { return 'my'; }
+}
+let zzz10dmActive = zzz10dm_stored_default();   // rezim prave prihlasenej relacie
+let zzz10dmPending = zzz10dmActive;             // vyber v login module pred ENTRY
+function zzz10dm_is_app_key(k) { return typeof k === 'string' && k !== ZZZ10DM_KEY && (k.startsWith('zzz') || k.startsWith('verso')); }
+function zzz10dm_foreign() { return zzz10dmActive === 'foreign'; }
+(function zzz10dm_install_storage_shim() {
+  try {
+    Storage.prototype.setItem = function (k, v) {
+      if (this === window.localStorage && zzz10dm_foreign() && zzz10dm_is_app_key(k)) { zzz10dmMem.set(k, String(v)); return; }
+      return zzz10dmOrig.set.call(this, k, v);
+    };
+    Storage.prototype.getItem = function (k) {
+      if (this === window.localStorage && zzz10dm_foreign() && zzz10dmMem.has(k)) return zzz10dmMem.get(k);
+      return zzz10dmOrig.get.call(this, k);
+    };
+    Storage.prototype.removeItem = function (k) {
+      if (this === window.localStorage && zzz10dm_foreign() && zzz10dm_is_app_key(k)) { zzz10dmMem.set(k, null); return; }
+      return zzz10dmOrig.remove.call(this, k);
+    };
+  } catch (e) { console.warn('Zzz10-DM: storage shim sa nepodaril - FOREIGN nebude obmedzovat ulozisko', e); }
+})();
+function zzz10dm_activate_on_login() {
+  zzz10dmActive = zzz10dmPending;
+  zzz10dmMem.clear();
+  if (zzz10dmActive !== 'foreign') {
+    try { zzz10dmOrig.set.call(window.localStorage, ZZZ10DM_KEY, zzz10dmActive); } catch (e) {}
+  }
+}
+function zzz10dm_after_logout() {
+  zzz10dmMem.clear();
+  zzz10dmActive = zzz10dm_stored_default();
+  zzz10dmPending = zzz10dmActive;
+}
+function zzz10dm_build_row() {
+  const row = document.createElement('div');
+  row.className = 'zzz10dm-row';
+  const lbl = document.createElement('span');
+  lbl.className = 'zzz10dm-label';
+  lbl.textContent = 'DEVICE';
+  row.appendChild(lbl);
+  const current = zzz6f7_isLoggedIn ? zzz10dmActive : zzz10dmPending;
+  ZZZ10DM_MODES.forEach(([key, text]) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'zzz10dm-chip' + (key === current ? ' zzz10dm-on' : '');
+    chip.textContent = text;
+    chip.dataset.mode = key;
+    if (zzz6f7_isLoggedIn) {
+      chip.disabled = true;
+      chip.title = 'Device mode of this session - log out to change it';
+    } else {
+      chip.title = key === 'my' ? 'Your own device - local cache and offline allowed'
+        : key === 'trusted' ? 'Trusted device (work PC, family phone) - personal data cleared on log out'
+        : 'Foreign device - nothing is stored on this device';
+      chip.addEventListener('click', () => {
+        zzz10dmPending = key;
+        row.querySelectorAll('.zzz10dm-chip').forEach(c => c.classList.toggle('zzz10dm-on', c.dataset.mode === key));
+      });
+    }
+    row.appendChild(chip);
+  });
+  return row;
+}
+// === [/Zzz10-DM:DEVICE-MODE] ===
+
 // === [Zzz10-R2:LOGOUT-WIPE] Vrso 3. 10. 01:33 ("ok urob" - audit lokalnych udajov a mazanie pri LOG OUT; "hlavne aby sa
 // nestratili dolezite rozpracovane data"). Manualny LOG OUT:
 //  1) PRED odhlasenim (token este plati) skusi odoslat vsetky fronty (neodoslane zaznamy, potvrdenia cisel, presuny
@@ -39009,7 +39096,9 @@ async function zzz10r2_logout_precheck() {
   const draft = zzz10r2_cl_has_draft();
   if (!left && !draft) return true;
   const lines = [];
-  if (left) lines.push(`${left} unsent item(s) could not be sent now. They stay on this device and will be sent after your next login here.`);
+  if (left) lines.push(zzz10dm_foreign()
+    ? `${left} unsent item(s) could not be sent now. This is a FOREIGN device - they will be LOST on log out.`
+    : `${left} unsent item(s) could not be sent now. They stay on this device and will be sent after your next login here.`);
   if (draft) lines.push('The Command Line has unsaved text - it will be cleared. Press ENTER first if you want to keep it.');
   return confirm(lines.join('\n\n') + '\n\nLog out anyway?');
 }
@@ -39026,6 +39115,12 @@ function zzz10r2_wipe_local_after_logout() {
       }
     });
   } catch (e) { /* ulozisko nedostupne - nie je co mazat */ }
+  // [Zzz10-DM:DEVICE-MODE] TRUSTED zmaze aj strazcu zariadenia a vlastne kategorie; FOREIGN nema na disku nic (pamat sa zmaze)
+  if (zzz10dmActive === 'trusted') {
+    ['verso_zzz10r1_expected_username', 'zzz_category_custom_cats'].forEach(k => {
+      try { zzz10dmOrig.remove.call(window.localStorage, k); removed++; } catch (e) {}
+    });
+  }
   try { zzz6f33_clear_whole_cl(); } catch (e) {}           // CL na obrazovke (prefill sa po odhlaseni nevykona)
   zzz6f36LastLoginUsername = '';
   zzz6f36LastLoginPassword = '';
@@ -39066,6 +39161,7 @@ function zzz10r2_logout(reason = 'manual', opts = {}) {
   // vytvoria od znova PRAZDNE (ziadna hodnota z predchadzajucej session v nich neprezije). | Vrso -> Claude AI | 2026-09-02
   if (reason === 'manual') {
     zzz10r2_wipe_local_after_logout(); // [Zzz10-R2:LOGOUT-WIPE] osobne cache + CL + posledne prihlasovacie udaje
+    zzz10dm_after_logout();            // [Zzz10-DM:DEVICE-MODE] koniec relacie: pamat FOREIGN prec, rezim spat na predvolbu zariadenia
     zzz6f2_show_toast('Zzz10-R2 Log Out: odhlaseny');
   } else {
     zzz6f2_show_toast('Zzz10-R2 Log Out: odhlaseny (strata spojenia s DB)');
@@ -39449,6 +39545,7 @@ async function zzz6f36_submit_login(options = {}) {
     return; // NEPRIHLASOVAT (zzz6f7_set_login_state sa nevola), ak ide o skutocne zamietnutie (nie DB vypadok)
   }
 
+  zzz10dm_activate_on_login(); // [Zzz10-DM:DEVICE-MODE] zvoleny rezim zariadenia plati od tejto chvile do LOG OUT
   zzz6f7_set_login_state(true); // Zzz6-F7:LOGIN-STATE - zlate pozadie (prihlaseny)
   setTimeout(() => zzz6x_apply_cl_prefill(), 0); // [Zzz6-X:CL-PREFILLING] po prihlaseni dopln prazdne polia CL pre tohto usera
   zzz6f36LastLoginUsername = username; // Zzz6-F36:LAST-CREDENTIALS - cache pre Login Setup redisplay
@@ -39853,6 +39950,7 @@ function zzz10m2_render_login_setup(body) {
   // zz10-M1 login module") - Register uz TU NIE JE, presunuty do Zzz10-M1 (Login tab), viz
   // zzz6f36_render_login() vyssie v subore.
   body.appendChild(row);
+  body.appendChild(zzz10dm_build_row()); // [Zzz10-DM:DEVICE-MODE] MY DEVICE / TRUSTED / FOREIGN pod login riadkom
 }
 // === [/Zzz10-M2:LOGIN-SETUP] ===
 </script>

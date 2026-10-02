@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-03 01:45** · build appky v čase zápisu: `2026-10-03 01:45`
+**Verzia: 2026-10-03 02:00** · build appky v čase zápisu: `2026-10-03 02:00`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -289,8 +289,15 @@ alebo bez loginu - riešenie: odhlásiť, prihlásiť a zopakovať.
   Všetko sa po prihlásení znova načíta zo servera.
 - **Ostáva:** fronty neodoslaných údajov, rozloženie okien a UI (presety okien, MINI, zoznam kategórií), strážca
   zariadenia (posledné prihlásené meno - červené meno pri inom userovi).
-- **Neskôr:** režim zariadenia MY / TRUSTED / FOREIGN (backlog I3) - na FOREIGN sa zmaže aj zvyšok a neodoslané
-  pôjde do `.verso` (I2).
+- **Režim zariadenia** (`[Zzz10-DM:DEVICE-MODE]`) - riadok **DEVICE** pod prihlásením (LOG IN okno), volí sa pred ENTRY:
+  - **MY DEVICE** (predvolené) - ako vyššie.
+  - **TRUSTED** (PC v práci, rodinný mobil) - ako MY, pri LOG OUT sa navyše zmaže strážca zariadenia (posledné meno)
+    a vlastné kategórie. Zariadenie si TRUSTED zapamätá ako predvoľbu.
+  - **FOREIGN** (cudzie) - appka do zariadenia **nič nezapíše**, všetko je len v pamäti otvorenej stránky. Pri LOG OUT
+    (aj pri zatvorení / obnovení stránky) zmizne všetko; neodoslané sa stratí - LOG OUT na to upozorní. FOREIGN sa
+    ako predvoľba nezapamätá (ďalší user začne na MY DEVICE).
+  - Keď si prihlásený, riadok len ukazuje zvolený režim; zmena = LOG OUT a nové prihlásenie.
+  - Neskôr: na FOREIGN pôjde neodoslané do `.verso` (backlog I2).
 
 ---
 

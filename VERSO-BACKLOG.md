@@ -608,6 +608,9 @@ Ak ti prepisovanie začne prekážať, je to ten smer.
   **FOREIGN** (cudzie). Dá sa zmeniť pri každom logine.
 - MY DEVICE: lokálna cache, offline, pamäť krokov, koncepty. TRUSTED: koncepty len zašifrované / do konca relácie,
   pri LOG OUT sa zmaže osobné. FOREIGN: nič na zariadení, `.verso` záchrana, kratší auto-logout.
+- **Krok 1 POSTAVENÝ 3. 10. 02:00** `[Zzz10-DM:DEVICE-MODE]`: riadok DEVICE v LOG IN okne (MY / TRUSTED / FOREIGN),
+  FOREIGN = zápisy Verso kľúčov len do pamäte stránky (shim na úložisku), TRUSTED zmaže pri LOG OUT aj strážcu a vlastné
+  kategórie. Ďalej: kratší auto-logout na FOREIGN, `.verso` pri LOG OUT/výpadku (I2), viazanie front na usera.
 - Predpoklad: audit lokálnych údajov + mazanie pri LOG OUT - **POSTAVENÉ 3. 10. 01:45** `[Zzz10-R2:LOGOUT-WIPE]`.
   Audit lokálneho úložiska (localStorage; sessionStorage / IndexedDB / PWA cache appka nepoužíva):
   - **fronty (ostávajú, neodoslané dáta):** `verso_zzz4_0_unsynced_entries`, `verso_zzz4f1_pending_confirmations`,
@@ -618,6 +621,13 @@ Ak ti prepisovanie začne prekážať, je to ten smer.
     `zzz1r37_preset_tabs`; **strážca zariadenia:** `verso_zzz10r1_expected_username` (pri FOREIGN zmazať)
   - Otvorené: fronty sú bez mena usera - po logine iného usera ich server odmietne (owner = prihlásený), ale ostanú;
     do I2/I3 ich viazať na usera. `zzz_category_custom_cats` sú vlastné kategórie bez mena usera.
+
+### I4. PWA - OFFLINE KÓPIA ČASTI DATABÁZY (Vrso 3. 10., 01:44)
+- S PWA vrstvou aj opačný smer: na **MY DEVICE** sa časť databázy uloží **lokálne**, aby sa dalo pracovať na bežných
+  projektoch aj bez siete; pri obnovení spojenia sa **automaticky synchronizuje** (fronta + server overí owner/verziu,
+  história zapíše zmeny).
+- Čo presne - vyčlení Vrso neskôr; návrh: vlastné bežné projekty + niekoľko workspacov (PROJECTS, FAVORITES, ...).
+- Len MY DEVICE (TRUSTED nie, FOREIGN nikdy). Konflikty: záznam sa neprepisuje - offline zmena = nová verzia.
 
 ---
 
