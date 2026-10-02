@@ -476,8 +476,8 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
 | `verso_entries` UPDATE / SELECT | `true` - návrh `verso_entries_rls_update_v1` čaká; SELECT podľa pravidiel viditeľnosti |
 | `verso_entries.comm_setup` | presunúť do vlastnej chránenej tabuľky `verso_comm_setup` - návrh |
 | `verso_consents` | OK (dump 3. 10.): INSERT len za seba (trigger prepíše username = prihlásený), člen USER/COMMUNICATION alebo owner podľa záznamu; UPDATE/DELETE nie je |
-| `verso_comm_users` policy | chyba `d.entry_key = d.entry_key` (vždy true) - trigger to kryl; oprava `verso_comm_users_policy_fix_v1.sql` (2., poslané 00:32) |
-| `verso_verification` INSERT | bolo `CHECK true` pre kohokoľvek - `verso_verification_insert_check_v1.sql` (3.): registrácia len s heslom na serveri, login/entrynum len sám za seba, iné typy len cez RPC |
+| `verso_comm_users` policy | chyba `d.entry_key = d.entry_key` (vždy true) - trigger to kryl; `verso_comm_users_policy_fix_v1.sql` (2.) NASADENÉ 3. 10. 00:31 - OK |
+| `verso_verification` INSERT | bolo `CHECK true` pre kohokoľvek - `verso_verification_insert_check_v1.sql` (3., poslané 00:33): registrácia len s heslom na serveri, login/entrynum len sám za seba, iné typy len cez RPC |
 | `verso_verification` UPDATE rezervácie | ktokoľvek mohol prepísať cudziu rezerváciu - zrušiť `verso_verification_close_open_policies_v1.sql` (4., rezervácia ide cez RPC) |
 | `verso_verification_trash` | SELECT pre anon = verejne čitateľná - zrušiť v (4.) (appka ju už nepoužíva) |
 | všetky tabuľky | TRUNCATE/TRIGGER/REFERENCES pre anon - `verso_revoke_truncate_v1.sql` (1.) NASADENÉ 3. 10. 00:30 - OK |
