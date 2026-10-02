@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-02 20:35** · build appky v čase zápisu: `2026-10-02 20:30`
+**Verzia: 2026-10-02 20:50** · build appky v čase zápisu: `2026-10-02 20:45`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -142,18 +142,14 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
   (Od 2. 10. 20:30 WORK NOTE zoznam už neprekrýva - `[Zzz5-6:WORK-COVER]` zrušené.)
 - **Podržať sub note v tabuľke 1–2 s** → WORK NOTE s otvorenou note line, predvyplnenou odkazom
   `[#156/2-a] ` a menom poznámky - ukladá sa do WORK NOTE tabu (`[Zzz5-6:SUB-WORKLINE]`).
-- **CHAT v páse WORK NOTE = režim chatu** (`[Zzz5-6:WORK-CHAT]`). WORK NOTE nemá záznam, takže nemá
-  COMMUNICATION okno; jeho chat sú neuložené chatnotes pod tým istým kľúčom.
-  - ťuk → `CHAT ON`: okno ukáže celú diskusiu (aj neuložené) a otvorí chatnote line so **SAVE vypnutým**
-    (píše sa do chatu); ak je riadok už otvorený, len sa mu vypne SAVE,
-  - ťuk znova → `CHAT`: späť len Notes, SAVE sa znova zapne.
-  - To isté robí podržanie `+add NOTE` 3 s a podržanie `SAVE` 3 s vo WORK NOTE.
+- **CHAT v páse WORK NOTE** → COMMUNICATION okno nad rozpísanou CL (`[Zzz5-6:WORK-COMM]`). To isté robí
+  podržanie `+add NOTE` 3 s a podržanie `SAVE` 3 s vo WORK NOTE. (Režim chatu v okne zo 17:06 je zrušený.)
 
 ### 4.7 Chat záznamu (COMMUNICATION okno)
 - V okne záznamu **ťuk na `CHAT`** (pás hore) → COMMUNICATION okno tohto záznamu (`[Zzz5-6:STRIP-CHAT-COMM]`).
 - Rovnako **podržať `+add NOTE` 3 s** alebo **podržať `SAVE` v note line 3 s** (`[Zzz5-6:SAVE-3S-COMM]`) -
-  zrkadlo COMMUNICATION okna, kde `SAVE` 3 s otvára Notes okno. Nad rozpísanou CL (draft) otvorí
-  chatnote module.
+  zrkadlo COMMUNICATION okna, kde `SAVE` 3 s otvára Notes okno. Vo WORK NOTE a nad rozpísanou CL otvorí
+  COMMUNICATION okno nad CL (chatnote module).
 - **Podržať `NOTES` 1–2 s** (lišta zoznamu) → chatnote module (COMMUNICATION okno nad rozpísanou CL).
 - V COMMUNICATION okne: `ENTER CHATNOTE` = len chat, `SAVE NOTE` = uložiť do Notes. Čierny pás
   COMMUNICATION ukazuje, ku ktorému záznamu chat patrí (`#entry` + owner · projekt · názov,
@@ -209,7 +205,9 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
    (MINI odpojí aj pripnuté command lines). V okne poznámok ťuk na `ATTACHED` v páse hore.
 
 ### 4.11 Premenovať, privacy, priority, TAG, DELETE
-- **Premenovať**: podržať číslo poznámky **3 s** → riadok s menom (len vlastné; prázdne = bez mena).
+- **Premenovať**: podržať číslo poznámky **3 s**, alebo **podržať `+add NOTE` 5 s** (označená, inak posledná
+  poznámka) → riadok s menom (len vlastné; prázdne = bez mena). Meno sa zmení v celom vlákne - v chate aj
+  v Notes (`[Zzz5-6:ADD-RENAME]`). Preset sa prepína v SHOW okne.
 - **Privacy / priority**: nastavujú sa v note line pred odoslaním.
 - **TAG**: označené vlastné poznámky dostanú štítok (zdieľané len zo slovníka záznamu, privátne čokoľvek).
 - **DELETE**: zčervená, keď je niečo označené; zmaže len **vlastné** označené po potvrdení
@@ -225,12 +223,12 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
 | `NOTES` (lišta zoznamu) | WORK NOTE tabu | maximalizuje workspace | chatnote module (comm) | – | – |
 | Sub note v tabuľke | okno záznamu v doku | – | WORK NOTE + note line s odkazom | pripnúť / odopnúť pod CRM | – |
 | Číslo záznamu v tabuľke | zbalí / rozbalí subs | – | Notes okno záznamu | – | – |
-| `+add NOTE` | nová poznámka | celá obrazovka / split | sub note k označenej | chat záznamu (WORK NOTE: režim CHAT) | prepne preset |
-| `SAVE` v note line | SAVE zap/vyp | – | – | chat záznamu / CL (WORK NOTE: režim CHAT) | – |
+| `+add NOTE` | nová poznámka | celá obrazovka / split | sub note k označenej | COMMUNICATION okno (záznam / CL) | premenovať (edit chat name) |
+| `SAVE` v note line | SAVE zap/vyp | – | – | COMMUNICATION okno (záznam / CL) | – |
 | `ATTACHED` (pás pod CRM) | otvorí jeho poznámky | – | zbaliť / rozbaliť subs | odpojiť | – |
 | `ATTACH` (1. stĺpec tabuľky) | pripnúť / odopnúť celý záznam | – | – | – | – |
 | `MINI` (hlavná CRM) | (CRM) | – | – | odpojiť všetko vrátane poznámok | – |
-| `CHAT` v páse okna | záznam: COMMUNICATION okno · WORK NOTE: režim CHAT | – | – | – | – |
+| `CHAT` v páse okna | COMMUNICATION okno (záznam / CL) | – | – | – | – |
 | Číslo poznámky (ľavý stĺpec) | skok na text (v SELECT: označí) | – | sub note k nej | premenovať | – |
 | `COPY` | do schránky | – | **COPY TO** | – | – |
 | Voľné miesto Notes okna | – | celá obrazovka / split | – | – | – |
