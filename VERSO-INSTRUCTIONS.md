@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-03 01:15** · build appky v čase zápisu: `2026-10-03 01:15`
+**Verzia: 2026-10-03 01:45** · build appky v čase zápisu: `2026-10-03 01:45`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -279,6 +279,18 @@ alebo bez loginu - riešenie: odhlásiť, prihlásiť a zopakovať.
 - **Stopa:** server každý presun do koša aj obnovu zapíše do histórie (`verso_history`: `trash` / `restore`, kto a
   kedy). Support si ju pozrie SQL `verso_history_last_v1.sql`.
 - **Natrvalo zmazať** sa dá len z koša (vlastný záznam, nie Verso, bez aktívneho PERMANENT); kópia ide do ARCHIVE.
+
+### 4.15 LOG OUT - čo ostane v zariadení (`[Zzz10-R2:LOGOUT-WIPE]`)
+- **Pred odhlásením** appka skúsi odoslať všetko neodoslané (záznamy, potvrdenia čísel, presuny do koša, chatnotes).
+- **Otázka „Log out anyway?"** príde, keď niečo ostalo neodoslané (ostane v zariadení a odošle sa po ďalšom
+  prihlásení tu) alebo je v CL rozpísaný text (zmaže sa - najprv daj ENTER). Cancel = ostaneš prihlásený.
+- **Po odhlásení sa zmaže:** CL na obrazovke, posledné prihlasovacie údaje v pamäti, pamäť krokov a osobné cache
+  v prehliadači (chatnotes, comm setup, refs, slovník štítkov, taby, kontaktné presety, posledné auto-meno).
+  Všetko sa po prihlásení znova načíta zo servera.
+- **Ostáva:** fronty neodoslaných údajov, rozloženie okien a UI (presety okien, MINI, zoznam kategórií), strážca
+  zariadenia (posledné prihlásené meno - červené meno pri inom userovi).
+- **Neskôr:** režim zariadenia MY / TRUSTED / FOREIGN (backlog I3) - na FOREIGN sa zmaže aj zvyšok a neodoslané
+  pôjde do `.verso` (I2).
 
 ---
 

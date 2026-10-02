@@ -602,7 +602,16 @@ Ak ti prepisovanie začne prekážať, je to ten smer.
   **FOREIGN** (cudzie). Dá sa zmeniť pri každom logine.
 - MY DEVICE: lokálna cache, offline, pamäť krokov, koncepty. TRUSTED: koncepty len zašifrované / do konca relácie,
   pri LOG OUT sa zmaže osobné. FOREIGN: nič na zariadení, `.verso` záchrana, kratší auto-logout.
-- Predpoklad: audit lokálnych údajov + mazanie pri LOG OUT (robí sa 3. 10. 01:35).
+- Predpoklad: audit lokálnych údajov + mazanie pri LOG OUT - **POSTAVENÉ 3. 10. 01:45** `[Zzz10-R2:LOGOUT-WIPE]`.
+  Audit lokálneho úložiska (localStorage; sessionStorage / IndexedDB / PWA cache appka nepoužíva):
+  - **fronty (ostávajú, neodoslané dáta):** `verso_zzz4_0_unsynced_entries`, `verso_zzz4f1_pending_confirmations`,
+    `verso_zzz6f34_pending_moves/deletes`, `zzz0ob:queue`, `zzz1cn_refs_pending`, `zzz1cn_openadd_pending`
+  - **osobné cache (mažú sa pri LOG OUT):** `zzz1cn:*` (vrátane draftid), `zzz1cn_setup:*`, `zzz1cn_refs:*`,
+    `zzz1cn_vocab:*`, `zzz1cn_openadd:*`, `zzz5w5cm:preset:*`, `zzz5_6_user_tabs`, `zzz0r1_last_auto_username`
+  - **UI (ostáva):** presety okien, `zzz6f48_*` (MINI), `zzz_category_*`, `zzz1cn_ws_tab`, `zzz1cn_ncrm_presets`,
+    `zzz1r37_preset_tabs`; **strážca zariadenia:** `verso_zzz10r1_expected_username` (pri FOREIGN zmazať)
+  - Otvorené: fronty sú bez mena usera - po logine iného usera ich server odmietne (owner = prihlásený), ale ostanú;
+    do I2/I3 ich viazať na usera. `zzz_category_custom_cats` sú vlastné kategórie bez mena usera.
 
 ---
 

@@ -29466,7 +29466,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-03 01:15';
+const ZZZ5_6_BUILD = '2026-10-03 01:45';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -38955,7 +38955,90 @@ function zzz10r1_check_and_flag_username_mismatch(username) {
 // zamernym rucnym odhlasenim. Viz aj [Zzz6-X:AUTOLOGIN-VERSO] vyssie v subore (Verso sa navyse
 // AUTOMATICKY znova prihlasi pri kazdom nacitani stranky, takze aj manualny logout je v praxi len docasny,
 // kym sa stranka nenacita znova). | Vrso -> Claude AI | 2026-09-01 ===
-function zzz10r2_logout(reason = 'manual') {
+// === [Zzz10-R2:LOGOUT-WIPE] Vrso 3. 10. 01:33 ("ok urob" - audit lokalnych udajov a mazanie pri LOG OUT; "hlavne aby sa
+// nestratili dolezite rozpracovane data"). Manualny LOG OUT:
+//  1) PRED odhlasenim (token este plati) skusi odoslat vsetky fronty (neodoslane zaznamy, potvrdenia cisel, presuny
+//     do kosa, outbox chatnotes). Co aj tak ostane neodoslane, sa NEMAZE - ostava na zariadeni do dalsieho loginu
+//     (neskor .verso, backlog I2/I3). Ak nieco ostalo alebo je v CL rozpisany text, LOG OUT sa najprv opyta.
+//  2) PO odhlaseni zmaze z prehliadaca osobne CACHE (daju sa znova nacitat zo servera) a vycisti CL, posledne
+//     prihlasovacie udaje v pamati a pamat krokov. Ponechane: fronty (bod 1), rozlozenie okien/UI, strazca
+//     zariadenia (posledne meno - pre FOREIGN rezim neskor tiez zmazat). Zoznam je v VERSO-INSTRUCTIONS.md 4.15. | Vrso -> Claude AI | 2026-10-03
+const ZZZ10R2_WIPE_PREFIXES = ['zzz1cn:', 'zzz1cn_setup:', 'zzz1cn_refs:', 'zzz1cn_vocab:', 'zzz1cn_openadd:',
+  'zzz5w5cm:preset:'];
+const ZZZ10R2_WIPE_KEYS = ['zzz5_6_user_tabs', 'zzz0r1_last_auto_username'];
+
+function zzz10r2_count_pending() {
+  const n = (o) => { try { return Object.keys(o || {}).length; } catch (e) { return 0; } };
+  const ls = (k) => { try { return JSON.parse(localStorage.getItem(k) || '{}') || {}; } catch (e) { return {}; } };
+  let confirms = 0;
+  try { confirms = Object.values(zzz4f1ConfirmedNumbersCache || {}).filter(x => x && !x.synced).length; } catch (e) {}
+  let outbox = 0;
+  try { outbox = (zzz0ob_read_queue() || []).length; } catch (e) {}
+  return {
+    entries: n(zzz4_0_unsyncedEntryIds), confirms, trash: n(zzz6f34_pendingMoves), outbox,
+    refs: n(ls(ZZZ1CN_REFS_PENDING)), setup: n(ls(ZZZ1CN_GATE_PENDING))
+  };
+}
+
+function zzz10r2_cl_has_draft() {
+  let me = '';
+  try { me = zzz10v1_normalize(zzz0r1_get_current_username() || ''); } catch (e) {}
+  return Object.keys(entryData || {}).some(id => {
+    const v = String(entryData[id] || '').trim();
+    if (!v || id === '1') return false;                                    // R1 = cislo zaznamu, nie text
+    if (['4', '17', '18'].includes(id) && zzz10v1_normalize(v) === me) return false; // predvyplnene meno
+    if (id === '2' && v === '1') return false;                             // predvyplnene PROJECT NUMBER
+    return true;
+  });
+}
+
+async function zzz10r2_logout_precheck() {
+  const total = (c) => c.entries + c.confirms + c.trash + c.outbox + c.refs + c.setup;
+  let c = zzz10r2_count_pending();
+  if (total(c) > 0) {
+    const withTimeout = (pr) => Promise.race([Promise.resolve(pr).catch(() => {}), new Promise(r => setTimeout(r, 4000))]);
+    try {
+      await withTimeout(Promise.all([
+        zzz4_0_sync_pending_entries(), zzz4f1_sync_pending_confirmations(),
+        zzz6f34_sync_pending_trash(), zzz0ob_flush('logout')
+      ]));
+    } catch (e) { /* co neprejde, ostava vo fronte */ }
+    c = zzz10r2_count_pending();
+  }
+  const left = total(c);
+  const draft = zzz10r2_cl_has_draft();
+  if (!left && !draft) return true;
+  const lines = [];
+  if (left) lines.push(`${left} unsent item(s) could not be sent now. They stay on this device and will be sent after your next login here.`);
+  if (draft) lines.push('The Command Line has unsaved text - it will be cleared. Press ENTER first if you want to keep it.');
+  return confirm(lines.join('\n\n') + '\n\nLog out anyway?');
+}
+
+function zzz10r2_wipe_local_after_logout() {
+  let removed = 0;
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+    keys.forEach(k => {
+      if (!k) return;
+      if (ZZZ10R2_WIPE_KEYS.includes(k) || ZZZ10R2_WIPE_PREFIXES.some(p => k.startsWith(p))) {
+        localStorage.removeItem(k); removed++;
+      }
+    });
+  } catch (e) { /* ulozisko nedostupne - nie je co mazat */ }
+  try { zzz6f33_clear_whole_cl(); } catch (e) {}           // CL na obrazovke (prefill sa po odhlaseni nevykona)
+  zzz6f36LastLoginUsername = '';
+  zzz6f36LastLoginPassword = '';
+  return removed;
+}
+// === [/Zzz10-R2:LOGOUT-WIPE] (funkcie) ===
+
+function zzz10r2_logout(reason = 'manual', opts = {}) {
+  // [Zzz10-R2:LOGOUT-WIPE] manualny LOG OUT najprv skusi odoslat fronty a pri zvysku / rozpisanej CL sa opyta
+  if (reason === 'manual' && !opts.checked) {
+    zzz10r2_logout_precheck().then(ok => { if (ok) zzz10r2_logout(reason, { checked: true }); });
+    return;
+  }
   const label = document.getElementById('zzz6f7UsernameLabel');
   // === [Zzz10-R2:PERMANENT-VERSO] viz UPDATE komentar vyssie ===
   if (reason !== 'manual' && label && zzz6x_is_reserved_username(label.textContent)) { // [Zzz6-X:DEV-TEST-ACCOUNT] Verso aj Verso1 (rovnake pravidla) | Vrso -> Claude AI | 2026-09-21
@@ -38982,6 +39065,7 @@ function zzz10r2_logout(reason = 'manual') {
   // po logout-e prekresli nanovo (open_settings_workspace nizsie) - LOKALNE Login/Login Setup inputy sa
   // vytvoria od znova PRAZDNE (ziadna hodnota z predchadzajucej session v nich neprezije). | Vrso -> Claude AI | 2026-09-02
   if (reason === 'manual') {
+    zzz10r2_wipe_local_after_logout(); // [Zzz10-R2:LOGOUT-WIPE] osobne cache + CL + posledne prihlasovacie udaje
     zzz6f2_show_toast('Zzz10-R2 Log Out: odhlaseny');
   } else {
     zzz6f2_show_toast('Zzz10-R2 Log Out: odhlaseny (strata spojenia s DB)');
