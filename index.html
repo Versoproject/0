@@ -4092,6 +4092,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz1cn-ws-tbl > .zzz1cn-ws-subpanel { grid-column: 1 / -1; margin: 0 4px 4px 4px; }
   /* [Zzz5-6:TAB-INLINE] NOTES TAB okno vlozene pod riadkom zaznamu - cez celu sirku tabulky */
   .zzz1cn-ws-tbl > .zzz5-6-tabwin-holder { grid-column: 1 / -1; margin: 0 0 6px 0; }
+  /* [Zzz5-6:WORK-NOTE] slot pre prilepeny rozpracovany note - nad zoznamom, mimo prekreslovania */
+  .zzz5-6-wspin { flex: 0 0 auto; margin: 0 0 6px 0; }
+  .zzz5-6-wspin:empty { display: none; }
+  .zzz5-6-wspin > .zzz1cn-list-window.zzz5-6-inline.zzz5w7-full { height: 52vh !important; max-height: 52vh !important; }
   /* [Zzz5-6:TAB-WIDE] tabulka nesmie okno tabu orezat - siri sa az po okraje zoznamu (pocita JS) */
   .zzz1cn-ws-tbl.has-tabwin { overflow: visible; }
   .zzz1cn-list-window.zzz5-6-inline {
@@ -4141,9 +4145,11 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz5w7-limitcell > input { width: 100%; min-width: 0; box-sizing: border-box; }
   .zzz1cn-ws-window:not(.zzz5-6-with-content) .zzz5w7-limitcell[data-limit="CONTENT"] { display: none; }
   /* [Zzz5-6:BAR-CONTENT] prepinac v liste za SHOW */
+  /* [Zzz5-6:BAR-CONTENT] Vrso 2. 10. (14:31): "content toggle ovela zmensi (hlavne zuzit, ale aby sa
+     zmestil text podobny ostatnym)" - pismo ako ostatne popisy v liste, minimalne bocne odsadenie */
   .zzz5-6-contenttg { flex: 0 0 auto; display: inline-flex; padding: 0 !important; overflow: hidden;
-    border-color: #7b2ff7 !important; font-size: 10px; letter-spacing: 0.02em; }
-  .zzz5-6-contenttg > span { display: flex; align-items: center; padding: 0 7px; opacity: 0.4; }
+    border-color: #7b2ff7 !important; font-size: 8.5px !important; letter-spacing: 0 !important; }
+  .zzz5-6-contenttg > span { display: flex; align-items: center; padding: 0 3px; opacity: 0.4; }
   .zzz5-6-contenttg > .is-note { background-color: #7b2ff7; color: #fff; }
   .zzz5-6-contenttg > .is-cont { background-color: #fff; color: #171717; }
   .zzz5-6-contenttg:not(.is-on) > .is-note,
@@ -29093,7 +29099,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 14:19';
+const ZZZ5_6_BUILD = '2026-10-02 14:32';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -29131,6 +29137,10 @@ function zzz5_6_scroll_restore(k) {
   requestAnimationFrame(() => { put(); requestAnimationFrame(put); });
 }
 
+// === [Zzz5-6:WORK-NOTE] "rozpracovany note" = zaznam, s ktorym user v tejto relacii naposledy pracoval
+// (chat cez podrzanie subu, okno poznamok cez tuk na sub). Kym nie je ziaden, je to rozpisana CL (draft).
+let zzz5_6WorkKey = null;
+
 // === [Zzz5-6:SUB-CHAT] podrzanie subu 1-2s = chatnote line zaznamu, odpoved na tento sub ===========
 // Vrso 2026-10-02 (13:40): "ak v notes (tabe) podrzim na sub 1-2s, otvor chatnote line, ktorou sa chatuje
 // / note line save, ako na druhej foto". Je to COMMUNICATION okno zaznamu (chat + note line so SAVE NOTE)
@@ -29147,6 +29157,7 @@ async function zzz5_6_open_chat_reply(entryKey, num) {
     if (!data || !data.length) { zzz6f2_show_toast(`Record #${k} was not found (or you cannot see it).`, 'warn'); return; }
     zzz1r17b_silent_copy_row_to_cl(data[0]);
     zzz6f18_open_context_select_modal(data[0]);
+    zzz5_6WorkKey = k;   // [Zzz5-6:WORK-NOTE]
     // reply bunka vznika az so stavbou okna - jeden snimok po nom
     setTimeout(() => {
       const w = document.querySelector('.zzz1r17b-comm-window');
@@ -30314,12 +30325,37 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
   // [Zzz5-6:WS-NOTE-TAP] Vrso 2026-10-02 (13:40): "stlac note button otvori chatnote window (prazdny
   // oznacujem ako chatnote module)". Prazdny = COMMUNICATION okno nad rozpisanou CL, nie nad ulozenym
   // zaznamom. Tuk sa vyhodnoti az po 320 ms - druhy tuk v tom case je dvojtuk (maximalizacia) a tuk zrusi.
+  // === [Zzz5-6:WORK-NOTE] Vrso 2026-10-02 (14:31): "chat button v tabe stlacenim otvori comm window a nie
+  // note window... dorob 1-2s otvor dany note zaznam (podla cisla entry). Mal by sa dat kedykolvek otvorit...
+  // co potrebujem je prave otvorit rozpracovany note a vzdy ho prilepit k tomu, co je na workspace/ploche...
+  // Potom zamen funkcie."  Po zamene:
+  //   tuk    = ROZPRACOVANY NOTE (zaznam, s ktorym si naposledy pracoval, inak rozpisana CL), prilepeny
+  //            NAVRCHU workspacu, nad tabulkou - prekryje (zavrie) ine okno otvorene v tabulke
+  //   1-2 s  = chatnote module (COMMUNICATION okno nad CL) - to, co doteraz robil tuk
+  //   2x     = maximalizacia (bez zmeny)
+  // Prilepene okno nezije v zozname, ktory sa pri kazdom filtri prekresluje, ale vo vlastnom slote nad
+  // nim - preto ho nezavrie ani zmena filtra, ani prepnutie NOTE/CONTENT.
   let wsTitleTap = 0;
+  const wsPin = document.createElement('div');
+  wsPin.className = 'zzz5-6-wspin';
+  const openWorkNote = () => {
+    const key = zzz5_6WorkKey || zzz1cn_key_for(null);
+    document.querySelectorAll('.zzz5-6-tabwin-holder').forEach(h => h.remove());
+    if (!wsPin.isConnected && body && body.parentNode) body.parentNode.insertBefore(wsPin, body);
+    wsPin.innerHTML = '';
+    const rec = entryMap[key];
+    const info = /^\d+$/.test(key)
+      ? { owner: (rec && rec.owner) || '', name: (rec && rec.projectName) || '' }
+      : { draft: true };
+    zzz_haptic_pulse(15);
+    zzz1cn_open_list(key, null, null, { inlineIn: wsPin, stripInfo: info });
+  };
   title.addEventListener('click', () => {
     clearTimeout(wsTitleTap);
-    wsTitleTap = setTimeout(() => { zzz6f18_open_context_select_modal(); }, 320);
+    wsTitleTap = setTimeout(openWorkNote, 320);
   });
-  title.title = 'Tap = chatnote module / double tap = maximise (and back)';
+  zzz5w7_bind_tiered_hold(title, [{ ms: 1100, fn: () => { clearTimeout(wsTitleTap); zzz6f18_open_context_select_modal(); } }]);
+  title.title = 'Tap = the note you are working on, pinned on top / hold 1-2s = chatnote module / double tap = maximise';
   zzz5_6_bind_dbltap(win, [head], () => {
     clearTimeout(wsTitleTap);
     wsMax = !wsMax;
@@ -30902,6 +30938,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
             // [Zzz5-6:NOTE-INLINE] Vrso 2026-10-02 (13:57): okno sa otvara POD riadkom zaznamu s fialovym
             // ramom a pasom (entry / owner / name + ATTACH), ako okno tabu - nie cez celu obrazovku, kde
             // zakrylo hlavny modul a nebolo jasne, ku ktoremu zaznamu patri.
+            zzz5_6WorkKey = String(n.entry_key || '') || zzz5_6WorkKey;   // [Zzz5-6:WORK-NOTE]
             notesWin.openInline(tdCont, String(n.entry_key || ''), { num: n.note_number, part },
               { owner: c.owner || '', name: c.projectName || '' });
           };
@@ -32358,7 +32395,8 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     tabStrip.className = 'zzz5-6-tabstrip';
     if (stripInfo) {
       tabStrip.classList.add('is-entry');
-      [['ENTRY', '#' + entryKey], ['OWNER', stripInfo.owner], ['NAME', stripInfo.name]].forEach(([l, v]) => {
+      (stripInfo.draft ? [['NOTES OF', 'the command line (not saved yet)']]
+        : [['ENTRY', '#' + entryKey], ['OWNER', stripInfo.owner], ['NAME', stripInfo.name]]).forEach(([l, v]) => {
         if (!String(v || '').trim()) return;   // prazdne kriterium sa nekresli (ako v tabulke)
         const lab = document.createElement('span');
         lab.className = 'zzz5-6-tabstrip-lab';
@@ -32368,7 +32406,8 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
         val.textContent = v;
         tabStrip.appendChild(lab); tabStrip.appendChild(val);
       });
-      tabStrip.title = 'Notes of record #' + entryKey + ' - double tap maximizes / restores the window';
+      tabStrip.title = (stripInfo.draft ? 'Notes of the command line' : 'Notes of record #' + entryKey)
+        + ' - double tap maximizes / restores the window';
     } else {
       const stripName = document.createElement('span');
       stripName.textContent = zzz5_6_tab_entry_label(entryKey);
