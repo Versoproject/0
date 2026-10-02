@@ -596,6 +596,12 @@ Ak ti prepisovanie začne prekážať, je to ten smer.
   súboru sú dáta len v pamäti -> `.verso` sa ponúkne/vytvorí sám pri výpadku siete a pri LOG OUT.
   Technicky: WebCrypto (RSA-OAEP / ECDH + AES-GCM, gzip pred šifrou), v súbore: username, verzia kľúča, čas,
   zariadenie, hash. Settings tab/workspace na import zatiaľ nie je - pripravené ako návrh.
+- **Otvorenie = recovery token (Vrso 3. 10., 01:37: „vieme použiť ten token na recovery access? … načo mať priveľa
+  riešení"):** áno - **jeden mechanizmus pre všetky obnovy**: import `.verso`, restore to date, vyprázdnenie koša.
+  Zamyká sa verejným kľúčom (na cudzom zariadení sa nič nepíše), **otvára** server po overení **hesla + recovery tokenu
+  (+ MV fráza, rovnako ako pri vyprázdnení koša)**; token sa po použití obmení a nový príde emailom (už existuje vo
+  `verso-auth-gate`). Token NIE ako kľúč na zamknutie: písal by sa na cudzom zariadení a súbor by sa dal otvoriť
+  offline každým, kto ho pozná. Špeciálni useri si neskôr môžu pridať vlastné nastavenia (druhý faktor, HW kľúč).
 
 ### I3. REŽIM ZARIADENIA V LOGIN MODULE (Vrso 3. 10., 01:33)
 - Bunky v login module: **MY DEVICE** (predvolené, vlastné), **TRUSTED** (dôveryhodné - PC v práci, rodinný mobil),
