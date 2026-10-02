@@ -589,6 +589,20 @@ Ak ti prepisovanie začne prekážať, je to ten smer.
 - Otvorené otázky: kto drží kľúč (návrh: verejný kľúč Versa / usera na šifrovanie, dešifruje len server po
   multiverifikácii - cudzie zariadenie nemá nič čitateľné); online cesta bez súboru (zašifrovaný koncept rovno do
   vlastnej serverovej fronty, keď je sieť); podpis/hash proti podvrhnutiu súboru.
+- **Riešenie kľúča (Vrso 3. 10., 01:33 - „predpripravený protikľúč, ready, keď vypadne online"):** hash ≠ šifra -
+  treba OBE: šifra skryje obsah, hash + podpis (pečať) prezradí podvrhnutie. Pri logine (online) si appka stiahne
+  **verejný kľúč usera** a drží ho v pamäti stránky („ready"); pri výpadku ním zamkne CL do `.verso` bez servera.
+  **Tajný kľúč len na serveri**, otvorí sa po multiverifikácii -> `.verso` sa dá nahrať kedykoľvek. Riziko: do vytvorenia
+  súboru sú dáta len v pamäti -> `.verso` sa ponúkne/vytvorí sám pri výpadku siete a pri LOG OUT.
+  Technicky: WebCrypto (RSA-OAEP / ECDH + AES-GCM, gzip pred šifrou), v súbore: username, verzia kľúča, čas,
+  zariadenie, hash. Settings tab/workspace na import zatiaľ nie je - pripravené ako návrh.
+
+### I3. REŽIM ZARIADENIA V LOGIN MODULE (Vrso 3. 10., 01:33)
+- Bunky v login module: **MY DEVICE** (predvolené, vlastné), **TRUSTED** (dôveryhodné - PC v práci, rodinný mobil),
+  **FOREIGN** (cudzie). Dá sa zmeniť pri každom logine.
+- MY DEVICE: lokálna cache, offline, pamäť krokov, koncepty. TRUSTED: koncepty len zašifrované / do konca relácie,
+  pri LOG OUT sa zmaže osobné. FOREIGN: nič na zariadení, `.verso` záchrana, kratší auto-logout.
+- Predpoklad: audit lokálnych údajov + mazanie pri LOG OUT (robí sa 3. 10. 01:35).
 
 ---
 
