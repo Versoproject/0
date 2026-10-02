@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-02 17:15** · build appky v čase zápisu: `2026-10-02 17:05`
+**Verzia: 2026-10-02 17:20** · build appky v čase zápisu: `2026-10-02 17:15`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -185,7 +185,10 @@ Otvára sa tlačidlom **AUTHOR CREDITS** v hornom páse. Zhora nadol:
 2. Pod hlavnou M4 CRM sa objaví fialový pás - jeden riadok vo výške MINI, stĺpce zarovnané s tabuľkou:
    owner | projekt | `#156` | `ATTACHED` + poznámky | `CONT`.
 3. Ťuk na `▸ N sub notes` → rozbalí / zbalí; ťuk na sub → otvorí ho v doku; ťuk na `#156` → Notes
-   záznamu v doku; `CONT` → obsah záznamu.
+   záznamu v doku; `CONT` → obsah záznamu. Bez obsahu (napr. WORK NOTE) je vpravo hore `▾ / ▴` =
+   rozbaliť / zbaliť (`[Zzz5-6:ATTACH-FIT]`).
+   Pás má strop (asi 4 riadky); viac rozbalených poznámok sa scrolluje vnútri pásu, workspace pod ním
+   ostáva použiteľný.
 4. **Odpojiť**: ťuk na `ATTACHED` (v páse alebo v okne).
 
 ### 4.11 Premenovať, privacy, priority, TAG, DELETE
