@@ -4139,7 +4139,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
      2x tuk na jedno z nich = len to jedno cez cely dok a spat */
   .zzz5-6-wsdock > .zzz1cn-list-window.zzz5-6-inline + .zzz1cn-list-window.zzz5-6-inline { margin-top: 4px; }
   .zzz5-6-wsdock.zzz5-6-pair > .zzz1cn-list-window.zzz5-6-inline { flex: 1 1 0; }
-  .zzz5-6-wsdock.zzz5-6-pair:has(> .zzz5-6-solo) > .zzz1cn-list-window.zzz5-6-inline:not(.zzz5-6-solo) { display: none; }
+  /* [Zzz5-6:DOCK-FULL] 2x tuk na okno v doku = dok cez celu obrazovku (workspace je vo WS-MAX), nic ine;
+     dve okna = split screen napoly */
+  .zzz1cn-ws-window.zzz5-6-dockfull > :not(.zzz5-6-wsdock) { display: none !important; }
+  .zzz1cn-ws-window.zzz5-6-dockfull > .zzz5-6-wsdock { flex: 1 1 100%; margin-top: 0; }
+  .zzz1cn-ws-window.zzz5-6-dockfull > .zzz5-6-wsdock > .zzz1cn-list-window.zzz5-6-inline {
+    flex: 1 1 0; height: auto !important; max-height: none !important; }
   /* [Zzz5-6:WORK-COVER] WORK NOTE prekryje zoznam tabu aj jeho listu */
   .zzz1cn-ws-window.zzz5-6-dockwork > .zzz5-6-wsdock { flex: 1 1 100%; }
   .zzz1cn-ws-window.zzz5-6-dockwork > .zzz1cn-ws-body,
@@ -29219,7 +29224,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-02 16:35';
+const ZZZ5_6_BUILD = '2026-10-02 16:45';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -29388,6 +29393,21 @@ function zzz5_6_dock_layout(dock) {
   if (ws) {
     ws.classList.toggle('zzz5-6-dockwork', hasWork);
     if (!wins.length || pair) ws.classList.remove('zzz5-6-dockmax');
+    if (!wins.length && ws.classList.contains('zzz5-6-dockfull')) zzz5_6_dock_full(dock, false);
+  }
+}
+// [Zzz5-6:DOCK-FULL] dok cez celu obrazovku a spat. Pouziva tu istu maximalizaciu workspacu ako 2x tuk na
+// tab (WS-MAX, cez hlavny modul) a pamata si, ci bola zapnuta uz predtym - spat sa vrati presne tam.
+let zzz5_6WsSetMax = null;   // workspace sem vlozi (on) => {...}, vracia predosly stav
+function zzz5_6_dock_full(dock, on) {
+  const ws = dock && dock.closest('.zzz1cn-ws-window');
+  if (!ws) return;
+  const want = (on === null || on === undefined) ? !ws.classList.contains('zzz5-6-dockfull') : !!on;
+  if (want === ws.classList.contains('zzz5-6-dockfull')) return;
+  ws.classList.toggle('zzz5-6-dockfull', want);
+  if (typeof zzz5_6WsSetMax === 'function') {
+    if (want) ws.dataset.zzz56PrevMax = zzz5_6WsSetMax(true) ? '1' : '0';
+    else zzz5_6WsSetMax(ws.dataset.zzz56PrevMax === '1');
   }
 }
 function zzz5_6_is_tab_entry(key) {
@@ -30576,6 +30596,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
   });
   zzz5w7_bind_tiered_hold(title, [{ ms: 1100, fn: () => { clearTimeout(wsTitleTap); zzz6f18_open_context_select_modal(); } }]);
   title.title = 'Tap = WORK NOTE of this tab (its own notes, below the list) / hold 1-2s = chatnote module / double tap = maximise';
+  zzz5_6WsSetMax = (on) => { const was = wsMax; wsMax = !!on; wsApplyMax(); return was; };   // [Zzz5-6:DOCK-FULL]
   zzz5_6_bind_dbltap(win, [head], () => {
     clearTimeout(wsTitleTap);
     wsMax = !wsMax;
@@ -33071,16 +33092,10 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     clearTimeout(titleTap);
     // [Zzz5-6:WS-DOCK] okno v doku sa nemaximalizuje samo - roztiahne sa DOK cez cely workspace a spat
     if (inlineIn && inlineIn.classList.contains('zzz5-6-wsdock')) {
-      // [Zzz5-6:DOCK-PAIR] dve okna v doku = 2x tuk prepne LEN TOTO cez cely dok / spat na polovicu;
-      // jedno okno = cela obrazovka (zoznam aj jeho lista sa schovaju) / spat
-      if (inlineIn.classList.contains('zzz5-6-pair')) {
-        const solo = !win.classList.contains('zzz5-6-solo');
-        inlineIn.querySelectorAll(':scope > .zzz5-6-solo').forEach(w => w.classList.remove('zzz5-6-solo'));
-        win.classList.toggle('zzz5-6-solo', solo);
-      } else {
-        const ws = inlineIn.closest('.zzz1cn-ws-window');
-        if (ws) ws.classList.toggle('zzz5-6-dockmax');
-      }
+      // [Zzz5-6:DOCK-FULL] Vrso 2026-10-02 (16:31): "pisal som, ze 2x tuk maximize notes window... ak su 2,
+      // tak ich prilepit a kazda bude mat polovicu ako split screen. Nie spolu polovicu". 2x tuk = dok cez
+      // CELU OBRAZOVKU (aj cez hlavny modul, taby a zoznam); dve okna si ju delia napoly. 2x tuk znova = spat.
+      zzz5_6_dock_full(inlineIn, null);
       zzz_haptic_pulse(20);
       requestAnimationFrame(alignGutter);
       return;
