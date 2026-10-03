@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-03 02:15** · build appky v čase zápisu: `2026-10-03 02:15`
+**Verzia: 2026-10-03 02:30** · build appky v čase zápisu: `2026-10-03 02:30`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -300,6 +300,12 @@ alebo bez loginu - riešenie: odhlásiť, prihlásiť a zopakovať.
     (aj pri zatvorení / obnovení stránky) zmizne všetko; neodoslané sa stratí - LOG OUT na to upozorní. FOREIGN sa
     ako predvoľba nezapamätá (ďalší user začne na MY DEVICE).
   - Keď si prihlásený, riadok len ukazuje zvolený režim; zmena = LOG OUT a nové prihlásenie.
+  - Na FOREIGN sa appka po **15 minútach bez dotyku / klávesy** sama odhlási (najprv skúsi odoslať neodoslané)
+    - `[Zzz10-DM:FOREIGN-IDLE]`.
+- **Fronty patria userovi** (`[Zzz0-Q:OWNER]`): každá neodoslaná položka nesie meno toho, kto ju vytvoril. Odosiela sa
+  len položka prihláseného usera; položky iného usera na tom istom zariadení čakajú na neho. Neodoslaný záznam si
+  drží celý obsah, takže prežije aj obnovenie stránky (predtým sa po reloade stratil).
+- **Audit log** (`verso_audit_log_check_v1`, 3. 10.): meno a čas zápisu dopĺňa server podľa overeného loginu.
   - Neskôr: na FOREIGN pôjde neodoslané do `.verso` (backlog I2).
 
 ---

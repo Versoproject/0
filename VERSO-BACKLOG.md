@@ -482,7 +482,7 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
 | `verso_verification` UPDATE rezervácie | ktokoľvek mohol prepísať cudziu rezerváciu - `verso_verification_close_open_policies_v1.sql` (4.) NASADENÉ 3. 10. 00:38 - zrušené |
 | `verso_verification_trash` | SELECT pre anon = verejne čitateľná - zrušené v (4.) 00:38 (appka ju už nepoužíva) |
 | všetky tabuľky | TRUNCATE/TRIGGER/REFERENCES pre anon - `verso_revoke_truncate_v1.sql` (1.) NASADENÉ 3. 10. 00:30 - OK |
-| `verso_audit_log` | INSERT `true` (aj pred loginom) -> `verso_audit_log_check_v1.sql` (9b, poslané 3. 10. 02:00): meno a čas zapíše server (prihlásený), pred loginom len `user_register` pre meno s heslom na serveri |
+| `verso_audit_log` | INSERT `true` (aj pred loginom) -> `verso_audit_log_check_v1.sql` (NASADENÉ 3. 10. 02:00): meno a čas zapíše server (prihlásený), pred loginom len `user_register` pre meno s heslom na serveri |
 | `verso_pre_register_support`, `verso_username_setup` | INSERT `true` - zámer (pred registráciou), ponechané |
 | `verso_auth_credentials`, `verso_sessions`, `verso_recovery_tokens` | RLS bez policies = zavreté, len server - OK |
 | `verso_trash` | len SELECT vlastných, zápis cez server - OK |
@@ -612,7 +612,8 @@ Ak ti prepisovanie začne prekážať, je to ten smer.
   pri LOG OUT sa zmaže osobné. FOREIGN: nič na zariadení, `.verso` záchrana, kratší auto-logout.
 - **Krok 1 POSTAVENÝ 3. 10. 02:00** `[Zzz10-DM:DEVICE-MODE]`: riadok DEVICE v LOG IN okne (MY / TRUSTED / FOREIGN),
   FOREIGN = zápisy Verso kľúčov len do pamäte stránky (shim na úložisku), TRUSTED zmaže pri LOG OUT aj strážcu a vlastné
-  kategórie. Ďalej: kratší auto-logout na FOREIGN, `.verso` pri LOG OUT/výpadku (I2), viazanie front na usera.
+  kategórie. **3. 10. 02:30 POSTAVENÉ:** auto-logout FOREIGN po 15 min nečinnosti `[Zzz10-DM:FOREIGN-IDLE]`, fronty
+  viazané na usera + neodoslaný záznam si drží celý obsah (prežije reload) `[Zzz0-Q:OWNER]`. Ďalej: `.verso` (I2).
 - Predpoklad: audit lokálnych údajov + mazanie pri LOG OUT - **POSTAVENÉ 3. 10. 01:45** `[Zzz10-R2:LOGOUT-WIPE]`.
   Audit lokálneho úložiska (localStorage; sessionStorage / IndexedDB / PWA cache appka nepoužíva):
   - **fronty (ostávajú, neodoslané dáta):** `verso_zzz4_0_unsynced_entries`, `verso_zzz4f1_pending_confirmations`,
