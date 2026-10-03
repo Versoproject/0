@@ -530,6 +530,19 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
 - **Slabina comm_setup:** textový reťazec čítaný regexom (`tags:delegate` ...) - krehké; presun do tabuľky s
   menovitými stĺpcami to odstráni.
 
+### COMM SETUP - VLASTNÁ DATABÁZA (Vrso 3. 10., 03:31: „comm setup musí mať vlastnú databázu. Čo takto použiť
+verifikačnú? Otázka je ale, čo ak bude musieť byť delegát offline")
+- **Návrh:** vlastná chránená tabuľka `verso_comm_setup` (riadok na záznam, menovité stĺpce contacts / chats / tags /
+  private / copy = owner|delegate|all), NIE vo `verso_verification`: verifikácia drží len identitu (registrácia, login,
+  rezervácie) a má ostať oddelená od dát (pravidlo z 28. 8.). S verifikáciou je prepojená cez **overený login**: zápis
+  len owner (`verso_jwt_username()`), každá zmena do `verso_history`, čítajú len členovia záznamu (ako viditeľnosť).
+- **Offline delegát:** appka si drží kópiu comm setupu (len MY DEVICE) - vie ukázať, čo delegát smie, a práca ide do
+  fronty. **Rozhoduje server pri odoslaní** podľa práv platných v tej chvíli (čas z offline zariadenia sa nedá
+  overiť - dal by sa podvrhnúť). Ak medzitým owner právo odobral, položka sa **nestratí**: ostane vo fronte označená
+  „odmietnuté + dôvod", owner môže právo vrátiť alebo delegát text použije inak.
+- Neskôr: prevzatie pravidiel z `comm_setup` textu (migrácia) + appka číta z tabuľky; triggre (`can_write`,
+  `check_private`, `restrict_update`) prejdú z regexu na stĺpce. Čaká na súhlas.
+
 ### CONTACTS REGISTER (Vrso 2. 10., 23:55 / 3. 10., 00:14)
 - **Postavené:** register = verifikačná databáza (registrované usernames, `verso_verification_public`, bez
   emailov); doplňovanie mien v CONTACTS = moje záznamy + registrované usernames (`[Zzz1-R17b:CONTACTS-REGISTRY]`).
