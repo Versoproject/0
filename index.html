@@ -3811,6 +3811,20 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     cursor: pointer;
   }
   .zzz1cn-setup-ritem:hover { background-color: rgba(192, 192, 192, 0.18); }
+  /* === [Zzz5-6:SETUP-COLORHIT] ponuka mien v COMM SETUP ma ten isty farebny jazyk ako adresar kontaktov:
+     bronzova = kontakt tohto zaznamu, fialova = mam ho aj vo svojich kontaktoch, zlata = ja. Napisana cast
+     mena je zlata, takze je vidno, preco sa meno v ponuke objavilo. Chipy sa radia vedla seba a zalamuju. === */
+  .zzz1cn-setup-rlist { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+  .zzz1cn-setup-ritem.zzz5-6-colorhit {
+    display: inline-block; width: auto;
+    padding: 2px 8px; font-size: 10px;
+    background-color: #171717; color: #ddd;
+    border: 1px solid #8c6239; border-radius: 9px;
+  }
+  .zzz1cn-setup-ritem.zzz5-6-colorhit.is-mine { border-color: #7b2ff7; color: #c9b3f5; }
+  .zzz1cn-setup-ritem.zzz5-6-colorhit.is-me { border-color: #D4AF37; color: #D4AF37; }
+  .zzz5-6-colorhit-q { color: #D4AF37; font-weight: 700; }
+  .zzz1cn-setup-empty { flex: 1 1 100%; }
   /* === [Zzz1-CN:SEARCH-CRM] search bar + CL rychlofilter ======================================== */
   /* Stlpec je JEDEN prvok, ktory drzi popis aj pole pod sebou - zarovnanie je tym dane a nepotrebuje
      zdielat mriezku s hlavnou CRM (tá ma vlastne MINI skryvanie a prisla by o nezavislost). */
@@ -9407,6 +9421,16 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
     border: 1px solid #171717;
     border-radius: 8px;
   }
+  /* === [Zzz5-W5:CW-PEOPLE] telo tabov KNOWN / UNKNOWN / PROJECTS+ - zoznam LUDI, nie tabulka zaznamov.
+     Chipy su zamerne TIE ISTE ako v adresari (.zzz5w5cm-dir-hit / .zzz5w5cm-dir-chip), aby farba znamenala
+     na oboch miestach to iste: bronzova = cudzi, zelena = uz mam, zlata = ja, fialova = moj kontakt. === */
+  .zzz5w5cm-cwp { display: flex; flex-direction: column; gap: 6px; padding: 4px 2px 2px; }
+  .zzz5w5cm-cwp-note { font-size: 9px; color: #8a8a8a; }
+  .zzz5w5cm-cwp-note.is-none { color: #c0392b; }
+  .zzz5w5cm-cwp-list {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+    max-height: 40vh; overflow-y: auto;
+  }
   .zzz5w5cm-module-label {
     display: flex;
     align-items: center;
@@ -13387,11 +13411,34 @@ function zzz1cn_open_comm_setup(host, api) {
         e.textContent = free().length ? 'No contact matches.' : 'Everyone here already has a row.';
         list.appendChild(e);
       }
+      // === [Zzz5-6:SETUP-COLORHIT] Vrso 2026-10-03 (17:46): "tu sa neda urobit vyhladavac users/contacts
+      // tym color letter stylom?" - da; ponuka uz hladala, len vyzerala ako holy zoznam. Teraz su to tie
+      // iste farebne chipy ako v adresari kontaktov, takze farba znamena vsade to iste:
+      //   bronzova = len kontakt tohto zaznamu, fialova = mam ho aj vo svojich kontaktoch, zlata = ja.
+      // A zlate su aj PISMENA, ktore sa zhoduju s napisanym - vidno, preco sa meno v ponuke objavilo.
+      // Co sa NEMENI: zdroj ostava api.users(), teda LEN kontakty tohto zaznamu ([Zzz6-F58:MENTION-GATE]).
+      // Farba je pohlad na ten isty zoznam, nie dvierka, ktorymi by sa dal pridat niekto cudzi.
+      const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
       hits.slice(0, 8).forEach(u => {
         const it = document.createElement('button');
         it.type = 'button';
-        it.className = 'zzz1cn-setup-ritem';
-        it.textContent = u.name;
+        const nN = zzz10v1_normalize(u.name);
+        const mine = typeof zzz5w5cmMyContacts !== 'undefined'
+          && zzz5w5cmMyContacts.some(c => zzz10v1_normalize(c.name) === nN);
+        it.className = 'zzz1cn-setup-ritem zzz5-6-colorhit'
+          + (nN === meN ? ' is-me' : '') + (mine ? ' is-mine' : '');
+        const at = q ? nN.indexOf(q) : -1;
+        if (at < 0) it.textContent = u.name;
+        else {
+          // zvyrazni sa prave ta cast, ktora sa zhoduje - nie cele meno
+          it.appendChild(document.createTextNode(u.name.slice(0, at)));
+          const hit = document.createElement('span');
+          hit.className = 'zzz5-6-colorhit-q';
+          hit.textContent = u.name.slice(at, at + q.length);
+          it.appendChild(hit);
+          it.appendChild(document.createTextNode(u.name.slice(at + q.length)));
+        }
+        it.title = nN === meN ? 'You' : (mine ? 'In your contacts too' : 'Contact of this record');
         it.addEventListener('click', async () => { inp.value = ''; list.style.display = 'none'; await onPick(u.name); });
         list.appendChild(it);
       });
