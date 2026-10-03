@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-03 02:30** · build appky v čase zápisu: `2026-10-03 02:30`
+**Verzia: 2026-10-03 02:40** · build appky v čase zápisu: `2026-10-03 02:40`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -274,7 +274,8 @@ alebo bez loginu - riešenie: odhlásiť, prihlásiť a zopakovať.
   len dostane príznak kôš (`is_trashed`) a zmizne z Database Workspace.
 - **Obnova (odporúčaná):** **TRASH** → pri vlastnom zázname zelené **RESTORE** → záznam sa vráti do Database
   Workspace. Cudzí záznam RESTORE nemá; server to aj tak dovolí len ownerovi.
-- **Obnova šípkou →** (`[Zzz6-F39:FORWARD-HISTORY]`): najprv z pamäte krokov tejto relácie. Keď je pamäť prázdna
+- **Obnova šípkou →** (`[Zzz6-F39:FORWARD-HISTORY]`, `[Zzz6-F39:FORWARD-UNTRASH]`): najprv z pamäte krokov tejto relácie
+  (vráti len príznak koša, obsah záznamu sa neposiela znova - server by ho neprepustil). Keď je pamäť prázdna
   (reload, login, nová úprava v CL), → sa pozrie do histórie na serveri: ak bol tvoj posledný krok na záznamoch presun
   do koša, opýta sa „restore #N from Trash?" - funguje aj po obnovení stránky a na inom zariadení.
 - Keď → aj tak nemá čo vrátiť, hláška povie **čo pamäť vyprázdnilo a kedy** (napr. „edit of CL cell R10" / „new ENTER").

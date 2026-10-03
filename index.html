@@ -11093,12 +11093,26 @@ async function zzz6f39_redo() {
         // moze obsahovat is_trashed:true (stav v momente presunu do trash), co by inak obnovu okamzite
         // "zneplatnilo" spat na trashnuty stav. Explicitny override tu je bezpecny bez ohladu na to, co presne
         // payload obsahuje.
-        const { error } = await sb.from('verso_entries').upsert({ ...action.payload, is_trashed: false }, { onConflict: 'entry_id' });
+        // [Zzz6-F39:FORWARD-UNTRASH] Vrso 3. 10. 02:03 ("nejde spat trash 3 test"): Forward uz NEPOSIELA cely zaznam
+        // znova (upsert) - od soft-delete zaznam z DB nezmizne, len ma is_trashed=true, a server od 3. 10. obsah zaznamu
+        // nedovoli prepisat ani ownerovi. Obnova je teda len vratenie priznaku kosa (rovnako ako TRASH -> RESTORE).
+        // Upsert ostava LEN ako zaloha, ked zaznam v DB naozaj nie je (0 riadkov). | Vrso -> Claude AI | 2026-10-03
+        let { data: untrashed, error } = await sb.from('verso_entries')
+          .update({ is_trashed: false, updated_at: new Date().toISOString() })
+          .eq('entry_id', action.payload.entry_id)
+          .select();
+        if (!error && (!untrashed || untrashed.length === 0)) {
+          ({ error } = await sb.from('verso_entries').upsert({ ...action.payload, is_trashed: false }, { onConflict: 'entry_id' }));
+        }
         if (error) {
           const errDetail = (error && (error.message || error.details || error.hint)) || String(error);
           console.error(`Zzz6-F39 Forward (obnova z Trash) zlyhala. DOVOD: ${errDetail}`);
-          zzz0r1_set_db_connection_state(false, errDetail, true);
-          zzz6f2_show_toast(`Forward zlyhal - zaznam #${action.payload.entry_id} sa nepodarilo obnovit`);
+          if (/verso_entries:/i.test(errDetail)) {
+            zzz6f2_show_toast(`Forward: #${action.payload.entry_id} could not be restored: ${errDetail.replace(/^.*verso_entries:\s*/i, '')}`);
+          } else {
+            zzz0r1_set_db_connection_state(false, errDetail, true);
+            zzz6f2_show_toast(`Forward zlyhal - zaznam #${action.payload.entry_id} sa nepodarilo obnovit (${errDetail})`);
+          }
           return; // nekonzumovat, stack sa nemeni - da sa skusit znova
         }
         submittedEntriesCache[action.payload.entry_id] = action.payload.r1;
@@ -29535,7 +29549,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-03 02:30';
+const ZZZ5_6_BUILD = '2026-10-03 02:40';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
