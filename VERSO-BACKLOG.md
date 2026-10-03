@@ -542,6 +542,26 @@ verifikačnú? Otázka je ale, čo ak bude musieť byť delegát offline")
   „odmietnuté + dôvod", owner môže právo vrátiť alebo delegát text použije inak.
 - Neskôr: prevzatie pravidiel z `comm_setup` textu (migrácia) + appka číta z tabuľky; triggre (`can_write`,
   `check_private`, `restrict_update`) prejdú z regexu na stĺpce. Čaká na súhlas.
+- **ROZŠÍRENIE (Vrso 3. 10., 03:41): nejde o jedného usera, ale o PROJEKT** - ideálne projektová / settings databáza
+  (časom aj consent, technické nastavenia zariadení ...), nie veľa tabuliek; veľa delegovaných ownerov; pri niektorých
+  projektoch riziko vynesenia tajných informácií / know-how -> mimoriadne projekty alebo ich časti cez
+  **multiverifikáciu**; rozdeliť **online a offline** bezpečnosť a hlavne **trasovateľnosť** pri zneužití.
+  Návrh (čaká na 2 rozhodnutia):
+  1. **Jedna tabuľka `verso_settings`** (scope = project / entry / user / device, kľúč, hodnota, verzia) - jeden trigger
+     s pravidlami zápisu podľa scope, každá zmena do `verso_history`. **Consenty ostávajú vo `verso_consents`** - sú to
+     podpisy / dôkaz (append-only), nie nastavenia; settings na ne len odkazujú.
+  2. **Identita projektu** - dnes projekt ako vec neexistuje (len PROJECT NUMBER / NAME v každom zázname). Možnosti:
+     koreňový záznam projektu (CL kategórie Project, jeho číslo = ID projektu) alebo register projektov.
+  3. **Úrovne projektu:** NORMAL (dnes) · RESTRICTED (len MY/TRUSTED, žiadna offline kópia, COPY/export vypnuté
+     alebo s vodoznakom) · SECRET (otvorenie len po multiverifikácii, každé čítanie zapísané).
+  4. **Online:** server vynucuje (RLS + triggre). **Offline:** čo je v zariadení, server už neustráži -> RESTRICTED /
+     SECRET sa offline vôbec nekešuje; NORMAL len MY DEVICE.
+  5. **Trasovateľnosť:** zmeny už ide `verso_history`; pri RESTRICTED / SECRET aj **čítania** (kto, kedy, čo, z akého
+     režimu zariadenia) cez serverovú funkciu, nie priamy SELECT; export / kópia s vodoznakom (meno + čas). Úniku cez
+     screenshot sa zabrániť nedá - dá sa ho odstrašiť a dohľadať.
+  6. **Viac ownerov:** co-owneri + delegáti na úrovni projektu (dnes per záznam), zákaz eskalácie ostáva.
+  Poradie stavby: (a) settings + projekt + prenos comm setupu (NORMAL), (b) úrovne + offline pravidlá, (c) SECRET s MV
+  a logom čítaní.
 
 ### CONTACTS REGISTER (Vrso 2. 10., 23:55 / 3. 10., 00:14)
 - **Postavené:** register = verifikačná databáza (registrované usernames, `verso_verification_public`, bez
