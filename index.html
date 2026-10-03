@@ -9124,6 +9124,49 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
     padding: 0 34px 4px 6px;
     margin-bottom: 6px;
   }
+  /* === [Zzz5-W5:USER-DIRECTORY] adresar usernames pod blokom CONTACTS ===========================
+     Tmavy ako blok nad nim (je to jeho pokracovanie, nie samostatny modul), ale bez vlastneho ramceka.
+     Najdene mena su tlacidla - tuk prida do mojich kontaktov; moje kontakty su chipy pod nimi. === */
+  .zzz5w5cm-dir {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+    padding: 6px 8px; margin: 0 0 6px 0;
+    background-color: #0a0a0a; border: 1px solid #171717; border-radius: 8px;
+  }
+  .zzz5w5cm-module > .zzz5w5cm-dir {
+    background-color: transparent; border: none;
+    border-bottom: 1px solid #1f1f1f; border-radius: 0; padding: 0 6px 6px 6px;
+  }
+  .zzz5w5cm-dir-head { flex: 0 0 auto; display: flex; gap: 4px; align-items: baseline;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.06em; color: #ddd; }
+  .zzz5w5cm-dir-count { color: #8a6d1f; font-weight: 600; }
+  .zzz5w5cm-dir-input {
+    flex: 1 1 140px; min-width: 110px; max-width: 100%;
+    padding: 3px 8px; font-size: 11px;
+    background-color: #171717; color: #eee;
+    border: 1px dashed #D4AF37; border-radius: 7px;
+  }
+  .zzz5w5cm-dir-input::placeholder { color: #7a7a7a; }
+  .zzz5w5cm-dir-hits, .zzz5w5cm-dir-mine {
+    flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  }
+  .zzz5w5cm-dir-note { font-size: 9px; color: #8a8a8a; }
+  .zzz5w5cm-dir-note.is-none { color: #c0392b; }
+  .zzz5w5cm-dir-minelab { font-size: 8px; letter-spacing: 0.06em; color: #8a6d1f; font-weight: 700; }
+  .zzz5w5cm-dir-hit {
+    padding: 2px 8px; font-size: 10px; cursor: pointer;
+    background-color: #171717; color: #ddd;
+    border: 1px solid #8c6239; border-radius: 9px;   /* bronzova = cudzi, ako vsade inde */
+  }
+  .zzz5w5cm-dir-hit.is-me { border-color: #D4AF37; color: #D4AF37; cursor: default; }
+  .zzz5w5cm-dir-hit.is-have { border-color: #2f7d32; color: #7fcf83; cursor: default; }
+  /* moj kontakt: fialova = moj vlastny vyber a moje stitky (fialova je v appke zdroj/vlastne) */
+  .zzz5w5cm-dir-chip {
+    padding: 2px 8px; font-size: 10px; cursor: pointer;
+    background-color: #171717; color: #c9b3f5;
+    border: 1px solid #7b2ff7; border-radius: 9px;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; touch-action: manipulation;
+  }
   /* [Zzz5-W5:BAR-CLOSE] Vrso 2026-09-22: "musi sa zatvarat (vpravo hore tiez x na zatvorenie) contacts module
      osobitne, kedze ide o contacts module tak ako ten pod nim actual comm module" - vlastny [x] v pravom hornom
      rohu bloku, zatvara LEN contacts modul. */
@@ -26699,6 +26742,223 @@ function zzz5w5cm_build_module() {
   return mod;
 }
 
+// === [Zzz5-W5:USER-DIRECTORY] + [Zzz5-W5:MY-CONTACTS] ===========================================
+// Vrso 2026-10-03: "teraz mi ide len o pristup k zoznamu vsetkych usernames, aby sa urychlilo vobec
+// hladanie v roznych aktivitach... mozno idealne na pridanie takto do vlastnych contacts. Vo svojich
+// contacts si ho uz otagujem ako chcem."
+//
+// PRECO TU A NIE NOVE HLADANIE: fungujuce vyhladavanie uz v appke JE - bunka "+" v COMMUNICATION okne.
+// Sklada si zoznam z mojich zaznamov (owner + USER + COMMUNICATION) A z registra (verifikacna databaza,
+// record_type='user_registration') - presne to "vsetky usernames". Chybalo mu len miesto: bolo dostupne
+// jedine vnutri comm okna konkretneho zaznamu. Preto sa sem NEPISE druhe hladanie, len sa TO ISTE
+// (zzz1r17b_load_contact_names) ukaze aj v contacts module. Dve hladania nad jednym zoznamom by sa raz
+// rozisli a user by nevedel, ktore z nich klame.
+//
+// CO SA NEMENI: tab Users ostava tym, cim je (pripnute CL/EL zaznamy). Prerobit ho na adresar ludi by
+// znamenalo zahodit, co v nom kto ma - to je vlastne rozhodnutie, nie vedlajsi ucinok tohto.
+//
+// MAT NIEKOHO V KONTAKTOCH NIE JE SPAROVANIE. Je to moj zoznam s mojimi stitkami; spojenie dalej
+// vyzaduje consent (pairing), presne ako doteraz.
+const ZZZ5W5CM_CONTACTS_TABLE = 'verso_user_contacts';
+const ZZZ5W5CM_CONTACTS_CACHE = 'zzz5w5cm_my_contacts';
+let zzz5w5cmMyContacts = [];        // [{ id, name, tags }]
+let zzz5w5cmMyContactsOk = null;    // null = neoverene, false = tabulka nie je nasadena
+let zzz5w5cmDirQuery = '';          // co je prave napisane v hladani (prezije prekreslenie modulu)
+function zzz5w5cm_cache_my_contacts() {
+  try { localStorage.setItem(ZZZ5W5CM_CONTACTS_CACHE, JSON.stringify(zzz5w5cmMyContacts)); } catch (e) {}
+}
+function zzz5w5cm_my_contacts_from_cache() {
+  try { const v = JSON.parse(localStorage.getItem(ZZZ5W5CM_CONTACTS_CACHE) || '[]');
+        return Array.isArray(v) ? v : []; } catch (e) { return []; }
+}
+async function zzz5w5cm_load_my_contacts() {
+  // cache je CACHE, nie pravda: ukaze sa hned, ale hned za nou ide dopyt a ten rozhoduje
+  zzz5w5cmMyContacts = zzz5w5cm_my_contacts_from_cache();
+  try {
+    const { data, error } = await sb.from(ZZZ5W5CM_CONTACTS_TABLE)
+      .select('id, contact_username, tags').order('contact_username', { ascending: true });
+    if (error) throw error;
+    zzz5w5cmMyContactsOk = true;
+    zzz5w5cmMyContacts = (data || []).map(r => ({
+      id: r.id, name: String(r.contact_username || ''), tags: String(r.tags || '')
+    }));
+    zzz5w5cm_cache_my_contacts();
+    return true;
+  } catch (e) {
+    zzz5w5cmMyContactsOk = false;   // tabulka nie je nasadena / offline - ostava cache, pridavat sa neda
+    return false;
+  }
+}
+function zzz5w5cm_contacts_sql_warn() {
+  zzz6f2_show_toast('My contacts need the SQL update verso_user_contacts_v1 first.', 'warn');
+}
+async function zzz5w5cm_add_my_contact(name) {
+  const nm = String(name || '').trim();
+  const me = String(zzz0r1_get_current_username() || '').trim();
+  if (!nm) return false;
+  if (!me || me === 'username') { zzz6f2_show_toast('Sign in first - contacts are yours.', 'warn'); return false; }
+  if (zzz10v1_normalize(nm) === zzz10v1_normalize(me)) {
+    zzz6f2_show_toast('You are in your own contacts by definition.', 'warn'); return false;
+  }
+  if (zzz5w5cmMyContacts.some(c => zzz10v1_normalize(c.name) === zzz10v1_normalize(nm))) {
+    zzz6f2_show_toast(`${nm} is already in your contacts.`, 'warn'); return false;
+  }
+  if (zzz5w5cmMyContactsOk === false) { zzz5w5cm_contacts_sql_warn(); return false; }
+  try {
+    const { error } = await sb.from(ZZZ5W5CM_CONTACTS_TABLE)
+      .insert({ username: me, contact_username: nm, tags: '' });
+    if (error) throw error;
+    // cita sa spat - zapis mohol prejst bez vratenia riadku (RLS) a kontakt by zil len na obrazovke
+    await zzz5w5cm_load_my_contacts();
+    zzz6f2_show_toast(`${nm} added to your contacts. Adding is not pairing - that still needs consent.`);
+    return true;
+  } catch (e) {
+    const msg = String((e && e.message) || e);
+    if (/verso_user_contacts|42P01|does not exist/i.test(msg)) { zzz5w5cmMyContactsOk = false; zzz5w5cm_contacts_sql_warn(); }
+    else zzz6f2_show_toast(`Contact not saved: ${msg}`, 'warn');
+    return false;
+  }
+}
+async function zzz5w5cm_set_contact_tags(id, tags) {
+  try {
+    const { error } = await sb.from(ZZZ5W5CM_CONTACTS_TABLE)
+      .update({ tags: String(tags || '').trim(), updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) throw error;
+    await zzz5w5cm_load_my_contacts();
+    return true;
+  } catch (e) {
+    zzz6f2_show_toast(`Tags not saved: ${(e && e.message) || e}`, 'warn');
+    return false;
+  }
+}
+async function zzz5w5cm_remove_my_contact(id) {
+  try {
+    const { error } = await sb.from(ZZZ5W5CM_CONTACTS_TABLE).delete().eq('id', id);
+    if (error) throw error;
+    await zzz5w5cm_load_my_contacts();
+    return true;
+  } catch (e) {
+    zzz6f2_show_toast(`Contact not removed: ${(e && e.message) || e}`, 'warn');
+    return false;
+  }
+}
+
+// adresar: hladanie nad VSETKYMI usernames + moje kontakty pod nim
+function zzz5w5cm_build_directory() {
+  const box = document.createElement('div');
+  box.className = 'zzz5w5cm-dir';
+  const head = document.createElement('div');
+  head.className = 'zzz5w5cm-dir-head';
+  const ttl = document.createElement('span');
+  ttl.textContent = 'USERNAMES';
+  head.appendChild(ttl);
+  const cnt = document.createElement('span');
+  cnt.className = 'zzz5w5cm-dir-count';
+  head.appendChild(cnt);
+  box.appendChild(head);
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'zzz5w5cm-dir-input';
+  input.placeholder = 'find a username';
+  input.value = zzz5w5cmDirQuery;
+  input.title = 'Everyone registered, plus everyone already in your records. Tap a name to put it in your contacts.';
+  box.appendChild(input);
+
+  const hits = document.createElement('div');
+  hits.className = 'zzz5w5cm-dir-hits';
+  box.appendChild(hits);
+
+  const mine = document.createElement('div');
+  mine.className = 'zzz5w5cm-dir-mine';
+  box.appendChild(mine);
+
+  let names = [];   // [{norm, name}]
+
+  const paintMine = () => {
+    mine.innerHTML = '';
+    const lab = document.createElement('span');
+    lab.className = 'zzz5w5cm-dir-minelab';
+    lab.textContent = zzz5w5cmMyContacts.length ? 'MY CONTACTS' : 'my contacts - none yet';
+    mine.appendChild(lab);
+    zzz5w5cmMyContacts.forEach(c => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'zzz5w5cm-dir-chip';
+      chip.textContent = c.tags ? `${c.name} · ${c.tags}` : c.name;
+      chip.title = `${c.name} - tap or hold 1-2s = my tags / hold 3s = remove from my contacts`;
+      // tri gesta jedneho tlacidla, rozhodnute pri PUSTENI - rovnaky vzor ako vsade inde v appke
+      zzz_bind_hold_selection_guard(chip);
+      const editTags = async () => {
+        const v = window.prompt(`My tags for ${c.name}:`, c.tags || '');
+        if (v === null) return;
+        if (await zzz5w5cm_set_contact_tags(c.id, v)) paintMine();
+      };
+      chip.addEventListener('click', editTags);
+      zzz5w7_bind_tiered_hold(chip, [
+        { ms: 1100, fn: editTags },
+        { ms: 3000, fn: async () => {
+            if (!window.confirm(`Remove ${c.name} from your contacts?`)) return;
+            if (await zzz5w5cm_remove_my_contact(c.id)) paintMine();
+          } }
+      ]);
+      mine.appendChild(chip);
+    });
+  };
+
+  const paintHits = () => {
+    hits.innerHTML = '';
+    const q = zzz10v1_normalize(zzz5w5cmDirQuery.trim());
+    cnt.textContent = names.length ? `(${names.length})` : '';
+    if (!q) {
+      const note = document.createElement('span');
+      note.className = 'zzz5w5cm-dir-note';
+      note.textContent = names.length
+        ? `${names.length} usernames known - type to narrow`
+        : 'loading the register...';
+      hits.appendChild(note);
+      return;
+    }
+    // predpona najprv, potom zvysok - kto pise cele meno, chce ho mat hore
+    const pre = names.filter(n => n.norm.indexOf(q) === 0);
+    const sub = names.filter(n => n.norm.indexOf(q) > 0);
+    const list = pre.concat(sub).slice(0, 24);
+    if (!list.length) {
+      const note = document.createElement('span');
+      note.className = 'zzz5w5cm-dir-note is-none';
+      note.textContent = `nobody registered matches "${zzz5w5cmDirQuery.trim()}"`;
+      hits.appendChild(note);
+      return;
+    }
+    const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+    list.forEach(n => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      const have = zzz5w5cmMyContacts.some(c => zzz10v1_normalize(c.name) === n.norm);
+      b.className = 'zzz5w5cm-dir-hit'
+        + (n.norm === meN ? ' is-me' : '')
+        + (have ? ' is-have' : '');
+      b.textContent = n.name + (have ? ' ✓' : '');
+      b.title = n.norm === meN ? 'That is you'
+        : have ? 'Already in your contacts' : `Add ${n.name} to your contacts`;
+      b.addEventListener('click', async () => {
+        if (n.norm === meN || have) return;
+        if (await zzz5w5cm_add_my_contact(n.name)) { paintMine(); paintHits(); }
+      });
+      hits.appendChild(b);
+    });
+  };
+
+  input.addEventListener('input', () => { zzz5w5cmDirQuery = input.value; paintHits(); });
+
+  paintMine();
+  paintHits();
+  // zoznam mien aj moje kontakty sa dotahuju na pozadi - modul je pouzitelny hned
+  zzz1r17b_load_contact_names().then(list => { names = list || []; paintHits(); }).catch(() => {});
+  zzz5w5cm_load_my_contacts().then(() => { paintMine(); paintHits(); }).catch(() => {});
+  return box;
+}
+
 function zzz5w5cm_render() {
   const wrap = document.querySelector('#versoWorkspaceSection .communication-workspace');
   if (!wrap) return;
@@ -26772,6 +27032,12 @@ function zzz5w5cm_render() {
     moduleEl.insertBefore(bar, moduleEl.firstChild);
   } else {
     wrap.appendChild(bar);
+  }
+  // [Zzz5-W5:USER-DIRECTORY] adresar stoji HNED POD blokom CONTACTS, nie v mriezke bloku: ta ma tri rady
+  // a kocku cez vsetky tri ([Zzz5-W5:BAR-SYMMETRY]) a stvrty rad by jej symetriu rozbil. Kresli sa len
+  // vtedy, ked je blok vidno - inak by visel sam nad zatvorenym modulom.
+  if (bar.style.display !== 'none' && bar.parentElement) {
+    bar.parentElement.insertBefore(zzz5w5cm_build_directory(), bar.nextSibling);
   }
   if (moduleEl) wrap.appendChild(moduleEl);
   if (zzz5w5cmContactsWinOpen) wrap.appendChild(zzz5w5cm_build_contacts_window()); // [Zzz5-W5:CONTACTS-WINDOW]
