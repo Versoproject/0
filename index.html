@@ -25928,7 +25928,7 @@ function zzz5w5cm_pair_tab_of(entryId) {
 // Presetu) prejdu len zaznamy, ktore sedia s rozsahom nadefinovanym v Preset CRM.
 function zzz5w5cm_preset_allows(row) {
   if (zzz5w5cmPreset.unlimited) return true;
-  const f = row.fields_json || {};
+  const f = zzz_parse_fields_json(row) || {};   // [Zzz5-W5:PAIR-PARSE] fields_json moze prist aj ako text
   const active = Object.keys(zzz5w5cmPreset.fields).filter(k => String(zzz5w5cmPreset.fields[k] || '').trim() !== '');
   if (!active.length) return true;
   return active.every(k => String(f[k] || '').toLowerCase()
@@ -25954,7 +25954,7 @@ async function zzz5w5cm_load_pairing() {
     if (error) throw error;
     // "triggerovane v r* communication bunke" - prihlaseny je uvedeny v COMMUNICATION (r18)
     const mine = (rows || []).filter(row => {
-      const f = row.fields_json || {};
+      const f = zzz_parse_fields_json(row) || {};   // [Zzz5-W5:PAIR-PARSE] fields_json moze prist aj ako text
       return !!meN && zzz6f21_parse_tags(f.r18 || '').some(u => zzz10v1_normalize(u) === meN);
     });
     const consents = {};
@@ -25969,6 +25969,9 @@ async function zzz5w5cm_load_pairing() {
         if (consents[c.entry_id][c.kind] === undefined) consents[c.entry_id][c.kind] = c.active;
       });
     }
+    // [Zzz5-W5:PAIR-WHY] kolko zaznamov vobec PRISLO a kolko z nich ma moje meno - bez tychto dvoch
+    // cisel je prazdny Pairing nemy a nedá sa rozlisit "nic nevidim" od "vidim, ale nie som v nich"
+    zzz5w5cmPairing.seen = (rows || []).length;
     zzz5w5cmPairing.rows = mine;
     zzz5w5cmPairing.consents = consents;
     zzz5w5cmPairing.placements = await zzz6f15_load_my_placements(true); // [Zzz6-F15:PLACEMENT-LAYER]
@@ -26087,7 +26090,7 @@ async function zzz5w5cm_load_important() {
     const list = zzz5w5cm_tab_list('important');
     const has = (id) => list.some(it => String(it.sourceEntryId) === String(id));
     (rows || []).forEach(row => {
-      const f = row.fields_json || {};
+      const f = zzz_parse_fields_json(row) || {};   // [Zzz5-W5:PAIR-PARSE] fields_json moze prist aj ako text
       const priority = String(f.r12 || '').trim();
       if (!priority) return; // len zaznamy so zaciarknutou prioritou
       const mineRaw = [row.username, f.r4, f.r17, f.r18].join(', ');
@@ -26119,7 +26122,7 @@ let zzz5w5cmSavedAttachments = null;
 function zzz5w5cm_fill_pair_attachments(rowsForTab) {
   if (zzz5w5cmSavedAttachments === null) zzz5w5cmSavedAttachments = zzz1m4aLocalAttachments;
   zzz1m4aLocalAttachments = rowsForTab.map((row, i) => {
-    const f = Object.assign({}, row.fields_json || {});
+    const f = Object.assign({}, zzz_parse_fields_json(row) || {});   // [Zzz5-W5:PAIR-PARSE]
     // USER bunka = username toho, KOMU zaznam patri (Vrso: "bunka username (ale toho koho je entry)")
     f.r17 = row.username || f.r4 || '';
     return { id: 'zzz5w5cm-' + row.entry_id + '-' + i, sourceEntryId: row.entry_id, fields: f, zzz5w5cmRow: row };
@@ -26173,7 +26176,7 @@ function zzz5w5cm_pair_rows_for_tab() {
   const active = Object.keys(filter).filter(k => String(filter[k] || '').trim() !== '');
   if (!active.length) return inTab;
   return inTab.filter(row => {
-    const f = row.fields_json || {};
+    const f = zzz_parse_fields_json(row) || {};   // [Zzz5-W5:PAIR-PARSE] fields_json moze prist aj ako text
     return active.every(k => {
       const want = String(filter[k]).trim().toLowerCase();
       const have = String((k === 'entryNumber' ? row.entry_id : f[k]) || '').toLowerCase();
@@ -26487,9 +26490,22 @@ function zzz5w5cm_build_pairing() {
   const rowsForTab = zzz5w5cmPairing.rows.filter(r => zzz5w5cm_pair_tab_of(r.entry_id) === zzz5w5cmPairTab);
   const note = document.createElement('div');
   note.className = 'zzz5w5cm-view-empty';
+  // === [Zzz5-W5:PAIR-WHY] Vrso 2026-10-03: "ako verso som urobil entry s verso aj verso1 v comm...
+  // uprav, co treba, aby vyfiltrovalo dany zaznam od usera Vrso."
+  // Prazdny zoznam mal jednu jedinu hlasku na tri uplne rozne pricny, takze sa z neho nedalo zistit nic.
+  // Teraz povie, KTORA z nich to je:
+  //   nic neprislo        -> zaznam pre mna nie je citatelny (o tom rozhoduje RLS, nie appka)
+  //   prislo, ale bez mna -> som vidiet, len ma owner nema v COMMUNICATION (r18) ulozeneho
+  //   mam zaznamy inde    -> su, len v inom tabe (Paired / Unpaired / Trashed)
+  const total = (zzz5w5cmPairing.rows || []).length;
+  const seen = zzz5w5cmPairing.seen || 0;
   note.textContent = rowsForTab.length
     ? `${rowsForTab.length} entry line(s) - tap the ENTRY NUMBER cell to move one between tabs.`
-    : 'Nothing here - entry lines appear once you are named in a saved COMMUNICATION cell.';
+    : total
+      ? `Nothing in this tab - your ${total} entry line(s) are in the other tabs.`
+      : (seen
+        ? `None of the ${seen} records you can read names you in a saved COMMUNICATION cell. The owner has to put your username in COMMUNICATION and save the record.`
+        : 'No record is readable for you here. Either none exists yet, or the record is not shared with you - that is decided in the database, not in this window.');
   mod.appendChild(note);
 
   // [Zzz5-W5:M4A-IN-TAB] slot pre pozicany Zzz1-M4a2 (pairing/paired/unpaired comm module)
@@ -26905,7 +26921,7 @@ async function zzz5w5cm_cw_load(force) {
       id: 'zzz5w5cm-cw-' + row.entry_id,
       sourceEntryId: row.entry_id,
       entryDate: row.entry_date || '',
-      fields: Object.assign({}, row.fields_json || {}),
+      fields: Object.assign({}, zzz_parse_fields_json(row) || {}),   // [Zzz5-W5:PAIR-PARSE]
       zzz5w5cmKey: 'el#' + row.entry_id
     }));
   } catch (e) {
@@ -27628,7 +27644,7 @@ async function zzz1r17b_load_contact_names(force) {
   if (error) throw error;
   const seen = {};
   (rows || []).forEach(r => {
-    const f = r.fields_json || {};
+    const f = zzz_parse_fields_json(r) || {};   // [Zzz5-W5:PAIR-PARSE]
     [f.r17, f.r18].forEach(cell => zzz6f21_parse_tags(cell || '').forEach(u => {
       const t = String(u).trim();
       if (t && t !== '-') seen[zzz10v1_normalize(t)] = t;
