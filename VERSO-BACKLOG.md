@@ -668,6 +668,22 @@ Ak ti prepisovanie začne prekážať, je to ten smer.
 - Čo presne - vyčlení Vrso neskôr; návrh: vlastné bežné projekty + niekoľko workspacov (PROJECTS, FAVORITES, ...).
 - Len MY DEVICE (TRUSTED nie, FOREIGN nikdy). Konflikty: záznam sa neprepisuje - offline zmena = nová verzia.
 
+### I5. PROJEKT, NASTAVENIA A CONSENTY (Vrso 3. 10., 03:41 / 04:17) - podrobne v projekte `claude/verso-projekt-nastavenia-consenty.md`
+- **Projekt = koreňová CL** (rozhodnuté 04:17): „všetko je v podstate projekt" - CL ho definuje (najmä keď sa označí
+  štruktúra / consent); jej číslo = ID projektu, záznamy projektu sa naň viažu.
+- **Nastavenia:** jedna tabuľka `verso_settings` (scope project / entry / user / device), zmeny do `verso_history`.
+- **Consenty (podpis zmluvy, hlasovanie, súhlasy):** časté a pre projekty nevyhnutné -> **dve vrstvy**:
+  (1) **akt** patrí projektu (`verso_consents` - členovia ho vidia, riadia sa ním pravidlá projektu);
+  (2) **pečať** do verifikačnej databázy (append-only, reťazený hash): kto, k čomu (záznam + jeho content_hash = presná
+  verzia obsahu), kedy, rozhodnutie - BEZ obsahu. Akákoľvek neskoršia zmena aktu sa prezradí nesúladom s pečaťou.
+  Podpis tak viaže presne tú verziu zmluvy, ktorú user videl.
+- **Iná databáza pre viac bezpečia:** zatiaľ jedna DB, prísne oddelené tabuľky; neskôr sa verifikačná vrstva (pečate,
+  identita) dá presunúť do samostatnej databázy / inštancie (súvisí s lokálnym oddelením verifikácie) - cez hranicu
+  idú len hashe a ID, takže presun je jednoduchý. Kontroly medzi DB potom cez serverovú funkciu, nie trigger.
+- **Úrovne projektu** NORMAL / RESTRICTED / SECRET (SECRET = multiverifikácia, log čítaní), online vs offline,
+  trasovateľnosť, viac ownerov - viď „COMM SETUP - VLASTNÁ DATABÁZA" vyššie.
+- Dorába sa v samostatnom chate (Vrso 04:17).
+
 ---
 
 ## C. PRAVIDLÁ, KTORÉ PLATIA (nie úlohy, ale záväzné pri každej zmene)
