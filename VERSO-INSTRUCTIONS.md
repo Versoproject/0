@@ -1,6 +1,6 @@
 # VERSO — INSTRUCTIONS (používanie appky)
 
-**Verzia: 2026-10-03 02:40** · build appky v čase zápisu: `2026-10-03 02:40`
+**Verzia: 2026-10-03 02:50** · build appky v čase zápisu: `2026-10-03 02:50`
 
 > **Na čo je tento súbor.** Ako sa Verso POUŽÍVA: postupy krok po kroku, gestá, pravidlá a riešenie
 > problémov. Je to podklad pre **support** (človek aj AI), pre návody a pre kontrolu, či appka robí to,
@@ -277,7 +277,10 @@ alebo bez loginu - riešenie: odhlásiť, prihlásiť a zopakovať.
 - **Obnova šípkou →** (`[Zzz6-F39:FORWARD-HISTORY]`, `[Zzz6-F39:FORWARD-UNTRASH]`): najprv z pamäte krokov tejto relácie
   (vráti len príznak koša, obsah záznamu sa neposiela znova - server by ho neprepustil). Keď je pamäť prázdna
   (reload, login, nová úprava v CL), → sa pozrie do histórie na serveri: ak bol tvoj posledný krok na záznamoch presun
-  do koša, opýta sa „restore #N from Trash?" - funguje aj po obnovení stránky a na inom zariadení.
+  do koša, opýta sa „restore #N from Trash?" a ukáže hlavné bunky záznamu (PROJECT NUMBER / NAME, OWNER,
+  CATEGORY, začiatok CONTENT, USER) - funguje aj po obnovení stránky a na inom zariadení.
+- **Poradie:** šípky vracajú kroky odzadu. Ak po ← vrátiš aj úpravy v CL, → ich najprv vráti späť a obnova záznamu
+  príde ako ďalší krok →.
 - Keď → aj tak nemá čo vrátiť, hláška povie **čo pamäť vyprázdnilo a kedy** (napr. „edit of CL cell R10" / „new ENTER").
 - Dvojitý dotyk na ← / → sa ignoruje, kým predošlý krok ešte beží (čaká na server).
 - **Stopa:** server každý presun do koša aj obnovu zapíše do histórie (`verso_history`: `trash` / `restore`, kto a
