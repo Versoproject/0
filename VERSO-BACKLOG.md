@@ -510,6 +510,9 @@ Každá tabuľka, do ktorej appka zapisuje, musí na serveri overiť, že zapisu
   prehliadači - reload, login alebo nová úprava CL ju zmaže). Test: #159 ← presunutý do koša, → „nie je čo vrátiť
   vpred" (v simulácii ← → funguje; príčina na telefóne neznáma). **POSTAVENÉ 01:15** `[Zzz6-F35:TRASH-RESTORE]`:
   TRASH → RESTORE pri vlastnom zázname (server overí ownera, `verso_history` zapíše `restore`).
+- **Rozhodnutie (Vrso 3. 10., 02:24):** ← vracia kroky relácie (úpravy CL, ENTER); záznam daný do koša cez DELETE sa
+  ← NEVRACIA - obnova je cez **TRASH → RESTORE**. Nápad: hromadný RESTORE (označiť viac záznamov v koši naraz) pre
+  hromadnejšie opravy.
 - **PAMÄŤ KROKOV (Vrso 3. 10., 01:16: „nedá sa riešiť? prípadne neskôr cez PWA lokálnu cache vrstvu?"):** návrh
   rozdeliť na dve vrstvy: (1) úpravy v CL = lokálne, uložiť per user do úložiska zariadenia (teraz localStorage,
   s PWA IndexedDB) - prežijú reload; (2) uložené záznamy (ENTER / kôš / obnova / verzia) = **zdroj pravdy je

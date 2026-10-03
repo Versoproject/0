@@ -272,6 +272,8 @@ alebo bez loginu - riešenie: odhlásiť, prihlásiť a zopakovať.
 ### 4.14 Kôš a obnova (`[Zzz6-F35:TRASH-RESTORE]`)
 - **Do koša:** DELETE na označenom zázname, alebo **←** hneď po ENTER (vráti posledný zápis). Záznam sa nemaže,
   len dostane príznak kôš (`is_trashed`) a zmizne z Database Workspace.
+- **Pravidlo:** ← vracia kroky tejto relácie (úpravy v CL, ENTER). Záznam daný do koša cez **DELETE** sa vracia
+  cez **TRASH → RESTORE**, nie šípkou (rozhodnutie 3. 10.).
 - **Obnova (odporúčaná):** **TRASH** → pri vlastnom zázname zelené **RESTORE** → záznam sa vráti do Database
   Workspace. Cudzí záznam RESTORE nemá; server to aj tak dovolí len ownerovi.
 - **Obnova šípkou →** (`[Zzz6-F39:FORWARD-HISTORY]`, `[Zzz6-F39:FORWARD-UNTRASH]`): najprv z pamäte krokov tejto relácie
