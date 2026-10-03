@@ -269,6 +269,13 @@ Kontrola na serveri (trigger `zz_verso_verification_check_insert_trg`):
 Ak support vidí chybu „…write refused" / „…only for yourself", appka sa pokúsila zapísať za iné meno
 alebo bez loginu - riešenie: odhlásiť, prihlásiť a zopakovať.
 
+### 4.13b Kto vidí záznam (`verso_entries_select_visible_v1`, 3. 10.)
+- **Bez prihlásenia** appka nedostane zo servera žiadny záznam.
+- **Prihlásený** vidí záznam, ak: je jeho owner (autor alebo PROJECT OWNER), je v USER alebo COMMUNICATION, je
+  delegát záznamu, alebo je záznam verejný (PRIVACY = áno). Platí pre všetky kategórie vrátane Templates / System.
+- Support: „záznam zmizol" = user nie je v žiadnej z týchto skupín; owner ho môže pridať do USER / COMMUNICATION
+  (nová verzia) alebo nastaviť PRIVACY.
+
 ### 4.14 Kôš a obnova (`[Zzz6-F35:TRASH-RESTORE]`)
 - **Do koša:** DELETE na označenom zázname, alebo **←** hneď po ENTER (vráti posledný zápis). Záznam sa nemaže,
   len dostane príznak kôš (`is_trashed`) a zmizne z Database Workspace.
