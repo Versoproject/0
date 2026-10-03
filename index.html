@@ -8229,6 +8229,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz5-6:SHOW-GESTURES - tri gesta na SHOW tlacidle, rozhodnute pri PUSTENI (nie casovacmi): tuk = otvor SHOW okno, 1-2s = zapni/vypni preset, 3s = RESET VSETKEHO vratane presetu (tlacidlo RESET v okne preset zamerne nechava - ten je zaklad vyberu; 3s gesto rusi aj zaklad). Casovace su uz len na hmatove pulzy. zzz_bind_hold_selection_guard je povinny, inak Android zje touchend</span>
   <span class="module-tag">Zzz5-6:SHOW-PRESET-MODE - preset nesie aj REZIM hladania (NOTE/CONTENT) pod klucom __mode, a to len ked je zapnuty CONTENT (NOTE je vychodzi stav a kriterium, ktore nic nemeni, by sa inak pocitalo medzi zamknute). Zapnutie presetu prepne prepinac v liste cez opts.onPreset(on, mode) - prepinac zije v okne, nie v module, takze sa sem len cita</span>
   <span class="module-tag">Zzz5-6:SHOW-MODE-COLOR - farba nepatri tlacidlu, ale REZIMU hladania: oranzova #ea8c00 = NOTE, fialova #7b2ff7 = CONTENT. Jedna premenna --zzz56-mode nesie SHOW, LIMIT, FILTER, HIDE aj preset; pouzite kriterium = cierna vypln + ram a pismo vo farbe rezimu; pocty sa ratajú PO TABOCH (FILTER uz nedostava aj to, co je v LIMIT). PLATI LEN TAM, KDE PREPINAC NOTE/CONTENT NAOZAJ JE (okno dostane opts.searchMode) - Vrso to tak aj napisal: "AK JE ZAPNUTA V LISTE note toggle". Prvykrat som farbu dal vsade, takze aj v okne jedneho zaznamu bez prepinaca, a tam prekryla vlastne farby HIDE (terakota) a LIMIT (siva) - to bolo odobratie informacie, nie oznacenie. Tie okna ostavaju presne take, ake boli</span>
+  <span class="module-tag">Zzz5-6:CONSENT-GRID - consent riadok ma vo VSETKYCH oknach rovnaku geometriu (Vrso 3. 10.: "u oboch zlad ako mriezka s napismi consent pod nimi s price bunkou"). Popis pod prepinacom ma pevnu vysku 3.4em - inak ma USER okno jednoriadkove popisy (CONSENT / PERMANENT) a comm okno trojriadkove (PERMANENT COMM CONSENT) a ten isty riadok vyzera v kazdom okne inak vysoko. Overene merianim: oba riadky 82px, oba prepinace 62x45</span>
   <span class="module-tag">Zzz5-6:FOOT-IN-HEAD - ENTER TO SUBS sa presunul z panelu FILTER do HLAVICKY show okna, vlavo od PRESET (Vrso 3. 10.: "enter to subs skus dat do listy vlavo od preset v show window"). Patka tym prestala brat riadok nad kriteriami; hlavicka sa smie zalomit, aby siroke tlacidlo nevytlacilo PRESET/RESET za okraj. Nazov `foot` v API okna ostava - okna si don vkladaju, co potrebuju</span>
   <span class="module-tag">Zzz5-6:SHOW-MIRROR - pripravne notes workspaces (GROUP NOTES, FAVOURITE, AUTHOR CREDITS) dostavaju listu SHOW modulu s pozadim, ale BEZ FILTROV: tlacidlo neotvara okno a povie, na com to stoji. Prazdne okno s dvadsiatimi kriteriami, z ktorych ziadne nema na com pracovat, by bolo horsie nez zadne. PROJECT/OTHER zrkadlo nedostavaju - obsah uz maju</span>
   <span class="module-tag">Zzz5-6:TABS-FIXED - prva linia tabov je NEEDITOVATELNA (Vrso 3. 10.: "su to hlavne kategorie"). Ziadne gesto ju nepremenuvava ani nemaze: su to oznacenia modulov (Zzz5-6 Tab &lt;nazov&gt;), podla ktorych sa v zdroji hlada, co ktory tab robi. Editovatelny je LEN vlastny rad pod nou</span>
@@ -13831,16 +13832,23 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
       consentTitle: isPreset
         ? 'COMM CONSENT - pre-set. It is written to the record the moment you press ENTER.'
         : 'COMM CONSENT - consent to communication about this record',
-      consentCaption: isPreset ? 'COMM CONSENT (pre-set)' : 'COMM CONSENT',
+      // [Zzz5-6:CONSENT-PRESET] Vrso 2026-10-03 (15:37): "zrus consent 'preset' nazvy... v kode kludne
+      // ku konsentom ako daky extra tag". Popis je teda zase len COMM CONSENT; ze este nie je v databaze,
+      // hovori PRERUSOVANY RAM (is-preset) a popis pri tuknuti. Oznacenie ostava v kode.
+      consentCaption: 'COMM CONSENT',
       permOn: hasPerm,
-      // permanent comm consent az PO comm consente - rovnaka zavislost ako pri user consente,
-      // a plati aj pre prednastavenie (inak by vznikol permanent bez zakladneho suhlasu)
-      permEnabled: !!current && hasComm,
+      // === [Zzz5-6:CONSENT-PRESET] PERMANENT sa v PREDNASTAVENI da zapnut SAMOSTATNE =============
+      // Vrso 2026-10-03 (15:37): "preco nejde aj permanent?"
+      // Na ULOZENOM zazname je zavislost skutocna: permanent je riadok v databaze, ktory bez comm
+      // consentu nema zmysel, takze prepinac ostava zamknuty, kym comm nie je zapnuty.
+      // V PREDNASTAVENI ale este ziadne riadky nie su - je to volba "co chcem po ENTER". A ked clovek
+      // povie "chcem permanent", povedal tym aj comm; nema ho nutit tukat dvakrat v spravnom poradi.
+      // Zavislost tym nezanika, len ju drzi zapisovac (zzz5_6_set_comm_preset zapne comm spolu s nim).
+      permEnabled: !!current && (isPreset || hasComm),
       permTitle: isPreset
-        ? (!hasComm ? 'PERMANENT COMM CONSENT - switch COMM CONSENT on first'
-                    : 'PERMANENT COMM CONSENT - pre-set. Written together with COMM CONSENT on ENTER.')
+        ? 'PERMANENT COMM CONSENT - switching it on pre-sets COMM CONSENT with it; both are written on ENTER.'
         : (!hasComm ? 'PERMANENT COMM CONSENT - switch COMM CONSENT on first' : 'PERMANENT COMM CONSENT'),
-      permCaption: isPreset ? 'PERMANENT COMM CONSENT (pre-set)' : 'PERMANENT COMM CONSENT',
+      permCaption: 'PERMANENT COMM CONSENT',
       onConsent: async (v) => {
         if (isPreset) { zzz5_6_set_comm_preset(v, v ? hasPerm : false); renderConsentBar();
                         zzz6f2_show_toast(v ? 'COMM CONSENT pre-set - it is written when you press ENTER.'
@@ -15529,9 +15537,13 @@ function zzz1r17b_build_consent_line(o) {
     // dlhsie popisy (COMM CONSENT / PERMANENT COMM CONSENT) sa zalomia a zmensia, aby riadok sedel aj na
     // klasickom mobilnom displeji a meno usera sa neorezalo. Vrso 2026-09-24
     cap.className = 'zzz1r17b-consent-cap'; // [Zzz1-R17b:CONSENT-ADAPT]
+    // [Zzz5-6:CONSENT-GRID] Vrso 2026-10-03: "u oboch zlad (ako mriezka) s napismi consent pod nimi
+    // s price bunkou". Vyska popisu je PEVNA a rovnaka vo VSETKYCH oknach - inak ma USER okno
+    // jednoriadkove popisy (CONSENT / PERMANENT) a comm okno trojriadkove (PERMANENT COMM CONSENT),
+    // takze ten isty riadok vyzera v kazdom okne inak vysoko. 3.4em pojme aj ten najdlhsi popis.
     cap.style.cssText ='font-size:clamp(5px,1.6vw,7px);font-weight:700;color:#171717;margin-top:1px;'
       + 'text-align:center;line-height:1.05;max-width:58px;white-space:normal;'
-      + 'min-height:2.2em;display:flex;align-items:flex-start;justify-content:center;'; // pevna vyska = zarovnane pilulky
+      + 'min-height:3.4em;display:flex;align-items:flex-start;justify-content:center;'; // pevna vyska = zarovnane pilulky
     cap.textContent = text;
     w.appendChild(t);
     w.appendChild(cap);
@@ -30088,7 +30100,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-03 15:55';
+const ZZZ5_6_BUILD = '2026-10-03 16:15';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
