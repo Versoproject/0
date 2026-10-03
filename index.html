@@ -335,6 +335,16 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     border-color: #ff8c00 !important;
     color: #0a0a0a !important;
   }
+  /* [Zzz4-R17:SEARCH-TWO-KINDS] Vrso 2026-10-04 (00:42): "ten search musi byt vzdy zapnuty v pairing -
+     neda sa oddelit jeho funkcia?" Oddelena UZ JE (zzz4r17_set_search_target: 'cl' = cela appka v
+     search mode a NIC sa nezapisuje, 'm4a' = len filter zoznamu pred tebou, zapis bezi dalej) - lenze
+     tlacidlo svietilo v oboch pripadoch rovnako oranzovo, takze to z neho nebolo vidno. PLNA oranzova =
+     cela CL hlada (nepise sa), SAMOTNY oranzovy text = lokalny filter listu. Jedna farba, dva stavy. */
+  #versoSearchButton.zzz4r17-search-local {
+    background-color: #171717 !important;
+    border-color: #ff8c00 !important;
+    color: #ff8c00 !important;
+  }
   /* numbers-row v search rezime - VSETKY bunky (vratane needitovatelnych/readonly ako R1, R14, R22)
      dostanu oranzovy okraj ako vizualny signal, ze CL je prave v search/filter rezime; readonly bunky
      samotne sa neotvaraju na filter input (Zzz4-R17 filtruje len cez ZZZ4R17_FILTERABLE_IDS), oranzovy
@@ -21402,7 +21412,12 @@ function zzz4r17_toggle_search_mode() {
   zzz4r17SearchMode = !zzz4r17SearchMode;
 
   const btn = document.getElementById('versoSearchButton');
-  if (btn) btn.classList.toggle('zzz4r17-search-active', zzz4r17SearchMode);
+  if (btn) {
+    btn.classList.toggle('zzz4r17-search-active', zzz4r17SearchMode);
+    // [Zzz4-R17:SEARCH-TWO-KINDS] zapnutie CL hladania nemoze nechat svietit aj lokalny filter - su to
+    // dva rozne stavy jedneho tlacidla a svietit smie vzdy len ten platny
+    if (zzz4r17SearchMode) btn.classList.remove('zzz4r17-search-local');
+  }
 
   // OPRAVA (Vrso 2026-08-22, Zzz1-M4:CRM regresia): predtym '.numbers-row' (bez ID) - fungovalo, kym M1 bola
   // jedina .numbers-row na stranke; po rozdeleni na Zzz1-M4 (read line, prva v DOM) + Zzz1-M1 (CL) tento
@@ -21543,7 +21558,15 @@ function zzz4r17_set_search_target(target) {
   if (target !== 'cl' && zzz4r17SearchMode) zzz4r17_toggle_search_mode();
   zzz4r17SearchTarget = target;
   if (m4aRow) m4aRow.classList.toggle('zzz4r17-search-mode', target === 'm4a');
-  if (btn) btn.classList.toggle('zzz4r17-search-active', !!target);
+  // [Zzz4-R17:SEARCH-TWO-KINDS] plna oranzova LEN pre 'cl' (cela appka hlada, nic sa nezapisuje);
+  // lokalny filter listu ma vlastny vzhlad, aby sa tie dva stavy nedali zamenit
+  if (btn) {
+    btn.classList.toggle('zzz4r17-search-active', target === 'cl');
+    btn.classList.toggle('zzz4r17-search-local', target === 'm4a');
+    btn.title = target === 'cl' ? 'SEARCH: the whole CL searches - nothing is written while this is on'
+      : target === 'm4a' ? 'SEARCH: local filter of the list below - writing still works'
+      : 'SEARCH: off (hold 1-2s to switch between the whole CL and the list in front of you)';
+  }
   if (target === 'm4a') {
     zzz4r17_bind_m4a_filter();
     zzz4r17_apply_m4a_filter();
@@ -26592,7 +26615,7 @@ function zzz5w5cm_pair_selected_items() {
 function zzz5w5cm_attach_to_contacts(anchorEl) {
   const items = zzz5w5cm_pair_selected_items();
   if (!items.length) {
-    zzz6f2_show_toast('Najprv oznac riadok (podrz ENTRY NUMBER 1-2s).', 'warn');
+    zzz6f2_show_toast('Select a line first - hold its ENTRY NUMBER for 1-2s.', 'warn');
     return;
   }
   document.querySelectorAll('.zzz5t0-tab-window').forEach(m => m.remove());
@@ -26600,7 +26623,8 @@ function zzz5w5cm_attach_to_contacts(anchorEl) {
   win.className = 'zzz5t0-tab-window';
   const title = document.createElement('div');
   title.style.cssText = 'font-size:9px;color:#999;padding:2px 4px 6px;';
-  title.textContent = `ATTACH TO CONTACTS (${items.length}) - do ktorej CRM?`;
+  // [Zzz6-SF:ENGLISH-UI] + [Zzz5-W5:PAIR-ADD-CONTACT] titulok musi povedat, ze USERS robi O JEDNU VEC VIAC
+  title.textContent = `ATTACH TO CONTACTS (${items.length}) - which CRM? USERS also adds the people to your contacts.`;
   win.appendChild(title);
   [['users', 'USERS'], ['groups', 'GROUPS'], ['projects', 'PROJECTS']].forEach(([kind, label]) => {
     const b = document.createElement('button');
@@ -26635,7 +26659,7 @@ function zzz5w5cm_attach_to_contacts(anchorEl) {
         }
       });
       zzz_haptic_pulse(30);
-      zzz6f2_show_toast(`${items.length} entry line(s) pripnute do ${label}.`);
+      zzz6f2_show_toast(`${items.length} entry line(s) pinned to ${label}.`);
       zzz5w5cm_render();
       if (kind === 'users' && people.length) {
         const me = zzz10v1_normalize(zzz0r1_get_current_username() || '');
