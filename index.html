@@ -8218,6 +8218,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz5-6:TAB-PARENT - druha linia uz nie je jeden spolocny rad, ale rad TOHO tabu prvej linie, ktory je prave otvoreny (stlpec parent_tab, SQL verso_note_tabs_v2_scoped). Oznaceny vlastny tab z inej linie sa pri prepnuti zahadzuje - inak by dalej filtroval podla tabu, ktory nie je vidno</span>
   <span class="module-tag">Zzz5-6:TAB-EDIT - vlastny tab: 1-2s = premenovanie (meno sa overuje naprieg OBOMA liniami, Zzz5-6:TAB-NAME-UNIQUE), 3s = DO KOSA (deleted_at), nie tvrde zmazanie - na tabe mozu byt umiestnene zaznamy a DELETE by ich poslal do NOTES bez moznosti vratenia. Unique index je preto ciastocny (WHERE deleted_at IS NULL), aby tab v kosi neblokoval navzdy svoj nazov</span>
   <span class="module-tag">Zzz5-6:NO-CLONE - klon 2-layoutu a dashboardu (zzz1cn_build_note_module) je ZRUSENY (Vrso 3. 10., A5: "nema byt klon, ale hlavny verso/module"). Od Zzz5-6:WS-MAIN sa uz nevkladal do DOM, len sa staval. Nad workspacom stoji SKUTOCNY verso module (hlavicka stranky, sticky)</span>
+  <span class="module-tag">Zzz5-6:CONSENT-WHY - zasednuty prepinac consentu POVIE, preco este nejde (Vrso 3. 10.: "preco nejde dat comm. consent?"). Dovod uz v kode BOL - v title - lenze prepinac bol `disabled`, a disabled tlacidlo nepusti ziadny klik; na mobile sa title navyse nikdy nezobrazi, takze jediny nosic vysvetlenia bol pre dotykove zariadenie neviditelny. Teraz: trieda is-locked (vyzera rovnako zasedlo) + aria-disabled, tuk vypise dovod ako toast, zapisat sa dalej neda. Popisy su zaroven NASLEDUJUCI KROK, nie konstatovanie ("press ENTER first, then open COMMUNICATION of that record")</span>
   <span class="module-tag">Zzz5-W5:USER-DIRECTORY - adresar VSETKYCH usernames hned pod blokom CONTACTS (Vrso 3. 10.: "ide mi len o pristup k zoznamu vsetkych usernames, aby sa urychlilo hladanie v roznych aktivitach"). NEPISE sa nove hladanie: pouziva TEN ISTY zoznam ako bunka "+" v COMMUNICATION okne (zzz1r17b_load_contact_names = moje zaznamy + register z verifikacnej databazy, record_type=user_registration) - dve hladania nad jednym zoznamom by sa raz rozisli. Stoji POD mriezkou bloku, nie v nej: blok ma tri rady a kocku cez vsetky tri (Zzz5-W5:BAR-SYMMETRY) a stvrty rad by ju rozbil. Predpona ide pred zvyskom, seba pridat nejde, uz pridany je zeleny</span>
   <span class="module-tag">Zzz5-W5:MY-CONTACTS - moj sukromny zoznam LUDI s MOJIMI stitkami (tabulka verso_user_contacts, SQL verso_user_contacts_v1). Tuk na najdene meno ho prida, na chipe tuk/1-2s = moje stitky, 3s = prec. RLS je prisnejsia nez pri taboch: koho mam v kontaktoch a ako som si ho otagoval vidim LEN JA - register usernames je verejny, moj vyber z neho nie. MAT NIEKOHO V KONTAKTOCH NIE JE SPAROVANIE: spojenie dalej vyzaduje consent (pairing), preto tu nie je ziadny stav "accepted" a druha strana o riadku nemusi vediet. Tab Users ostava zoznamom pripnutych zaznamov - prerobit ho na adresar ludi by zahodilo, co v nom kto ma</span>
   <span class="module-tag">Zzz5-6:COMM-KEEP - zatvorenie COMMUNICATION okna si kontakty NECHAVA. Okno pracuje s vlastnou kopiou (workingTags) a do CL ju prepisuje az persistLocal(); ten sa volal pri ATTACH, ENTER, DELETE, pri opusteni poznamok a pri otvoreni CONTACTS - ale NIE pri zatvoreni, takze kto chipy pridal a okno zavrel, prisiel o ne a [Zzz0-R1:OWNER-IS-ME] pri ulozeni doplnil uz len prihlaseneho usera. USER okno (r17) persistLocal pri zatvoreni volalo - dve okna na tu istu vec s dvoma zvykmi. Zalezi na tom: Pairing tab (zzz5w5cm_load_pairing) vyberá zaznamy podla toho, kto je v r18 COMMUNICATION, takze stratene chipy = zaznam sa tym ludom nikdy neukaze</span>
@@ -11807,8 +11808,39 @@ const ZZZ1COMM_KIND_PERM = 'comm_permanent';
 
 // zapis comm consentu + okamzite prehodenie zaznamu medzi Pairing/Paired tabmi. Tie dve veci patria k sebe:
 // zzz5w5cm_on_comm_consent_change() presuva LEN placement (verso_placements), consent riadok zapisuje az toto.
+// === [Zzz5-6:CONSENT-PRESET] CONSENT SA DA PREDNASTAVIT UZ V ROZPISANEJ CL =======================
+// Vrso 2026-10-03: "ak do CL nemozem zaciarknut consent, nerozumiem preco - vsak JA posielam consent a
+// moze byt prednastaveny a po entry sa aktivuje, resp. je v databaze... Okrem toho ako takto by som
+// urcil, ci chcem dat consent alebo permanent?"
+// Mal pravdu v oboch bodoch. Suhlas, ktory davam JA SAM za seba k zaznamu, ktory prave zakladam, nema
+// preco cakat: nie je to cudzi suhlas ani nic, co by sa dalo niekomu podstrcit. A bez prepinacov v CL sa
+// naozaj nedalo povedat, ci chcem comm alebo aj permanent - volba by vznikla az po ulozeni, teda inde.
+// CO SA NEMENI: zapis do verso_consents stale potrebuje entry_id, takze sa deje AZ po ENTER. Preto je to
+// PREDNASTAVENIE, nie zapis - a prepinac to aj hovori (prerusovany ram, popis "pre-set").
+// Rovnake rozlisenie ako "chatnote sa VKLADA, note sa UKLADA": kym to nie je v databaze, netvarime sa, ze je.
+// Preset je jednorazovy a globalny (jedna rozpisana CL naraz), takze ho vie pouzit KAZDA cesta ulozenia -
+// ENTER v comm okne aj ENTER na hlavnej stranke. Keby zil v okne, druha cesta by ho ticho zahodila.
+let zzz5_6CommPreset = null;   // { comm: bool, perm: bool } | null
+function zzz5_6_comm_preset() { return zzz5_6CommPreset || { comm: false, perm: false }; }
+function zzz5_6_set_comm_preset(comm, perm) {
+  // permanent bez comm neexistuje - rovnaka zavislost ako na ulozenom zazname
+  const c = !!comm || !!perm;
+  zzz5_6CommPreset = (c || perm) ? { comm: c, perm: !!perm } : null;
+}
+async function zzz5_6_apply_comm_preset(entryId) {
+  const p = zzz5_6CommPreset;
+  if (!entryId || !p || (!p.comm && !p.perm)) return;
+  let ok = true;
+  if (p.comm) ok = await zzz1comm_set(entryId, ZZZ1COMM_KIND, true, null, { comm: false, perm: false }) && ok;
+  if (ok && p.perm) ok = await zzz1comm_set(entryId, ZZZ1COMM_KIND_PERM, true, null, { comm: true, perm: false }) && ok;
+  // preset sa zahadzuje LEN ked zapis presiel; inak ostava a skusi sa pri najblizsom ulozeni, nech sa
+  // potvrdenie nestrati ticho
+  if (ok) zzz5_6CommPreset = null;
+  else zzz6f2_show_toast('Consent pre-set could not be written - it stays set and will be tried again.', 'warn');
+}
+
 async function zzz1comm_set(entryId, kind, active, onDone, prev) {
-  if (!entryId) { zzz6f2_show_toast('Communication consent sa da dat az na ULOZENOM zazname.', 'warn'); return false; }
+  if (!entryId) { zzz6f2_show_toast('Communication consent needs a SAVED record.', 'warn'); return false; }
   try {
     const { error } = await sb.from('verso_consents').insert({ entry_id: Number(entryId), kind, active: !!active });
     if (error) throw error;
@@ -13757,8 +13789,13 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
 
   const renderConsentBar = () => {
     const meN = zzz10v1_normalize(current || '');
-    const hasComm = !!commState && zzz1cons_active(commState, meN, ZZZ1COMM_KIND);
-    const hasPerm = hasComm && !!commState && zzz1cons_active(commState, meN, ZZZ1COMM_KIND_PERM);
+    // [Zzz5-6:CONSENT-PRESET] na NEULOZENEJ CL prepinace ovladaju PREDNASTAVENIE, nie databazu -
+    // zapise sa z neho hned po ENTER. Na ulozenom zazname je vsetko ako doteraz.
+    const isPreset = !commEntryId;
+    const pre = zzz5_6_comm_preset();
+    const hasComm = isPreset ? pre.comm : (!!commState && zzz1cons_active(commState, meN, ZZZ1COMM_KIND));
+    const hasPerm = isPreset ? pre.perm
+      : (hasComm && !!commState && zzz1cons_active(commState, meN, ZZZ1COMM_KIND_PERM));
     // [Zzz13-MV:CONSENT-TTL] comm consent NEVYPRSI, ale user tu vidi aj to, ako dlho mu plati USER consent -
     // je to ten isty zaznam a ked mu ten vyprsi, strati pristup napriek platnej komunikacii.
     const vNote = zzz1cons_validity_note(commState && commState[meN] && commState[meN].consent, 'consent', zzz1r5_is_final());
@@ -13769,16 +13806,18 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
       validityWarn: !!(vNote && vNote.warn),
       consentOn: hasComm,
       consentEnabled: !!commEntryId && !!current,
+      // [Zzz5-6:CONSENT-WHY] popis je zaroven to, co sa vypise pri tuknuti na zamknuty prepinac -
+      // musi teda povedat NASLEDUJUCI KROK, nie len konstatovat, ze to nejde
       consentTitle: commEntryId
-        ? 'COMM CONSENT - suhlas s komunikaciou k tomuto zaznamu'
-        : 'COMM CONSENT - da sa dat az na ULOZENOM zazname (Database -> COMMUNICATION bunka)',
+        ? 'COMM CONSENT - consent to communication about this record'
+        : 'COMM CONSENT needs a SAVED record - press ENTER first, then open COMMUNICATION of that record (Database workspace)',
       consentCaption: 'COMM CONSENT',
       permOn: hasPerm,
       // permanent comm consent az PO comm consente - rovnaka zavislost ako pri user consente
       permEnabled: !!commEntryId && !!current && hasComm,
       permTitle: !commEntryId
-        ? 'PERMANENT COMM CONSENT - da sa dat az na ULOZENOM zazname'
-        : (!hasComm ? 'PERMANENT COMM CONSENT - najprv daj COMM CONSENT' : 'PERMANENT COMM CONSENT'),
+        ? 'PERMANENT COMM CONSENT needs a SAVED record - press ENTER first'
+        : (!hasComm ? 'PERMANENT COMM CONSENT - switch COMM CONSENT on first' : 'PERMANENT COMM CONSENT'),
       permCaption: 'PERMANENT COMM CONSENT',
       onConsent: async (v) => { await zzz1comm_set(commEntryId, ZZZ1COMM_KIND, v, refreshConsentBar, { comm: hasComm, perm: hasPerm }); },
       onPerm: async (v) => { await zzz1comm_set(commEntryId, ZZZ1COMM_KIND_PERM, v, refreshConsentBar, { comm: hasComm, perm: hasPerm }); },
@@ -15433,9 +15472,25 @@ function zzz1r17b_build_consent_line(o) {
     t.type = 'button';
     t.className = 'zzz1r17b-consent-toggle';
     t.classList.toggle('is-on', !!on);
-    t.disabled = !enabled;
+    // === [Zzz5-6:CONSENT-WHY] ZASEDNUTY PREPINAC MUSI POVEDAT, PRECO ==============================
+    // Vrso 2026-10-03: "preco nejde dat comm. consent?"
+    // Dovod uz v kode BOL - v `title` ("da sa dat az na ULOZENOM zazname"). Lenze prepinac bol
+    // `disabled`, a disabled tlacidlo NEPUSTI ziadny klik; na mobile sa navyse title nikdy nezobrazi.
+    // Takze jediny nosic vysvetlenia bol pre dotykove zariadenie neviditelny a zostalo len sede
+    // tlacidlo, ktore "nejde". To je presne to, na co sa Vrso stazoval uz 29. 9. ("comm setup... nejde
+    // stlacit") - tlacidlo, ktore sa neda stlacit a nepovie preco.
+    // TERAZ: vyzera rovnako zasedlo, ale tuk nan vypise dovod. Zapisat sa dalej neda.
+    const locked = !enabled;
+    t.classList.toggle('is-locked', locked);
+    t.setAttribute('aria-disabled', locked ? 'true' : 'false');
     t.title = title || text;
-    t.addEventListener('click', () => { if (t.disabled) return; t.disabled = true; onChange(!t.classList.contains('is-on')); });
+    let busy = false;   // nahrada za povodne `t.disabled = true` - druhy tuk pocas zapisu sa zahodi
+    t.addEventListener('click', () => {
+      if (locked) { zzz6f2_show_toast(title || text, 'warn'); return; }
+      if (busy) return;
+      busy = true;
+      onChange(!t.classList.contains('is-on'));
+    });
     const cap = document.createElement('span');
     // dlhsie popisy (COMM CONSENT / PERMANENT COMM CONSENT) sa zalomia a zmensia, aby riadok sedel aj na
     // klasickom mobilnom displeji a meno usera sa neorezalo. Vrso 2026-09-24
@@ -19681,6 +19736,10 @@ async function submit_entries_to_db(options = {}) {
     zzz4_0_save_unsynced_entries_to_storage();
   }
   zzz6f37_write_audit_log('entry_create', { entry_id: payload.entry_id, r5_category: (zzz4_0_get_field_value(payload, { key: 'r5' }) || '') }); // Zzz6-F37:AUDIT-LOG (2026-08-29)
+  // [Zzz5-6:CONSENT-PRESET] zaznam uz ma cislo - teraz sa prednastaveny suhlas da naozaj zapisat.
+  // Stoji TU, v jedinom mieste, kadial prejde KAZDY zapis zaznamu, nie pri jednotlivych ENTER tlacidlach:
+  // ENTER v comm okne aj ENTER na hlavnej stranke konci tu, takze sa preset nema ako stratit.
+  try { await zzz5_6_apply_comm_preset(payload.entry_id); } catch (e) {}
   zzz6f38_record_submit(payload); // Zzz6-F38:CL-UNDO (2026-08-30) - Back po tomto zapise presunie zaznam do Trash
   zzz1r_flash_all_cells_success(); // Zzz2-R14: vyrazne zelene bliknutie (1s) celeho CL riadku po uspesnom zapise
   // === [Zzz6-F38:CL-AUTO-CLEAR] (Vrso 2026-08-30, "CL by sa mal vymazat ked uz bola entry uspesna, pred
@@ -29988,7 +30047,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-03 14:45';
+const ZZZ5_6_BUILD = '2026-10-03 15:05';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
