@@ -632,6 +632,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
      nizsie, len opacna kombinacia farieb). Plati pre M4 aj M4a rovnako (zdielana trieda/mechanizmus, viz
      zzz6f48_open_mini_modal/zzz6f48_close_mini_modal_if_open). Vzdy najviac jedno MINI/ATTACH okno naraz
      (existujuce pravidlo - zzz6f48CurrentModalClose je jediny sledovany stav). | Vrso -> Claude AI | 2026-09-11 === */
+  /* [Zzz6-F29:ROW-IN-WINDOW] cela EL v okne ENTRY NUMBER - vlastne vodorovne posuvanie, aby okno
+     nemuselo byt sirsie a riadok nemusel byt uzsi */
+  .zzz6f29-rowstrip {
+    overflow-x: auto; overflow-y: hidden; max-width: 100%;
+    border-bottom: 1px solid #2f2f2f; padding-bottom: 4px; margin-bottom: 4px;
+  }
+  .zzz6f29-rowstrip .numbers-row { flex-wrap: nowrap; }
   .entry-number-button.zzz6f48-window-open {
     background-color: #FFD700 !important;
     color: #171717 !important;
@@ -11208,6 +11215,24 @@ function zzz6f29_open_readonly_viewer(label, value, row) {
   header.className = 'zzz-context-header';
   header.textContent = label;
   box.appendChild(header);
+
+  // === [Zzz6-F29:ROW-IN-WINDOW] pod oznacenim stoji CELA CL/EL toho zaznamu ====================
+  // Vrso 2026-10-09 (20:19): "v jeho hornej liste sa pod entry number oznacenim zobrazi aj cela
+  // cl/el!!! Presne tak, ako je hlavna, cize nepokaz zas rozmery, len pouzi duplikat/hlavnu m4 cl
+  // ako vzor."
+  // Preto sa tu NEKRESLI nic nove: riadok stavia TA ISTA funkcia, ktora kresli riadky databazy
+  // (zzz4_0_build_entry_row). Keby som tu postavil druhy riadok, raz by sa tie dva rozisli - a to
+  // je presne ten druh rozdielu, ktory sa potom hlada hodinu.
+  // Okno je uzsie nez riadok, takze riadok dostane VLASTNE vodorovne posuvanie; rozmery okna ani
+  // riadku sa tym nemenia.
+  if (row && typeof zzz4_0_build_entry_row === 'function') {
+    try {
+      const strip = document.createElement('div');
+      strip.className = 'zzz6f29-rowstrip';
+      strip.appendChild(zzz4_0_build_entry_row(row));
+      box.appendChild(strip);
+    } catch (e) { /* riadok je navyse - ked zlyha, okno musi ostat pouzitelne */ }
+  }
 
   const textarea = document.createElement('textarea');
   textarea.className = 'entry-modal-textarea';
@@ -29667,12 +29692,22 @@ function zzz5w5cm_build_ccl(key, rows) {
           const num0 = (String(r.entry).match(/\d+/) || [''])[0];
           if (num0) {
             cell.classList.add('is-entry');
-            cell.title = `#${num0} - tap to open this record`;
+            // [Zzz6-F29:ROW-IN-WINDOW] Vrso 2026-10-09 (20:19): "stlacenim entry number (vsade, ale
+            // teraz napr. aj v contacts module/taboch) bude kliknutelny a vzdy sa otvori jeho okno".
+            // Tuk teda otvara TO ISTE okno ako v databaze - cislo, cela EL a akcie. Parovacie okno
+            // sa nestratilo: ostava na podrzanie, takze jedno miesto nesie obe cesty.
             cell.addEventListener('click', (ev) => {
               ev.stopPropagation();   // riadok ma svoju akciu, cislo otvara zaznam
               const rec = zzz5w5cm_rec_of(num0);
-              if (rec && rec.raw) zzz5w5cm_open_pair_window(cell, rec.raw);
+              if (rec && rec.raw) zzz6f29_open_readonly_viewer('ENTRY NUMBER', String(num0), rec.raw);
               else zzz6f2_show_toast(`#${num0} is not readable for you right now.`, 'warn');
+            });
+            cell.title = `#${num0} - tap = open this record, hold 1-2s = pairing window`;
+            zzz_bind_long_press(cell, 1200, () => {
+              const rec = zzz5w5cm_rec_of(num0);
+              if (!rec || !rec.raw) { zzz6f2_show_toast(`#${num0} is not readable for you right now.`, 'warn'); return; }
+              zzz_haptic_pulse(30);
+              zzz5w5cm_open_pair_window(cell, rec.raw);
             });
           }
         }
@@ -35555,7 +35590,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-09 20:19';
+const ZZZ5_6_BUILD = '2026-10-09 20:46';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
