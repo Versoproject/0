@@ -632,6 +632,18 @@ body{margin:0;color:#fff;font-family:sans-serif;}
      nizsie, len opacna kombinacia farieb). Plati pre M4 aj M4a rovnako (zdielana trieda/mechanizmus, viz
      zzz6f48_open_mini_modal/zzz6f48_close_mini_modal_if_open). Vzdy najviac jedno MINI/ATTACH okno naraz
      (existujuce pravidlo - zzz6f48CurrentModalClose je jediny sledovany stav). | Vrso -> Claude AI | 2026-09-11 === */
+  /* [Zzz4-0:ENTRY-TABS] riadok tabov v databaze + SEARCH v okne zaznamu */
+  .zzz4-0-entry-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
+  .zzz4-0-entry-tab-x {
+    margin-left: 6px; border: none; background: transparent;
+    color: inherit; font-size: 12px; line-height: 1; cursor: pointer; padding: 0 2px;
+  }
+  .zzz4-0-entry-search-btn {
+    padding: 6px 12px; font-size: 11px; font-weight: 800;
+    border: 2px solid #7b2ff7; border-radius: 6px;
+    background: transparent; color: #7b2ff7; cursor: pointer;
+  }
+  .zzz4-0-entry-search-btn:active { background: #7b2ff7; color: #fff; }
   /* [Zzz6-F29:ROW-IN-WINDOW] cela EL v okne ENTRY NUMBER - vlastne vodorovne posuvanie, aby okno
      nemuselo byt sirsie a riadok nemusel byt uzsi */
   .zzz6f29-rowstrip {
@@ -11301,6 +11313,22 @@ function zzz6f29_open_readonly_viewer(label, value, row) {
       removeBox();
     };
     actions.appendChild(attachBtn);
+
+    // [Zzz4-0:ENTRY-TABS] SEARCH = "otvor mi tento zaznam v databaze, vo vlastnom tabe"
+    // Vrso 2026-10-09 (20:48): "a tam search button, ktory ked stlacim, tak vyfiltruje... vzdy do
+    // noveho tabu." Tab sa vola cislom zaznamu, da sa zavriet a da sa k nemu vratit; zakladny tab
+    // ENTRY ostava tym, cim bol - celou databazou aj s filtrovanim.
+    if (row && row.entry_id !== undefined && typeof zzz4_0_open_entry_tab === 'function') {
+      const searchBtn = document.createElement('button');
+      searchBtn.className = 'zzz4-0-entry-search-btn';
+      searchBtn.textContent = 'SEARCH';
+      searchBtn.title = `Open #${row.entry_id} in the database as its own tab`;
+      searchBtn.onclick = () => {
+        removeBox();
+        zzz4_0_open_entry_tab(row.entry_id);
+      };
+      actions.appendChild(searchBtn);
+    }
   }
 
   box.appendChild(actions);
@@ -22645,6 +22673,63 @@ const filterData = {};
 // #2 nespravne zobrazil aj #12/#20-29/#200 atd., tento filter naopak porovnava entry_id PRESNE (===), takze
 // vzdy zobrazi VYLUCNE jeden jediny spravny zaznam | Vrso -> Claude AI | 2026-08-21 === //
 let zzz6f22EntryIdFilter = null;
+// === [Zzz4-0:ENTRY-TABS] zaznam otvoreny ako VLASTNY TAB v databaze ============================
+// Vrso 2026-10-09 (19:32 + 20:48): "do daneho entry number window pridaj button search, ktora
+// otvori tuto entry v novom tabe v databaze... zakladny tab bude vzdy entry (kde moze ostat akasi
+// otvorena search crm len na bezne rychle filtrovanie)... ale vzdy!!! ako novy tab (ktory mozem
+// zatvorit alebo sa k nemu vratit neskor)."
+// ZAKLADNY tab (''), to je bezna databaza aj s filtrovanim; kazdy dalsi tab je JEDEN zaznam a vola
+// sa jeho cislom. Taby su MOJ pohlad - zijú v pamati stranky, do zaznamov nesiahaju a nic neukladaju.
+let zzz4_0EntryTabs = [];        // ['174', '153'] - cisla zaznamov otvorenych ako tab
+let zzz4_0ActiveEntryTab = '';   // '' = zakladny tab ENTRY
+function zzz4_0_open_entry_tab(entryId) {
+  const id = String(entryId || '').replace(/\D/g, '');
+  if (!id) return false;
+  if (zzz4_0EntryTabs.indexOf(id) < 0) zzz4_0EntryTabs.push(id);
+  zzz4_0ActiveEntryTab = id;
+  open_database_workspace();
+  return true;
+}
+function zzz4_0_close_entry_tab(id) {
+  const i = zzz4_0EntryTabs.indexOf(String(id));
+  if (i < 0) return;
+  zzz4_0EntryTabs.splice(i, 1);
+  if (zzz4_0ActiveEntryTab === String(id)) zzz4_0ActiveEntryTab = '';
+  open_database_workspace();
+}
+// riadok tabov - ZAMERNE tie iste triedy ako tab riadok v Templates (.zzz5t0-tab), aby to bol ten
+// isty prvok a nie druhy, ktory sa raz rozide
+function zzz4_0_build_entry_tabs_row() {
+  const row = document.createElement('div');
+  row.className = 'zzz5t0-tabs-row zzz4-0-entry-tabs';
+  const mk = (id, label) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'zzz5t0-tab' + (zzz4_0ActiveEntryTab === id ? ' zzz5t0-tab-active' : '');
+    const sp = document.createElement('span');
+    sp.textContent = label;
+    btn.appendChild(sp);
+    btn.addEventListener('click', () => {
+      if (zzz4_0ActiveEntryTab === id) return;
+      zzz4_0ActiveEntryTab = id;
+      open_database_workspace();
+    });
+    if (id) {   // zakladny tab sa zavriet neda - bez neho by nebolo kam sa vratit
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'zzz4-0-entry-tab-x';
+      x.textContent = '\u00d7';
+      x.title = `Close tab #${id} - the record itself stays untouched`;
+      x.addEventListener('click', (e) => { e.stopPropagation(); zzz4_0_close_entry_tab(id); });
+      btn.appendChild(x);
+    }
+    row.appendChild(btn);
+  };
+  mk('', 'ENTRY');
+  zzz4_0EntryTabs.forEach(id => mk(id, '#' + id));
+  return row;
+}
+
 
 // === [Zzz10-SCALE] Database Workspace keyset pagination state - Vrso 2026-08-28 request ("preco
 // nezapracujes na vela dat/entries"). Nacita sa vzdy len ZZZ4_0_WORKSPACE_PAGE_SIZE najnovsich zaznamov
@@ -26005,14 +26090,19 @@ async function open_database_workspace(loadMore = false) {
   // tsvector/GIN, viz nizsie) - prehlada CELU tabulku, nie len nacitanu stranku; (c) inak sa nacita LEN
   // najnovsich ZZZ4_0_WORKSPACE_PAGE_SIZE zaznamov (ORDER BY entry_id DESC LIMIT), s tlacidlom "NACITAT
   // STARSIE" pre dalsie stranky (keyset pagination cez .lt entry_id).
-  const entryIdFilterActive = zzz6f22EntryIdFilter !== null;
+  // [Zzz4-0:ENTRY-TABS] aktivny tab zaznamu je TA ISTA otazka ako entry-number filter ("ukaz jeden
+  // zaznam"), preto ide tou istou cestou - vratane dopytu na strane Postgresu, takze tab najde aj
+  // zaznam, ktory v nacitanej stranke nie je
+  const pinnedEntryId = zzz6f22EntryIdFilter !== null ? zzz6f22EntryIdFilter
+                      : (zzz4_0ActiveEntryTab || null);
+  const entryIdFilterActive = pinnedEntryId !== null;
   const activeFilterTerms = entryIdFilterActive ? [] : zzz6f4_get_active_filter_terms();
 
   try {
     if (entryIdFilterActive) {
       // [Zzz6-F10:ORGANIZER-WORKSPACE] filter podla konkretneho entry-ID ZAMERNE bez superseded_by podmienky -
       // ked si Vrso vyslovne vypyta jedno konkretne cislo, ma ho najst aj ked uz bolo nahradene.
-      const fetchPromise = sb.from('verso_entries').select('*').eq('is_trashed', false).eq('entry_id', zzz6f22EntryIdFilter);
+      const fetchPromise = sb.from('verso_entries').select('*').eq('is_trashed', false).eq('entry_id', pinnedEntryId);
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('zzz2-R29 Supabase fetch timeout (4s)')), 4000)
       );
@@ -26074,7 +26164,7 @@ async function open_database_workspace(loadMore = false) {
   // znova. Iba pri fallbacku (SQL este nie je spustene) sa pouzije povodny substring filter ako predtym.
   const filterTerms = entryIdFilterActive ? [] : activeFilterTerms;
   const filteredRows = entryIdFilterActive
-    ? rows.filter(row => String(row.entry_id) === String(zzz6f22EntryIdFilter))
+    ? rows.filter(row => String(row.entry_id) === String(pinnedEntryId))
     : (usedFulltextSearch ? rows : rows.filter(row => zzz6f4_row_matches_filters(row, filterTerms)));
 
   const wrap = document.createElement('div');
@@ -26083,11 +26173,13 @@ async function open_database_workspace(loadMore = false) {
   const title = document.createElement('div');
   title.className = 'db-workspace-title';
   title.textContent = entryIdFilterActive
-    ? `DATABASE WORKSPACE (Zzz4-0) (Zzz6-F22-link filter: #${zzz6f22EntryIdFilter})`
+    ? `DATABASE WORKSPACE (Zzz4-0) (#${pinnedEntryId})`
     : (filterTerms.length > 0
       ? `DATABASE WORKSPACE (Zzz4-0) (${usedFulltextSearch ? 'fulltext hladanie - cela databaza' : 'filter (len nacitana stranka)'}: ${filterTerms.length} kriterii)`
       : 'DATABASE WORKSPACE (Zzz4-0)');
   wrap.appendChild(title);
+  // [Zzz4-0:ENTRY-TABS] riadok tabov hned pod nadpisom - zakladny ENTRY a kazdy otvoreny zaznam
+  wrap.appendChild(zzz4_0_build_entry_tabs_row());
 
   // [Zzz6-X:DELETE-ONLY-FROM-TRASH] 2026-09-21 - VYMAZAT VSETKY ENTRIES tlacidlo PRESUNUTE do Trash Workspace
   // (Vrso, doslovne: "Hlavne premiestni vymazat vsetko iba do trash!"). | Vrso -> Claude AI | 2026-09-21
@@ -26110,7 +26202,7 @@ async function open_database_workspace(loadMore = false) {
     empty.className = 'db-workspace-empty';
     empty.textContent = totalCount === 0
       ? 'Ziadne command lines zatial neboli vlozene.'
-      : (entryIdFilterActive ? `Zaznam #${zzz6f22EntryIdFilter} sa nenasiel.` : 'Ziadny zaznam nezodpoveda aktualnemu filtru.');
+      : (entryIdFilterActive ? `Zaznam #${pinnedEntryId} sa nenasiel.` : 'Ziadny zaznam nezodpoveda aktualnemu filtru.');
     wrap.appendChild(empty);
   } else {
     const rowsWrap = document.createElement('div');
@@ -35638,7 +35730,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-09 21:22';
+const ZZZ5_6_BUILD = '2026-10-09 21:40';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
