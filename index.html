@@ -46243,6 +46243,19 @@ function zzz_device_id() {
 // === [/Zzz-SESSION:B7-URGENT] (device id) ===
 
 async function zzz10r8_verify_login_password(username, enteredPassword) {
+  // === [Zzz-SESSION:B7-SWITCH-USER] Vrso 2026-10-11: prihlasenie pod INYM menom na tom istom zariadeni (vrso ->
+  // Verso1) nechalo predoslu relaciu na serveri zit (heartbeat sa len prepol). Dalsie prihlasenie toho
+  // predosleho uctu inde potom vyzeralo ako "prevzatie zivej relacie". Teraz sa predosla relacia najprv zrusi. ===
+  if (zzz_sessionId && zzz_sessionUsername && zzz_sessionUsername !== zzz10v1_normalize(username)) {
+    try {
+      fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+        method: 'POST',
+        keepalive: true,
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+        body: JSON.stringify({ action: 'logout', username: zzz_sessionUsername, sessionId: zzz_sessionId })
+      }).catch(() => {});
+    } catch (e) { /* nikdy nesmie zastavit prihlasenie */ }
+  }
   try {
     const fetchPromise = fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
       method: 'POST',
@@ -46250,7 +46263,7 @@ async function zzz10r8_verify_login_password(username, enteredPassword) {
       body: JSON.stringify({ action: 'login', username: zzz10v1_normalize(username), password: enteredPassword, deviceId: zzz_device_id() }) // [Zzz-SESSION:B7-URGENT] + deviceId
     });
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Zzz0Auth-Gate login timeout (4s)')), 4000)
+      setTimeout(() => reject(new Error('Zzz0Auth-Gate login timeout (12s)')), 12000) // [Zzz-SESSION:B7-EMAIL-BACKGROUND] 2026-10-11: 4 s nestacili na studeny start funkcie + overenie relacie
     );
     const resp = await Promise.race([fetchPromise, timeoutPromise]);
     const result = await resp.json();
