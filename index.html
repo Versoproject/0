@@ -45927,6 +45927,20 @@ function zzz10r2_logout(reason = 'manual', opts = {}) {
     label.classList.remove('zzz0r1-db-disconnected');
   }
   zzz6f7_set_login_state(false); // Zzz6-F7:LOGIN-STATE - odstrani zlate pozadie
+  // === [Zzz-SESSION:B7-URGENT] (1) Vrso 2026-10-10: "LOG OUT neinformuje server" - teraz server relaciu ZMAZE,
+  // cim token okamzite prestane platit v DB (verso_jwt_username()) a ucet sa da hned prihlasit inde.
+  // Odosiela sa PRED zzz_session_stop() (ta id vymaze). keepalive = dobehne aj pri zatvarani stranky.
+  // Neblokuje lokalne odhlasenie - pri vypadku siete relacia na serveri sama zomrie po 60 min bez heartbeatu. ===
+  if (zzz_sessionId && zzz_sessionUsername) {
+    try {
+      fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+        method: 'POST',
+        keepalive: true,
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+        body: JSON.stringify({ action: 'logout', username: zzz_sessionUsername, sessionId: zzz_sessionId })
+      }).catch((e) => console.warn('Zzz-SESSION:B7-URGENT logout - server nedostupny, relacia vyprsi sama', e));
+    } catch (e) { /* nikdy nesmie zastavit lokalne odhlasenie */ }
+  }
   zzz0auth_sessionToken = null; // Zzz0Auth-Gate:SESSION-TOKEN - vycistit pri odhlaseni | Vrso -> Claude AI | 2026-09-02
   zzz_session_stop(); // Zzz-SESSION:SINGLE-ACTIVE - zastavi heartbeat slucku pri odhlaseni | Vrso -> Claude AI | 2026-09-XX
   zzz6f38_undoStack = []; // Zzz6-F38:CL-UNDO (2026-08-30) - session-only, vyprazdni sa pri odhlaseni
@@ -46184,12 +46198,34 @@ window.addEventListener('online', () => { if (zzz_sessionId) zzz_session_heartbe
 // === [/Zzz-SESSION:OFFLINE-UI] ===
 // === [/Zzz-SESSION:SINGLE-ACTIVE] (pokracovanie nizsie pri zzz10r8_verify_login_password a zzz6f36_submit_login) ===
 
+// === [Zzz-SESSION:B7-URGENT] (2) Vrso 2026-10-10 - identita ZARIADENIA pre pravidlo "novy login sa nepovoli,
+// kym je ina relacia ziva". Nahodne ID raz vygenerovane a ulozene v localStorage tohto prehliadaca; server ho
+// ulozi k relacii (verso_sessions.device_label). To iste zariadenie (napr. po reloade) sa prihlasit smie,
+// ine nie - kym sa na povodnom zariadeni neodhlasi alebo sa nepouzije recovery token. Ked localStorage
+// nejde (sukromne okno), ID plati len do zatvorenia stranky. | Vrso -> Claude AI | 2026-10-10 ===
+const ZZZ_DEVICE_ID_KEY = 'verso_device_id';
+let zzz_deviceIdFallback = null;
+function zzz_device_id() {
+  try {
+    let id = localStorage.getItem(ZZZ_DEVICE_ID_KEY);
+    if (!id) {
+      id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
+      localStorage.setItem(ZZZ_DEVICE_ID_KEY, id);
+    }
+    return id;
+  } catch (e) {
+    if (!zzz_deviceIdFallback) zzz_deviceIdFallback = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
+    return zzz_deviceIdFallback;
+  }
+}
+// === [/Zzz-SESSION:B7-URGENT] (device id) ===
+
 async function zzz10r8_verify_login_password(username, enteredPassword) {
   try {
     const fetchPromise = fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-      body: JSON.stringify({ action: 'login', username: zzz10v1_normalize(username), password: enteredPassword })
+      body: JSON.stringify({ action: 'login', username: zzz10v1_normalize(username), password: enteredPassword, deviceId: zzz_device_id() }) // [Zzz-SESSION:B7-URGENT] + deviceId
     });
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('Zzz0Auth-Gate login timeout (4s)')), 4000)
@@ -46292,7 +46328,9 @@ async function zzz6f36_submit_login(options = {}) {
         not_registered: `username "${username}" is not registered`,
         wrong_password: 'wrong password',
         corrupt_record: 'the registration record is damaged',
-        lookup_failed: 'could not be verified (database unreachable?)'
+        lookup_failed: 'could not be verified (database unreachable?)',
+        // [Zzz-SESSION:B7-URGENT] relaciu sa nepodarilo zalozit na serveri | Vrso -> Claude AI | 2026-10-10
+        session_failed: 'the session could not be created on the server, try again'
       }[verifyResult.reason] || 'unknown reason';
       zzz6f2_show_toast(`Login refused - ${reasonText}.`, 'warn');
       return;
@@ -46625,7 +46663,7 @@ function zzz10m2_render_login_setup(body) {
         const resp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-          body: JSON.stringify({ action: 'change_password', username: zzz10v1_normalize(zzz6f36LastLoginUsername), /* [Zzz0-R2:USERNAME-CASE] audit 2026-09-21 */ oldPassword: zzz6f36LastLoginPassword, newPassword })
+          body: JSON.stringify({ action: 'change_password', username: zzz10v1_normalize(zzz6f36LastLoginUsername), /* [Zzz0-R2:USERNAME-CASE] audit 2026-09-21 */ oldPassword: zzz6f36LastLoginPassword, newPassword, sessionId: zzz_sessionId /* [Zzz-SESSION:B7-URGENT] tato relacia ostava, ostatne sa zrusia */ })
         });
         const result = await resp.json();
         if (result.success) {
