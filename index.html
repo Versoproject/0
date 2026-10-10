@@ -8506,6 +8506,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz-SECURITY:BREACH-ALERT (SYSTEM FUNCTION) - email upozornenie po 5 nespravnych heslach za sebou, viz verso-breach-alert-setup.sql</span>
   <span class="module-tag">Zzz10-R4:CHANGE-PASSWORD - skutocna zmena hesla (vyzaduje spravne stare heslo z cache), zrusi vsetky ostatne aktivne session</span>
   <span class="module-tag">Zzz-RECOVERY:AUTO-TOKEN-ON-REGISTER - automaticky recovery token poslany emailom hned po uspesnej registracii</span>
+  <span class="module-tag">Zzz-RECOVERY:MV-PHRASE - nudzove prevzatie uctu (POUZIT TOKEN) vyzaduje aj MV frazu (Zzz13-MV), nie len token z emailu - ochrana pri ukradnutom mobile s emailom; ucet bez frazy prejde, ale je vyzvany frazu nastavit (2026-10-10)</span>
   <span class="module-tag">Zzz10-V1:SEND-EMAIL - nahradene "bright-responder" novou Edge Function "verso-send-activation-email" (rovnaky Resend vzor ako Zzz0GitHub-Notify)</span>
   <span class="module-tag">Zzz6-F36 Login modal - pridany viditelny titulok "LOG IN" (predtym len maly gold button v riadku)</span>
   <span class="module-tag">Zzz10-0 Settings Workspace - opravene: NEZOBRAZUJE sa uz pred prihlasenim (predtym stary obsah zostaval za Login modalom)</span>
@@ -45308,6 +45309,30 @@ function zzz_render_account_recovery(box) {
   tokenWrap.appendChild(tokenInput);
   row2.appendChild(tokenWrap);
 
+  // === [Zzz-RECOVERY:MV-PHRASE] Vrso 2026-10-10 (B7 doplnok, bod 8.2, NALIEHAVE): "nechame iba jednoduchu
+  // frazu" - recovery token z emailu SAM nestaci (email byva na tom istom mobile -> zlodej mobilu by si token
+  // vypytal sam a prevzal ucet). Pri POUZIT TOKEN sa odteraz posiela aj MV fraza (Zzz13-MV, ta ista ako pri
+  // vyprazdneni kosa). Server (verso-auth-gate, akcia use_override_token) ju overi rovnako ako v
+  // empty_trash_with_token; pri nezhode token NESPOTREBUJE. Ucet BEZ nastavenej frazy recovery stale
+  // prejde (inak by sa vlastnik bez frazy uz nikdy nedostal k uctu) - appka ho ale hned vyzve frazu nastavit.
+  // Neskor (multiverification settings): namiesto pevnej frazy vyzva "napis N. a M. slovo z tvojho versa". | Vrso -> Claude AI | 2026-10-10 ===
+  const mvWrap = document.createElement('div');
+  mvWrap.className = 'zzz-support-field-wrap zzz-support-content-wrap';
+  const mvLabel = document.createElement('div');
+  mvLabel.className = 'zzz-support-field-label';
+  mvLabel.textContent = 'MV FRÁZA';
+  mvWrap.appendChild(mvLabel);
+  const mvInput = document.createElement('input');
+  mvInput.type = 'password';
+  mvInput.className = 'entry-cell zzz6f36-login-local-input';
+  mvInput.id = 'versoRecoveryMvPhraseInput';
+  mvInput.autocomplete = 'off';
+  mvInput.setAttribute('autocapitalize', 'off');
+  mvInput.setAttribute('spellcheck', 'false');
+  mvWrap.appendChild(mvInput);
+  row2.appendChild(mvWrap);
+  // === [/Zzz-RECOVERY:MV-PHRASE] (pole) ===
+
   const newPassWrap = document.createElement('div');
   newPassWrap.className = 'zzz-support-field-wrap zzz-support-content-wrap';
   const newPassLabel = document.createElement('div');
@@ -45330,8 +45355,9 @@ function zzz_render_account_recovery(box) {
     const username = zzz10v1_normalize(userInput.value); // [Zzz0-R2:USERNAME-CASE] 2026-09-21 - predtym len .trim() | Vrso -> Claude AI | 2026-09-21
     const token = tokenInput.value.trim();
     const newPassword = newPassInput.value.trim();
+    const mvPhrase = mvInput.value.trim(); // [Zzz-RECOVERY:MV-PHRASE] - prazdna je povolena LEN pre ucet bez nastavenej frazy (rozhodne server)
     if (!username || !token || !newPassword) {
-      zzz6f2_show_toast('Zzz-RECOVERY: vyplň USERNAME, TOKEN aj NOVÉ HESLO.');
+      zzz6f2_show_toast('Zzz-RECOVERY: vyplň USERNAME, TOKEN, MV FRÁZU aj NOVÉ HESLO.');
       return;
     }
     useBtn.disabled = true;
@@ -45339,18 +45365,26 @@ function zzz_render_account_recovery(box) {
       const resp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-        body: JSON.stringify({ action: 'use_override_token', username, token, newPassword })
+        body: JSON.stringify({ action: 'use_override_token', username, token, newPassword, mvPhrase })
       });
       const result = await resp.json();
       if (result.success) {
         tokenInput.value = '';
         newPassInput.value = '';
+        mvInput.value = '';
         zzz6f2_show_toast('Zzz-RECOVERY: heslo zmenené, všetky aktívne prihlásenia zrušené. Prihlás sa novým heslom.');
+        // [Zzz-RECOVERY:MV-PHRASE] ucet nemal frazu -> recovery stalo len na emaile, vyzvat na nastavenie
+        if (result.mvPhraseMissing) {
+          setTimeout(() => zzz6f2_show_toast('Zzz-RECOVERY: nemáš nastavenú MV FRÁZU - po prihlásení si ju nastav (Login setup -> CHANGE PASSWORD -> MV PHRASE), inak recovery chráni len email.'), 4000);
+        }
       } else {
         const reasonText = {
           invalid_token: 'neplatný token',
           // token_expired ODSTRANENE (Vrso, 2026-09-14) - server uz NEKONTROLUJE cas expiracie vobec (token je platny, kym sa nepouzije), tento dovod uz nikdy nemoze nastat
-          token_and_new_password_required: 'vyplň token aj nové heslo'
+          token_and_new_password_required: 'vyplň token aj nové heslo',
+          // [Zzz-RECOVERY:MV-PHRASE] 2026-10-10
+          wrong_mv_phrase: 'MV fráza nesedí (token ostáva platný)',
+          too_many_attempts: 'príliš veľa chybných pokusov - recovery je dočasne zamknuté'
         }[result.reason] || result.reason || 'neznámy dôvod';
         zzz6f2_show_toast(`Zzz-RECOVERY: zlyhalo - ${reasonText}.`);
       }
