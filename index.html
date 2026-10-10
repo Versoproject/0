@@ -46217,14 +46217,27 @@ function zzz_exit_offline_mode() {
 // vyssie) - LEN ak je aktivna session (inak by to bezvyznamne pridavalo/odoberalo triedu aj pred loginom).
 window.addEventListener('offline', () => { if (zzz_sessionId) zzz_enter_offline_mode(); });
 window.addEventListener('online', () => { if (zzz_sessionId) zzz_session_heartbeat_tick(); }); // rovno over aj standby stav, nielen offline
+// === [Zzz-SESSION:B7-INSTANT-CHECK] Vrso 2026-10-11 - pri navrate do appky (prepnutie z inej appky/karty,
+// odomknutie mobilu) sa relacia overi HNED, nie az pri dalsom 35 s tiku. Ak ju medzitym prevzalo ine
+// zariadenie, toto sa odhlasi skor, nez si clovek stihne pozriet obrazovku. Najviac raz za 5 s. | Vrso -> Claude AI | 2026-10-11 ===
+let zzz_lastInstantCheckAt = 0;
+function zzz_session_instant_check() {
+  if (!zzz_sessionId) return;
+  const now = Date.now();
+  if (now - zzz_lastInstantCheckAt < 5000) return;
+  zzz_lastInstantCheckAt = now;
+  zzz_session_heartbeat_tick();
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') zzz_session_instant_check(); });
+window.addEventListener('focus', zzz_session_instant_check);
+// === [/Zzz-SESSION:B7-INSTANT-CHECK] ===
 // === [/Zzz-SESSION:OFFLINE-UI] ===
 // === [/Zzz-SESSION:SINGLE-ACTIVE] (pokracovanie nizsie pri zzz10r8_verify_login_password a zzz6f36_submit_login) ===
 
-// === [Zzz-SESSION:B7-URGENT] (2) Vrso 2026-10-10 - identita ZARIADENIA pre pravidlo "novy login sa nepovoli,
-// kym je ina relacia ziva". Nahodne ID raz vygenerovane a ulozene v localStorage tohto prehliadaca; server ho
-// ulozi k relacii (verso_sessions.device_label). To iste zariadenie (napr. po reloade) sa prihlasit smie,
-// ine nie - kym sa na povodnom zariadeni neodhlasi alebo sa nepouzije recovery token. Ked localStorage
-// nejde (sukromne okno), ID plati len do zatvorenia stranky. | Vrso -> Claude AI | 2026-10-10 ===
+// === [Zzz-SESSION:B7-URGENT] (2) Vrso 2026-10-10 - identita ZARIADENIA. Nahodne ID raz vygenerovane a ulozene
+// v localStorage tohto prehliadaca; server ho ulozi k relacii (verso_sessions.device_label). Prihlasenie z INEHO
+// zariadenia relaciu prevezme (povodne sa odhlasi) a majitel dostane email; to iste zariadenie (napr. po
+// reloade) email nespusti. Ked localStorage nejde (sukromne okno), ID plati len do zatvorenia stranky. | Vrso -> Claude AI | 2026-10-10/11 ===
 const ZZZ_DEVICE_ID_KEY = 'verso_device_id';
 let zzz_deviceIdFallback = null;
 function zzz_device_id() {
