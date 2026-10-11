@@ -26071,9 +26071,20 @@ function zzz4_0_open_delete_all_confirm(entryIds = null) { // [Zzz6-X:DELETE-SEL
     box.appendChild(el);
     return el;
   };
-  const phraseInput = makeField('MV phrase');
+  // [Zzz6-F36:VERSO-KEYBOARD] Vrso 2026-10-11 - na TRUSTED/FOREIGN zariadeni MV fraza a heslo cez Verso klavesnicu,
+  // token (vklada sa z emailu, jednorazovy) ako obycajne textove pole - na stranke tak nie je ziadne pole na heslo.
+  const vkbOn = (typeof zzz_vkb_mode === 'function') && ['trusted', 'foreign'].includes(zzz_vkb_mode());
+  const makeSecret = (placeholder, title) => {
+    if (!vkbOn) return makeField(placeholder);
+    const el = zzz_vkb_make_secret(null, 'zzz6f48-mini-row-value-input', title, placeholder);
+    el.style.marginTop = '6px';
+    box.appendChild(el);
+    return el;
+  };
+  const phraseInput = makeSecret('MV phrase', 'MV PHRASE');
   const codeInput = makeField('Token (from email)');
-  const passwordInput = makeField('Password');
+  if (vkbOn) codeInput.type = 'text';
+  const passwordInput = makeSecret('Password', 'PASSWORD');
 
   const actions = document.createElement('div');
   actions.className = 'entry-modal-actions';
@@ -26096,6 +26107,7 @@ function zzz4_0_open_delete_all_confirm(entryIds = null) { // [Zzz6-X:DELETE-SEL
     confirmBtn.disabled = true;
     confirmBtn.textContent = 'Deleting...';
     await zzz4_0_delete_all_entries(codeInput.value.trim(), phraseInput.value.trim(), selectedOnly ? entryIds : null, passwordInput.value);
+    if (typeof zzz_vkb_hide === 'function') zzz_vkb_hide(); // [Zzz6-F36:VERSO-KEYBOARD]
     removeBox();
   };
 
@@ -44839,31 +44851,50 @@ function zzz_vkb_remount_all() {
   zzz_vkbSlots.forEach(zzz_vkb_mount_slot);
 }
 function zzz_vkb_mount_slot(slot) {
-  const wrap = slot.wrap;
-  const old = wrap.querySelector('#' + slot.id);
+  const old = slot.wrap.querySelector('#' + slot.id);
+  const el = zzz_vkb_make_secret(slot.id, slot.cls, slot.title);
+  if (old) old.replaceWith(el); else slot.wrap.appendChild(el);
+}
+// vytvori tajne pole podla rezimu zariadenia: MY DEVICE = <input type=password>, TRUSTED/FOREIGN = zobrazovac s Verso
+// klavesnicou. Zobrazovac ma vlastnosti .value (heslo v pamati) a .type ('text' = ukaz pri VIEW, 'password' = bodky)
+// a pri zmene vysle udalost 'input' - takze existujuci kod (VIEW tlacidla, kontroly vyplnenia) funguje bez zmeny.
+function zzz_vkb_make_secret(id, cls, title, placeholder) {
   const mode = zzz_vkb_mode();
-  let el;
   if (mode !== 'trusted' && mode !== 'foreign') {
-    el = document.createElement('input');
-    el.type = 'password';
-    el.className = slot.cls;
-    el.id = slot.id;
-    el.autocomplete = 'off';
-    el.setAttribute('autocapitalize', 'off');
-    el.setAttribute('spellcheck', 'false');
-  } else {
-    let secret = '';
-    el = document.createElement('div');
-    el.className = slot.cls + ' zzz-vkb-display';
-    el.id = slot.id;
-    el.setAttribute('role', 'button');
-    el.setAttribute('aria-label', slot.title + ' - tap to type with Verso keyboard');
-    const render = () => { el.textContent = secret ? '\u2022'.repeat(secret.length) : 'tap'; el.classList.toggle('zzz-vkb-empty', !secret); };
-    Object.defineProperty(el, 'value', { get() { return secret; }, set(v) { secret = String(v == null ? '' : v); render(); }, configurable: true });
-    render();
-    el.addEventListener('click', () => zzz_vkb_show(el, mode === 'foreign', slot.title));
+    const inp = document.createElement('input');
+    inp.type = 'password';
+    inp.className = cls;
+    if (id) inp.id = id;
+    inp.autocomplete = 'off';
+    inp.setAttribute('autocapitalize', 'off');
+    inp.setAttribute('spellcheck', 'false');
+    if (placeholder) inp.placeholder = placeholder;
+    return inp;
   }
-  if (old) old.replaceWith(el); else wrap.appendChild(el);
+  let secret = '';
+  let revealed = false;
+  const el = document.createElement('div');
+  el.className = cls + ' zzz-vkb-display';
+  if (id) el.id = id;
+  el.setAttribute('role', 'button');
+  el.setAttribute('aria-label', title + ' - tap to type with Verso keyboard');
+  const render = () => {
+    el.textContent = secret ? (revealed ? secret : '\u2022'.repeat(secret.length)) : (placeholder || 'tap');
+    el.classList.toggle('zzz-vkb-empty', !secret);
+  };
+  Object.defineProperty(el, 'value', {
+    get() { return secret; },
+    set(v) { secret = String(v == null ? '' : v); render(); try { el.dispatchEvent(new Event('input')); } catch (e) {} },
+    configurable: true
+  });
+  Object.defineProperty(el, 'type', {
+    get() { return revealed ? 'text' : 'password'; },
+    set(v) { revealed = (v === 'text'); render(); },
+    configurable: true
+  });
+  render();
+  el.addEventListener('click', () => zzz_vkb_show(el, mode === 'foreign', title));
+  return el;
 }
 const ZZZ_VKB_PAGES = {
   lower: 'abcdefghijklmnopqrstuvwxyz0123456789'.split(''),
@@ -46865,11 +46896,8 @@ function zzz10m2_render_login_setup(body) {
     const newPassInputWrap = document.createElement('div');
     newPassInputWrap.className = 'zzz10m2-prefilled-input-wrap';
 
-    const newPassInput = document.createElement('input');
-    newPassInput.type = 'password';
-    newPassInput.className = 'entry-cell zzz6f36-login-local-input';
-    newPassInput.id = 'versoChangePasswordNewInput';
-    newPassInput.autocomplete = 'off';
+    // [Zzz6-F36:VERSO-KEYBOARD] Vrso 2026-10-11 "Ano prerob" - na TRUSTED/FOREIGN cez Verso klavesnicu (VIEW funguje dalej)
+    const newPassInput = zzz_vkb_make_secret('versoChangePasswordNewInput', 'entry-cell zzz6f36-login-local-input', 'NEW PASSWORD');
     newPassInputWrap.appendChild(newPassInput);
 
     // VIEW klon - odhaluje PRAVE PISANY newPassInput (nie cache, na rozdiel od CONTENT-ovho VIEW)
@@ -46952,14 +46980,8 @@ function zzz10m2_render_login_setup(body) {
 
     const phraseInputWrap = document.createElement('div');
     phraseInputWrap.className = 'zzz10m2-prefilled-input-wrap';
-    const phraseInput = document.createElement('input');
-    phraseInput.type = 'password';
-    phraseInput.className = 'entry-cell zzz6f36-login-local-input';
-    phraseInput.id = 'versoMvPhraseInput';
-    phraseInput.autocomplete = 'off';
-    phraseInput.setAttribute('autocapitalize', 'off');
-    phraseInput.setAttribute('spellcheck', 'false');
-    phraseInput.placeholder = 'min. 4 letters';
+    // [Zzz6-F36:VERSO-KEYBOARD] Vrso 2026-10-11 - MV fraza na TRUSTED/FOREIGN cez Verso klavesnicu (VIEW funguje dalej)
+    const phraseInput = zzz_vkb_make_secret('versoMvPhraseInput', 'entry-cell zzz6f36-login-local-input', 'MV PHRASE', 'min. 4 letters');
     phraseInputWrap.appendChild(phraseInput);
 
     const phraseViewBtn = document.createElement('button');
