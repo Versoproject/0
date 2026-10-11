@@ -7376,6 +7376,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   }
   .zzz10v1-user-hint-free { color: #16a34a; }
   .zzz10v1-user-hint-taken { color: #dc2626; }
+  .zzz10v1-user-hint-reserved { color: #d97706; }
+  .zzz-build-tag { margin-top: 6px; font-size: 10px; color: #9ca3af; text-align: center; font-family: monospace; }
   .zzz10v1-status {
     margin-top: 8px;
     font-size: 14px;
@@ -43933,7 +43935,7 @@ async function zzz10v1_get_own_reservation(normalizedUsername, normalizedEmail) 
 function zzz10v1_render_username_highlight(mirrorEl, value, takenUsernamesNormalized) {
   mirrorEl.innerHTML = '';
   if (!value) { zzz10v1_update_username_hint('', false); return; }
-  const isExactTaken = takenUsernamesNormalized.includes(zzz10v1_normalize(value)) || zzz6x_is_reserved_username(value); // [Zzz6-X:USERNAME-EXCEPTIONS] rezervovane = cervene ako obsadene | Vrso -> Claude AI | 2026-09-21
+  const isExactTaken = takenUsernamesNormalized.includes(zzz10v1_normalize(value)); // [Zzz-B9:2.4-ADMIN-NAMES] rezervovane mena rozhodne server (admin email) // [Zzz6-X:USERNAME-EXCEPTIONS] rezervovane = cervene ako obsadene | Vrso -> Claude AI | 2026-09-21
   const span = document.createElement('span');
   span.className = isExactTaken ? 'zzz10v1-char-taken' : 'zzz10v1-char-free';
   span.textContent = value;
@@ -43946,12 +43948,14 @@ function zzz10v1_update_username_hint(value, isTaken) {
   if (!hint) return;
   const v = String(value || '').trim();
   if (!v) { hint.textContent = ''; hint.className = 'zzz10v1-user-hint'; return; }
-  if (zzz6x_is_reserved_username(v)) {
-    hint.textContent = 'This username is reserved by the system. Please choose another one.';
-    hint.className = 'zzz10v1-user-hint zzz10v1-user-hint-taken';
-  } else if (isTaken) {
+  if (isTaken) {
     hint.textContent = 'This username is already taken. Please choose another one.';
     hint.className = 'zzz10v1-user-hint zzz10v1-user-hint-taken';
+  } else if (zzz6x_is_reserved_username(v)) {
+    hint.textContent = zzz10v1_normalize(v) === 'verso'
+      ? 'This username is reserved by the system. Please choose another one.'
+      : 'Reserved Verso name - only the Verso administrator (admin email) can register it.';
+    hint.className = 'zzz10v1-user-hint zzz10v1-user-hint-reserved';
   } else {
     hint.textContent = 'This username is available.';
     hint.className = 'zzz10v1-user-hint zzz10v1-user-hint-free';
@@ -43975,7 +43979,7 @@ function zzz10v1_update_send_button_state(btn, username, takenUsernamesNormalize
     btn.disabled = true; // prazdne pole = este nie je co posielat
     return;
   }
-  const taken = takenUsernamesNormalized.includes(zzz10v1_normalize(trimmed)) || zzz6x_is_reserved_username(trimmed); // [Zzz6-X:USERNAME-EXCEPTIONS] | Vrso -> Claude AI | 2026-09-21
+  const taken = takenUsernamesNormalized.includes(zzz10v1_normalize(trimmed)) || zzz10v1_normalize(trimmed) === 'verso'; // [Zzz-B9:2.4-ADMIN-NAMES] verso1, verso2... rozhodne server // [Zzz6-X:USERNAME-EXCEPTIONS] | Vrso -> Claude AI | 2026-09-21
   btn.classList.add(taken ? 'zzz10v1-btn-taken' : 'zzz10v1-btn-available');
   btn.disabled = taken; // stlacitelne LEN ked je presne tento username volny
 }
@@ -44195,10 +44199,11 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
+const VERSO_BUILD = 'B9-2.4c 2026-10-12'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
-  reserved_username: 'This username is reserved by the system. Please choose another one.',
+  reserved_username: 'This username is reserved by the system. Please choose another one. (Names like verso1, verso2… can be registered only by the Verso administrator with the admin email.)',
   username_taken: 'This username is already taken. Please choose another one.',
   email_taken: 'This email is already used by another Verso account.',
   username_reserved: 'Someone else is registering this username right now. Choose another one, or try again in 24 hours.',
@@ -44283,11 +44288,6 @@ function zzz10v1_build_send_activation_button(usernameBox) {
       zzz10v1_set_status('Please enter a valid EMAIL first (tap the email field).', 'warn');
       return;
     }
-    if (zzz6x_is_reserved_username(username)) {
-      zzz10v1_set_status(ZZZ10V1_REASON_TEXT.reserved_username, 'warn');
-      return;
-    }
-
     btn.disabled = true;
     zzz10v1_set_status('Sending activation code…', 'info');
     try {
@@ -44395,7 +44395,6 @@ async function zzz10v1_submit_register() {
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { zzz10v1_set_status('Please enter a valid EMAIL.', 'warn'); return; }
   if (!/^\d{6}$/.test(enteredActivationCode)) { zzz10v1_set_status(ZZZ10V1_REASON_TEXT.code_required, 'warn'); return; }
   if (!password) { zzz10v1_set_status(ZZZ10V1_REASON_TEXT.password_required, 'warn'); return; }
-  if (zzz6x_is_reserved_username(username)) { zzz10v1_set_status(ZZZ10V1_REASON_TEXT.reserved_username, 'warn'); return; }
 
   // [Zzz6-F36:SEARCH-AUTO-OFF] to iste pri registracii - rezim zobrazenia nema brzdit zapis, vypne sa sam
   if (zzz4r17SearchMode) {
@@ -44521,6 +44520,10 @@ function zzz10v1_render_register_setup(body) {
   panel.appendChild(entrySection);
 
   panel.appendChild(zzz10v1_build_terms_note());
+  const buildTag = document.createElement('div');   // [Zzz-B9:2.4-BUILD-TAG] Vrso 2026-10-12: rychla kontrola, ze bezi nova verzia
+  buildTag.className = 'zzz-build-tag';
+  buildTag.textContent = 'build ' + VERSO_BUILD;
+  panel.appendChild(buildTag);
 
   body.appendChild(panel);
 
