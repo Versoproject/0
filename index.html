@@ -7271,6 +7271,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     user-select: none;
     -webkit-user-select: none;
   }
+  .zzz-vkb-display.zzz-vkb-disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
   .zzz-vkb-display.zzz-vkb-empty {
     color: #9ca3af !important;
     letter-spacing: 0;
@@ -8019,7 +8023,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
      Register Setup panelu, vysoka specificita prebije zdielane !important pravidla. Vyska zjednotena na
      36px (rovnaka ako EMAIL aj USERNAME box), sirka 100px (ako USERNAME - heslo netreba tak siroke ako
      email). | Vrso -> Claude AI | 2026-09-15 === */
-  .zzz10v1-panel input#versoRegisterSetupPasswordInput.zzz6f36-login-local-input {
+  .zzz10v1-panel #versoRegisterSetupPasswordInput.zzz6f36-login-local-input {
     width: 100px !important;
     height: 36px !important;
   }
@@ -43968,11 +43972,9 @@ function zzz10v1_build_password_field() {
   label.textContent = 'PASSWORD';
   wrap.appendChild(label);
 
-  const input = document.createElement('input');
-  input.type = 'password';
-  input.className = 'entry-cell zzz6f36-login-local-input';
-  input.id = 'versoRegisterSetupPasswordInput';
-  input.autocomplete = 'off';
+  // [Zzz6-F36:VERSO-KEYBOARD-ALL] Vrso 2026-10-11 (16:21): "Zapracuj aj do registracie!!!" - heslo pri registracii
+  // tiez cez Verso klavesnicu (ziadne pole na heslo -> Chrome nic neulozi). .disabled/.placeholder/.value funguju ako predtym.
+  const input = zzz_vkb_make_secret('versoRegisterSetupPasswordInput', 'entry-cell zzz6f36-login-local-input', 'NEW PASSWORD');
   // === [Zzz10-R7:PASSWORD-GATE] Vrso poziadavka 2026-09-15 ("vyplnit az po vlozeni aktivacneho kodu"):
   // heslo pole je ZAMERNE disabled, kym sa nezhoduje spravne zadany aktivacny kod (rovnaka podmienka ako
   // uz existujuci Zzz10-V1:REGISTER-ENTRY-GATE pre REGISTER ENTRY tlacidlo, viz
@@ -44983,8 +44985,21 @@ function zzz_vkb_make_secret(id, cls, title, placeholder) {
     set(v) { revealed = (v === 'text'); render(); },
     configurable: true
   });
+  // .disabled ako pri <input> (napr. heslo v registracii je zamknute, kym nesedi aktivacny kod)
+  let disabled = false;
+  Object.defineProperty(el, 'disabled', {
+    get() { return disabled; },
+    set(v) { disabled = !!v; el.classList.toggle('zzz-vkb-disabled', disabled); if (disabled && zzz_vkbPanel && zzz_vkbPanel._target === el) zzz_vkb_hide(); },
+    configurable: true
+  });
+  // .placeholder ako pri <input> - text v prazdnom poli
+  Object.defineProperty(el, 'placeholder', {
+    get() { return placeholder || ''; },
+    set(v) { placeholder = String(v || ''); render(); },
+    configurable: true
+  });
   render();
-  el.addEventListener('click', () => zzz_vkb_show(el, mode === 'foreign', title, mode));
+  el.addEventListener('click', () => { if (!disabled) zzz_vkb_show(el, mode === 'foreign', title, mode); });
   return el;
 }
 const ZZZ_VKB_PAGES = {
@@ -45047,6 +45062,7 @@ function zzz_vkb_show(target, shuffled, title, mode) {
   mk('OK', () => zzz_vkb_hide(), 'zzz-vkb-ok');
   panel.appendChild(ctrl);
   draw();
+  panel._target = target;
   document.body.appendChild(panel);
   zzz_vkbPanel = panel;
 }
@@ -47156,6 +47172,12 @@ function zzz10m2_render_login_setup(body) {
     newPassViewBtn.addEventListener('touchend', zzz10r4_hide_new);
     newPassViewBtn.addEventListener('touchcancel', zzz10r4_hide_new);
     newPassInputWrap.appendChild(newPassViewBtn);
+    // [Zzz10-R4:NO-VIEW] Vrso 2026-10-11 (16:21): "ci vobec zobrazovat zadavane pismena" - zadavane heslo/fraza sa uz NEZOBRAZUJE
+    // (VIEW zruseny, ostava len neviditelny drzitel miesta pre mriezku). Preklep/zabudnute = recovery.
+    newPassViewBtn.style.visibility = 'hidden';
+    newPassViewBtn.tabIndex = -1;
+    newPassViewBtn.setAttribute('aria-hidden', 'true');
+    newPassViewBtn.style.pointerEvents = 'none';
 
     newPassWrap.appendChild(newPassInputWrap);
     changePwRow.appendChild(newPassWrap);
@@ -47241,6 +47263,11 @@ function zzz10m2_render_login_setup(body) {
     phraseViewBtn.addEventListener('touchend', zzz13mv_hide);
     phraseViewBtn.addEventListener('touchcancel', zzz13mv_hide);
     phraseInputWrap.appendChild(phraseViewBtn);
+    // [Zzz10-R4:NO-VIEW] VIEW pri MV fraze zruseny - fraza sa nezobrazuje ani pri pisani
+    phraseViewBtn.style.visibility = 'hidden';
+    phraseViewBtn.tabIndex = -1;
+    phraseViewBtn.setAttribute('aria-hidden', 'true');
+    phraseViewBtn.style.pointerEvents = 'none';
     phraseWrap.appendChild(phraseInputWrap);
     phraseRow.appendChild(phraseWrap);
 
