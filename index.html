@@ -7229,6 +7229,78 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz6f36-login-local-input[type="password"] {
     letter-spacing: 2px;
   }
+  /* === [Zzz6-F36:VERSO-KEYBOARD] Verso klavesnica pre heslo (TRUSTED/FOREIGN) | Vrso -> Claude AI | 2026-10-11 === */
+  .zzz-vkb-display {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    letter-spacing: 2px;
+    overflow: hidden;
+    white-space: nowrap;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .zzz-vkb-display.zzz-vkb-empty {
+    color: #9ca3af !important;
+    letter-spacing: 0;
+  }
+  .zzz-vkb-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2147483000;
+    background: #171717;
+    border-top: 2px solid #D4AF37;
+    padding: 8px 6px calc(8px + env(safe-area-inset-bottom));
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+  .zzz-vkb-head {
+    color: #D4AF37;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 6px;
+  }
+  .zzz-vkb-grid {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 4px;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  .zzz-vkb-ctrl {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr 1.4fr;
+    gap: 4px;
+    max-width: 640px;
+    margin: 6px auto 0;
+  }
+  .zzz-vkb-key {
+    height: 40px;
+    border-radius: 6px;
+    border: 1px solid #3f3f46;
+    background: #262626;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+    padding: 0;
+    cursor: pointer;
+  }
+  .zzz-vkb-key:active {
+    background: #3f3f46;
+  }
+  .zzz-vkb-ctrl-key {
+    font-size: 12px;
+  }
+  .zzz-vkb-ok {
+    border: 2px solid #22c55e;
+  }
+  /* === [/Zzz6-F36:VERSO-KEYBOARD] === */
   /* === [/Zzz6-F36:LOGIN-LOCAL-INPUT] === */
   /* ENTRY tlacidlo - ROVNAKA vyska ako titulok vyssie (symetria, "symetricky nech je cely modul"): 82px
      (cela vyska stlpca label 34px + gap 4px + bunka 44px), aby POSLEDNY prvok v riadku vizualne zrkadlil
@@ -44726,6 +44798,10 @@ function zzz6f36_build_login_field(labelText, fieldKind) {
   label.textContent = labelText;
   wrap.appendChild(label);
 
+  if (fieldKind === 'content') { // [Zzz6-F36:VERSO-KEYBOARD] CONTENT podla rezimu zariadenia - viz zzz_vkb_add_slot
+    zzz_vkb_add_slot(wrap, 'versoLoginContentCell', 'entry-cell zzz6f36-login-local-input', 'PASSWORD');
+    return wrap;
+  }
   const cell = document.createElement('input');
   cell.type = (fieldKind === 'content') ? 'password' : 'text'; // CONTENT = heslo/tajny kod, VZDY natívne maskovane pocas pisania
   cell.className = 'entry-cell zzz6f36-login-local-input';
@@ -44735,6 +44811,124 @@ function zzz6f36_build_login_field(labelText, fieldKind) {
 
   return wrap;
 }
+
+// === [Zzz6-F36:VERSO-KEYBOARD] Vrso 2026-10-11, doslovne: "Da sa teda riesit neukladanie hesiel nejako verso apky?" +
+// volba "Zamiesana foreign". Na TRUSTED a FOREIGN zariadeni sa heslo (CONTENT) NEPISE do <input type=password>,
+// ale tukanim na klavesnicu, ktoru kresli appka:
+//  - na stranke nie je ziadne pole na heslo -> prehliadac (Chrome) neponukne "Save password?" a nic neulozi,
+//  - systemova klavesnica (Gboard...) sa vobec neotvori -> nic sa nenauci, bezny keylogger v nej nic nezachyti,
+//  - FOREIGN: rozlozenie znakov sa pri kazdom otvoreni ZAMIESA -> z polohy tuknuti sa heslo neda zistit.
+// Heslo zije len v premennej v pamati (nie v DOM). Prvok #versoLoginContentCell ma vlastnost .value (getter/setter),
+// takze vsetky existujuce miesta (submit, Quick Login, prihlasenie po registracii) funguju bez zmeny.
+// MY DEVICE = povodne pole na heslo (rychle pisanie). Neochrani pred nahravanim obrazovky skodlivou appkou. | Vrso -> Claude AI | 2026-10-11 ===
+let zzz_vkbSlots = [];   // tajne polia, ktore sa prepinaju podla rezimu zariadenia: { wrap, id, cls, title }
+let zzz_vkbPanel = null;
+function zzz_vkb_mode() { return zzz6f7_isLoggedIn ? zzz10dmActive : zzz10dmPending; }
+// zaregistruje tajne pole (heslo, MV fraza, nove heslo) a hned ho vlozi do wrap - pole na heslo (MY DEVICE)
+// alebo zobrazovac s Verso klavesnicou (TRUSTED/FOREIGN). Existujuci kod cita/zapisuje stale len .value.
+function zzz_vkb_add_slot(wrap, id, cls, title) {
+  zzz_vkbSlots = zzz_vkbSlots.filter(sl => sl.id !== id); // to iste pole z predosleho (zatvoreneho) okna prec; okno sa este len sklada, preto nie podla isConnected
+  const slot = { wrap, id, cls, title };
+  zzz_vkbSlots.push(slot);
+  zzz_vkb_mount_slot(slot);
+  return wrap.querySelector('#' + id);
+}
+function zzz_vkb_remount_all() {
+  zzz_vkb_hide();
+  zzz_vkbSlots = zzz_vkbSlots.filter(sl => sl.wrap.isConnected);
+  zzz_vkbSlots.forEach(zzz_vkb_mount_slot);
+}
+function zzz_vkb_mount_slot(slot) {
+  const wrap = slot.wrap;
+  const old = wrap.querySelector('#' + slot.id);
+  const mode = zzz_vkb_mode();
+  let el;
+  if (mode !== 'trusted' && mode !== 'foreign') {
+    el = document.createElement('input');
+    el.type = 'password';
+    el.className = slot.cls;
+    el.id = slot.id;
+    el.autocomplete = 'off';
+    el.setAttribute('autocapitalize', 'off');
+    el.setAttribute('spellcheck', 'false');
+  } else {
+    let secret = '';
+    el = document.createElement('div');
+    el.className = slot.cls + ' zzz-vkb-display';
+    el.id = slot.id;
+    el.setAttribute('role', 'button');
+    el.setAttribute('aria-label', slot.title + ' - tap to type with Verso keyboard');
+    const render = () => { el.textContent = secret ? '\u2022'.repeat(secret.length) : 'tap'; el.classList.toggle('zzz-vkb-empty', !secret); };
+    Object.defineProperty(el, 'value', { get() { return secret; }, set(v) { secret = String(v == null ? '' : v); render(); }, configurable: true });
+    render();
+    el.addEventListener('click', () => zzz_vkb_show(el, mode === 'foreign', slot.title));
+  }
+  if (old) old.replaceWith(el); else wrap.appendChild(el);
+}
+const ZZZ_VKB_PAGES = {
+  lower: 'abcdefghijklmnopqrstuvwxyz0123456789'.split(''),
+  upper: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split(''),
+  sym: '!@#$%^&*()-_=+[]{};:\'",.<>/?\\|`~ '.split('')
+};
+function zzz_vkb_shuffle(arr) {
+  const a = arr.slice();
+  const rnd = new Uint32Array(a.length);
+  try { crypto.getRandomValues(rnd); } catch (e) { for (let i = 0; i < rnd.length; i++) rnd[i] = Math.floor(Math.random() * 4294967296); }
+  for (let i = a.length - 1; i > 0; i--) { const j = rnd[i] % (i + 1); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+function zzz_vkb_hide() {
+  if (zzz_vkbPanel && zzz_vkbPanel.parentNode) zzz_vkbPanel.parentNode.removeChild(zzz_vkbPanel);
+  zzz_vkbPanel = null;
+}
+function zzz_vkb_show(target, shuffled, title) {
+  zzz_vkb_hide();
+  try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) {} // zavri systemovu klavesnicu
+  const panel = document.createElement('div');
+  panel.className = 'zzz-vkb-panel';
+  const head = document.createElement('div');
+  head.className = 'zzz-vkb-head';
+  head.textContent = (title ? title + ' - ' : '') + (shuffled ? 'VERSO KEYBOARD - FOREIGN (keys shuffled)' : 'VERSO KEYBOARD - TRUSTED');
+  panel.appendChild(head);
+  const grid = document.createElement('div');
+  grid.className = 'zzz-vkb-grid';
+  panel.appendChild(grid);
+  let page = 'lower';
+  const layouts = {};
+  const draw = () => {
+    if (!layouts[page]) layouts[page] = shuffled ? zzz_vkb_shuffle(ZZZ_VKB_PAGES[page]) : ZZZ_VKB_PAGES[page];
+    grid.innerHTML = '';
+    layouts[page].forEach(ch => {
+      const k = document.createElement('button');
+      k.type = 'button';
+      k.className = 'zzz-vkb-key';
+      k.textContent = ch === ' ' ? '\u2423' : ch;
+      k.addEventListener('pointerdown', (e) => { e.preventDefault(); target.value = target.value + ch; });
+      grid.appendChild(k);
+    });
+  };
+  const ctrl = document.createElement('div');
+  ctrl.className = 'zzz-vkb-ctrl';
+  const mk = (label, fn, cls) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'zzz-vkb-key zzz-vkb-ctrl-key' + (cls ? ' ' + cls : '');
+    b.textContent = label;
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(b); });
+    ctrl.appendChild(b);
+    return b;
+  };
+  const shiftBtn = mk('ABC', () => { page = (page === 'upper') ? 'lower' : 'upper'; shiftBtn.textContent = page === 'upper' ? 'abc' : 'ABC'; symBtn.textContent = '#+='; draw(); });
+  const symBtn = mk('#+=', () => { page = (page === 'sym') ? 'lower' : 'sym'; symBtn.textContent = page === 'sym' ? 'abc' : '#+='; shiftBtn.textContent = 'ABC'; draw(); });
+  mk('\u232B', () => { target.value = target.value.slice(0, -1); });
+  mk('CLEAR', () => { target.value = ''; });
+  mk('OK', () => zzz_vkb_hide(), 'zzz-vkb-ok');
+  panel.appendChild(ctrl);
+  draw();
+  document.body.appendChild(panel);
+  zzz_vkbPanel = panel;
+}
+// === [/Zzz6-F36:VERSO-KEYBOARD] ===
 
 // === [Zzz6-X:MULTIVERIFICATION-SECRET-CODE] Vrso 2026-08-24 ziadost, doslovne: "po stlaceni multiverification sa objavi znovu
 // login modul, treba zmenit nazov na multiverification login kde bude tajne username:83776 oznaceny
@@ -44984,6 +45178,7 @@ function zzz6f36_render_login(body) {
 let zzz6f36LoginModalOverlay = null; // referencia na aktualne otvoreny Login modal (aby sa dal zatvorit po uspesnom prihlaseni/rucne)
 
 function zzz6f36_close_login_modal() {
+  if (typeof zzz_vkb_hide === 'function') zzz_vkb_hide(); // [Zzz6-F36:VERSO-KEYBOARD]
   if (zzz6f36LoginModalOverlay && zzz6f36LoginModalOverlay.parentNode) {
     document.body.removeChild(zzz6f36LoginModalOverlay);
   }
@@ -45334,14 +45529,10 @@ function zzz_render_account_recovery(box) {
   mvLabel.className = 'zzz-support-field-label';
   mvLabel.textContent = 'MV FRÁZA';
   mvWrap.appendChild(mvLabel);
-  const mvInput = document.createElement('input');
-  mvInput.type = 'password';
-  mvInput.className = 'entry-cell zzz6f36-login-local-input';
-  mvInput.id = 'versoRecoveryMvPhraseInput';
-  mvInput.autocomplete = 'off';
-  mvInput.setAttribute('autocapitalize', 'off');
-  mvInput.setAttribute('spellcheck', 'false');
-  mvWrap.appendChild(mvInput);
+  // [Zzz6-F36:VERSO-KEYBOARD] Vrso 2026-10-11: "Rovno zapracuj aj recovery! Vsak to je uplne zasadne." - MV fraza a nove
+  // heslo idu na TRUSTED/FOREIGN cez Verso klavesnicu (ziadne pole na heslo -> prehliadac nic neulozi). TOKEN ostava
+  // obycajne pole: vklada sa z emailu a po pouziti aj tak prestane platit.
+  zzz_vkb_add_slot(mvWrap, 'versoRecoveryMvPhraseInput', 'entry-cell zzz6f36-login-local-input', 'MV PHRASE');
   row2.appendChild(mvWrap);
   // === [/Zzz-RECOVERY:MV-PHRASE] (pole) ===
 
@@ -45351,12 +45542,7 @@ function zzz_render_account_recovery(box) {
   newPassLabel.className = 'zzz-support-field-label';
   newPassLabel.textContent = 'NOVÉ HESLO';
   newPassWrap.appendChild(newPassLabel);
-  const newPassInput = document.createElement('input');
-  newPassInput.type = 'password';
-  newPassInput.className = 'entry-cell zzz6f36-login-local-input';
-  newPassInput.id = 'versoRecoveryNewPasswordInput';
-  newPassInput.autocomplete = 'off';
-  newPassWrap.appendChild(newPassInput);
+  zzz_vkb_add_slot(newPassWrap, 'versoRecoveryNewPasswordInput', 'entry-cell zzz6f36-login-local-input', 'NEW PASSWORD'); // [Zzz6-F36:VERSO-KEYBOARD]
   row2.appendChild(newPassWrap);
 
   const useBtn = document.createElement('button');
@@ -45365,6 +45551,9 @@ function zzz_render_account_recovery(box) {
   useBtn.textContent = 'POUŽIŤ TOKEN';
   useBtn.addEventListener('click', async () => {
     const username = zzz10v1_normalize(userInput.value); // [Zzz0-R2:USERNAME-CASE] 2026-09-21 - predtym len .trim() | Vrso -> Claude AI | 2026-09-21
+    // [Zzz6-F36:VERSO-KEYBOARD] polia sa podla rezimu zariadenia vymienaju - vzdy citat AKTUALNE prvky
+    const newPassInput = document.getElementById('versoRecoveryNewPasswordInput') || { value: '' };
+    const mvInput = document.getElementById('versoRecoveryMvPhraseInput') || { value: '' };
     const token = tokenInput.value.trim();
     const newPassword = newPassInput.value.trim();
     const mvPhrase = mvInput.value.trim(); // [Zzz-RECOVERY:MV-PHRASE] - prazdna je povolena LEN pre ucet bez nastavenej frazy (rozhodne server)
@@ -45798,6 +45987,9 @@ function zzz10dm_build_row() {
       chip.addEventListener('click', () => {
         zzz10dmPending = key;
         row.querySelectorAll('.zzz10dm-chip').forEach(c => c.classList.toggle('zzz10dm-on', c.dataset.mode === key));
+        // [Zzz6-F36:VERSO-KEYBOARD] CONTENT sa prepne medzi polom na heslo (MY DEVICE) a Verso klavesnicou (TRUSTED/FOREIGN);
+        // ak sa prepina, rozpisane heslo sa zahodi (nepresuva sa medzi rezimami)
+        if (typeof zzz_vkb_remount_all === 'function') zzz_vkb_remount_all();
       });
     }
     row.appendChild(chip);
