@@ -7377,6 +7377,17 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz10v1-user-hint-free { color: #16a34a; }
   .zzz10v1-user-hint-taken { color: #dc2626; }
   .zzz10v1-user-hint-reserved { color: #d97706; }
+  .zzz10v1-char-reserved { color: #d97706 !important; }
+  .zzz6f36-login-local-input.zzz10v1-code-input {
+    width: 200px !important;
+    max-width: 80vw !important;
+    height: 48px !important;
+    margin: 0 auto !important;
+    font-size: 22px !important;
+    font-weight: 700;
+    text-align: center;
+    letter-spacing: 6px;
+  }
   .zzz-build-tag { margin-top: 6px; font-size: 10px; color: #9ca3af; text-align: center; font-family: monospace; }
   .zzz10v1-status {
     margin-top: 8px;
@@ -43937,7 +43948,9 @@ function zzz10v1_render_username_highlight(mirrorEl, value, takenUsernamesNormal
   if (!value) { zzz10v1_update_username_hint('', false); return; }
   const isExactTaken = takenUsernamesNormalized.includes(zzz10v1_normalize(value)); // [Zzz-B9:2.4-ADMIN-NAMES] rezervovane mena rozhodne server (admin email) // [Zzz6-X:USERNAME-EXCEPTIONS] rezervovane = cervene ako obsadene | Vrso -> Claude AI | 2026-09-21
   const span = document.createElement('span');
-  span.className = isExactTaken ? 'zzz10v1-char-taken' : 'zzz10v1-char-free';
+  // [Zzz-B9:2.4-ADMIN-NAMES] Vrso 2026-10-12: "pismena oranzovym namiesto zelenym" pri rezervovanom mene (verso1, verso2...)
+  const isReservedName = !isExactTaken && zzz6x_is_reserved_username(value);
+  span.className = isExactTaken ? 'zzz10v1-char-taken' : (isReservedName ? 'zzz10v1-char-reserved' : 'zzz10v1-char-free');
   span.textContent = value;
   mirrorEl.appendChild(span);
   zzz10v1_update_username_hint(value, isExactTaken);
@@ -44006,7 +44019,7 @@ function zzz10v1_update_register_entry_button_state() {
   const passwordInput = document.getElementById('versoRegisterSetupPasswordInput'); // Zzz10-R7:PASSWORD-GATE
   const username = zzz10v1UsernameFieldValue.trim();
   const email = zzz10v1EmailFieldValue.trim();
-  const code = (entryData['35'] || '').trim();
+  const code = zzz10v1ActivationCodeValue.trim();
   const codeReady = !!username && !!email && /^\d{6}$/.test(code);
   const password = passwordInput ? String(passwordInput.value || '') : '';
   if (passwordInput) passwordInput.disabled = !codeReady;
@@ -44199,7 +44212,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B9-2.4c 2026-10-12'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B9-2.4d 2026-10-12'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
@@ -44339,6 +44352,11 @@ function zzz10v1_build_email_info_note() {
 // tejto bunke (predtym to pravdepodobne posobilo zmatocne - vyzeralo to ako vystup, nie vstup). Realne
 // overenie R35 oproti R34 (skutocna "aktivacia" uctu) NIE JE este implementovane - bunka je zatial
 // pripravena na buduce doplnenie tejto logiky. | Vrso -> Claude AI | 2026-08-24 ===
+// [Zzz-B9:2.4-CODE-INPUT] Vrso 2026-10-12 (verso4 "stale rovnako zaseknute"): ACTIVATION CODE sa predtym zadaval cez
+// okno open_entry_modal('35'), ktore sa otvara HORE pod Command Line - pri odscrollovanom formulari ho nebolo vidiet,
+// kod sa neulozil a REGISTER ENTRY ostal zamknuty. Teraz je to obycajne pole priamo vo formulari (len 6 cislic,
+// ciselna klavesnica). Kod nie je tajomstvo (jednorazovy, prisiel emailom), preto nie Verso klavesnica. | Vrso -> Claude AI | 2026-10-12
+let zzz10v1ActivationCodeValue = '';
 function zzz10v1_build_activation_code_field() {
   const wrap = document.createElement('div');
   wrap.className = 'zzz10v1-field-col';
@@ -44350,13 +44368,23 @@ function zzz10v1_build_activation_code_field() {
   label.textContent = 'ACTIVATION CODE';
   wrap.appendChild(label);
 
-  const cell = document.createElement('div');
-  cell.className = 'entry-cell zzz10v1-activation-cell';
-  cell.setAttribute('data-entry-id', '35');
-  cell.id = 'versoRegisterSetupActivationCell';
-  cell.textContent = entryData['35'] || 'TYPE IN ACTIVATION CODE';
-  cell.addEventListener('click', () => open_entry_modal('35'));
-  wrap.appendChild(cell);
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.id = 'versoRegisterSetupActivationInput';
+  input.className = 'entry-cell zzz6f36-login-local-input zzz10v1-code-input';
+  input.inputMode = 'numeric';
+  input.autocomplete = 'one-time-code';
+  input.maxLength = 6;
+  input.placeholder = '6-digit code';
+  input.setAttribute('spellcheck', 'false');
+  input.value = zzz10v1ActivationCodeValue;
+  input.addEventListener('input', () => {
+    const digits = input.value.replace(/\D/g, '').slice(0, 6);
+    if (digits !== input.value) input.value = digits;
+    zzz10v1ActivationCodeValue = digits;
+    zzz10v1_update_register_entry_button_state();
+  });
+  wrap.appendChild(input);
 
   return wrap;
 }
@@ -44386,7 +44414,7 @@ async function zzz10v1_submit_register() {
   // akcia register). Prehliadac uz nepyta rezervaciu (get_own_reservation) ani nezapisuje do verso_verification. ===
   const username = zzz10v1UsernameFieldValue.trim();
   const email = zzz10v1EmailFieldValue.trim();
-  const enteredActivationCode = (entryData['35'] || '').trim();
+  const enteredActivationCode = zzz10v1ActivationCodeValue.trim(); // [Zzz-B9:2.4-CODE-INPUT]
   const passwordInput = document.getElementById('versoRegisterSetupPasswordInput'); // Zzz10-R7:PASSWORD-FIELD - lokalny, nie entryData
   const password = (passwordInput ? passwordInput.value : '').trim();
   const entryBtn = document.getElementById('versoRegisterSetupEntryButton');
@@ -44427,6 +44455,7 @@ async function zzz10v1_submit_register() {
   if (passwordInput) passwordInput.value = '';
   zzz10v1EmailFieldValue = '';
   zzz10v1UsernameFieldValue = '';
+  zzz10v1ActivationCodeValue = ''; // [Zzz-B9:2.4-CODE-INPUT]
   zzz10v1LastSentActivation = null;
   zzz10v1_set_status('Registration complete. Logging you in as "' + username + '"…', 'ok');
   zzz6f2_show_toast('Registration complete - welcome to Verso, ' + username + '.', 'ok');
