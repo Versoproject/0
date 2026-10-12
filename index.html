@@ -20920,7 +20920,8 @@ function zzz6f7_set_login_state(isLoggedIn) {
   const label = document.getElementById('zzz6f7UsernameLabel');
   if (!label) return;
   label.textContent = 'username';
-  setTimeout(() => {
+  setTimeout(async () => {
+    try { await zzz_my_device_restore(); } catch (e) { /* bez obnovy - otvori sa prihlasenie */ } // [Zzz-B9:3.3-MY-DEVICE]
     zzz_recompute_logo_status(); // [Zzz-LOGO-STATUS]
     // === [Zzz6-F36:LOGIN-ON-OPEN] Vrso 2026-10-11: po otvoreni appky, ak nikto nie je prihlaseny, sa otvori prihlasenie. ===
     if (!zzz6f7_isLoggedIn) {
@@ -44150,7 +44151,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B9-3.2b 2026-10-12'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B9-3.3 2026-10-12'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
@@ -46033,6 +46034,7 @@ function zzz10r2_logout(reason = 'manual', opts = {}) {
     zzz10r2_logout_precheck().then(ok => { if (ok) zzz10r2_logout(reason, { checked: true }); });
     return;
   }
+  if (reason === 'manual' || reason === 'superseded' || reason === 'locked_out') zzz_my_device_clear(); // [Zzz-B9:3.3-MY-DEVICE]
   const label = document.getElementById('zzz6f7UsernameLabel');
   // === [Zzz10-R2:PERMANENT-VERSO] viz UPDATE komentar vyssie ===
   if (reason !== 'manual' && reason !== 'superseded' && reason !== 'locked_out' && label && zzz6x_is_reserved_username(label.textContent)) { // [Zzz-SESSION:B7-FORCED-LOGOUT] prevzatie inym zariadenim odhlasi VZDY // [Zzz6-X:DEV-TEST-ACCOUNT] Verso aj Verso1 (rovnake pravidla) | Vrso -> Claude AI | 2026-09-21
@@ -46157,7 +46159,8 @@ async function zzz_session_heartbeat_tick() {
     const fetchPromise = fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-      body: JSON.stringify({ action: 'heartbeat', username: zzz_sessionUsername, sessionId: zzz_sessionId })
+      body: JSON.stringify({ action: 'heartbeat', username: zzz_sessionUsername, sessionId: zzz_sessionId,
+        want_token: !zzz0auth_sessionToken || (Date.now() - zzz0auth_tokenAt) > 6 * 3600 * 1000 }) // [Zzz-B9:3.3-MY-DEVICE] token plati 12 h - obnova po 6 h
     });
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('heartbeat timeout (10s)')), 10000)
@@ -46168,7 +46171,12 @@ async function zzz_session_heartbeat_tick() {
     // [Zzz-SESSION:B7-FORCED-LOGOUT] Vrso 2026-10-11 - "prevzate" sa vyriesi SKOR nez navrat zo siete: inak
     // vyskocila hlaska "spojenie obnovene - zapisy su znova povolene", hoci zapisy povolene NEBOLI. | Vrso -> Claude AI | 2026-10-11
     if (result.active === false) { zzz_enter_standby_mode(); return; }
-    if (result.locked) { zzz_enter_session_lock(); return; } // [Zzz-SESSION:B7-STALE-LOCK] relacia > 60 min bez spojenia - odomknut heslom
+    if (result.locked) { zzz_enter_session_lock(); return; }
+    if (result.token) { // [Zzz-B9:3.3-MY-DEVICE] obnoveny token
+      zzz0auth_sessionToken = result.token;
+      zzz0auth_tokenAt = Date.now();
+      zzz_session_apply_headers_to_client(zzz_sessionUsername, zzz_sessionId);
+    } // [Zzz-SESSION:B7-STALE-LOCK] relacia > 60 min bez spojenia - odomknut heslom
     zzz_exit_offline_mode(); // spojenie uspesne prebehlo - urcite nie sme offline (aj ked mozno v standby, viz nizsie)
     // [Zzz0-R1:DB-STATE-RECOVERY] 2026-09-21 - Vrso: "stale svieti na oranzovo". Oranzovy stav (zzz0r1-db-disconnected)
     // zapne kazde zlyhanie citania/zapisu (aj obycajny timeout na pomalom 5G, ktoreho toast je zamerne potlaceny), ale
@@ -46456,6 +46464,56 @@ function zzz_device_id() {
 }
 // === [/Zzz-SESSION:B7-URGENT] (device id) ===
 
+// === [Zzz-B9:3.3-MY-DEVICE] Vrso 2026-10-12 (volba A): na MY DEVICE ostava prihlaseny, kym neda LOG OUT - aj po
+// zatvoreni prehliadaca / restarte. Na zariadeni sa pamata LEN meno + id relacie (nie heslo); token si appka pri
+// otvoreni vypyta od servera (heartbeat want_token). Server relaciu drzi 90 dni od posledneho ozvania; LOG OUT,
+// prihlasenie inde alebo recovery ju okamzite zrusi. TRUSTED/FOREIGN: nic sa neuklada, 60 min zamok ako doteraz. ===
+const ZZZ_MY_DEVICE_SESSION_KEY = 'verso_my_device_session';
+let zzz0auth_tokenAt = 0;
+function zzz_my_device_save(username, sessionId) {
+  try { zzz10dmOrig.set.call(window.localStorage, ZZZ_MY_DEVICE_SESSION_KEY, JSON.stringify({ u: username, s: sessionId })); } catch (e) {}
+}
+function zzz_my_device_clear() {
+  try { zzz10dmOrig.remove.call(window.localStorage, ZZZ_MY_DEVICE_SESSION_KEY); } catch (e) {}
+}
+function zzz_my_device_read() {
+  try { const v = JSON.parse(zzz10dmOrig.get.call(window.localStorage, ZZZ_MY_DEVICE_SESSION_KEY) || 'null'); return (v && v.u && v.s) ? v : null; }
+  catch (e) { return null; }
+}
+// pri otvoreni appky: ak toto zariadenie ma ulozenu MY DEVICE relaciu, overi ju na serveri a obnovi prihlasenie
+async function zzz_my_device_restore() {
+  const saved = zzz_my_device_read();
+  if (!saved) return false;
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ action: 'heartbeat', username: saved.u, sessionId: saved.s, want_token: true })
+    });
+    const result = await resp.json();
+    if (result.active !== true || result.locked || !result.token) {
+      if (result.active === false || result.locked) zzz_my_device_clear(); // relacia zrusena / vyprsana - treba sa prihlasit znova
+      return false;
+    }
+    zzz0auth_sessionToken = result.token;
+    zzz0auth_tokenAt = Date.now();
+    zzz_session_start(saved.u, saved.s);
+    const label = document.getElementById('zzz6f7UsernameLabel');
+    if (label) label.textContent = saved.u;
+    zzz0r1_sync_username_into_cl();
+    zzz10dmPending = 'my';
+    zzz10dm_activate_on_login();
+    zzz6f7_set_login_state(true);
+    setTimeout(() => { try { zzz6x_apply_cl_prefill(); } catch (e) {} }, 0);
+    zzz0r1_set_db_connection_state(true);
+    return true;
+  } catch (err) {
+    zzz6f2_show_toast('Could not reach the Verso server to restore your login. Check your connection - or log in again.', 'warn');
+    return false;
+  }
+}
+// === [/Zzz-B9:3.3-MY-DEVICE] ===
+
 async function zzz10r8_verify_login_password(username, enteredPassword) {
   // === [Zzz-SESSION:B7-SWITCH-USER] Vrso 2026-10-11: prihlasenie pod INYM menom na tom istom zariadeni (vrso ->
   // Verso1) nechalo predoslu relaciu na serveri zit (heartbeat sa len prepol). Dalsie prihlasenie toho
@@ -46474,7 +46532,7 @@ async function zzz10r8_verify_login_password(username, enteredPassword) {
     const fetchPromise = fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-      body: JSON.stringify({ action: 'login', username: zzz10v1_normalize(username), password: enteredPassword, deviceId: zzz_device_id() }) // [Zzz-SESSION:B7-URGENT] + deviceId
+      body: JSON.stringify({ action: 'login', username: zzz10v1_normalize(username), password: enteredPassword, deviceId: zzz_device_id(), keep_signed_in: zzz10dmPending === 'my' }) // [Zzz-SESSION:B7-URGENT] + deviceId
     });
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('Zzz0Auth-Gate login timeout (12s)')), 12000) // [Zzz-SESSION:B7-EMAIL-BACKGROUND] 2026-10-11: 4 s nestacili na studeny start funkcie + overenie relacie
@@ -46487,6 +46545,8 @@ async function zzz10r8_verify_login_password(username, enteredPassword) {
     zzz0r1_set_db_connection_state(true);
     if (result.verified) {
       zzz0auth_sessionToken = result.token || null; // moze byt null, ak secret este nie je nastaveny na serveri
+      zzz0auth_tokenAt = Date.now(); // [Zzz-B9:3.3-MY-DEVICE]
+      if (zzz10dmPending === 'my' && result.sessionId) zzz_my_device_save(zzz10v1_normalize(username), result.sessionId); else zzz_my_device_clear();
       zzz_session_start(zzz10v1_normalize(username), result.sessionId || null); // Zzz-SESSION:SINGLE-ACTIVE - spusti heartbeat slucku
       // [Zzz0Auth-Gate:JWT-BRIDGE] Vrso 2026-09-20 - kontrola mosta bezi SAMA hned po prihlaseni a vysledok
       // povie toastom. Na mobile niet konzoly, takze inak by sa stav mosta nedal overit vobec. Bezi az PO
@@ -46576,7 +46636,8 @@ async function zzz6f36_submit_login(options = {}) {
         corrupt_record: 'the registration record is damaged',
         lookup_failed: 'could not be verified (database unreachable?)',
         // [Zzz-SESSION:B7-URGENT] relaciu sa nepodarilo zalozit na serveri | Vrso -> Claude AI | 2026-10-10
-        session_failed: 'the session could not be created on the server, try again'
+        session_failed: 'the session could not be created on the server, try again',
+        too_many_attempts: 'too many wrong passwords in a row - wait 15 minutes and try again (the account owner was notified by email)' // [Zzz-B9:3.4-LOGIN-LIMIT]
       }[verifyResult.reason] || 'unknown reason';
       zzz6f2_show_toast(`Login refused - ${reasonText}.`, 'warn');
       return;
