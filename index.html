@@ -20913,82 +20913,21 @@ function zzz6f7_set_login_state(isLoggedIn) {
 // a pod.") z [ZZZ0-R1:AUTOLOGIN-VERSO] na [Zzz6-X:AUTOLOGIN-VERSO] - patri do tej istej "tajnej/dev" Zzz6-X
 // rodiny ako Zzz6-X:VERSO-DEV-LOGIN-SECRET/Zzz6-X:DELETE-USERNAME-DATABASE (docasny, vedomy vyvojovy
 // kompromis, ODSTRANIT pred verejnym spustenim).
+// [Zzz-B9:3.2b] Vrso 2026-10-12 (B9 Faza 3): ODSTRANENY automaticky pokus o prihlasenie "Verso" s heslom z kodu
+// ("[testovacie heslo - odstranene zo zdroja]" bolo citatelne v zdroji stranky a kazde otvorenie appky sa na serveri zapisalo ako zly pokus o heslo).
+// Pri otvoreni appky: meno v logu "username" a ked nikto nie je prihlaseny, otvori sa prihlasenie. | Vrso -> Claude AI | 2026-10-12
 (function zzz0r1_autologin_verso() {
   const label = document.getElementById('zzz6f7UsernameLabel');
   if (!label) return;
-
-  const zzz6xAutologinUsername = 'Verso'; // jedina hodnota, na ktoru je TOTO cele autologin hardcoded
-  // [Zzz6-X:AUTOLOGIN-VERSO] Vrso 2026-09-18, doslovne: "kozmeticku zrus" - ZIADNE okamzite
-  // zzz6f7_set_login_state(true) uz TU. Label zobrazuje meno hned (citatelnost), ale login-state (a teda
-  // aj farba) sa nastavi AZ NIZSIE, podla SKUTOCNEHO vysledku pozadneho pokusu - nie predtym. | Vrso ->
-  // Claude AI | 2026-09-18 ===
-  label.textContent = zzz6xAutologinUsername;
-
-  // === [Zzz1-DEFAULT-OWNER-USER] (Vrso 2026-08-25, "Prednastavena kazda cl na owner a user owner"):
-  // cerstva/prazdna CL sa pri nacitani strany automaticky predvyplni - R4 (Project Owner) aj R17 (User)
-  // dostanu aktualne prihlaseny username ako start hodnotu. Owner ich moze pred odoslanim upravit/rozsirit
-  // (napr. pridat dalsich userov do R17 cez R17b, viz nizsie). | Vrso -> Claude AI | 2026-08-25 ===
-  // OPRAVA (Vrso 2026-09-23, [Zzz0-R1:USERNAME-IN-CL]): uz sa NEZAPISUJE hardcoded "Verso", ale AKTUALNE
-  // prihlaseny username - a cez spolocnu funkciu, ktora to iste urobi aj po realnom prihlaseni pod inym
-  // menom (Verso1, dev login...) a doplni aj COMMUNICATION (R18).
-  zzz0r1_sync_username_into_cl();
-  // === [/Zzz1-DEFAULT-OWNER-USER] ===
-
-  // === [Zzz6-X:VERSO-ENTRY-DEFAULTS] Vrso 2026-09-17, doslovne: "pridaj k verso ked logged in ze vzdy cl
-  // bude prednastavena aj na project number 1 a verso uz tusim je automaticky project owner" - LEN ked je
-  // prihlaseny username presne "Verso" (explicitny if, NIE nepodmienene pre kohokolvek), cerstva CL dostane
-  // NAVYSE aj PROJECT NUMBER(2)="1" ako predvyplnenu start hodnotu (rovnaky princip ako existujuce
-  // Zzz1-DEFAULT-OWNER-USER vyssie, len dalsie pole). Vedome uzko naviazane na tento konkretny (docasny,
-  // Zzz6-X) autologin blok - ked ho raz nahradi skutocny multi-user login, tento if-guard uz bude
-  // pripraveny spravne fungovat aj tam (nebude sa aplikovat na inych userov). | Vrso -> Claude AI |
-  // 2026-09-17 ===
-  if (zzz10v1_normalize(zzz6xAutologinUsername) === 'verso') { // [Zzz0-R2:USERNAME-CASE] audit 2026-09-21 | Vrso -> Claude AI | 2026-09-21
-    write_to_entry("2", "1");
-  }
-  // === [/Zzz6-X:VERSO-ENTRY-DEFAULTS] ===
-
-  // === [Zzz6-X:AUTOLOGIN-VERSO-REAL-SESSION] Vrso 2026-09-18, 3. iteracia. Pouziva
-  // zzz10r8_verify_login_password(username, password) PRIAMO (parametre, nie DOM) - nulove riziko suboja
-  // s pripadne otvorenym Login modalom.
-  // "kozmeticku zrus...akurat ak by naozaj vypadlo spojenie, zlatou farbou username by aspon LOKALNE
-  // signalizovalo ze je prihlaseny do Versa ale bez internetu" - TRI mozne vysledky pokusu, kazdy iny stav:
-  //  1) result.verified === true -> SKUTOCNA session (zzz_session_start uz prebehol vnutri verify) ->
-  //     zzz6f7_set_login_state(true) -> recompute uvidi zzz_sessionId a ukaze ZELENU (realne overene).
-  //  2) result.reason === 'lookup_failed' -> POKUS SA VOBEC NEDOSTAL K SERVERU (fetch zlyhal/timeout -
-  //     presne "vypadlo spojenie") - NA ZAKLADE existujucej historie realneho prihlasenia na tomto
-  //     zariadeni sa username POVAZUJE za "lokalne dovereryhodne prihlaseny" -> zzz6f7_set_login_state(true),
-  //     ale ziadna zzz_session_start sa nestala (zzz_sessionId zostava null) -> recompute ukaze ZLATU
-  //     ("prihlaseny, offline, neoverene") presne ako Vrso ziadal.
-  //  3) inak (napr. wrong_password/not_registered - server ODPOVEDAL, len s nesuhlasom) -> POKUS SKUTOCNE
-  //     ZLYHAL, nie je dovod predstierat prihlasenie - zzz6f7_set_login_state sa VOBEC nezavola, username
-  //     ostava bez farby (naozaj neprihlaseny).
-  // POISTKA (nezmenena): skusi sa LEN na zariadeni s uz existujucou historiou skutocneho prihlasenia -
-  // inak by kazdy refresh na novom zariadeni pripocital "neuspesny pokus" a po 5 spustil breach-alert.
-  // | Vrso -> Claude AI | 2026-09-18 ===
-  setTimeout(async () => {
-    let deviceHasRealLoginHistory = false;
-    try { deviceHasRealLoginHistory = !!localStorage.getItem(ZZZ10R1_EXPECTED_USERNAME_KEY); } catch (e) { /* localStorage nedostupne */ }
-    if (deviceHasRealLoginHistory) {
-      try {
-        const result = await zzz10r8_verify_login_password(zzz6xAutologinUsername, 'devquicklogin');
-        if (result.verified || result.reason === 'lookup_failed') {
-          zzz6f7_set_login_state(true); // pripad 1 (realne) alebo 2 (offline, lokalna dovera) - farbu rozlisi recompute nizsie podla zzz_sessionId
-        }
-        // pripad 3 (server odpovedal, ale zamietol) - VOBEC sa nezavola, ostava neprihlaseny
-      } catch (e) { /* ticho ignoruj - ostava neprihlaseny */ }
-    }
-    zzz_recompute_logo_status(); // [Zzz-LOGO-STATUS] prejav skutocny vysledok (zzz_sessionId nastaveny/null) na indikatore
-    // === [Zzz6-F36:LOGIN-ON-OPEN] Vrso 2026-10-11, doslovne: "aby sa na hlavnej obrazovke link na verso vzdy
-    // objavila login screen ked nie je nikto prihlaseny" - po otvoreni appky, ak sa nikto neprihlasil (ani
-    // pozadovy pokus vyssie), sa hned otvori prihlasovacie okno. Meno v logu sa vrati na "username", aby
-    // neprihlaseny stav nevyzeral ako prihlaseny "Verso". | Vrso -> Claude AI | 2026-10-11 ===
+  label.textContent = 'username';
+  setTimeout(() => {
+    zzz_recompute_logo_status(); // [Zzz-LOGO-STATUS]
+    // === [Zzz6-F36:LOGIN-ON-OPEN] Vrso 2026-10-11: po otvoreni appky, ak nikto nie je prihlaseny, sa otvori prihlasenie. ===
     if (!zzz6f7_isLoggedIn) {
       try { label.textContent = 'username'; } catch (e) {}
       try { zzz6f36_open_login_modal(); } catch (e) { /* okno je len pohodlie */ }
     }
-    // === [/Zzz6-F36:LOGIN-ON-OPEN] ===
   }, 0);
-  // === [/Zzz6-X:AUTOLOGIN-VERSO-REAL-SESSION] ===
 })();
 // === [/Zzz6-X:AUTOLOGIN-VERSO] ===
 // === [/Zzz6-F7:LOGIN-STATE] ===
@@ -43673,7 +43612,6 @@ function zzz6x_is_verso1(name) {
 // POZOR/FLAG: TOTO JE VYVOJOVA POMOCKA, rovnaky duch ako Zzz6-X:VERSO-DEV-LOGIN-SECRET - pred realnym verejnym
 // spustenim zvaz, ci ma tento zoznam ostat prazdny (t.j. kazdy email znova striktne jedinecny) alebo ci
 // tento typ vynimky ma zmysel aj natrvalo (napr. pre admin/testovacie ucely). | Vrso -> Claude AI | 2026-09-02 ===
-const ZZZ10V1_REUSABLE_TEST_EMAILS = ['the.verso.project@gmail.com']; // VZDY normalizovane (male pismena) - porovnava sa s uz normalizovanym normalizedEmail
 // === [/Zzz10-DEV:REUSABLE-TEST-EMAIL] ===
 
 let zzz10v1CachedRegistrations = { usernames: [], emails: [] }; // posledny nacitany zoznam (pre zivy per-pismenny nahlad)
@@ -44212,7 +44150,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B9-2.4d 2026-10-12'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B9-3.2b 2026-10-12'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
@@ -44611,118 +44549,7 @@ function open_register_setup_standalone() {
 // riadkovy vypis (record_type, entry_id, username, confirmed_at). Neskor asi pribudne aj Zzz4-2 Verification
 // Trash (presun uz nepouzitych/neplatnych zaznamov, kody a nastavenia) - miesto pripravene, zatial
 // nevytvorene. | Vrso -> Claude AI | 2026-08-24 ===
-// === [ZzzF:LEGACY-REGISTER-MIGRATION] (jednorazova, owner-spustena akcia) - Vrso 2026-08-29 poziadavka
-// ("Verifikacia - presun starych zaznamov do verification"): pred 2026-08-28 sa VSETKY registracie ukladali
-// ako bezny CL zaznam priamo do verso_entries (fields.r3='Register', viz Zzz10-V1:REGISTER-LOCK vyssie v
-// subore). Odvtedy nove registracie idu VYLUCNE do verso_verification (Zzz10-V1:VERIFICATION-STORAGE) - tato
-// funkcia PRESUNIE zvysne STARE zaznamy z obdobia PRED zmenou do verso_verification (AKTIVNA tabulka, nie
-// trash - Vrso 2026-08-29: "ako moze ist stary zaznam do verification kde maju byt iba posledne aktualne
-// verifikacne udaje", spravne - legacy zaznam JE stale platny/aktualny udaj o danom userovi, pokial nebol
-// medzicasom nahradeny novsou registraciou). BEZPECNOSTNA POISTKA: ak pre dany (normalizovany) username uz
-// vo verso_verification EXISTUJE zaznam (=user sa odvtedy registroval znova cez novy system), legacy zaznam
-// sa NEPREPISE ani nezmaze - preskoci sa a ostane vo verso_entries na rucnu kontrolu (predist strate/prepisu
-// novsich udajov). Po USPESNOM zapise do verso_verification sa povodny riadok TRVALE zmaze z verso_entries
-// (Vrso 2026-08-29 potvrdenie: "ano vymazat"). ZAMERNE zapisuje do verso_verification, NIE do
-// verso_verification_trash (ten je urceny len pre UZ NEAKTUALNE/nahradene zaznamy, viz diskusia vyssie).
-// | Vrso -> Claude AI | 2026-08-29 ===
-async function zzzF_migrate_legacy_register_entries() {
-  if (!confirm('Migrovat vsetky stare Register zaznamy z verso_entries do verso_verification?\n\nTato akcia je NEVRATNA - povodne zaznamy sa po uspesnom presune TRVALE zmazu z verso_entries.')) {
-    return;
-  }
-
-  zzz6f2_show_toast('ZzzF Migracia: nacitavam stare Register zaznamy z verso_entries...');
-
-  let entriesRows = [];
-  try {
-    const { data, error } = await sb.from('verso_entries').select('*');
-    if (error) throw error;
-    entriesRows = data || [];
-  } catch (err) {
-    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
-    zzz6f2_show_toast(`ZzzF Migracia: nacitanie verso_entries zlyhalo (${errDetail}). Migracia preruseni, skus znova.`);
-    return;
-  }
-
-  const legacyRegisterRows = entriesRows.filter(row => zzz4_0_get_field_value(row, { key: 'r3' }) === 'Register');
-  if (legacyRegisterRows.length === 0) {
-    zzz6f2_show_toast('ZzzF Migracia: ziadne stare Register zaznamy vo verso_entries neexistuju - nic na migrovanie.');
-    return;
-  }
-
-  // existujuce (uz aktivne) registracie vo verso_verification - legacy zaznam so ZHODNYM usernamom sa
-  // NESMIE prepisat (novsi udaj ma vzdy prednost pred starym)
-  let existingUsernameIds = new Set();
-  try {
-    const { data, error } = await sb.from('verso_verification_public').select('id').eq('record_type', 'user_registration');
-    if (error) throw error;
-    (data || []).forEach(r => existingUsernameIds.add(r.id));
-  } catch (err) {
-    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
-    zzz6f2_show_toast(`ZzzF Migracia: kontrola existujucich registracii zlyhala (${errDetail}). Migracia preruseni (bezpecnost pred prepisom).`);
-    return;
-  }
-
-  let migrated = 0, skippedExisting = 0, skippedNoUsername = 0, failed = 0;
-
-  for (const row of legacyRegisterRows) {
-    const fields = zzz_parse_fields_json(row);
-    const username = (fields.r17 || '').trim();
-    if (!username) { skippedNoUsername++; continue; } // bez username sa neda spolahlivo migrovat, ostava vo verso_entries
-
-    const normalizedUsername = zzz10v1_normalize(username);
-    const id = `register-${normalizedUsername}`;
-
-    if (existingUsernameIds.has(id)) {
-      skippedExisting++; // novsia registracia uz existuje - legacy zaznam ostava vo verso_entries na rucnu kontrolu
-      continue;
-    }
-
-    const email = (fields.r10 || '').trim();
-    const activationCode = fields.r34 || '';
-    const userId = fields.r36 || null;
-    const registeredAt = row.entry_date || row.updated_at || new Date().toISOString();
-
-    const payload = {
-      id,
-      record_type: 'user_registration',
-      data_json: JSON.stringify({
-        username, email, activation_code: activationCode, user_id: userId,
-        registered_at: registeredAt,
-        migrated_from: 'verso_entries', migrated_at: new Date().toISOString()
-      }),
-      updated_at: new Date().toISOString()
-    };
-
-    try {
-      const { error: writeError } = await sb.from('verso_verification').insert(payload); // PPP-1:USERNAME-UNIQUE-GUARD (2026-08-29): insert (nie upsert) - konzistentne s registraciou, DB PK ako poistka
-      if (writeError) {
-        if (writeError.code === '23505') {
-          // PPP-1:USERNAME-UNIQUE-GUARD: medzicasom (nepravdepodobne, ale mozne) niekto s tymto usernamom uz zaregistroval - preskoc, nemaz z verso_entries
-          skippedExisting++;
-          existingUsernameIds.add(id);
-          continue;
-        }
-        throw writeError;
-      }
-
-      const { error: deleteError } = await sb.from('verso_entries').delete().eq('entry_id', row.entry_id);
-      if (deleteError) throw deleteError; // zapis do verso_verification uz prebehol - zaznam teraz existuje na OBOCH miestach, treba rucne dorieist mazanie
-
-      existingUsernameIds.add(id);
-      migrated++;
-      zzz6f37_write_audit_log('legacy_register_migrated', { entry_id: row.entry_id, username }); // Zzz6-F37:AUDIT-LOG (2026-08-29)
-    } catch (err) {
-      failed++;
-      const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
-      console.warn(`ZzzF Migracia: zaznam #${row.entry_id} (username "${username}") zlyhal. DOVOD: ${errDetail}`);
-    }
-  }
-
-  zzz6f2_show_toast(`ZzzF Migracia dokoncena: ${migrated} presunutych, ${skippedExisting} preskocenych (uz existuje novsia registracia), ${skippedNoUsername} bez username, ${failed} zlyhalo.`);
-  refresh_database_workspace_if_open();
-  if (zzz10v0ActiveTab === 'verification-database') open_verification_workspace(); // prekresli Verification Database, aby sa novo-presunute zaznamy hned zobrazili
-}
-// === [/ZzzF:LEGACY-REGISTER-MIGRATION] ===
+// [Zzz-B9:3.2b] ZzzF:LEGACY-REGISTER-MIGRATION odstranene (jednorazova akcia z 2026-08-29, zapis registracii z appky je od B9 zatvoreny).
 
 async function zzz10v2_render_verification_database(tabContent) {
   tabContent.innerHTML = '<div class="db-workspace-loading">Nacitavam Verification Database...</div>';
@@ -44767,14 +44594,6 @@ async function zzz10v2_render_verification_database(tabContent) {
   title.textContent = `VERIFICATION DATABASE (Zzz4-1)${rows.length ? ' - ' + rows.length + ' zaznamov' : ''}`;
   tabContent.appendChild(title);
 
-  // === [ZzzF:LEGACY-REGISTER-MIGRATION] tlacidlo - jednorazova akcia, viditelna priamo tu (Verification
-  // Database tab), spusti zzzF_migrate_legacy_register_entries() vyssie v subore. Vrso -> Claude AI 2026-08-29 ===
-  const migrateBtn = document.createElement('button');
-  migrateBtn.type = 'button';
-  migrateBtn.textContent = 'MIGROVAT STARE REGISTER ZAZNAMY (z verso_entries)';
-  migrateBtn.style.cssText = 'display:block;margin:4px auto 10px;padding:8px 12px;font-size:10px;font-weight:700;border-radius:8px;background-color:#171717;border:2px solid #D4AF37;color:#D4AF37;cursor:pointer;';
-  migrateBtn.addEventListener('click', () => { zzzF_migrate_legacy_register_entries(); });
-  tabContent.appendChild(migrateBtn);
 
   if (rows.length === 0) {
     const empty = document.createElement('div');
@@ -45085,7 +44904,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
 // === [/Zzz6-F36:VERSO-KEYBOARD] ===
 
 // === [Zzz6-X:MULTIVERIFICATION-SECRET-CODE] Vrso 2026-08-24 ziadost, doslovne: "po stlaceni multiverification sa objavi znovu
-// login modul, treba zmenit nazov na multiverification login kde bude tajne username:83776 oznaceny
+// login modul, treba zmenit nazov na multiverification login kde bude tajne username:[kod odstraneny] oznaceny
 // zzzF-secret code". SYSTEM FUNCTION: klik na Zzz10-R1 Multiverification tlacidlo uz OTVARA znovu ten isty
 // Login modal (zzz6f36_open_login_modal), ale v REZIME 'multiverification' - titulok sa zmeni na
 // "MULTIVERIFICATION LOGIN" (viz zzz6f36_render_login nizsie) a ENTRY submit (zzz6f36_submit_login) v tomto
@@ -45096,8 +44915,9 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
 // PREZNACENE z ZZZF_SECRET_CODE (Vrso 2026-09-13, "zapracuj/oznac ako Zzz6-X secret code len aby to bolo
 // pokope") - zoskupene pod rovnaku Zzz6-X rodinu ako ZZZ6X_DELETE_SECRET_CODE (Database Workspace delete-all)
 // - dva rozdielne tajne kody, rovnaka nazvoslovna rodina, jednoduchsie najst oboje pohromade nabuduce.
-const ZZZ6X_MULTIVERIFICATION_SECRET_CODE = '83776';
+// [Zzz-B9:3.2b] tajny kod multiverifikacie ODSTRANENY zo zdroja - pristup podla skutocnej relacie (viz zzz6f36_submit_login).
 let zzz6f36LoginMode = 'normal'; // 'normal' | 'multiverification'
+const ZZZ_QUICK_LOGIN_KEY = 'verso_dev_quick_login'; // [Zzz-B9:3.2b] testovaci ucet zapamatany LEN na tomto zariadeni
 // === [/ZzzF:SECRET-CODE] (konstanty) ===
 
 function zzz6f36_render_login(body) {
@@ -45135,7 +44955,7 @@ function zzz6f36_render_login(body) {
   // prave rozne entries"): PREDTYM (skipVerification:true) obchadzalo cele overenie - Quick Login preto
   // NIKDY nezalozil skutocnu session, kazdy zapis entries bol OFFLINE/blokovany freshness gate-om.
   // NOVE RIESENIE (elegantnejsie, ZIADNY bezpecnostny obchod navyse): "Verso" sa TERAZ MA registrovat
-  // (Register Setup) s heslom presne "devquicklogin" - Quick Login uz VIAC NEPOUZIVA skipVerification,
+  // (Register Setup) s heslom presne "[testovacie heslo - odstranene zo zdroja]" - Quick Login uz VIAC NEPOUZIVA skipVerification,
   // ide cez NORMALNE, skutocne overenie (zzz6f36_submit_login() bez options). Kedze heslo bude spravne
   // zaregistrovane, prejde okamzite (rovnako rychlo ako predtym), ALE TERAZ SKUTOCNE zalozi platnu session
   // (session_id, heartbeat) - zapisy entries preto uz NEBUDU blokovane.
@@ -45154,7 +44974,7 @@ function zzz6f36_render_login(body) {
   // nastavi pri PRVOM uspesnom realnom logine akymkolvek username-om). Bezny navstevnik, co appku
   // OTVORI PRVYKRAT, tlacidlo VOBEC neuvidi.
   // POCTIVE PRIZNANIE LIMITU (dolezite, Vrso sam sa na to spravne pytal): TOTO JE POHODLIE/NENAPADNOST,
-  // NIE SKUTOCNA BEZPECNOST. Heslo "devquicklogin" je NAPISANE PRIAMO V CITATELNOM ZDROJOVOM KODE (viz
+  // NIE SKUTOCNA BEZPECNOST. Heslo "[testovacie heslo - odstranene zo zdroja]" je NAPISANE PRIAMO V CITATELNOM ZDROJOVOM KODE (viz
   // nizsie) - ktokolvek si zobrazi "View page source", ho tam uvidi BEZ OHLADU na to, ci je toto tlacidlo
   // viditelne. Skrytie tlacidla ZNIZUJE NAHODNE OBJAVENIE, ale NECHRANI heslo pred niekym, kto uz vie, ze
   // existuje (napr. cita zdrojovy kod). RLS (freshness gate) chrani NIECO INE - KTO SMIE ZAPISOVAT, KED UZ
@@ -45179,82 +44999,6 @@ function zzz6f36_render_login(body) {
   // funkciami ako skutocny Register Setup formular (DRY - ziadna nova zapisova logika, len ine poradie
   // volania). Aktivacny kod NEMUSI cist z emailu (appka ho uz pozna z kroku 2), email sa aj tak posiela
   // realne pre vizualnu kontrolu novych funkcii viazanych na registraciu (napr. auto-recovery-token). ===
-  async function zzz6x_dev_reset_and_reregister_verso() {
-    const devUsername = 'Verso';
-    const devEmail = ZZZ10V1_REUSABLE_TEST_EMAILS[0];
-    const devPassword = 'devquicklogin';
-    const normalizedUsername = zzz10v1_normalize(devUsername);
-    const normalizedEmail = zzz10v1_normalize(devEmail);
-
-    // KROK 1 - server-side reset (service_role, hardcoded len "verso")
-    const resetResp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-      body: JSON.stringify({ action: 'dev_reset_verso', username: normalizedUsername })
-    });
-    const resetResult = await resetResp.json();
-    if (!resetResult.success) {
-      throw new Error(`reset zlyhal (${resetResult.error || resetResult.reason || 'neznamy dovod'})`);
-    }
-
-    // KROK 2 - rezervacia (rovnaka funkcia ako SEND ACTIVATION CODE tlacidlo, viz Zzz10-V1:RESERVATION)
-    const activationCode = String(Math.floor(100000 + Math.random() * 900000));
-    const expiresAt = new Date(Date.now() + ZZZ10V1_RESERVATION_DURATION_MS).toISOString();
-    const reservationPayload = {
-      id: `reservation-${normalizedUsername}`,
-      record_type: 'username_reservation',
-      data_json: JSON.stringify({ username: devUsername, email: devEmail, activation_code: activationCode, expires_at: expiresAt }),
-      updated_at: new Date().toISOString()
-    };
-    const reservationResult = await zzz10v1_write_reservation(reservationPayload);
-    if (!reservationResult.success) {
-      throw new Error(`rezervacia zlyhala (${reservationResult.error})`);
-    }
-
-    // realny aktivacny email - best-effort, len na vizualnu kontrolu (kod uz mame vyssie, neblokuje flow)
-    fetch(`${SUPABASE_URL}/functions/v1/verso-send-activation-email`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-      body: JSON.stringify({ email: devEmail.trim().toLowerCase(), code: activationCode, username: devUsername })
-    }).catch(e => console.warn('Zzz6-X:DEV-FULL-RESET-LOGIN - aktivacny email best-effort zlyhal:', e));
-
-    // KROK 3 - heslo server-side (Zzz0Auth-Gate, rovnaky pattern ako zzz10v1_submit_register)
-    const registerResp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-      body: JSON.stringify({ action: 'register', username: normalizedUsername, password: devPassword })
-    });
-    const registerResult = await registerResp.json();
-    if (!registerResult.success) {
-      throw new Error(`Zzz0Auth-Gate register zlyhal (${registerResult.reason || 'neznamy dovod'})`);
-    }
-
-    // KROK 4 - permanentny zaznam vo verso_verification (rovnaka funkcia ako zzz10v1_submit_register)
-    const userIdResult = await zzz10v1_get_next_user_id_atomic();
-    const userId = userIdResult.success ? userIdResult.id : null;
-    const systemId = await zzz10r5_compute_system_id(devUsername);
-    const registeredAt = new Date().toISOString();
-    const registrationPayload = {
-      id: `register-${normalizedUsername}`,
-      record_type: 'user_registration',
-      data_json: JSON.stringify({
-        username: devUsername,
-        email: devEmail,
-        activation_code: activationCode,
-        user_id: userId,
-        system_id: systemId,
-        registered_at: registeredAt
-      }),
-      updated_at: registeredAt
-    };
-    const writeResult = await zzz10v1_write_registration(registrationPayload);
-    if (!writeResult.success && !writeResult.duplicate) {
-      throw new Error(`permanentny zapis registracie zlyhal (${writeResult.error || 'neznamy dovod'})`);
-    }
-    zzz6f37_write_audit_log('user_register', { username: devUsername, email: devEmail }); // Zzz6-F37:AUDIT-LOG, rovnaky vzor ako realna registracia
-  }
-  // === [/Zzz6-X:DEV-FULL-RESET-LOGIN] ===
-
   if (zzz6f36LoginMode !== 'multiverification' && zzz6x_deviceHasRealLoginHistory) {
     const quickLoginBtn = document.createElement('button');
     quickLoginBtn.type = 'button';
@@ -45269,12 +45013,29 @@ function zzz6f36_render_login(body) {
     // (verso-test-konto-verso1.sql). POZOR: heslo je v zdrojovom kode, takze sa na "Verso1" moze prihlasit
     // ktokolvek - ucet je len na testovacie data, NIKDY tam nedavat nic skutocne. ODSTRANIT pred verejnym
     // spustenim. zzz6x_dev_reset_and_reregister_verso() uz nie je volana. | Vrso -> Claude AI | 2026-09-21 ===
+    // [Zzz-B9:3.2b] Vrso 2026-10-12: QUICK LOGIN ostava pre testovacie ucty (verso1, verso2...), ale heslo uz NIE JE
+    // v zdrojovom kode. Prvykrat: napis testovacie meno + heslo a stlac QUICK LOGIN - zariadenie si ich zapamata
+    // (len toto zariadenie, localStorage). Potom staci jedno tuknutie. | Vrso -> Claude AI | 2026-10-12
     quickLoginBtn.addEventListener('click', () => {
       const userInput = document.getElementById('versoLoginUserCell');
       const contentInput = document.getElementById('versoLoginContentCell');
-      if (userInput) userInput.value = 'Verso1';
-      if (contentInput) contentInput.value = 'devquicklogin';
-      zzz6f36_submit_login();
+      const typedUser = (userInput ? userInput.value : '').trim();
+      const typedPass = contentInput ? String(contentInput.value || '') : '';
+      const isTestName = /^verso\d+$/.test(zzz10v1_normalize(typedUser));
+      if (typedUser && typedPass && isTestName) {
+        try { localStorage.setItem(ZZZ_QUICK_LOGIN_KEY, JSON.stringify({ u: typedUser, p: typedPass })); } catch (e) {}
+        zzz6f36_submit_login();
+        return;
+      }
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem(ZZZ_QUICK_LOGIN_KEY) || 'null'); } catch (e) { saved = null; }
+      if (saved && saved.u && saved.p) {
+        if (userInput) userInput.value = saved.u;
+        if (contentInput) contentInput.value = saved.p;
+        zzz6f36_submit_login();
+        return;
+      }
+      zzz6f2_show_toast('QUICK LOGIN is for test accounts only. First time on this device: type a test account (verso1, verso2…) and its password, then press QUICK LOGIN - this device will remember it.', 'warn', 9000);
     });
     // === [/Zzz6-X:DEV-TEST-ACCOUNT] ===
     row.appendChild(quickLoginBtn);
@@ -45954,7 +45715,7 @@ function zzz10r1_trigger_multiverification() {
     setTimeout(() => btn.classList.remove('zzz10r1-triggered'), 4000);
   }
   // UPDATE (Vrso 2026-08-24, "po stlaceni multiverification sa objavi znovu login modul... tajne
-  // username:83776 oznaceny zzzF-secret code"): uz NEOTVARA Zzz10-V0 Verification Workspace priamo -
+  // username:[kod odstraneny] oznaceny zzzF-secret code"): uz NEOTVARA Zzz10-V0 Verification Workspace priamo -
   // namiesto toho znovu otvori Login modal, tentokrat v rezime 'multiverification' (titulok sa zmeni na
   // "MULTIVERIFICATION LOGIN", viz zzz6f36_render_login + [Zzz6-X:MULTIVERIFICATION-SECRET-CODE] vyssie v subore). Workspace sa
   // otvori az PO spravnom zadani tajneho kodu (zzz6f36_submit_login, [Zzz6-X:MULTIVERIFICATION-SECRET-CODE] blok). Funkcia je
@@ -46768,19 +46529,16 @@ async function zzz6f36_submit_login(options = {}) {
   // Zzz0-R1 napis sa nastavi na placeholder "Verso" (Vrso: "daj verso"). Skoncie TU (early return), nizsie
   // normalna login logika sa v tomto rezime vobec nespusti. | Vrso -> Claude AI | 2026-08-24 ===
   if (zzz6f36LoginMode === 'multiverification') {
-    const enteredCode = (contentInput ? contentInput.value : '').trim();
-    if (enteredCode === ZZZ6X_MULTIVERIFICATION_SECRET_CODE) {
-      if (contentInput) contentInput.value = ''; // lokalny input, nie entryData - vycistit rucne
-      zzz6f36LoginMode = 'normal'; // spotrebovany - dalsie otvorenie Login modalu (Settings button) uz normalne
-      zzz6f36_reset_command_line();
-      const label = document.getElementById('zzz6f7UsernameLabel');
-      if (label) label.textContent = 'Verso'; // "logged in bez username" - placeholder "Verso"
-      zzz6f7_set_login_state(true); // Zzz6-F7:LOGIN-STATE - zlate pozadie (prihlaseny)
+    // [Zzz-B9:3.2b] Vrso 2026-10-12: predtym tajny kod "[kod odstraneny]" v zdroji stranky (citatelny pre kazdeho) a "prihlasenie"
+    // bez overenia na serveri. Teraz: Verification Workspace len pre SKUTOCNE prihlaseneho spravcu "verso" (relacia overena
+    // serverom). Udaje aj tak chrani databaza (RLS) - toto je len vstup do okna. | Vrso -> Claude AI | 2026-10-12
+    zzz6f36LoginMode = 'normal';
+    if (contentInput) contentInput.value = '';
+    if (zzz_sessionId && zzz10v1_normalize(zzz_sessionUsername || '') === 'verso') {
       zzz6f36_close_login_modal();
-      zzz6f2_show_toast('Zzz10-R1 Multiverification: kod spravny - prihlaseny ako "Verso", otvaram Verification Workspace');
       open_verification_workspace();
     } else {
-      zzz6f2_show_toast('Zzz10-R1 Multiverification: nespravny kod, skus znova');
+      zzz6f2_show_toast('Multiverification workspace is available only to the Verso administrator. Log in as Verso first.', 'warn');
     }
     return;
   }
