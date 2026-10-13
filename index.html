@@ -20344,28 +20344,7 @@ async function zzz6f2_get_next_entry_id_atomic() {
 }
 // === [/Zzz6-F2:ATOMIC-COUNTER] ===
 
-// === [Zzz10-V1:USER-ID] (SYSTEM FUNCTION) - Vrso 2026-08-28: "cislo asi istejsie" - stabilne NUMERICKE ID
-// pridelene KAZDEMU userovi RAZ, pri uspesnej registracii (viz zzz10v1_submit_register nizsie v subore).
-// Username OSTAVA hlavny identifikator vo VSETKEJ existujucej logike (Zzz0-R1, zzz0r1_can_edit, R4 Project
-// Owner, R17 tagovanie...) - NIC z toho sa NEMENI. Toto cislo je zatial LEN ulozene popri username (R36/
-// fields_json.r36), pripravene pre buducu potrebu (napr. ak by sa niekedy povolila zmena username - cislo
-// by prezilo, na rozdiel od textoveho mena). Rovnaky princip ako Zzz6-F2:ATOMIC-COUNTER vyssie - AKO SAMOSTATNA
-// Postgres SEQUENCE (nie tá isté ako entry_id, aby cisla userov a entries nekolidovali/nemiesali sa).
-// SQL, ktore MUSI Vrso spustit v Supabase SQL Editore (viz sprievodny text mimo kodu pre cely zoznam):
-//   CREATE SEQUENCE IF NOT EXISTS verso_user_id_seq START 1;
-//   CREATE OR REPLACE FUNCTION get_next_user_id() RETURNS INT LANGUAGE sql AS $$ SELECT nextval('verso_user_id_seq')::int; $$;
-async function zzz10v1_get_next_user_id_atomic() {
-  try {
-    const { data, error } = await sb.rpc('get_next_user_id');
-    if (error) throw error;
-    if (data === null || data === undefined) throw new Error('RPC vratilo prazdnu hodnotu');
-    return { success: true, id: String(data) };
-  } catch (err) {
-    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
-    return { success: false, id: null, error: errDetail };
-  }
-}
-// === [/Zzz10-V1:USER-ID] ===
+// [Zzz10-V1:USER-ID] B9 2026-10-13: cislo usera prideluje server (verso-auth-gate, akcia register, RPC get_next_user_id) - klientska funkcia zmazana.
 
 // === [Zzz10-R5:SYSTEM-ID] (HIDDEN SYSTEM SECRET FUNCTION) - Vrso 2026-08-31 poziadavka, doslovne:
 // "Verso verification kazde registrovane username evidovat pod vlastnim System id(hashovane a skyte v
@@ -43739,7 +43718,7 @@ async function zzz10v1_write_registration(payload) {
 // viz verso-bezpecny-view-pre-verso-verification.sql) namiesto priamo z tabulky. "emails" pole uz VZDY
 // prazdne (view ho neobsahuje) - PONECHANE v navratovej hodnote len kvoli spatnej kompatibilite s
 // volajucim kodom (nizsie prerobene na samostatnu is_email_registered() RPC kontrolu, viz
-// zzz10v1_check_email_registered nizsie v subore), aby sa nemuselo prepisovat viac miest naraz. | Vrso -> Claude AI | 2026-09-15 ===
+// kontrolu emailu robi server - verso-auth-gate), aby sa nemuselo prepisovat viac miest naraz. | Vrso -> Claude AI | 2026-09-15 ===
 async function zzz10v1_fetch_known_registrations_once(timeoutMs) {
   const usernames = [];
   function collectFromRow(row) {
@@ -43754,22 +43733,10 @@ async function zzz10v1_fetch_known_registrations_once(timeoutMs) {
   const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
   if (error) throw error;
   (data || []).forEach(collectFromRow);
-  return { usernames, emails: [] }; // emails VZDY prazdne - viz komentar vyssie, pouzi zzz10v1_check_email_registered() namiesto .emails.includes()
+  return { usernames, emails: [] }; // emails VZDY prazdne - viz komentar vyssie, emaily overuje len server (verso-auth-gate)
 }
 
-// Zzz-RLS:VERIFICATION-VIEW - cielena, bezpecna kontrola JEDNEHO emailu (RPC, SECURITY DEFINER funkcia na
-// serveri) - nikdy nevystavi cely zoznam registrovanych emailov klientovi, na rozdiel od predoslej
-// .emails.includes() kontroly, ktora vyzadovala stiahnut VSETKY emaily naraz. | Vrso -> Claude AI | 2026-09-15
-async function zzz10v1_check_email_registered(normalizedEmail) {
-  try {
-    const { data, error } = await sb.rpc('is_email_registered', { check_email: normalizedEmail });
-    if (error) throw error;
-    return !!data;
-  } catch (err) {
-    console.error(`Zzz-RLS:VERIFICATION-VIEW - is_email_registered RPC zlyhalo. DOVOD: ${(err && err.message) || String(err)}`);
-    return false; // fail-open pre TENTO konkretny check (nie bezpecnostna hranica - DB-level UNIQUE/insert guard je skutocna ochrana proti duplicite, toto je len UX napoveda vopred)
-  }
-}
+// [Zzz-RLS:VERIFICATION-VIEW] B9 2026-10-13: kontrola emailu je len na serveri (verso-auth-gate); RPC is_email_registered uz pre anon zakazane - klientska funkcia zmazana.
 
 // Zzz10-R6:EMAIL-FIELD (aj) - zbiera 'emails' pole popri 'usernames'
 async function zzz10v1_fetch_known_registrations() {
@@ -43814,80 +43781,7 @@ async function zzz10v1_fetch_known_registrations() {
 }
 // === [/Zzz10-V1:FETCH-RETRY] ===
 
-// === [Zzz10-V1:RESERVATION] Vrso 2026-08-31 poziadavka, doslovne: "Search available username zmen na
-// send activation code a upozorni ze dane usernsme bude rezervovane iba po dobu jedneho dna(zapracuj).
-// Povlozeni activacneho kodu registruj cez command line vo verifikacnej databaze." NOVY docasny stav
-// medzi "username este vobec nikto neskusal" a "username je NAVZDY zaregistrovany" (zzz10v1_submit_register
-// nizsie): kliknutim na (premenovane) tlacidlo sa vygeneruje 6-mistny aktivacny kod a ulozi sa DOCASNA
-// REZERVACIA (record_type='username_reservation', id=`reservation-${username}`) s expires_at = teraz+24h.
-// Na rozdiel od finalnej registracie (PPP-1:USERNAME-UNIQUE-GUARD, .insert() only) pouziva REZERVACIA
-// .upsert() - rovnaky user si moze kod nechat znova vygenerovat/predlzit (napr. ak povodny kod stratil
-// alebo mu vyprsal cas), bez toho aby narazil na DB-level unique-violation ako pri ostrej registracii. Po
-// uplynuti 24h (alebo po dokonceni ENTRY registracie) sa rezervacia uz dalej nekontroluje - novy pokus o
-// rovnaky username tak zase moze uspiet (zapocitava sa VZDY len ci existuje NEVYPRSANA rezervacia ALEBO uz
-// hotova permanentna registracia). | Vrso -> Claude AI | 2026-08-31 ===
-const ZZZ10V1_RESERVATION_DURATION_MS = 24 * 60 * 60 * 1000; // "rezervovane iba po dobu jedneho dna"
-
-// === [Zzz-RLS:RESERVATION-RPC] Vrso 2026-09-15 - priamy anon .upsert() na verso_verification prestal
-// fungovat po dnesnom RLS audite (SELECT pre anon zatvoreny, nahradeny verso_verification_public view) -
-// ON CONFLICT DO UPDATE interne potrebuje SELECT na konfliktny riadok, ktory uz anon nema. Riesenie:
-// SECURITY DEFINER RPC write_username_reservation (rovnaky vzor ako is_email_registered/
-// check_reservation_conflict/get_own_reservation) - obchadza RLS bezpecne, tabulka zostava zvonka uzavreta.
-// | Vrso -> Claude AI | 2026-09-15 ===
-async function zzz10v1_write_reservation(payload) {
-  try {
-    const writePromise = sb.rpc('write_username_reservation', { p_id: payload.id, p_data_json: payload.data_json }); // RPC nahradzajuca priamy upsert, viz Zzz-RLS:RESERVATION-RPC vyssie
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Zzz10-V1 reservation upsert timeout (4s)')), 4000)
-    );
-    const { error } = await Promise.race([writePromise, timeoutPromise]);
-    if (error) throw error;
-    zzz0r1_set_db_connection_state(true);
-    return { success: true, error: null };
-  } catch (err) {
-    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
-    console.error(`Zzz10-V1:RESERVATION - zapis rezervacie do verso_verification zlyhal. DOVOD: ${errDetail}`);
-    zzz0r1_set_db_connection_state(false, errDetail, true);
-    return { success: false, error: errDetail };
-  }
-}
-
-// === [Zzz-RLS:VERIFICATION-VIEW] Vrso poziadavka 2026-09-15 - povodna zzz10v1_fetch_reservation() citala
-// CELY rezervacny zaznam (vratane cudzieho emailu) priamo z tabulky - teraz NAHRADENE dvomi cielenymi RPC
-// volaniami (SECURITY DEFINER funkcie na serveri), kazde pre svoj presny ucel, ziadne z nich nikdy
-// nevystavi cudzi email/aktivacny kod:
-//   1) zzz10v1_check_reservation_conflict - LEN "existuje konflikt?" (ano/nie), pouzite pri SEND
-//      ACTIVATION CODE kroku (kontrola, ci username nie je prave rezervovany niekym inym).
-//   2) zzz10v1_get_own_reservation - VRATI detaily (vratane activation_code) LEN AK zadany email SEDI
-//      (dokaz vlastnictva) - pouzite pri finalnom REGISTER ENTRY kroku, kde uz appka POZNA username+email
-//      z predchadzajucich krokov a potrebuje overit aktivacny kod. | Vrso -> Claude AI | 2026-09-15 ===
-async function zzz10v1_check_reservation_conflict(normalizedUsername, normalizedEmail) {
-  try {
-    const { data, error } = await sb.rpc('check_reservation_conflict', { p_username: normalizedUsername, p_email: normalizedEmail });
-    if (error) throw error;
-    return !!data;
-  } catch (err) {
-    const errDetail = (err && err.message) || String(err);
-    console.warn(`Zzz10-V1:RESERVATION - check_reservation_conflict RPC zlyhalo. DOVOD: ${errDetail}`);
-    zzz0r1_set_db_connection_state(false, errDetail, true);
-    return false; // fail-open - DB-level UNIQUE/insert guard je skutocna ochrana, toto je len UX napoveda vopred
-  }
-}
-
-async function zzz10v1_get_own_reservation(normalizedUsername, normalizedEmail) {
-  try {
-    const { data, error } = await sb.rpc('get_own_reservation', { p_username: normalizedUsername, p_email: normalizedEmail });
-    if (error) throw error;
-    zzz0r1_set_db_connection_state(true);
-    return data || null;
-  } catch (err) {
-    const errDetail = (err && err.message) || String(err);
-    console.warn(`Zzz10-V1:RESERVATION - get_own_reservation RPC zlyhalo. DOVOD: ${errDetail}`);
-    zzz0r1_set_db_connection_state(false, errDetail, true);
-    return null;
-  }
-}
-// === [/Zzz10-V1:RESERVATION] ===
+// [Zzz10-V1:RESERVATION] B9 2026-10-13: rezervaciu mena a aktivacny kod robi server (verso-auth-gate, akcie reserve/register); stare RPC write_username_reservation, check_reservation_conflict, get_own_reservation su v DB zmazane - klientske funkcie zmazane.
 
 // === [Zzz10-V1:WHOLE-STRING-FINAL] Vrso 2026-09-XX KOREKCIA predchadzajuceho PER-PREFIX pokusu, doslovne:
 // "Stale to mas zle. Vsak som dal V - prve pismeno malo byt cervene ale po dalsom ako Vr uz mali byt obe
@@ -44174,7 +44068,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B9-3.6a 2026-10-12'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B9-3.6b 2026-10-13'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
