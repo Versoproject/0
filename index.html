@@ -20862,6 +20862,7 @@ function zzz6f7_set_login_state(isLoggedIn) {
   if (!label) return;
   zzz6f7_isLoggedIn = isLoggedIn;
   label.classList.toggle('zzz6-f7-active', !!isLoggedIn);
+  if (isLoggedIn) { try { zzz10r2_user_switch_guard(); } catch (e) { /* poistka nesmie zhodit login */ } } // [Zzz14-B10:USER-SCOPE]
   if (isLoggedIn) zzz0r1_sync_username_into_cl(); // [Zzz0-R1:USERNAME-IN-CL] jedno miesto pre VSETKY sposoby prihlasenia
   // [Zzz5-W5:PAIR-PRESET] preset je ulozeny POD MENOM usera, ale pri nacitani stranky este nikto prihlaseny
   // NIE JE - vtedy by sa cital pod prazdnym klucom a user by vzdy videl prazdny preset. Nacita sa teda znova
@@ -44068,7 +44069,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B9-3.6b 2026-10-13'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B10-US 2026-10-14'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
@@ -45841,7 +45842,60 @@ function zzz10dm_build_row() {
 //     zariadenia (posledne meno - pre FOREIGN rezim neskor tiez zmazat). Zoznam je v VERSO-INSTRUCTIONS.md 4.15. | Vrso -> Claude AI | 2026-10-03
 const ZZZ10R2_WIPE_PREFIXES = ['zzz1cn:', 'zzz1cn_setup:', 'zzz1cn_refs:', 'zzz1cn_vocab:', 'zzz1cn_openadd:',
   'zzz5w5cm:preset:'];
-const ZZZ10R2_WIPE_KEYS = ['zzz5_6_user_tabs', 'zzz0r1_last_auto_username'];
+const ZZZ10R2_WIPE_KEYS = ['zzz5_6_user_tabs', 'zzz0r1_last_auto_username', 'verso_cl_user']; // + verso_cl_user [Zzz14-B10:USER-SCOPE]
+
+// === [Zzz14-B10:USER-SCOPE] Vrso 2026-10-14 (test verso3 -> verso1): "cl by mala ostat predvyplnena/zapamatana/
+// rozpracovana iba pre daneho usera...oprav celkovo". Rozpisana CL, FIX zaznamy, pripnute CL (attach), otvorene
+// kontextove okna a undo/redo ziju v PAMATI stranky a osobne cache v localStorage boli spolocne pre zariadenie.
+// LOG OUT ich cistil len ciastocne (CL ano, FIX/attach/okna nie) a prihlasenie INEHO usera BEZ LOG OUT ich necistilo
+// vobec -> verso1 videl rozpisanu CL od verso3. Teraz:
+//  - zzz10r2_clear_user_memory(): jedno miesto, ktore zmaze vsetko osobne z pamati stranky (pouziva LOG OUT aj zmena usera),
+//  - zzz10r2_user_switch_guard(): pri KAZDOM prihlaseni porovna meno s poslednym prihlasenym na tomto zariadeni
+//    (verso_cl_user); ak je ine, zmaze osobne cache (rovnaky zoznam ako LOG OUT) aj pamat - novy user zacina cisty.
+// Fronty neodoslanych zapisov sa NEMAZU (patria svojmu autorovi a odosielaju sa len pod jeho menom - zzz0q_is_mine).
+// Vplyv: login (vsetky cesty cez zzz6f7_set_login_state), LOG OUT wipe, CL prefill (Zzz0-R1), FIX (Zzz6-F40),
+// attach (Zzz1-M5), kontextove okna (Zzz6-F17), undo/redo (Zzz6-F38/F39). ===
+function zzz10r2_wipe_user_keys() {
+  let removed = 0;
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+    keys.forEach(k => {
+      if (!k) return;
+      if (ZZZ10R2_WIPE_KEYS.includes(k) || ZZZ10R2_WIPE_PREFIXES.some(p => k.startsWith(p))) {
+        localStorage.removeItem(k); removed++;
+      }
+    });
+  } catch (e) { /* ulozisko nedostupne - nie je co mazat */ }
+  return removed;
+}
+function zzz10r2_clear_user_memory() {
+  try {
+    const stack = document.getElementById('versoContextWindowStack');
+    if (stack) stack.querySelectorAll('.entry-modal-box').forEach(b => b.remove()); // bez autosave - obsah patril predoslemu userovi
+  } catch (e) {}
+  try { zzz6f40FixList = []; zzz6f40ActiveFixIndex = -1; zzz6f40_mainFix = null; } catch (e) {}
+  try { zzz6f17Attachments = []; zzz6f17AttachClCounter = 0; zzz6f17_context_attachment_render(); } catch (e) {}
+  try {
+    zzz6f38_undoStack = []; zzz6f39_redoStack = [];
+    if (zzz6f38_pendingEditTimer) { clearTimeout(zzz6f38_pendingEditTimer); zzz6f38_pendingEditTimer = null; }
+    zzz6f38_pendingEdit = null;
+  } catch (e) {}
+  try { zzz6f33_clear_whole_cl(); } catch (e) {}
+}
+function zzz10r2_user_switch_guard() {
+  const now = zzz10v1_normalize(zzz0r1_get_current_username() || '');
+  if (!now || now === 'username') return;
+  let prev = '';
+  try { prev = zzz10v1_normalize(localStorage.getItem('verso_cl_user') || ''); } catch (e) {}
+  if (prev && prev !== now) {
+    zzz10r2_wipe_user_keys();
+    zzz10r2_clear_user_memory();
+    zzz0r1LastAutoUsername = '';
+    zzz6f2_show_toast('Iný používateľ na tomto zariadení - rozpísaná CL a osobné nastavenia predošlého používateľa boli vymazané.');
+  }
+  try { localStorage.setItem('verso_cl_user', now); } catch (e) {}
+}
 
 function zzz10r2_count_pending() {
   const n = (o) => { try { return Object.keys(o || {}).length; } catch (e) { return 0; } };
@@ -45921,24 +45975,14 @@ async function zzz10r2_logout_precheck() {
 }
 
 function zzz10r2_wipe_local_after_logout() {
-  let removed = 0;
-  try {
-    const keys = [];
-    for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
-    keys.forEach(k => {
-      if (!k) return;
-      if (ZZZ10R2_WIPE_KEYS.includes(k) || ZZZ10R2_WIPE_PREFIXES.some(p => k.startsWith(p))) {
-        localStorage.removeItem(k); removed++;
-      }
-    });
-  } catch (e) { /* ulozisko nedostupne - nie je co mazat */ }
+  let removed = zzz10r2_wipe_user_keys(); // [Zzz14-B10:USER-SCOPE] spolocne s prepnutim usera
   // [Zzz10-DM:DEVICE-MODE] TRUSTED zmaze aj strazcu zariadenia a vlastne kategorie; FOREIGN nema na disku nic (pamat sa zmaze)
   if (zzz10dmActive === 'trusted') {
     ['verso_zzz10r1_expected_username', 'zzz_category_custom_cats'].forEach(k => {
       try { zzz10dmOrig.remove.call(window.localStorage, k); removed++; } catch (e) {}
     });
   }
-  try { zzz6f33_clear_whole_cl(); } catch (e) {}           // CL na obrazovke (prefill sa po odhlaseni nevykona)
+  zzz10r2_clear_user_memory(); // [Zzz14-B10:USER-SCOPE] CL + FIX + attach + kontextove okna + undo/redo
   zzz6f36LastLoginUsername = '';
   zzz6f36LastLoginPassword = '';
   return removed;
