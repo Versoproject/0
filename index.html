@@ -32072,11 +32072,21 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey) 
   newPack.type = 'button';
   newPack.className = 'zzz5w5cm-added-foot-btn is-add zzz5w5cm-newpack';
   newPack.textContent = '+ NEW PACK';
-  newPack.title = 'Check people in USERS below, then tap this and give the package a name';
+  newPack.title = 'Check anything above or below - packs, groups, teams or single people - then tap this and give the package a name';
   newPack.addEventListener('click', async () => {
-    const vybrati = userRows.filter(u => checked['u|' + u.n]).map(u => u.nm);
+    // === [Zzz14-CS:PACK-TAKES-CHECKED] Vrso 2026-10-16 (13:09): "add new pack chapem v members fajn,
+    // vsak si len flexibilne oznaci... pack - akurat ze to nefunguje, preco?"
+    // NEFUNGOVALO preto, ze tlacidlo citalo IBA zaskrtnutych ludi v sekcii USERS. On zaskrtol
+    // @user, @userjj a @team 176 - teda presne to, co je v okne najvyssie a najrychlejsie - a appka
+    // odpovedala "check the people in USERS first", hoci zaskrtnute bolo. Zaskrtnutie je zaskrtnutie:
+    // balik teraz berie VSETKO, co je oznacene - cele baliky, skupiny a timy aj jednotlivych ludi -
+    // a mena zluci bez duplicit (ten isty clovek v dvoch balikoch sa zapise raz).
+    const zoznam = [];
+    packRows.forEach(p => { if (checked['p|' + p.key]) zoznam.push.apply(zoznam, p.list); });
+    userRows.forEach(u => { if (checked['u|' + u.n]) zoznam.push(u.nm); });
+    const vybrati = zoznam.filter((x, i, a) => a.findIndex(y => tagN(y) === tagN(x)) === i);
     if (!vybrati.length) {
-      zzz6f2_show_toast('Check the people in USERS first - a package is a name for several of them.', 'warn');
+      zzz6f2_show_toast('Check somebody first - a pack, a group, a team or single people.', 'warn');
       return;
     }
     const nazov = window.prompt('Name of the package (your COMM OWN TAG - only you see it):', '');
@@ -32097,15 +32107,28 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey) 
     body.appendChild(n);
   }
 
-  sect('GROUPS & TEAMS');
+  // === [Zzz14-CS:MEMBERS-SPLIT] Vrso 2026-10-16 (13:05): "v members ok sekcie... treba ale rozdelit
+  // groups a teams." Boli zlepene v jednej sekcii a riadky sa nelisili nicim okrem nazvu - skupina
+  // je pritom nieco ine ako tim zaznamu a clovek ich hlada inak. Dve sekcie, kazda s vlastnou
+  // hlaskou, ked je prazdna - inak by sa nedalo rozoznat, ci skupiny nemam, alebo su len dole.
+  sect('GROUPS');
   const preGrp = packRows.length;
   (zzz5w5cmMyGroups || []).forEach(g => addPack('grp:' + g.id, '@' + g.name, g.members));
-  ((zzz5w5cmTeams && zzz5w5cmTeams.list) || []).forEach(t =>
-    addPack('team:' + t.entry, `@team ${t.entry}${t.project ? ' ' + t.project : ''}`, t.people));
   if (packRows.length === preGrp) {
     const n = document.createElement('div');
     n.className = 'zzz5w5cm-added-note';
-    n.textContent = 'No group or team yet.';
+    n.textContent = 'No group yet.';
+    body.appendChild(n);
+  }
+
+  sect('TEAMS');
+  const preTeam = packRows.length;
+  ((zzz5w5cmTeams && zzz5w5cmTeams.list) || []).forEach(t =>
+    addPack('team:' + t.entry, `@team ${t.entry}${t.project ? ' ' + t.project : ''}`, t.people));
+  if (packRows.length === preTeam) {
+    const n = document.createElement('div');
+    n.className = 'zzz5w5cm-added-note';
+    n.textContent = 'No team yet.';
     body.appendChild(n);
   }
 
@@ -32114,10 +32137,22 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey) 
   body.appendChild(find);
   body.appendChild(findNote);
   // najprv ludia, ktori UZ v zazname su, potom zvysok (z balikov, skupin a timov) - kazdy RAZ
+  // === [Zzz14-CS:MEMBERS-ADDED-FIRST] Vrso 2026-10-16 (13:05): "pokial neni nikto pridany, tak len
+  // vypisat added contacts podla sekcii." Zalozka sa vola ADDED CONTACTS, ale cely zoznam bol jedna
+  // stena, v ktorej kazdy druhy riadok hlasil "not added here yet" - a to, co uz V ZAZNAME JE (teda
+  // to, na co sa clovek pri otvoreni pyta prve), sa v nej stratilo. Teraz su PRIDANI hore a zvysok -
+  // ludia z balikov, skupin a timov, z ktorych sa da pridavat - stoji pod ciarou. Nikto nezmizol:
+  // ADD CHECKED aj + NEW PACK potrebuju mat z coho vyberat.
   inRec.forEach(addUser);
+  const poPridanych = userRows.length;
+  const ciara = document.createElement('div');
+  ciara.className = 'zzz5w5cm-added-note';
+  ciara.textContent = poPridanych ? '- not added here yet -' : 'Nobody added yet - pick from below.';
+  body.appendChild(ciara);
   packs.forEach(p => p.names.forEach(addUser));
   (zzz5w5cmMyGroups || []).forEach(g => (g.members || []).forEach(addUser));
   ((zzz5w5cmTeams && zzz5w5cmTeams.list) || []).forEach(t => (t.people || []).forEach(addUser));
+  if (userRows.length === poPridanych) ciara.remove();   // nikto dalsi nie je - ciara by klamala
   if (!userRows.length) {
     const n = document.createElement('div');
     n.className = 'zzz5w5cm-added-note';
@@ -32132,6 +32167,9 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey) 
     const q = zzz10v1_normalize(find.value || '');
     const hit = (hay) => !q || zzz10v1_normalize(hay).indexOf(q) >= 0;
     userRows.forEach(u => { u.row.style.display = hit(u.hay) ? '' : 'none'; });
+    // [Zzz14-CS:MEMBERS-ADDED-FIRST] pri hladani sa zoznam pretriedi, takze ciara "pridani / ostatni"
+    // uz nic nedeli - radsej zmizne, nez aby stala na nespravnom mieste
+    if (ciara.isConnected) ciara.style.display = q ? 'none' : '';
   };
   find.addEventListener('input', applyFind);
 
@@ -32228,7 +32266,11 @@ function zzz5w5cm_open_tag_many(anchorEl, onDone) {
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'zzz5w5cm-tagmany-row';
-    row.textContent = c.tags ? `${c.name} · ${c.tags}` : c.name;
+    // [Zzz14-CS:TAG-MANY-PLAIN] Vrso 2026-10-16 (13:09): "tak mi to vyhadzuje rozne ine nazvy, co
+    // nerozumiem" - za menom stali vsetky stitky toho kontaktu, takze zoznam ludi vyzeral ako zoznam
+    // cudzich nazvov. Meno je meno; co uz kontakt nosi, je v bublinke po podrzani.
+    row.textContent = c.name;
+    if (c.tags) row.title = `${c.name} already has: ${c.tags}`;
     row.addEventListener('click', () => {
       picked[c.id] = !picked[c.id];
       row.classList.toggle('is-on', !!picked[c.id]);
@@ -32243,7 +32285,8 @@ function zzz5w5cm_open_tag_many(anchorEl, onDone) {
   win.appendChild(tagIn);
   const save = document.createElement('button');
   save.type = 'button';
-  save.textContent = 'SAVE';
+  // [Zzz14-CS:TAG-MANY-PLAIN] "sposob potvrdenia je matuci" - SAVE nepovedalo, CO sa ulozi.
+  save.textContent = 'ADD THIS TAG TO CHECKED';
   save.addEventListener('click', async () => {
     const tag = tagIn.value.trim();
     const ids = Object.keys(picked).filter(k => picked[k]);
@@ -36252,7 +36295,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-16 13:05';
+const ZZZ5_6_BUILD = '2026-10-16 13:45';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -44239,7 +44282,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-7 2026-10-16'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-9 2026-10-16'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
