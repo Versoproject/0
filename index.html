@@ -10590,6 +10590,14 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
     width: 100%; height: 20px; font-size: 7px; letter-spacing: 0.04em;
     background-color: #0a0a0a; color: #7fcf83; border-color: #2f7d32 !important;
   }
+  /* [Zzz14-CS:INV-FILTER] riadok sita nad pozvankami - ten isty tvar a ta ista oranzova ako v comm
+     CRM, aby sa nedalo pomylit s pisanim zaznamu */
+  .zzz14cs-inv-find .zzz14cs-inv-q {
+    width: 100%; box-sizing: border-box; background: #fff; color: #111;
+    border: 1px solid #c8a84a; border-radius: 10px; font-size: 8.5px; padding: 2px 6px;
+  }
+  .zzz14cs-inv-find .zzz14cs-inv-q.is-on { border-color: #e07b00; color: #b35c00; font-weight: 700; }
+  .zzz14cs-inv-find .zzz14cs-inv-q::placeholder { color: #9a9a9a; }
   .zzz5w5cm-inv-row .zzz5w5cm-inv-num { cursor: pointer; font-weight: 700; }
   .zzz5w5cm-inv-row .zzz5w5cm-inv-tag {
     text-align: center; border-style: dashed;
@@ -28392,6 +28400,106 @@ function zzz5w5cm_build_invites() {
   note.className = 'zzz5w5cm-inv-note';
   note.textContent = 'Nothing of the record is shown until you agree - only who is asking. Your consent opens it, and taking the consent back closes it again.';
   box.appendChild(note);
+
+  // === [Zzz14-CS:INV-FILTER] Vrso 2026-10-16 (03:08): "je tam jednoduchy search, ale ja potrebujem
+  // znovu rovnaky ako v pairings... ten musi byt filtrovany podla entry date (alebo nejako aspon) a
+  // idealne aj podla priority (napr. najprv vzdy presets, az potom ostatne pairings)."
+  //
+  // SITO: pozvanky maju vlastne bunky (CONSENT, pridanie kontaktu, moj stitok), takze sa nedaju
+  // nakreslit zdielanou comm CRM - ale HLADAT sa v nich ma ROVNAKO. Riadok sita ma preto ten isty
+  // tvar, tie iste stlpce a to iste spravanie ako v tabulke pod nou: co vpisem, tym sa zoznam hned
+  // zuzi, ciarka = ALEBO, vyplnena bunka je oranzova, a tuk na MINI vsetko vycisti.
+  // PORADIE: najprv to, co prejde PRESETOM (podla cisla zaznamu - jedine, co o zazname pred suhlasom
+  // viem), potom ostatne podla DATUMU ZAZNAMU od najnovsieho. Pozvanka bez datumu ide na koniec, nie
+  // na zaciatok - prazdny udaj nesmie predbehnut vyplneny.
+  const ZZZ14CS_INV_COLS = [
+    { k: 'entry',   label: 'ENTRY NUMBER' },
+    { k: 'project', label: 'PROJECT NAME' },
+    { k: 'owner',   label: 'USER' },
+    { k: 'cell',    label: 'COMMUNICATION' },
+    { k: 'mytag',   label: 'COMM OWN TAG' }
+  ];
+  const invVal = (inv, k) => {
+    if (k === 'entry') return '#' + inv.entry_id;
+    if (k === 'project') return String(inv.project_name || '');
+    if (k === 'owner') return String(inv.owner || '');
+    if (k === 'cell') return ZZZ5W5CM_INVITE_CELL[inv.cell] || inv.cell || '';
+    return String(zzz5w5cmInviteTags[inv.entry_id] || '');
+  };
+  const q = zzz5w5cmCclQ['invites'] || (zzz5w5cmCclQ['invites'] = {});
+  const sedi = (inv) => ZZZ14CS_INV_COLS.every(c => {
+    const want = String(q[c.k] || '').trim();
+    if (!want) return true;
+    const have = zzz10v1_normalize(invVal(inv, c.k));
+    return want.split(',').map(t => zzz10v1_normalize(t.trim())).filter(Boolean)
+      .some(t => have.includes(t));
+  });
+  // PRESET ako priorita: pred suhlasom poznam zo zaznamu jedine jeho CISLO, takze sa pouzije bunka
+  // ENTRY NUMBER presetu ([Zzz5-W5:PRESET-ENTRY]) - presne tá, ktorou Vrso projekt dopredu menuje
+  const presetCisla = String(((zzz5w5cmPreset || {}).fields || {}).entry || '')
+    .split(/[^0-9]+/).filter(Boolean);
+  const jePreset = (inv) => presetCisla.indexOf(String(inv.entry_id)) >= 0;
+  const datum = (inv) => String(inv.entry_date || inv.created_at || '');
+  const zoradene = pending.slice().sort((a2, b2) => {
+    const pa = jePreset(a2) ? 0 : 1, pb = jePreset(b2) ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    const da = datum(a2), db = datum(b2);
+    if (!da && db) return 1;            // prazdny datum na koniec
+    if (da && !db) return -1;
+    if (da !== db) return da < db ? 1 : -1;   // novsie hore
+    return Number(b2.entry_id) - Number(a2.entry_id);
+  });
+
+  const sito = document.createElement('div');
+  sito.className = 'numbers-row zzz5w5cm-inv-row zzz14cs-inv-find';
+  const sitoMini = document.createElement('div');
+  sitoMini.className = 'mini-wrap';
+  const sitoCap = document.createElement('button');
+  sitoCap.type = 'button';
+  sitoCap.className = 'entry-number-button zzz6f48-mini-button';
+  sitoCap.textContent = 'MINI';
+  sitoCap.title = 'The cells in this row filter the invitations - tap MINI to clear them';
+  sitoMini.appendChild(sitoCap);
+  sito.appendChild(sitoMini);
+  const sitoPolia = [];
+  ZZZ14CS_INV_COLS.forEach(c => {
+    const w = document.createElement('div');
+    const i = document.createElement('input');
+    i.type = 'text';
+    i.className = 'entry-cell zzz14cs-inv-q' + (String(q[c.k] || '').trim() ? ' is-on' : '');
+    i.value = q[c.k] || '';
+    i.placeholder = 'contains (a, b = or)';
+    i.title = c.label;
+    // prekresluje sa LEN zoznam pod sitom - keby sa prekreslilo cele okno, pole by zmizlo aj
+    // s kurzorom a na mobile by sa dalo napisat vzdy len jedno pismeno (tá chyba tu uz raz bola)
+    i.addEventListener('input', () => {
+      q[c.k] = i.value;
+      i.classList.toggle('is-on', !!i.value.trim());
+      kresliRiadky();
+    });
+    sitoPolia.push(i);
+    w.appendChild(i);
+    sito.appendChild(w);
+  });
+  sitoCap.addEventListener('click', () => {
+    ZZZ14CS_INV_COLS.forEach((c, i2) => { q[c.k] = ''; sitoPolia[i2].value = ''; sitoPolia[i2].classList.remove('is-on'); });
+    kresliRiadky();
+  });
+  box.appendChild(sito);
+  const zoznam = document.createElement('div');
+  box.appendChild(zoznam);
+  function kresliRiadky() {
+    zoznam.innerHTML = '';
+    const vidno = zoradene.filter(sedi);
+    if (!vidno.length) {
+      const n = document.createElement('div');
+      n.className = 'zzz5w5cm-inv-note';
+      n.textContent = 'No invitation matches the filter above.';
+      zoznam.appendChild(n);
+      return;
+    }
+    vidno.forEach(inv => zoznam.appendChild(zzz14cs_build_invite_row(inv)));
+  }
   // === [Zzz5-W5:INV-CL] Vrso 2026-10-03 (21:09): "potrebujem, aby tvoje riesenie parovania bolo v style
   // CL (kde bude aj mini button, resp. attachments mechanizmus)... pride pozvanka, ale ja musim mat entry
   // number (ktorym si budem vediet otvorit celu entry) / ownera alebo users od koho / idealne aj project
@@ -28403,7 +28511,8 @@ function zzz5w5cm_build_invites() {
   // PROJECT NAME tu ZAMERNE NIE JE: pred suhlasom ho nemam odkial vziat. Pozvanka nesie len to, co do nej
   // dala databaza, a nazov projektu by znamenal, ze sa prezradi kazdemu, koho owner napise do bunky - to
   // je rozhodnutie o sukromi, nie chybajuci udaj. Ked ho Vrso bude chciet, pribudne stlpec v pozvanke.
-  pending.forEach(inv => {
+  // [Zzz14-CS:INV-FILTER] riadok pozvanky je vlastna funkcia, aby ho sito mohlo prekreslovat samo
+  function zzz14cs_build_invite_row(inv) {
     const row = document.createElement('div');
     row.className = 'numbers-row zzz5w5cm-inv-row';
 
@@ -28513,9 +28622,56 @@ function zzz5w5cm_build_invites() {
     tagW.appendChild(tag);
     row.appendChild(tagW);
 
-    box.appendChild(row);
-  });
+    // === [Zzz14-CS:INV-COPY] Vrso 2026-10-16 (03:08): "potreboval by som ale doriesit aj ako sa bude
+    // dat po parovani (idealne uz pred consentom...) skopirovat aj do actual comm module podla volby."
+    // POCTIVO: pred suhlasom o zazname neviem NIC okrem cisla, mena projektu a toho, kto pozyva -
+    // skopirovat sa teda da MIESTO, nie obsah. Podrzanie cisla 1s zalozi zaznamu miesto vo zvolenom
+    // tabe (verso_placements, rovnako ako kazde ine pripnutie) a obsah sa don doplni sam, ked suhlas
+    // das. Keby som sem nakreslil prazdne bunky a tvaril sa, ze je to kopia, bola by to lož v tabulke.
+    zzz_bind_long_press(num, 1000, () => {
+      zzz_haptic_pulse(30);
+      zzz14cs_open_invite_copy(num, inv);
+    });
+    num.title = 'Open the record - possible once you give your consent. '
+      + 'Hold 1s to reserve it a place in a tab (the content fills in after your consent).';
+
+    return row;
+  }
+  kresliRiadky();
   return box;
+}
+
+// === [Zzz14-CS:INV-COPY] vyber miesta pre pozvanku - ten isty zoznam cielov ako pri kopii z parovania
+function zzz14cs_open_invite_copy(anchorEl, inv) {
+  document.querySelectorAll('.zzz5t0-tab-window').forEach(m => m.remove());
+  const win = document.createElement('div');
+  win.className = 'zzz5t0-tab-window';
+  const t = document.createElement('div');
+  t.style.cssText = 'font-size:9px;color:#999;padding:2px 4px 6px;';
+  t.textContent = `#${inv.entry_id} - reserve a place (content arrives with your consent)`;
+  win.appendChild(t);
+  [{ key: ZZZ14CS_SPACE_KEY, label: 'COMM SPACE' }].concat(ZZZ5W5CM_CONTACT_TABS).forEach(tab => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = tab.label.toUpperCase();
+    b.addEventListener('click', () => {
+      win.remove();
+      zzz5w5cm_attach_to_tab(tab.key, {
+        key: 'el#' + inv.entry_id,
+        sourceEntryId: String(inv.entry_id),
+        entryDate: inv.entry_date || '',
+        // meno projektu je jediny udaj ZO ZAZNAMU, ktory pozvanka pozna ([Zzz5-W5:INV-NAME])
+        fields: { r3: String(inv.project_name || '') }
+      });
+      zzz6f2_show_toast(`#${inv.entry_id} has a place in ${tab.label} - the content arrives when you consent.`, 'ok');
+      if (zzz5w5cm_is_open()) zzz5w5cm_render();
+    });
+    win.appendChild(b);
+  });
+  document.body.appendChild(win);
+  zzz5w5cm_place_window_at(win, anchorEl);
+  const outside = (e) => { if (!win.contains(e.target)) { win.remove(); document.removeEventListener('click', outside, true); } };
+  setTimeout(() => document.addEventListener('click', outside, true), 0);
 }
 
 async function zzz5w5cm_load_pairing() {
@@ -34177,6 +34333,106 @@ document.addEventListener('pointerdown', (e) => {
 ['pointerup', 'pointercancel'].forEach(ev => {
   document.addEventListener(ev, () => { clearTimeout(zzz14csHoldTimer); }, true);
 });
+// === [Zzz14-CS:DRAG-TO-EDGE] Vrso 2026-10-16 (19:47): "co sa tyka comm space, otvaranie tym slizom je
+// dost neprakticke riesenie... otazka, ci sa to neda napr. podrzanim 3s celeho okna (samozrejme kde je
+// volne miesto) a presunut pohybom na displeji akoby po koniec obrazovky, cim by sa attachol cl/el."
+// (20:00): "tahanie ku kraju mozes nasledne. Uvidime, ako to bude fungovat..."
+//
+// TRETIA CESTA, NIE NAHRADA: uchop na okraji a tuk vedla ostavaju. Toto je gesto pre ruku - podrzim
+// volne miesto okna, zaznam sa chyti, odtiahnem ho ku kraju a tam ho pustim. Ked sa osvedci, slide sa
+// zrusi; kym sa neosvedci, nema sa co rusit.
+//
+// CO SA NESIE: nic nove sa nevymyslia - okno uz vie, co vie pripnut (svoje ATTACH tlacidlo), a tah mu
+// len urci INY CIEL. Preto sa pri pusteni stlaci to iste tlacidlo s priznakom "do comm space": keby
+// som tu skladal payload sam, raz by sa rozisiel s tym, co robi ATTACH, a nikto by nevedel preco.
+//
+// LEN VOLNE MIESTO: na tlacidlach, bunkach a riadkoch uz podrzania visia (vyber, okno zaznamu, detach
+// all). Dalsie podrzanie na tom istom mieste by sa s nimi bilo - preto gesto zacina VYLUCNE na volnom
+// mieste okna a pohyb pred naplnenim casu ho zrusi (inak by ho zapinalo bezne rolovanie).
+let zzz14csDragBtn = null;      // ATTACH tlacidlo okna, z ktoreho sa tahá
+let zzz14csDragTimer = null;
+let zzz14csDragChip = null;     // to, co ide s prstom
+let zzz14csDragFrom = null;     // odkial gesto zacalo (na zrusenie pri pohybe)
+let zzz14csDropToSpace = false; // pustene pri okraji -> tento attach ide do COMM SPACE
+const ZZZ14CS_DRAG_MS = 3000;   // "podrzanim 3s" - Vrsove cislo, nie moje
+const ZZZ14CS_EDGE_PX = 56;     // ako blizko ku kraju sa musi pustit
+
+function zzz14cs_drag_cancel() {
+  clearTimeout(zzz14csDragTimer);
+  zzz14csDragTimer = null;
+  zzz14csDragFrom = null;
+  zzz14csDragBtn = null;
+  if (zzz14csDragChip && zzz14csDragChip.parentNode) zzz14csDragChip.parentNode.removeChild(zzz14csDragChip);
+  zzz14csDragChip = null;
+  const h = document.getElementById('zzz14csSpaceHandle');
+  if (h) h.classList.remove('is-target');
+}
+
+function zzz14cs_drag_start(btn, x, y) {
+  zzz14csDragBtn = btn;
+  zzz_haptic_pulse(30);
+  const chip = document.createElement('div');
+  chip.className = 'zzz14cs-drag-chip';
+  // nesie sa NAZOV toho, co sa pripne - aby clovek videl, ze drzi ten spravny zaznam
+  const okno = btn.closest('.entry-modal-box');
+  const cislo = okno && okno.querySelector('.zzz5w5cm-inv-num, .entry-number-wrap .entry-cell');
+  chip.textContent = (cislo && String(cislo.textContent).trim()) || 'CL';
+  document.body.appendChild(chip);
+  zzz14csDragChip = chip;
+  zzz14cs_drag_move(x, y);
+  const h = document.getElementById('zzz14csSpaceHandle');
+  if (h) h.classList.add('is-target');
+}
+
+function zzz14cs_drag_move(x, y) {
+  if (!zzz14csDragChip) return;
+  zzz14csDragChip.style.left = `${Math.round(x) + 10}px`;
+  zzz14csDragChip.style.top = `${Math.round(y) - 14}px`;
+  const blizko = x > window.innerWidth - ZZZ14CS_EDGE_PX;
+  zzz14csDragChip.classList.toggle('is-ready', blizko);
+}
+
+function zzz14cs_drag_drop(x) {
+  const btn = zzz14csDragBtn;
+  const pri_okraji = x > window.innerWidth - ZZZ14CS_EDGE_PX;
+  zzz14cs_drag_cancel();
+  if (!btn || !pri_okraji) return;
+  zzz14csDropToSpace = true;
+  btn.click();                    // okno si pripne svoj zaznam samo, len s inym cielom
+  zzz14cs_space_open(true);       // nech je vidno, kam to padlo
+}
+
+document.addEventListener('pointerdown', (e) => {
+  zzz14cs_drag_cancel();
+  const t = e.target;
+  if (!t || !t.closest) return;
+  // VYLUCNE volne miesto: nic, co uz ma vlastnu akciu alebo vlastne podrzanie
+  if (t.closest('button, input, textarea, select, a, [contenteditable], .entry-cell, .zzz1m5-cl-row, .zzz5w5cm-ccl-item')) return;
+  const okno = t.closest('.entry-modal-box');
+  if (!okno) return;
+  const btn = okno.querySelector('.zzz1m5-attach-btn');
+  if (!btn) return;               // okno, ktore nema co pripnut, sa nema z coho tahat
+  zzz14csDragFrom = { x: e.clientX, y: e.clientY };
+  zzz14csDragTimer = setTimeout(() => zzz14cs_drag_start(btn, e.clientX, e.clientY), ZZZ14CS_DRAG_MS);
+}, true);
+
+document.addEventListener('pointermove', (e) => {
+  if (zzz14csDragChip) { zzz14cs_drag_move(e.clientX, e.clientY); return; }
+  // pohyb PRED naplnenim casu gesto rusi - inak by ho zaplo bezne rolovanie
+  if (zzz14csDragFrom) {
+    const dx = Math.abs(e.clientX - zzz14csDragFrom.x);
+    const dy = Math.abs(e.clientY - zzz14csDragFrom.y);
+    if (dx > 12 || dy > 12) zzz14cs_drag_cancel();
+  }
+}, true);
+
+document.addEventListener('pointerup', (e) => {
+  if (zzz14csDragChip) zzz14cs_drag_drop(e.clientX);
+  else zzz14cs_drag_cancel();
+}, true);
+document.addEventListener('pointercancel', () => zzz14cs_drag_cancel(), true);
+// === [/Zzz14-CS:DRAG-TO-EDGE] ===
+
 // jedine miesto, kde sa rozhoduje tuk vs. podrzanie - vsetky attach cesty idu cezen
 function zzz14cs_attach_route(payload) {
   if (zzz14csHoldReady) {
@@ -36707,7 +36963,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-16 22:50';
+const ZZZ5_6_BUILD = '2026-10-16 23:30';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -44694,7 +44950,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-17 2026-10-16'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-18 2026-10-16'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
