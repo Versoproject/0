@@ -19681,6 +19681,17 @@ function zzz6f2_show_toast(message, kindOrDuration, maybeDuration) {
   const kind = typeof kindOrDuration === 'string' ? kindOrDuration : null;
   const duration = typeof kindOrDuration === 'number' ? kindOrDuration : (maybeDuration || 6000);
   const mark = kind === 'ok' ? '✓ ' : (kind === 'warn' ? '⚠ ' : '');
+  // === [Zzz14-CS:TOAST-ONCE] Vrso 2026-10-16: hlaska "Check the people in USERS first..." stala na
+  // obrazovke DVA RAZY a prekryla pol okna, v ktorom prave pracoval. Hlasky zijú 6 sekund a radia sa
+  // pod seba, takze dva tuky na to iste tlacidlo = dve rovnake hlasky, dvakrat tolko prekrytej plochy -
+  // a ziadna nova informacia. Rovnaka hlaska, ktora prave stoji, sa teda UZ NEPRIDA: len sa jej
+  // predlzi cas, aby ju clovek stihol precitat. Rozne hlasky sa radia pod seba ako doteraz.
+  const uzStoji = (zzz6f2_activeToasts || []).find(t => t.parentNode && t.textContent === mark + message);
+  if (uzStoji) {
+    if (uzStoji._zzz6f2Timer) clearTimeout(uzStoji._zzz6f2Timer);
+    uzStoji._zzz6f2Timer = setTimeout(uzStoji._zzz6f2Remove, duration);
+    return;
+  }
   const toast = document.createElement('div');
   toast.textContent = mark + message;
   if (kind === 'ok') toast.style.borderLeft = '4px solid #22c55e';
@@ -19719,7 +19730,9 @@ function zzz6f2_show_toast(message, kindOrDuration, maybeDuration) {
   document.body.appendChild(toast);
   zzz6f2_activeToasts.push(toast);
   reposition();
-  setTimeout(removeToast, duration);
+  // [Zzz14-CS:TOAST-ONCE] casovac drzime pri hlaske - rovnaka hlaska ho vie predlzit namiesto duplikatu
+  toast._zzz6f2Remove = removeToast;
+  toast._zzz6f2Timer = setTimeout(removeToast, duration);
 }
 
 // === [Zzz2-R29-FIX:CL-SUMMARY] FIX 2026-08-20 (Vrso hlasenie: "Database Workspace" zostava prazdna / nezobrazuje
@@ -27438,6 +27451,9 @@ let zzz5w5cmContactsWinTab = ZZZ5W5CM_USERS_ID;
 // M4a2 je JEDEN fyzicky element - drzi ho vzdy prave jeden modul; klik na tab (alebo na slot) si ho vypyta.
 let zzz5w5cmM4aOwner = 'module'; // 'module' | 'contactswin'
 let zzz5w5cmCurrent = 'contacts';
+// [Zzz14-CS:PAIR-WITH-ACTUAL] vlastna minimalizacia actual modulu, ked stoji ako spolocnik parovania -
+// zdielany zzz5w5cmModuleMin by zbalil oba moduly naraz
+let zzz14csActualMin = false;
 let zzz5w5cmContactsTab = 'important'; // aktivny tab vnutri Actual communication module (Important = hlavny)
 
 function zzz5w5cm_is_open() {
@@ -28584,6 +28600,20 @@ async function zzz5w5cm_on_comm_consent_change(entryId, consentOn, permanentOn) 
 }
 
 // male okno nad ENTRY NUMBER bunkou - rucne prehodenie tabu (kym nie je napojene communication okno)
+// [Zzz14-CS:PAIR-COPY] z riadku parovania spravi to iste, co nesie kazdy pripnuty zaznam inde v appke -
+// cislo zaznamu, datum a bunky CL; vdaka tomu kopia pristane v actual tabe ako bezny riadok a zapise sa
+// do verso_placements rovnako ako kazde ine pripnutie ([Zzz5-W5:ATTACH-AS-PLACEMENT]).
+function zzz14cs_pair_payload(row) {
+  const f = zzz_parse_fields_json(row);   // [ZzzF:FIELDS-JSON-PARSE] zvladne text aj jsonb
+  const fields = {};
+  ZZZ_CL_FIELDS.forEach(([, rKey]) => { fields[rKey] = (f && f[rKey]) || ''; });
+  return {
+    key: 'el#' + row.entry_id,
+    sourceEntryId: String(row.entry_id),
+    entryDate: row.entry_date || '',
+    fields
+  };
+}
 function zzz5w5cm_open_pair_window(anchorEl, row) {
   document.querySelectorAll('.zzz5t0-tab-window').forEach(m => m.remove());
   const win = document.createElement('div');
@@ -28608,6 +28638,29 @@ function zzz5w5cm_open_pair_window(anchorEl, row) {
     b.type = 'button';
     b.textContent = t.label.toUpperCase();
     b.addEventListener('click', () => { win.remove(); zzz5w5cm_set_pairing_state(row, t.key); });
+    win.appendChild(b);
+  });
+  // === [Zzz14-CS:PAIR-COPY] Vrso 2026-10-16 (12:55): "treba doriesit nejako jednoduchsie a jasnejsie
+  // kopiu (pretoze hlavny presun z pairing do ostatnych pairing tabov ide automaticky)."
+  // Odkedy presun MEDZI pairing tabmi riadi suhlas ([Zzz5-W5:CONSENT-DECIDES]), jedina rucna praca,
+  // ktora v parovani ostala, je KOPIA do actual tabov - a tá sa doteraz robila oklukou cez prepnutie
+  // modulu a hladanie toho isteho riadku v inom zozname. Teraz je to jeden tuk z toho istého okna.
+  // KOPIA, NIE PRESUN: zaznam v parovani OSTAVA (jeho tab urcuje suhlas, nie ja) - preto je to pod
+  // vlastnym nadpisom a oddelene ciarou, aby sa to nepoplietlo s vyberom vyssie.
+  const copyHead = document.createElement('div');
+  copyHead.style.cssText = 'font-size:9px;color:#999;padding:7px 4px 2px;border-top:1px solid #333;';
+  copyHead.textContent = 'COPY TO (it stays in pairing)';
+  win.appendChild(copyHead);
+  ZZZ5W5CM_CONTACT_TABS.forEach(t => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = t.label.toUpperCase();
+    b.addEventListener('click', () => {
+      win.remove();
+      zzz5w5cm_attach_to_tab(t.key, zzz14cs_pair_payload(row));
+      zzz6f2_show_toast(`#${row.entry_id} copied to ${t.label}.`, 'ok');
+      if (zzz5w5cm_is_open()) zzz5w5cm_render();
+    });
     win.appendChild(b);
   });
   document.body.appendChild(win);
@@ -33126,6 +33179,56 @@ function zzz5w5cm_render() {
   if (zzz5w5cmContactsWinOpen) wrap.appendChild(zzz5w5cm_build_contacts_window()); // [Zzz5-W5:CONTACTS-WINDOW]
   if (moduleEl) wrap.appendChild(moduleEl);
 
+  // === [Zzz14-CS:PAIR-WITH-ACTUAL] Vrso 2026-10-16 (12:55): "pri otvoreni pairing modulu by sa mal
+  // sucasne otvorit aj actual modul a treba doriesit nejako jednoduchsie a jasnejsie kopiu (pretoze
+  // hlavny presun z pairing do ostatnych pairing tabov ide automaticky)."
+  //
+  // PAROVANIE a ACTUAL su dva konce jednej prace: v parovani vidim, co mi prislo, do actual tabov to
+  // zaradujem. Doteraz stal na obrazovke vzdy len jeden z nich (zzz5w5cmCurrent je JEDEN prepinac),
+  // takze kopirovanie znamenalo prepnut modul, stratit z oci riadok, ktory kopirujem, a tam ho hladat
+  // znova. Odkedy presun MEDZI pairing tabmi riadi suhlas sam ([Zzz5-W5:CONSENT-DECIDES]), jedina
+  // rucna praca, ktora v parovani ostala, je prave kopia inam - a tá potrebuje ciel na obrazovke.
+  //
+  // Modul sa stavia tou istou funkciou, len s docasne prepnutym prepinacom - ziadna druha kopia kodu,
+  // takze actual modul je tu PRESNE ten, ktory clovek pozna.
+  // M4a2 je jeden fyzicky element: tabulku drzi PAROVANIE (tam sa pozera) a actual modul ma na jej
+  // mieste vetu, ktora ju privola - to uz appka vie ([Zzz5-W5:M4A-IN-TAB]).
+  // VLASTNE OVLADACE: krizik spolocnika nezatvara oba moduly (zdielaju zzz5w5cmModuleOpen), ale len
+  // prepne pohlad na actual; a minimalizacia ma vlastny prepinac, inak by zbalila aj parovanie.
+  if (moduleEl && zzz5w5cmModuleOpen && zzz5w5cmCurrent === 'pairing') {
+    const bolCur = zzz5w5cmCurrent;
+    const bolMin = zzz5w5cmModuleMin;
+    let actualEl = null;
+    try {
+      zzz5w5cmCurrent = 'contacts';
+      zzz5w5cmModuleMin = zzz14csActualMin;
+      actualEl = zzz5w5cm_build_module();
+    } finally {
+      zzz5w5cmCurrent = bolCur;
+      zzz5w5cmModuleMin = bolMin;
+    }
+    if (actualEl) {
+      actualEl.classList.add('zzz14cs-actual-companion');
+      // cloneNode nenesie poslucacov - tak sa povodne spravanie tlacidla vymeni za to spravne tu
+      const rebind = (sel, fn) => {
+        const b = actualEl.querySelector(sel);
+        if (!b) return;
+        const nb = b.cloneNode(true);
+        b.parentNode.replaceChild(nb, b);
+        nb.addEventListener('click', fn);
+      };
+      rebind('.zzz5w5cm-close.zzz5w5cm-bar-min', () => {
+        zzz14csActualMin = !zzz14csActualMin;
+        zzz5w5cm_render();
+      });
+      rebind('.zzz5w5cm-close:not(.zzz5w5cm-bar-min)', () => {
+        zzz5w5cmCurrent = 'contacts';   // nezatvara, len sa prepne na actual samotny
+        zzz5w5cm_render();
+      });
+      wrap.appendChild(actualEl);
+    }
+  }
+
   // [Zzz5-W5:M4A-IN-TAB] az teraz (slot je uz v DOM) presun M4a2 do prave otvoreneho tabu. M4a2 je JEDEN
   // fyzicky element, takze ho drzi VZDY LEN JEDEN modul - ten, ktory si ho naposledy vypytal
   // (zzz5w5cmM4aOwner). Druhy modul ma na jeho mieste kratku poznamku a klik ho prepne sem.
@@ -36295,7 +36398,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-16 13:45';
+const ZZZ5_6_BUILD = '2026-10-16 19:40';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -44282,7 +44385,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-9 2026-10-16'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-11 2026-10-16'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
