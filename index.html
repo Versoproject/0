@@ -10016,6 +10016,18 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
   .zzz14cs-space-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 6px; }
   /* STALY UCHOP: na Androide si tah od okraja casto vezme system ako "spat", takze gesto samo by
      na telefone nemuselo otvorit vobec nic. Uchop je uzky, aby nezavadzal, ale je vzdy po ruke. */
+  /* [Zzz14-CS:DRAG-TO-EDGE] to, co ide s prstom - male, aby neprekrylo to, nad cim je */
+  /* [Zzz14-CS:CL-RED] draft sa odlisi FARBOU, nie tvarom: cervene "CL7" tam, kde zaznam ma '#173'.
+     Cervena tu neznamena chybu, znamena "este nie je ulozene" - a prave to clovek potrebuje vidiet. */
+  .zzz14cs-cl-red { color: #d33a2c !important; font-weight: 700; }
+  .zzz14cs-drag-chip {
+    position: fixed; z-index: 2100; pointer-events: none;
+    background: #1a1a1a; color: #e8c86a; border: 1px solid #e8c86a; border-radius: 8px;
+    padding: 3px 8px; font-size: 10px; font-weight: 700; box-shadow: 0 2px 10px rgba(0,0,0,.5);
+  }
+  .zzz14cs-drag-chip.is-ready { background: #e8c86a; color: #141414; }
+  /* uchop sa pocas tahania rozsvieti - je to miesto, kam sa pusta */
+  .zzz14cs-space-handle.is-target { width: 22px; background: #e8c86a; }
   .zzz14cs-space-handle {
     position: fixed; right: 0; top: 50%; transform: translateY(-50%);
     width: 10px; height: 86px;
@@ -20183,7 +20195,13 @@ function zzz6f17_build_attached_cl_grid_row(item) {
       // "ATTACH" buttonom v mini-wrap stlpci (toggle/checklist/2s-detach). | Vrso -> Claude AI | 2026-09-11 ===
       const numberCell = document.createElement('div');
       numberCell.className = 'entry-cell entry-cell-readonly';
+      // [Zzz14-CS:CL-RED] draft mal bunku PRAZDNU, takze sa v zozname nedal odlisit od ineho draftu
       if (item.entryNumber) numberCell.textContent = item.entryNumber;
+      else {
+        numberCell.textContent = zzz14cs_cl_label(item);
+        numberCell.classList.add('zzz14cs-cl-red');
+        numberCell.title = 'Draft command line - it has no entry number until you save it (ENTER)';
+      }
       if (zzzLinkedRow || zzzDraftRow) { // [Zzz6-F29:SELECT-LINKED] v select mode = oznacit cely zaznam (ako ENTRY NUMBER v Database)
         // [Zzz6-F14:BIG-ENTRY-NUMBER] 1x tuk = vyber (select mode) / zlate vyznacenie riadku, 2x tuk = velke cislo
         // (ulozeny zaznam -> log okno s velkym cislom, neulozeny draft -> len oznacenie) | Vrso -> Claude AI | 2026-09-21
@@ -29437,9 +29455,26 @@ function zzz5w5cm_fill_pair_attachments(rowsForTab) {
     if (!item) return;
     const numberCell = rowEl.querySelector(':scope > .entry-number-wrap .entry-cell');
     if (numberCell) {
-      numberCell.textContent = `#${item.sourceEntryId}`;
+      zzz14cs_paint_number_cell(numberCell, item);   // [Zzz14-CS:CL-RED] draft = cervene CL7
       numberCell.style.cursor = 'pointer';
-      numberCell.addEventListener('click', () => zzz5w5cm_open_pair_window(numberCell, item.zzz5w5cmRow));
+      // === [Zzz14-CS:EN-EVERYWHERE] Vrso 2026-10-16 (20:13): "otvorilo sa mi to zas z cl/el, ktore
+      // boli v mojom zozname... tam by sa tiez mal otvorit EN, kde uz je ten search button ako sucast
+      // vsetkych entry number okien."
+      // V pripnutych riadkoch robil TUK nieco INE nez vsade inde: otvaral okno presunu. Cislo zaznamu
+      // je pritom jeho IDENTITA - tuk nan ma otvorit ZAZNAM, a to v kazdom zozname rovnako, inak si
+      // clovek pri kazdej tabulke musi pamatat, co tam to iste gesto robi. Presun sa nestratil:
+      // ostava na podrzani, presne ako v comm CRM ([Zzz5-W5:ENTRY-CLICK]).
+      numberCell.title = `#${item.sourceEntryId} - tap = open this record, hold 1-2s = move or copy it`;
+      numberCell.addEventListener('click', () => {
+        zzz14csOriginComm = true;   // [Zzz14-CS:COMM-ATTACH-APART] otvara to comm CRM
+        zzz6f29_open_entry_number_window(item.sourceEntryId);
+      });
+      if (item.zzz5w5cmRow) {
+        zzz_bind_long_press(numberCell, 1200, () => {
+          zzz_haptic_pulse(30);
+          zzz5w5cm_open_pair_window(numberCell, item.zzz5w5cmRow);
+        });
+      }
     }
     const dateCell = rowEl.querySelector(':scope > .date-wrap .entry-cell');
     if (dateCell) dateCell.textContent = (item.zzz5w5cmRow && item.zzz5w5cmRow.entry_date) || '-';
@@ -30510,6 +30545,11 @@ function zzz5w5cm_build_ccl(key, rows) {
         // Cislo je IDENTITA zaznamu, takze tuk nan otvara ten zaznam - to iste okno ako tuk na ENTRY
         // NUMBER v parovacej tabulke, nie dalsia kopia. Az sa cislo napoji na hladanie v databaze,
         // pribudne sem jeden riadok a nikde inde.
+        // [Zzz14-CS:CL-RED] draft nesie "CL7" namiesto cisla - nech je to vidno na prvy pohlad
+        if (c.k === 'entry' && /^CL\d+$/.test(String(r.entry || ''))) {
+          cell.classList.add('zzz14cs-cl-red');
+          cell.title = 'Draft command line - it has no entry number until it is saved';
+        }
         if (c.k === 'entry' && r.entry) {
           // [Zzz5-W5:FIRST-ENTRY] riadok moze niest VIAC cisel ("#173 #153"); zlepenie vsetkych cifier
           // do jedneho cisla ("173153") ukazovalo na zaznam, ktory neexistuje. Berie sa PRVE cislo.
@@ -30918,7 +30958,7 @@ function zzz5w5cm_build_cw_people(tab) {
     return (zzz5w5cm_tab_list(kind) || []).map(it => {
       const f = (it && it.fields) || {};
       return {
-        entry: it.sourceEntryId ? '#' + it.sourceEntryId : '',
+        entry: it.sourceEntryId ? '#' + it.sourceEntryId : zzz14cs_cl_label(it),  // [Zzz14-CS:CL-RED]
         pnum: String(f.r2 || '').trim(),
         project: String(f.r3 || '').trim(),
         // [Zzz5-W5:OWNER-NOT-USER] bunka project ownera; autor riadku v databaze az ako zaloha
@@ -31252,21 +31292,14 @@ function zzz5w5cm_build_cw_people(tab) {
       // nou boli ten isty zoznam druhykrat - a dva zoznamy toho isteho sa raz rozidu. V USERS teda
       // ostava len comm command line. Ostatne taby si chipy drzia, lebo tam nesú gesta, ktore riadok
       // nema (skupiny, timy, pridanie neznameho).
-      // === [Zzz5-W5:TAG-AS-PACK] v kontaktoch ostava LEN zakladanie balika ======================
-      // Vrso 2026-10-09 (23:11): "tag a several samozrejme nechaj, ked potrebne... packages zrus."
-      // + TAG SEVERAL je hromadny nastroj nad VSETKYMI kontaktmi - to sa inde urobit neda a ostava.
-      // PACKAGES len UKAZOVALO, co uz mam, a to isté (aj s pridanim, zalozenim a premenovanim) uz
-      // robi sekcia PACKS v okne MEMBERS [Zzz5-W5:PACK-IN-MEMBERS]. Dve cesty k jednej veci sa raz
-      // rozidu, takze ostava jedna.
-      if (zzz5w5cmMyContacts.length) {
-        const tagMany = document.createElement('button');
-        tagMany.type = 'button';
-        tagMany.className = 'zzz5w5cm-dir-hit zzz5w5cm-cwp-all';
-        tagMany.textContent = '+ NEW PACK';   // [Zzz14-CS:PACK-ONE-WORD]
-        tagMany.title = 'One tag on several contacts - that is what makes a package';
-        tagMany.addEventListener('click', () => zzz5w5cm_open_tag_many(tagMany, () => { paint(); }));
-        list.appendChild(tagMany);
-      }
+      // === [Zzz14-CS:PACK-ONLY-MEMBERS] Vrso 2026-10-16 (20:23): "nema byt ten pack proces uz iba
+      // v members v ramci hlavnych crm?"
+      // Ma. Balik sa zakladal na DVOCH miestach: tu (vtedy "+ TAG SEVERAL", 9. 10. ponechane ako
+      // hromadny nastroj) a v sekcii PACKS okna MEMBERS. Odkedy MEMBERS berie VSETKO zaskrtnute -
+      // cele baliky, skupiny, timy aj jednotlivcov ([Zzz14-CS:PACK-TAKES-CHECKED]) - vie tunajsia
+      // cesta uz len menej: ponukala holy zoznam kontaktov bez skupin a timov. Dve cesty k jednej
+      // veci sa raz rozidu, takze ostava tá, ktora vie viac. Zakladanie aj premenovanie balika je
+      // teda uz LEN v MEMBERS [Zzz5-W5:PACK-IN-MEMBERS].
       // [Zzz5-W5:TAG-IN-CELL] popis uz neposiela tukat na riadok - stitok sa pise v STITKOVEJ bunke
       note.textContent = zzz5w5cmMyContacts.length
         ? 'Your own contacts. ENTRY NUMBER is the record they came from - tap it to open that record. Write your own tag in the COMM OWN TAG cell; it is yours alone. The same tag on several contacts IS a package - you take it whole, name it or rename it in MEMBERS in the communication window.'
@@ -31864,7 +31897,7 @@ function zzz5w5cm_build_contacts_window() {
     (zzz5w5cm_tab_list(active ? active.kind : '') || []).map(it => {
       const f = (it && it.fields) || {};
       return {
-        entry: it.sourceEntryId ? '#' + it.sourceEntryId : '',
+        entry: it.sourceEntryId ? '#' + it.sourceEntryId : zzz14cs_cl_label(it),  // [Zzz14-CS:CL-RED]
         pnum: String(f.r2 || '').trim(),
         project: String(f.r3 || '').trim(),
         // [Zzz5-W5:OWNER-NOT-USER] bunka project ownera; autor riadku v databaze az ako zaloha
@@ -32594,75 +32627,10 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey) 
   const outside = (e) => { if (!win.contains(e.target)) { win.remove(); document.removeEventListener('click', outside, true); } };
   setTimeout(() => document.addEventListener('click', outside, true), 0);
 }
-// [Zzz5-W5:TAG-AS-PACK] JEDNA AKCIA, VIAC CLENOV: zaskrtnem ludi, napisem stitok, ulozim.
-// Presne to Vrso napisal - "staci v ramci jednej akcie otagovat viacero clenov group a hotovo".
-// Stitok sa PRIDAVA k tomu, co uz kontakt ma; existujuci sa neprepisuje, inak by jeden balik mazal druhy.
-function zzz5w5cm_open_tag_many(anchorEl, onDone) {
-  document.querySelectorAll('.zzz5t0-tab-window').forEach(m => m.remove());
-  const win = document.createElement('div');
-  win.className = 'zzz5t0-tab-window zzz5w5cm-tagmany';
-  const head = document.createElement('div');
-  head.style.cssText = 'font-size:9px;color:#999;padding:2px 4px 6px;';
-  // === [Zzz14-CS:PACK-ONE-WORD] Vrso 2026-10-16 (19:10): "ked several, tak skor mi to pride lepsie
-  // oznacit ako pack, ako je members, kde si viem vytvorit z existujucich members/kontaktov rozne packs."
-  // Jedna vec sa volala na dvoch miestach dvoma menami: v MEMBERS "pack", v contacts "tag several" -
-  // hoci je to ten isty comm own tag na viacerych kontaktoch. Clovek potom hlada dve funkcie namiesto
-  // jednej. Nazov je teda jeden: PACK.
-  head.textContent = 'NEW PACK - one name for several contacts';
-  win.appendChild(head);
-  const list = document.createElement('div');
-  list.className = 'zzz5w5cm-tagmany-list';
-  const picked = {};
-  (zzz5w5cmMyContacts || []).forEach(c => {
-    if (!c.id) return;   // [Zzz5-W5:TAG-IN-CELL] do neulozeneho kontaktu sa nic nepise
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'zzz5w5cm-tagmany-row';
-    // [Zzz14-CS:TAG-MANY-PLAIN] Vrso 2026-10-16 (13:09): "tak mi to vyhadzuje rozne ine nazvy, co
-    // nerozumiem" - za menom stali vsetky stitky toho kontaktu, takze zoznam ludi vyzeral ako zoznam
-    // cudzich nazvov. Meno je meno; co uz kontakt nosi, je v bublinke po podrzani.
-    row.textContent = c.name;
-    if (c.tags) row.title = `${c.name} already has: ${c.tags}`;
-    row.addEventListener('click', () => {
-      picked[c.id] = !picked[c.id];
-      row.classList.toggle('is-on', !!picked[c.id]);
-    });
-    list.appendChild(row);
-  });
-  win.appendChild(list);
-  const tagIn = document.createElement('input');
-  tagIn.type = 'text';
-  tagIn.className = 'zzz1r17b-chip-input zzz5w5cm-tagmany-tag';
-  tagIn.placeholder = 'name of the pack';
-  win.appendChild(tagIn);
-  const save = document.createElement('button');
-  save.type = 'button';
-  // [Zzz14-CS:TAG-MANY-PLAIN] "sposob potvrdenia je matuci" - SAVE nepovedalo, CO sa ulozi.
-  save.textContent = 'MAKE THE PACK';
-  save.addEventListener('click', async () => {
-    const tag = tagIn.value.trim();
-    const ids = Object.keys(picked).filter(k => picked[k]);
-    if (!tag) { zzz6f2_show_toast('Write the name of the pack first.', 'warn'); return; }
-    if (!ids.length) { zzz6f2_show_toast('Tap the contacts that belong to this pack first.', 'warn'); return; }
-    let ok = 0;
-    for (const id of ids) {
-      const c = (zzz5w5cmMyContacts || []).find(x => String(x.id) === String(id));
-      if (!c) continue;
-      const have = zzz6f21_parse_tags(c.tags || '');
-      if (have.some(t => zzz10v1_normalize(t) === zzz10v1_normalize(tag))) { ok += 1; continue; }
-      have.push(tag);
-      if (await zzz5w5cm_set_contact_tags(c.id, have.join(', '))) ok += 1;
-    }
-    win.remove();
-    zzz6f2_show_toast(`"${tag}": ${ok} of ${ids.length} contact(s) - the pack is ready.`, 'ok');
-    if (typeof onDone === 'function') onDone();
-  });
-  win.appendChild(save);
-  document.body.appendChild(win);
-  zzz5w5cm_place_window_at(win, anchorEl);   // [Zzz5-W5:TAG-AS-PACK] kotva nemusi stat
-  const outside = (e) => { if (!win.contains(e.target)) { win.remove(); document.removeEventListener('click', outside, true); } };
-  setTimeout(() => document.addEventListener('click', outside, true), 0);
-}
+// [Zzz14-CS:PACK-ONLY-MEMBERS] zzz5w5cm_open_tag_many (okno "TAG SEVERAL" / "NEW PACK" v kontaktoch)
+// bolo ODSTRANENE 16. 10. - balik sa zaklada uz len v sekcii PACKS okna MEMBERS, ktora vie zobrat aj
+// cele baliky, skupiny a timy. Kod tu nezostava "pre istotu": nepouzivana cesta sa casom rozide s tou
+// pouzivanou a nikto si to nevsimne.
 // [Zzz5-W5:TAG-AS-PACK] postav okno k prvku; ked prvok uz nestoji, postav ho na vrch obrazovky.
 // Doteraz kazde male okno pocitalo polohu samo a nad NEEXISTUJUCOU kotvou by spadlo - okno pritom
 // nema preco zaniknut len preto, ze sa riadok pod nim medzitym prekreslil.
@@ -33986,7 +33954,7 @@ function zzz14cs_space_rows() {
   return zzz5w5cm_tab_list(ZZZ14CS_SPACE_KEY).map(it => {
     const f = it.fields || {};
     return {
-      entry: it.sourceEntryId ? '#' + it.sourceEntryId : '',
+      entry: it.sourceEntryId ? '#' + it.sourceEntryId : zzz14cs_cl_label(it),  // [Zzz14-CS:CL-RED]
       pnum: f.r2 || '',
       project: f.r3 || '',
       name: f.r4 || '',
@@ -34197,6 +34165,43 @@ async function zzz5w5cm_load_tab_placements(force) {
     if (zzz5w5cm_is_open()) zzz5w5cm_render();
   }
 }
+// === [Zzz14-CS:CL-RED] Vrso 2026-10-17 (00:31 a 00:59): "strasne neprehladne to je, najma ak ide o cl,
+// ktore nemaju entry number... lepsie riesenie mi pride len oznacit cervenou entry number bunku a
+// vyznacit ako CL, nie?" a "odtlacok - nie je lepsie iba cislovanim, ale lokalnym? Ved kto by tym
+// manipuloval? Akurat sebe by urobil problem, lebo do spolocnej databazy/parovania moze ist iba entry."
+//
+// Ma pravdu a ja som sa pri odtlacku mylil: lokalne cislo je CITATELNEJSIE nez odtlacok obsahu a do
+// spolocnych tabuliek sa aj tak nedostane - placements, parovanie aj suhlasy sa chytaju na entry_id,
+// takze draft tam nema ako vstupit. Zneuzit sa to teda ani neda; nanajvys si clovek pomyli vlastne
+// dva drafty, co je presne to, comu cislo brani.
+//
+// PRAVIDLA, KTORE TO DRZIA POCTIVE:
+//   1. cislo draftu sa NIKDY nekresli ako hole cislo - vzdy "CL7" a CERVENE, aby sa nedalo zamenit
+//      s entry number (to je modre/cierne a ma '#')
+//   2. je LOKALNE a pridelene z JEDNEHO pocitadla (zzz6f17AttachClCounter), takze sa neopakuje ani
+//      medzi hlavnym zoznamom a tabmi; po ulozeni zaznamu ho nahradi skutocne entry number
+//   3. nikam sa nezapisuje - do databazy ide len to, co ma entry_id
+function zzz14cs_cl_label(item) {
+  if (item && item.label && /^CL\d+$/.test(item.label)) return item.label;
+  zzz6f17AttachClCounter += 1;
+  const l = 'CL' + zzz6f17AttachClCounter;
+  if (item) item.label = l;
+  return l;
+}
+// bunka s cislom: zaznam = cierne '#173', draft = CERVENE 'CL7'
+function zzz14cs_paint_number_cell(cell, item) {
+  if (!cell) return;
+  const id = item && item.sourceEntryId;
+  if (id) {
+    cell.textContent = '#' + id;
+    cell.classList.remove('zzz14cs-cl-red');
+    return;
+  }
+  cell.textContent = zzz14cs_cl_label(item);
+  cell.classList.add('zzz14cs-cl-red');
+  cell.title = 'Draft command line - it has no entry number until you save it (ENTER)';
+}
+
 function zzz5w5cm_attach_to_tab(tabKey, payload) {
   const list = zzz5w5cm_tab_list(tabKey);
   if (list.some(it => it.zzz5w5cmKey && it.zzz5w5cmKey === payload.key)) {
@@ -34205,6 +34210,8 @@ function zzz5w5cm_attach_to_tab(tabKey, payload) {
   }
   list.push({
     id: 'zzz5w5cm-' + tabKey + '-' + Date.now() + '-' + list.length,
+    // [Zzz14-CS:CL-RED] draft dostane lokalne cislo hned - inak by v zozname nebol od ostatnych odlisitelny
+    label: payload.sourceEntryId ? '' : zzz14cs_cl_label(null),
     sourceEntryId: payload.sourceEntryId || '',
     entryDate: payload.entryDate || '',
     fields: Object.assign({}, payload.fields || {}),
@@ -34439,6 +34446,14 @@ function zzz14cs_attach_route(payload) {
     zzz14csHoldReady = false;
     zzz14csFromComm = false;
     zzz5w5cm_open_attach_picker(payload);
+    return;
+  }
+  // [Zzz14-CS:DRAG-TO-EDGE] pustenie pri okraji urcuje ciel samo - je to vedomy pohyb rukou, takze ma
+  // prednost pred tym, odkial okno vzniklo
+  if (zzz14csDropToSpace) {
+    zzz14csDropToSpace = false;
+    zzz14csFromComm = false;
+    zzz5w5cm_attach_to_tab(ZZZ14CS_SPACE_KEY, payload);
     return;
   }
   // [Zzz14-CS:COMM-ATTACH-APART] tuk v okne, ktore otvorila comm CRM, pripina do COMM SPACE, nie do
@@ -36963,7 +36978,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-16 23:30';
+const ZZZ5_6_BUILD = '2026-10-17 01:20';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -44950,7 +44965,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-18 2026-10-16'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-22 2026-10-17'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
