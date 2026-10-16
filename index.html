@@ -669,12 +669,14 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     margin-left: 6px; border: none; background: transparent;
     color: inherit; font-size: 12px; line-height: 1; cursor: pointer; padding: 0 2px;
   }
+  /* [Zzz4-0:SEARCH-LEFT] SEARCH je PLNE tlacidlo ako ostatne v riadku - samotny ram pôsobil ako
+     nedokoncene tlacidlo vedla plnych COPY/ATTACH/ZATVORIT */
   .zzz4-0-entry-search-btn {
     padding: 6px 12px; font-size: 11px; font-weight: 800;
-    border: 2px solid #7b2ff7; border-radius: 6px;
-    background: transparent; color: #7b2ff7; cursor: pointer;
+    border: 2px solid #5b1fb8; border-radius: 6px;
+    background: #7b2ff7; color: #fff; cursor: pointer;
   }
-  .zzz4-0-entry-search-btn:active { background: #7b2ff7; color: #fff; }
+  .zzz4-0-entry-search-btn:active { background: #5b1fb8; }
   /* [Zzz6-F29:ROW-IN-WINDOW] cela EL v okne ENTRY NUMBER - vlastne vodorovne posuvanie, aby okno
      nemuselo byt sirsie a riadok nemusel byt uzsi */
   .zzz6f29-rowstrip {
@@ -11638,7 +11640,19 @@ function zzz6f29_open_readonly_viewer(label, value, row) {
   copyBtn.className = 'entry-modal-copy';
   copyBtn.textContent = 'COPY';
   copyBtn.onclick = () => { zzz_copy_text_to_clipboard_silent(value || ''); zzz6f6_flash_button(copyBtn); };
-  actions.appendChild(closeBtn);
+  // === [Zzz4-0:SEARCH-LEFT] poradie tlacidiel: SEARCH vlavo, ZATVORIT vpravo ===================
+  // Vrso 2026-10-16 (03:19): "zda sa mi, ze vo vsetkych oknach je zatvorit vpravo, tak umiestni
+  // search button vlavo od ostatnych. Tiez ma iba ohranicenie fialovou a nie vypln."
+  // Zatvorenie je koniec prace, preto patri na kraj, kde ho oko caka; akcie idu pred nim. Poradie
+  // sa teda sklada az tu, nie podla toho, v akom poradi tlacidla vznikli.
+  if (row && row.entry_id !== undefined && typeof zzz4_0_open_entry_tab === 'function') {
+    const searchBtn = document.createElement('button');
+    searchBtn.className = 'zzz4-0-entry-search-btn';
+    searchBtn.textContent = 'SEARCH';
+    searchBtn.title = `Open #${row.entry_id} in the database as its own tab`;
+    searchBtn.onclick = () => { removeBox(); zzz4_0_open_entry_tab(row.entry_id); };
+    actions.appendChild(searchBtn);
+  }
   actions.appendChild(copyBtn);
 
   if (row) {
@@ -11654,23 +11668,8 @@ function zzz6f29_open_readonly_viewer(label, value, row) {
       removeBox();
     };
     actions.appendChild(attachBtn);
-
-    // [Zzz4-0:ENTRY-TABS] SEARCH = "otvor mi tento zaznam v databaze, vo vlastnom tabe"
-    // Vrso 2026-10-09 (20:48): "a tam search button, ktory ked stlacim, tak vyfiltruje... vzdy do
-    // noveho tabu." Tab sa vola cislom zaznamu, da sa zavriet a da sa k nemu vratit; zakladny tab
-    // ENTRY ostava tym, cim bol - celou databazou aj s filtrovanim.
-    if (row && row.entry_id !== undefined && typeof zzz4_0_open_entry_tab === 'function') {
-      const searchBtn = document.createElement('button');
-      searchBtn.className = 'zzz4-0-entry-search-btn';
-      searchBtn.textContent = 'SEARCH';
-      searchBtn.title = `Open #${row.entry_id} in the database as its own tab`;
-      searchBtn.onclick = () => {
-        removeBox();
-        zzz4_0_open_entry_tab(row.entry_id);
-      };
-      actions.appendChild(searchBtn);
-    }
   }
+  actions.appendChild(closeBtn);   // [Zzz4-0:SEARCH-LEFT] zatvorenie je vzdy posledne, teda vpravo
 
   box.appendChild(actions);
 
@@ -28554,6 +28553,28 @@ async function zzz5w5cm_set_pairing_state(row, key) {
   await zzz6f15_place_entries([row], tab.tabId, 'move');
   await zzz5w5cm_load_pairing();
 }
+// === [Zzz5-W5:CONSENT-DECIDES] navrat spod rucneho zatriedenia ==================================
+// Vrso 2026-10-16 (03:17): "toto mi pride nezmysel, aby sa hned po stlaceni oznacenej comm line dalo
+// vybrat, ci patri do paired (vsak to zavisi od consentu...), unpaired... ale ponechat samozrejme
+// blocked."
+// Ma pravdu: Paired/Unpaired/Pairing NIE SU priehradky, do ktorych sa odklada rukou - su to NAZVY
+// STAVU, ktory urcuje suhlas (zzz5w5cm_pair_tab_of: je suhlas -> Paired, nie je -> Pairing).
+// Rucne "daj to do Paired" by teda tvrdilo nieco, co v databaze nie je. Rukou sa da rozhodnut len
+// to, co je naozaj rozhodnutie cloveka: TRASHED a BLOCKED. A spat sa clovek dostane tym, ze sa
+// jeho rucne zatriedenie ZRUSI - odvtedy o tabe zase rozhoduje suhlas.
+async function zzz5w5cm_clear_pairing_state(row) {
+  const me = zzz10v1_normalize(zzz0r1_get_current_username());
+  if (!me || !row) return;
+  try {
+    const { error } = await sb.from('verso_placements')
+      .delete().eq('username', me).eq('entry_id', row.entry_id);
+    if (error) throw error;
+    zzz6f2_show_toast(`#${row.entry_id}: back to where the consent puts it.`);
+  } catch (e) {
+    zzz6f2_show_toast(`Not moved back: ${(e && e.message) || e}`, 'warn');
+  }
+  await zzz5w5cm_load_pairing();
+}
 // [Zzz5-W5:PAIRING-HOOK] PRIPRAVENE pre communication okno: ked tam prihlaseny zaskrtne/odskrtne comm consent
 // alebo comm permanent, staci zavolat tuto funkciu a zaznam sa sam prehodi do spravneho tabu. Permanent sa
 // zatial sprava rovnako ako consent (Vrso: "toto zatial este nie je doriesene ale pripravit treba").
@@ -28571,9 +28592,18 @@ function zzz5w5cm_open_pair_window(anchorEl, row) {
   idLine.style.cssText = 'font-size:9px;color:#999;padding:2px 4px 6px;';
   idLine.textContent = `#${row.entry_id} - ${row.username || ''}`;
   win.appendChild(idLine);
-  // [Zzz5-W5:PRESET-VIEW] PRESET sa v ponuke "presun do" uz neponuka - nie je to priehradka, ale
-  // sito; presunut zaznam "do sita" by neznamenalo nic a tlacidlo by klamalo
-  ZZZ5W5CM_PAIR_TABS.filter(t => t.key !== 'preset').forEach(t => {
+  // [Zzz5-W5:PRESET-VIEW] PRESET sa v ponuke "presun do" neponuka - nie je to priehradka, ale sito.
+  // [Zzz5-W5:CONSENT-DECIDES] a PAIRING / PAIRED / UNPAIRED tiez nie: to su nazvy stavu, ktory urcuje
+  // SUHLAS, nie miesta, kam sa odklada rukou. Ostava teda len to, co je naozaj rozhodnutie cloveka
+  // (TRASHED, BLOCKED ...) a navrat spat pod rozhodnutie suhlasu.
+  const rucne = ['preset', 'pairing', 'paired', 'unpaired'];
+  const back = document.createElement('button');
+  back.type = 'button';
+  back.textContent = 'BACK (consent decides)';
+  back.title = 'Cancel your manual filing - the tab is decided by the consent again';
+  back.addEventListener('click', () => { win.remove(); zzz5w5cm_clear_pairing_state(row); });
+  win.appendChild(back);
+  ZZZ5W5CM_PAIR_TABS.filter(t => rucne.indexOf(t.key) < 0).forEach(t => {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = t.label.toUpperCase();
@@ -29542,7 +29572,9 @@ function zzz5w5cm_find_hits(q) {
     if (hay.indexOf(needle) < 0) return null;
     const key = zzz5w5cm_pair_tab_of(r.entry_id);
     const tab = ZZZ5W5CM_PAIR_TABS.find(t => t.key === key);
-    return { entry: r.entry_id, name: String(f.r3 || '').trim(), tabKey: key, tabLabel: (tab && tab.label) || key };
+    // [Zzz5-W5:FIND-FULL-LINE] nalez nesie CELY riadok - z neho sa postavi cela comm line
+    return { entry: r.entry_id, name: String(f.r3 || '').trim(), tabKey: key,
+             tabLabel: (tab && tab.label) || key, row: r, f };
   }).filter(Boolean);
 }
 function zzz5w5cm_build_find_across() {
@@ -29568,15 +29600,31 @@ function zzz5w5cm_build_find_across() {
       list.appendChild(none);
       return;
     }
-    hits.slice(0, 40).forEach(h => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'zzz5w5cm-find-hit';
-      b.textContent = `#${h.entry}` + (h.name ? ` · ${h.name}` : '') + ` → ${h.tabLabel}`;
-      b.title = `Open the tab "${h.tabLabel}", where #${h.entry} is`;
-      b.addEventListener('click', () => { zzz5w5cmPairTab = h.tabKey; zzz5w5cm_render(); });
-      list.appendChild(b);
-    });
+    // === [Zzz5-W5:FIND-FULL-LINE] vysledok je CELA COMM LINE, nie chip ========================
+    // Vrso 2026-10-16 (03:11): "tu mi nestaci len nejaky chip, ze pairing, ale rovnako cela comm
+    // line... tiez presun by mal byt jednoduchsi."
+    // Chip povedal len cislo, nazov a tab - a clovek aj tak musel prepnut tab, najst riadok a az
+    // tam nieco urobit. Teraz sa nalez kresli TOU ISTOU funkciou ako tabulka v tabe
+    // (zzz5w5cm_build_ccl), takze ma rovnake bunky vratane COMM TAG a COMM OWN TAG, cislo otvara
+    // zaznam ako vsade inde a TUK NA RIADKU rovno ponukne presun - bez prepinania tabov.
+    const found = hits.slice(0, 40).map(h => ({
+      entry: '#' + h.entry,
+      pnum: String(h.f.r2 || '').trim(),
+      project: String(h.f.r3 || '').trim(),
+      name: String(h.f.r4 || h.row.username || ''),
+      comm: String(h.f.r18 || '').trim(),
+      tag: String(h.f.tags || '').trim(),
+      mytag: zzz5w5cmMyTagByEntry[h.entry] || '',
+      people: zzz6f21_parse_tags(h.f.r18 || '').concat(zzz6f21_parse_tags(h.f.r17 || '')),
+      title: `#${h.entry} is in "${h.tabLabel}" - tap the row to move it, tap the number to open it`,
+      onTap: (el) => zzz5w5cm_open_pair_window(el, h.row)
+    }));
+    const kde = document.createElement('div');
+    kde.className = 'zzz5w5cm-find-none';
+    kde.textContent = hits.slice(0, 40)
+      .map(h => `#${h.entry} → ${h.tabLabel}`).join(' · ');
+    list.appendChild(kde);
+    list.appendChild(zzz5w5cm_build_ccl('find', found));
     if (hits.length > 40) {
       const more = document.createElement('span');
       more.className = 'zzz5w5cm-find-none';
@@ -36162,7 +36210,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-16 02:35';
+const ZZZ5_6_BUILD = '2026-10-16 03:34';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -44149,7 +44197,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-4 2026-10-16'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-6 2026-10-16'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
@@ -44906,10 +44954,19 @@ function zzz_vkb_place(panel) {
   }
   const above = (r.top - ZZZ_VKB_GAP) - b.top;
   let y;
-  if (zzz_vkb_fit(panel, below)) y = r.bottom + ZZZ_VKB_GAP;                         // under the field (keys lowered if needed)
-  else if (zzz_vkb_fit(panel, above)) y = r.top - ZZZ_VKB_GAP - panel.offsetHeight;   // no room under it -> above it
-  else if (below >= above) { zzz_vkb_fit(panel, below); y = r.bottom + ZZZ_VKB_GAP; }  // nothing fits: lowest keys, under it
-  else { zzz_vkb_fit(panel, above); y = r.top - ZZZ_VKB_GAP - panel.offsetHeight; }
+  // === [Zzz14-B11:VKB-STAY] RAZ ZVOLENA STRANA SA DRZI ========================================
+  // Vrso 2026-10-16 (03:08): "ked vo verso klavesnici stlacim klavesu num pad, tak ma hodi niekam
+  // inam, co nechapem".
+  // PRICINA: strana "123" je vyssia nez pismena, takze pod polom uz nebola miesto - a place() si
+  // slobodne vybral znova, cize panel preskocil NAD pole, cez tabulku, ktoru clovek prave cital.
+  // Vyzeralo to, ako keby ho appka hodila inam. Teraz: strana sa vyberie RAZ a drzi sa, pokial sa
+  // na nu panel vobec zmesti (klavesy sa radsej znizia); meni sa az vtedy, ked sa nezmesti.
+  const prefer = panel._side;
+  if (prefer === 'above' && zzz_vkb_fit(panel, above)) y = r.top - ZZZ_VKB_GAP - panel.offsetHeight;
+  else if (zzz_vkb_fit(panel, below)) { panel._side = 'below'; y = r.bottom + ZZZ_VKB_GAP; }
+  else if (zzz_vkb_fit(panel, above)) { panel._side = 'above'; y = r.top - ZZZ_VKB_GAP - panel.offsetHeight; }
+  else if (below >= above) { zzz_vkb_fit(panel, below); panel._side = 'below'; y = r.bottom + ZZZ_VKB_GAP; }
+  else { zzz_vkb_fit(panel, above); panel._side = 'above'; y = r.top - ZZZ_VKB_GAP - panel.offsetHeight; }
   zzz_vkb_move_to(panel, r.left + r.width / 2 - panel.offsetWidth / 2, y);
 }
 function zzz_vkb_scroll_by(el, need) { // scrolls the field's scrollable windows (then the page) up by `need` px
@@ -45247,7 +45304,8 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
   const ctrlDo = (l) => {
     ctrlOn = false;
     const cmd = { a: 'selectAll', c: 'copy', x: 'cut', z: 'undo', y: 'redo' }[l];
-    try { target.focus(); } catch (e) {}
+    // [Zzz14-B11:VKB-STAY] focus nesmie stranku posunut - pole byva v posuvatelnom okne
+    try { target.focus({ preventScroll: true }); } catch (e) { try { target.focus(); } catch (e2) {} }
     if (cmd) { try { document.execCommand(cmd); } catch (e) {} }
     else if (l === 'v') {
       try { navigator.clipboard.readText().then(t => { if (t) zzz_vkb_text_insert(target, t); }).catch(() => zzz6f2_show_toast('Paste was blocked by the browser - long-press the field and choose Paste.')); }
@@ -45295,7 +45353,18 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       charKey(rc, ',', null);
       charKey(rc, ' ', null).classList.add('zzz-vkb-space');
       charKey(rc, '.', null);
-      ctrlKey(rc, '⏎', () => zzz_vkb_text_enter(target), 'zzz-vkb-ok');
+      // === [Zzz14-B11:VKB-SEARCH-OK] v jednoriadkovom poli je to POTVRDENIE ====================
+      // Vrso 2026-10-16 (03:08): "ked aj dam hladat v inej bunke podla pismen, zas klavesnica nevie
+      // ok/potvrdit search". Filter sa síce prepocitava uz pri pisani, ale clovek nema cim povedat
+      // "hotovo" - a klavesnica mu dovtedy zakryva prave tu tabulku, ktoru si chce precitat.
+      // V jednoriadkovom poli (filter, hladanie) teda klavesa posle Enter appke A ZAVRIE sa.
+      // V textarea ostava zalomenie riadku a klavesnica ostava otvorena - tam sa pise dalej.
+      const jednoriadkove = target.tagName === 'INPUT';
+      const okKey = ctrlKey(rc, jednoriadkove ? 'OK' : '⏎', () => {
+        zzz_vkb_text_enter(target);
+        if (jednoriadkove) zzz_vkb_hide();
+      }, 'zzz-vkb-ok');
+      okKey.title = jednoriadkove ? 'Confirm and close the keyboard' : 'New line';
     } else {
       const space = charKey(rc, ' ', null);
       space.classList.add('zzz-vkb-space');
