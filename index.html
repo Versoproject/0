@@ -1166,7 +1166,11 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   /* [Zzz14-CS:CHAIN-IN-LOGIN] retaz ako PODKLAD prihlasovacieho okna - stlmena, aby polia a text
      nad nou ostali citatelne (to je dovod, preco je nad obrazkom tmava vrstva, nie len obrazok). */
   .entry-modal-box.zzz14cs-login-chain {
-    background-image: linear-gradient(rgba(16, 16, 16, 0.82), rgba(16, 16, 16, 0.82)), url('verso-chain.jpg');
+    /* Vrso 2026-10-16 (19:33): "verso chain inak skus na ciernom podklade, ak sa to da, iba na login
+       window." Podklad je teda CIERNY a retaz na nom len presvita - znak je vidno, ale polia a text
+       nad nim ostavaju citatelne. */
+    background-color: #000;
+    background-image: linear-gradient(rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.78)), url('verso-chain.jpg');
     background-repeat: no-repeat;
     background-position: center center;
     background-size: cover;
@@ -1175,11 +1179,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     margin-top: 10px;
     padding: 14px;
     border-radius: 10px;
+    /* [Zzz14-CS:CHAIN-IN-LOGIN] Vrso 2026-10-16 (19:33): "databazu nechaj pozadie cierne." Retaz tu pod
+       hustou tabulkou zaznamov nic nehovorila, len stazovala citanie - ciste cierne je podklad, nie obraz. */
     background-color: #0a0a0a;
-    background-image: url('verso-chain.jpg');
-    background-repeat: no-repeat;
-    background-position: center top;
-    background-size: cover;
     /* OPRAVA (Vrso 2026-09-12) - rovnaky princip ako #versoM1M4Stack: cely Database/Trash Workspace naraz,
        nie kazdy prvok zvlast. */
     user-select: none;
@@ -11648,6 +11650,15 @@ function zzz6f29_open_entry_number_window(entryId) {
 }
 function zzz6f29_open_readonly_viewer(label, value, row) {
   const { box, removeBox } = zzz6f41_create_context_window(); // [Zzz6-F41:CONTEXT-WINDOW-LAYOUT] dokovane pod CL
+  // === [Zzz14-CS:COMM-ATTACH-APART] Vrso 2026-10-16 (12:49): "attach pripina z contacts crm modulu do
+  // hlavnej crm, a to by malo byt oddelene."
+  // To iste okno zaznamu sa otvara z DVOCH svetov: z buniek hlavnej CRM a z comm CRM (contacts,
+  // parovanie, actual). ATTACH v nom vsak vzdy pripinal do HLAVNEJ - takze clovek, ktory pracoval v
+  // komunikacii, si bez opytania plnil hlavnu CL zaznamami, ktore tam nechcel. Okno si preto pamata,
+  // odkial bolo otvorene, a ATTACH v nom ide tam, kde clovek stoji: z komunikacie do COMM SPACE
+  // (hlavna comm CRM), z hlavnej CRM do hlavnej. Podrzanie 1s dava na vyber vzdy a vsade.
+  if (zzz14csOriginComm) box.classList.add('zzz14cs-from-comm');
+  zzz14csOriginComm = false;   // priznak patri TOMUTO otvoreniu, nie dalsiemu
   const header = document.createElement('div');
   header.className = 'zzz-context-header';
   header.textContent = label;
@@ -28702,7 +28713,8 @@ function zzz5w5cm_open_pair_window(anchorEl, row) {
   copyHead.style.cssText = 'font-size:9px;color:#999;padding:7px 4px 2px;border-top:1px solid #333;';
   copyHead.textContent = 'COPY TO (it stays in pairing)';
   win.appendChild(copyHead);
-  ZZZ5W5CM_CONTACT_TABS.forEach(t => {
+  // [Zzz14-CS:COMM-SPACE] rovnaky zoznam cielov ako v hromadnej kopii - COMM SPACE na prvom mieste
+  [{ key: ZZZ14CS_SPACE_KEY, label: 'COMM SPACE' }].concat(ZZZ5W5CM_CONTACT_TABS).forEach(t => {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = t.label.toUpperCase();
@@ -29649,6 +29661,30 @@ function zzz5w5cm_open_move_to(anchorEl) {
     b.addEventListener('click', () => { win.remove(); zzz5w5cm_move_pair_rows(rows, t.key); });
     win.appendChild(b);
   });
+  // === [Zzz14-CS:COPY-MANY] Vrso 2026-10-16 (03:14): "presun by mal byt jednoduchsi, idealne aj moznost
+  // selektovania viacej naraz a presunu."
+  // Oznacit viac riadkov sa dalo uz davno (podrzanie ENTRY NUMBER) a MOVE TO aj ATTACH TO CONTACTS s
+  // celym vyberom pracuju. Len KOPIA do actual tabov ju nemala - a odkedy presun medzi pairing tabmi
+  // riadi suhlas ([Zzz5-W5:CONSENT-DECIDES]), je kopia uz takmer jedina rucna praca, ktora tu zostala.
+  // Preto stoji v tom istom okne, nad tym istym vyberom, a pod vlastnym nadpisom: zaznamy sa NEPRESUVAJU,
+  // zostavaju tam, kde su.
+  const copyHead = document.createElement('div');
+  copyHead.style.cssText = 'font-size:9px;color:#999;padding:7px 4px 2px;border-top:1px solid #333;';
+  copyHead.textContent = `COPY TO (${rows.length}) - they stay where they are`;
+  win.appendChild(copyHead);
+  const ciele = [{ key: ZZZ14CS_SPACE_KEY, label: 'COMM SPACE' }].concat(ZZZ5W5CM_CONTACT_TABS);
+  ciele.forEach(t => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = t.label.toUpperCase();
+    b.addEventListener('click', () => {
+      win.remove();
+      rows.forEach(r => zzz5w5cm_attach_to_tab(t.key, zzz14cs_pair_payload(r)));
+      zzz6f2_show_toast(`${rows.length} entry line(s) copied to ${t.label}.`, 'ok');
+      if (zzz5w5cm_is_open()) zzz5w5cm_render();
+    });
+    win.appendChild(b);
+  });
   document.body.appendChild(win);
   const rect = anchorEl.getBoundingClientRect();
   const h = win.offsetHeight;
@@ -30330,6 +30366,7 @@ function zzz5w5cm_build_ccl(key, rows) {
             // sa nestratilo: ostava na podrzanie, takze jedno miesto nesie obe cesty.
             cell.addEventListener('click', (ev) => {
               ev.stopPropagation();   // riadok ma svoju akciu, cislo otvara zaznam
+              zzz14csOriginComm = true;   // [Zzz14-CS:COMM-ATTACH-APART] otvara to comm CRM
               zzz6f29_open_entry_number_window(num0);   // [Zzz6-F29:FIND-ROW]
             });
             cell.title = `#${num0} - tap = open this record, hold 1-2s = move it between tabs`;
@@ -30390,7 +30427,16 @@ function zzz5w5cm_build_ccl(key, rows) {
         const on = !!zzz5w5cmCclPicked[pickKey];
         line.classList.add('is-tappable');
         if (on) line.classList.add('is-picked');
-        no.textContent = on ? '\u2713' : '+';
+        // === [Zzz14-CS:PICK-CHECKBOX] Vrso 2026-10-16 (12:49): "pri vybere contacts, napr. v comm
+        // window/chate, sa da zobrazit napr. iba ako checkboxy? Cize oddelit sposob fungovania v ramci
+        // communication workspace, ktory je skor uz o pridavani/attach comm chatov, teda konverzacii,
+        // na rozdiel od iba pridavania kontaktov."
+        // Ten isty znak "+" znamenal v jednom pohlade PRIPNI CHAT a v druhom OZNAC CLOVEKA - dve rozne
+        // prace pod jednym znakom. Vyber ludi ma teraz STVORCEK: prazdny a zaskrtnuty, a zaskrtnuty je
+        // zlaty rovnako ako v MEMBERS ([Zzz5-W5:CHECK-GOLD]). Pripinanie chatov si "+" necháva.
+        no.classList.add('zzz14cs-box');
+        no.classList.toggle('is-on', on);
+        no.textContent = on ? '\u2611' : '\u2610';
         line.title = (r.people.length > 1)
           ? `${r.name} - ${r.people.length} people: ${r.people.join(', ')}`
           : String(r.name || '');
@@ -33806,15 +33852,18 @@ function zzz14cs_space_render() {
   if (cnt) cnt.textContent = `(${rows.length})`;
   if (!body) return;
   body.innerHTML = '';
+  // === [Zzz14-CS:SPACE-ALWAYS-CRM] Vrso 2026-10-16 (19:47): "kde je inak treba tiez celu comm crm a tu
+  // mozes tiez prednastavit ako filtrovaciu (keby som rychlo hladal nejaky otvoreny chat a pod.)"
+  // Prazdna obrazovka ukazovala LEN vetu - a tym padom tu nebolo ani sito. Lenze comm CRM tu nie je len
+  // zoznam, je to aj HLADANIE: clovek sem pride najst otvoreny chat. Tabulka teda stoji VZDY, aj ked je
+  // prazdna, a veta o tom, ako sa naplni, stoji nad nou.
   if (!rows.length) {
     const none = document.createElement('div');
     none.className = 'zzz5w5cm-view-empty';
-    none.style.cssText = 'padding:10px 8px;color:#888;';
-    // nie "prazdne", ale AKO sa to naplni - prazdna obrazovka ma povedat, co s nou
+    none.style.cssText = 'padding:8px;color:#888;';
     none.textContent = 'Nothing here yet. Hold the ATTACH button in a cell for a second '
       + 'and pick COMM SPACE - the record lands here instead of the main CRM.';
     body.appendChild(none);
-    return;
   }
   body.appendChild(zzz5w5cm_build_ccl(ZZZ14CS_SPACE_KEY, rows));
 }
@@ -33873,14 +33922,26 @@ function zzz14cs_space_build() {
     zOkraja = !zzz14csSpaceOpen && x0 > window.innerWidth - 28;
     vnutri = zzz14csSpaceOpen && !!(e.target && e.target.closest && e.target.closest('.zzz14cs-space'));
   }, { passive: true });
+  // [Zzz14-CS:SPACE-CLOSE] tuk VEDLA otvorenej obrazovky ju zatvori - tak sa chova kazdy vysuvny
+  // panel a je to jedina cesta, ktora nepotrebuje ani gesto, ani trafit krizik
+  document.addEventListener('pointerdown', (e) => {
+    if (!zzz14csSpaceOpen) return;
+    const panel = document.getElementById('zzz14csSpace');
+    if (panel && e.target && e.target.closest && !e.target.closest('.zzz14cs-space')) {
+      zzz14cs_space_open(false);
+    }
+  }, true);
   document.addEventListener('touchend', (e) => {
     const t = e.changedTouches && e.changedTouches[0];
     if (!t) return;
     const dx = t.clientX - x0;
     const dy = Math.abs(t.clientY - y0);
     if (dy > 60) return;                       // zvisly tah je rolovanie, nie prepinanie obrazovky
+    // [Zzz14-CS:SPACE-CLOSE] Vrso 2026-10-16 (19:47): "ked uz tak by sa aj rovnakym povelom mal comm
+    // space aj zatvarat." Zatvaral sa uz tahom doprava, ale prah bol prisny - na telefone drzanom v
+    // jednej ruke tah zriedka vyjde rovno. Prah je teraz rovnaky v oboch smeroch (60 px).
     if (zOkraja && dx < -60) zzz14cs_space_open(true);
-    else if (vnutri && dx > 70) zzz14cs_space_open(false);
+    else if (vnutri && dx > 60) zzz14cs_space_open(false);
     zOkraja = false; vnutri = false;
   }, { passive: true });
 }
@@ -34099,11 +34160,15 @@ function zzz5w5cm_open_attach_picker(payload, onDone) {
 // Podrzanie sa oznami vibraciou, aby bolo jasne, ze teraz pride vyber - inak clovek nevie, ci drzi dost.
 let zzz14csHoldReady = false;   // naplnene podrzanie caka na pustenie (vtedy sa otvori vyber)
 let zzz14csHoldTimer = null;
+let zzz14csOriginComm = false;  // [Zzz14-CS:COMM-ATTACH-APART] okno zaznamu otvorila comm CRM
+let zzz14csFromComm = false;    // [Zzz14-CS:COMM-ATTACH-APART] posledny ATTACH stlaceny v takom okne
 document.addEventListener('pointerdown', (e) => {
   clearTimeout(zzz14csHoldTimer);
   zzz14csHoldReady = false;     // nove gesto = cisty stol (stare podrzanie uz neplati)
   const btn = e.target && e.target.closest && e.target.closest('.zzz1m5-attach-btn');
   if (!btn) return;
+  // [Zzz14-CS:COMM-ATTACH-APART] odkial sa tlacilo rozhoduje, kam tuk pripne
+  zzz14csFromComm = !!(btn.closest && btn.closest('.zzz14cs-from-comm'));
   zzz14csHoldTimer = setTimeout(() => {
     zzz14csHoldReady = true;
     if (typeof zzz_haptic_pulse === 'function') zzz_haptic_pulse(20);
@@ -34116,7 +34181,15 @@ document.addEventListener('pointerdown', (e) => {
 function zzz14cs_attach_route(payload) {
   if (zzz14csHoldReady) {
     zzz14csHoldReady = false;
+    zzz14csFromComm = false;
     zzz5w5cm_open_attach_picker(payload);
+    return;
+  }
+  // [Zzz14-CS:COMM-ATTACH-APART] tuk v okne, ktore otvorila comm CRM, pripina do COMM SPACE, nie do
+  // hlavnej - prace v komunikacii sa hlavna CL netyka
+  if (zzz14csFromComm) {
+    zzz14csFromComm = false;
+    zzz5w5cm_attach_to_tab(ZZZ14CS_SPACE_KEY, payload);
     return;
   }
   if (payload.runMain) payload.runMain();
@@ -36634,7 +36707,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-16 21:20';
+const ZZZ5_6_BUILD = '2026-10-16 22:50';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -44621,7 +44694,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-14 2026-10-16'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-17 2026-10-16'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
