@@ -19850,7 +19850,7 @@ function zzz6f17_context_attachment_add_cl(fieldId, closeAfter) {
   }
 
   zzz6f17_context_attachment_render();
-  zzz6f2_show_toast(wasExisting ? `Uz bolo pripnute: ${item.label} (aktualizovane)` : `Pripnute: ${item.label}`);
+  zzz6f2_show_toast(wasExisting ? `Already attached: ${item.label} (refreshed)` : `Attached: ${item.label}`);
 
   if (closeAfter) closeAfter();
 }
@@ -19889,7 +19889,7 @@ function zzz6f17_context_attachment_add_el(field, row, closeAfter) {
   }
 
   zzz6f17_context_attachment_render();
-  zzz6f2_show_toast(wasExisting ? `Uz bolo pripnute: ${item.label} (aktualizovane)` : `Pripnute: ${item.label}`);
+  zzz6f2_show_toast(wasExisting ? `Already attached: ${item.label} (refreshed)` : `Attached: ${item.label}`);
 
   if (closeAfter) closeAfter();
 }
@@ -24111,7 +24111,7 @@ function zzz1m4a_pick_preset_entry(entry) {
   if (existing) {
     existing.fields = Object.assign({}, entry.fields || {});
     zzz1m4a_render_local_attachments();
-    zzz6f2_show_toast('Uz bolo pripnute (aktualizovane, len lokalne pod M4a).');
+    zzz6f2_show_toast('Already attached (refreshed, local to M4a only).');
     return;
   }
   zzz1m4aLocalAttachCounter++;
@@ -25266,7 +25266,7 @@ function zzz1r37_attach_entry(entry) {
     existing.fields = { ...entry.fields };
     existing.miniHidden = zzz1r37_get_entry_mini_hidden(entry).slice();
     zzz6f17_context_attachment_render();
-    zzz6f2_show_toast(`Uz bolo pripnute: ${existing.label} (aktualizovane)`);
+    zzz6f2_show_toast(`Already attached: ${existing.label} (refreshed)`);
     return;
   }
   zzz6f17AttachClCounter++;
@@ -33656,7 +33656,7 @@ function zzz5w5cm_open_attach_picker(payload, onDone) {
   win.style.overflowY = 'auto';
   const title = document.createElement('div');
   title.style.cssText = 'font-size:9px;color:#999;padding:2px 4px 6px;';
-  title.textContent = `ATTACH: ${payload.label || ''} - kam pripnut?`;
+  title.textContent = `ATTACH: ${payload.label || ''} - where to attach it?`;
   win.appendChild(title);
   const chosen = new Set(['main']);
   zzz5w5cm_attach_targets().forEach(t => {
@@ -33673,7 +33673,7 @@ function zzz5w5cm_open_attach_picker(payload, onDone) {
   const ok = document.createElement('button');
   ok.type = 'button';
   ok.style.borderTop = '1px solid #333';
-  ok.textContent = 'PRIPNUT';
+  ok.textContent = 'ATTACH';
   ok.addEventListener('click', () => {
     win.remove();
     document.removeEventListener('click', outside, true);
@@ -33682,14 +33682,14 @@ function zzz5w5cm_open_attach_picker(payload, onDone) {
       zzz5w5cm_attach_to_tab(id.slice(4), payload);
     });
     if (!chosen.has('main') && payload.closeAfter) payload.closeAfter();
-    if (chosen.size) { zzz_haptic_pulse(20); zzz6f2_show_toast(`Pripnute do ${chosen.size} modulu/ov.`); }
+    if (chosen.size) { zzz_haptic_pulse(20); zzz6f2_show_toast(`Attached to ${chosen.size} module(s).`); }
     if (onDone) onDone();
   });
   win.appendChild(ok);
   const cancel = document.createElement('button');
   cancel.type = 'button';
   cancel.className = 'zzz5t0-tab-window-danger';
-  cancel.textContent = 'ZRUSIT';
+  cancel.textContent = 'CANCEL';
   cancel.addEventListener('click', () => { win.remove(); document.removeEventListener('click', outside, true); });
   win.appendChild(cancel);
   document.body.appendChild(win);
@@ -33699,12 +33699,54 @@ function zzz5w5cm_open_attach_picker(payload, onDone) {
   setTimeout(() => document.addEventListener('click', outside, true), 0);
 }
 
+// === [Zzz14-CS:ATTACH-TAP-HOLD] Vrso 2026-10-16 (12:51): "toto sa stalo, ked som stlacil mini hlavnej
+// m4 crm. mal sa pridat/attachnut aktualny cl a namiesto toho tabulka presunu. ako sme riesili presun?
+// nie nahodou select entry number a potom 1-2s podrzanim sa zobrazili moznosti?"
+// A 2026-10-16 (12:49): "v bunkach m4 crm sa attach buttonom pripne k hlavnej, ale odrzanim 1-2s attach
+// (IBA V BUNKACH BUTTONS!!) da na vyber, ze kam pripnut."
+//
+// PRICINA: [Zzz5-W5:ATTACH-TARGET] obalil vsetky attach cesty tak, ze okno vyberu sa pytalo VZDY. Kazde
+// jedno pripnutie - aj to najbeznejsie, hlavnou MINI - zrazu stalo tri tuky namiesto jedneho, a zoznam
+// trinastich cielov vyzeral ako tabulka presunu, hoci som len chcel pripnut CL pod CRM.
+//
+// PRAVIDLO (rovnake gesto ako pri presune zaznamu, aby si ho clovek nemusel pamatat dvakrat):
+//   TUK            = pripni do HLAVNEJ (M4) - bez pytania, ako predtym
+//   PODRZANIE 1s   = otvor vyber ciela - a to LEN na attach tlacidle V BUNKE (.zzz1m5-attach-btn)
+// MINI a M4a mini maju vlastny rebrik gest (0.5s checklist, 2s detach all), tie sa nedotykame: odtial
+// ide pripnutie vzdy rovno do hlavnej.
+// Podrzanie sa oznami vibraciou, aby bolo jasne, ze teraz pride vyber - inak clovek nevie, ci drzi dost.
+let zzz14csHoldReady = false;   // naplnene podrzanie caka na pustenie (vtedy sa otvori vyber)
+let zzz14csHoldTimer = null;
+document.addEventListener('pointerdown', (e) => {
+  clearTimeout(zzz14csHoldTimer);
+  zzz14csHoldReady = false;     // nove gesto = cisty stol (stare podrzanie uz neplati)
+  const btn = e.target && e.target.closest && e.target.closest('.zzz1m5-attach-btn');
+  if (!btn) return;
+  zzz14csHoldTimer = setTimeout(() => {
+    zzz14csHoldReady = true;
+    if (typeof zzz_haptic_pulse === 'function') zzz_haptic_pulse(20);
+  }, 1000);
+}, true);
+['pointerup', 'pointercancel'].forEach(ev => {
+  document.addEventListener(ev, () => { clearTimeout(zzz14csHoldTimer); }, true);
+});
+// jedine miesto, kde sa rozhoduje tuk vs. podrzanie - vsetky attach cesty idu cezen
+function zzz14cs_attach_route(payload) {
+  if (zzz14csHoldReady) {
+    zzz14csHoldReady = false;
+    zzz5w5cm_open_attach_picker(payload);
+    return;
+  }
+  if (payload.runMain) payload.runMain();
+}
+// === [/Zzz14-CS:ATTACH-TAP-HOLD] ===
+
 // --- napojenie na VSETKY existujuce attach cesty (povodne funkcie ostavaju ako *_core) ---
 const zzz6f17_context_attachment_add_cl_core = zzz6f17_context_attachment_add_cl;
 zzz6f17_context_attachment_add_cl = function (fieldId, closeAfter) {
   const fields = {};
   ZZZ_CL_FIELDS.forEach(([entryKey, rKey]) => { fields[rKey] = entryData[entryKey] || ''; });
-  zzz5w5cm_open_attach_picker({
+  zzz14cs_attach_route({      // [Zzz14-CS:ATTACH-TAP-HOLD] tuk = hlavna, podrzanie = vyber
     label: 'CL',
     key: 'cl#' + zzz6f17_cl_fingerprint(fields),
     fields,
@@ -33717,7 +33759,7 @@ zzz6f17_context_attachment_add_el = function (field, row, closeAfter) {
   const fields = {};
   ZZZ_CL_FIELDS.forEach(([, rKey]) => { fields[rKey] = zzz4_0_get_field_value(row, { key: rKey }) || ''; });
   const entryNumber = (row && row.entry_id !== undefined && row.entry_id !== null) ? String(row.entry_id) : '';
-  zzz5w5cm_open_attach_picker({
+  zzz14cs_attach_route({      // [Zzz14-CS:ATTACH-TAP-HOLD] tuk = hlavna, podrzanie = vyber
     label: entryNumber ? `EL#${entryNumber}` : 'EL',
     key: entryNumber ? 'el#' + entryNumber : 'cl#' + zzz6f17_cl_fingerprint(fields),
     fields,
@@ -33730,7 +33772,7 @@ zzz6f17_context_attachment_add_el = function (field, row, closeAfter) {
 const zzz1m4a_attach_local_cl_core = zzz1m4a_attach_local_cl;
 zzz1m4a_attach_local_cl = function () {
   const fields = zzz1m4a_snapshot_local_fields();
-  zzz5w5cm_open_attach_picker({
+  zzz14cs_attach_route({      // [Zzz14-CS:ATTACH-TAP-HOLD] M4a mini ma vlastne gesta - tu vzdy rovno pripni
     label: 'M4a CL',
     key: 'cl#' + zzz6f17_cl_fingerprint(fields),
     fields,
@@ -36210,7 +36252,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-16 03:34';
+const ZZZ5_6_BUILD = '2026-10-16 13:05';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -44197,7 +44239,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-6 2026-10-16'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-7 2026-10-16'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
