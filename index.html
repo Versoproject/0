@@ -10007,11 +10007,14 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
   }
   /* === [Zzz14-CS:COMM-SPACE] obrazovka napravo od hlavnej - nie okno NAD pracou, ale miesto, kam sa
      odide a odkial sa vrati. Preto cela vyska, vlastne pozadie a prechod zprava. */
+  /* [Zzz14-CS:SPACE-FULL] Vrso 2026-10-17 (03:07): "preco nie je otvorene ako cela obrazovka?"
+     Panel mal sirku min(94vw, 560px) - teda zasuvka, spod ktorej vykuka hlavna plocha. Lenze comm
+     space NIE JE zasuvka nad pracou, je to DRUHA OBRAZOVKA vedla nej (tak bol zadany: "nova obrazovka,
+     ktora bude napravo od hlavnej"). A comm CRM ma 11 stlpcov - na 560 px sa necita, na pruhu zvysku
+     hlavnej plochy sa necita nic. Obrazovka teda zabera CELU sirku; navrat zabezpecuje uchop. */
   .zzz14cs-space {
-    position: fixed; top: 0; right: 0; bottom: 0;
-    width: min(94vw, 560px);
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0;
     background: #101010;
-    border-left: 1px solid #333;
     box-shadow: -6px 0 18px rgba(0, 0, 0, 0.45);
     transform: translateX(100%);
     transition: transform .18s ease-out;
@@ -10047,9 +10050,16 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
     width: 10px; height: 86px;
     border: none; border-radius: 6px 0 0 6px;
     background: linear-gradient(180deg, rgba(232, 200, 106, .75), rgba(232, 200, 106, .35));
-    padding: 0; cursor: pointer; z-index: 1890;
+    padding: 0; cursor: pointer; z-index: 1910;
   }
-  .zzz14cs-space.is-open ~ .zzz14cs-space-handle { display: none; }
+  /* [Zzz14-CS:SPACE-HANDLE-TOGGLE] Vrso 2026-10-17 (03:07): "preco nejde schovat tiez tym zltym
+     pasikom, ako ked sa otvara?" Uchop sa pri otvoreni SCHOVAVAL, takze povel, ktorym clovek obrazovku
+     otvoril, uz nemal cim vratit spat - musel trafit krizik hore. Jeden ovladac ma robit obe strany
+     toho isteho: tuk otvara, tuk zatvara. Ostava teda na mieste a nad panelom (z-index), pri otvorenej
+     obrazovke je plny a tmavsi, aby bolo vidno, ze teraz vedie SPAT. */
+  .zzz14cs-space-handle.is-open {
+    background: #e8c86a; width: 14px; height: 120px;
+  }
   .zzz5w5cm-ccl-item { border-top: 1px solid #2f2f2f; }
   /* [Zzz14-CS:ALREADY-IN-COMM] kto uz v otvorenej comm bunke je - zasedeny, aby sa nepridaval druhy
      raz. Nie je to zamok (tuk funguje dalej), preto len stlmenie, nie siva plocha. */
@@ -34173,6 +34183,15 @@ function zzz14cs_space_render() {
   const panel = document.getElementById('zzz14csSpace');
   if (!panel) return;
   panel.classList.toggle('is-open', !!zzz14csSpaceOpen);
+  // [Zzz14-CS:SPACE-HANDLE-TOGGLE] uchop hovori, co urobi TERAZ - nie, ako sa vola obrazovka
+  const handle = document.getElementById('zzz14csSpaceHandle');
+  if (handle) {
+    handle.classList.toggle('is-open', !!zzz14csSpaceOpen);
+    handle.setAttribute('aria-label', zzz14csSpaceOpen ? 'Close COMM SPACE' : 'Open COMM SPACE');
+    handle.title = zzz14csSpaceOpen
+      ? 'Back to the main screen - tap this, or swipe right'
+      : 'COMM SPACE - swipe from the right edge to the left, or tap this';
+  }
   const body = panel.querySelector('.zzz14cs-space-body');
   const cnt = panel.querySelector('.zzz14cs-space-count');
   const rows = zzz14cs_space_rows();
@@ -34188,8 +34207,9 @@ function zzz14cs_space_render() {
     const none = document.createElement('div');
     none.className = 'zzz5w5cm-view-empty';
     none.style.cssText = 'padding:8px;color:#888;';
-    none.textContent = 'Nothing here yet. Two ways in: hold a row for a moment and drag it to the right '
-      + 'edge, or hold the ATTACH button in a cell for a second and pick COMM SPACE.';
+    none.textContent = 'Nothing here yet. Two ways in: hold any record row still for a moment, then '
+      + 'pull it to the right edge and let go - or hold the ATTACH button in a cell for a second '
+      + 'and pick COMM SPACE.';
     body.appendChild(none);
   }
   body.appendChild(zzz5w5cm_build_ccl(ZZZ14CS_SPACE_KEY, rows));
@@ -34237,7 +34257,8 @@ function zzz14cs_space_build() {
   handle.className = 'zzz14cs-space-handle';
   handle.setAttribute('aria-label', 'Open COMM SPACE');
   handle.title = 'COMM SPACE - swipe from the right edge to the left, or tap this';
-  handle.addEventListener('click', () => zzz14cs_space_open(true));
+  // [Zzz14-CS:SPACE-HANDLE-TOGGLE] ten isty povel oboma smermi - tuk otvara aj zatvara
+  handle.addEventListener('click', () => zzz14cs_space_open(!zzz14csSpaceOpen));
   document.body.appendChild(handle);
 
   // --- gesto ---------------------------------------------------------------------------------
@@ -34254,7 +34275,11 @@ function zzz14cs_space_build() {
   document.addEventListener('pointerdown', (e) => {
     if (!zzz14csSpaceOpen) return;
     const panel = document.getElementById('zzz14csSpace');
-    if (panel && e.target && e.target.closest && !e.target.closest('.zzz14cs-space')) {
+    // [Zzz14-CS:SPACE-HANDLE-TOGGLE] uchop stoji NAD panelom, takze je technicky "vedla" neho - keby
+    // ho tato cesta brala ako tuk vedla, zatvorila by obrazovku este pred tym, nez uchop stihne
+    // prepnut, a prepinac by sa sam zrusil. Uchop ma vlastny povel; tu sa vynechava.
+    if (panel && e.target && e.target.closest
+        && !e.target.closest('.zzz14cs-space') && !e.target.closest('.zzz14cs-space-handle')) {
       zzz14cs_space_open(false);
     }
   }, true);
@@ -34566,6 +34591,11 @@ let zzz14csDragFrom = null;     // odkial gesto zacalo (na zrusenie pri pohybe)
 let zzz14csDropToSpace = false; // pustene pri okraji -> tento attach ide do COMM SPACE
 const ZZZ14CS_DRAG_MS = 3000;   // "podrzanim 3s" - Vrsove cislo, nie moje
 const ZZZ14CS_EDGE_PX = 56;     // ako blizko ku kraju sa musi pustit
+// [Zzz14-CS:DRAG-ANY-ROW] vsetky riadky, ktore nesu zaznam - pripnute CL (.zzz1m5-cl-row), riadky comm
+// CRM (.zzz5w5cm-ccl-item), hlavna CL a riadky Database Workspace (.numbers-row uz zahrna aj
+// .db-workspace-entry-row, lebo ten ju ma v triedach). Je to ten isty zoznam, ktory pozna podrzanie
+// vyberu (ZZZ6F29_HOLD_ROW_SELECTOR) - zamerne, aby sa "riadok zaznamu" nikdy nevykladal dvojako.
+const ZZZ14CS_DRAG_ROW_SELECTOR = '.zzz1m5-cl-row, .zzz5w5cm-ccl-item, .numbers-row, .db-workspace-entry-row';
 
 function zzz14cs_drag_cancel() {
   clearTimeout(zzz14csDragTimer);
@@ -34633,6 +34663,13 @@ function zzz14cs_drag_drop(x) {
 //                            rolovanie (zvisle) ani rychly tuk ho nezapnu
 // Na volnom mieste okna ostava povodne podrzanie 3s - tam niet co rusit.
 function zzz14cs_row_payload(rowEl) {
+  // [Zzz14-CS:DRAG-ANY-ROW] Vrso 2026-10-17 (03:07): "preco nejde, alebo ako presunut HOCIAKU cl/el
+  // do comm space?" Riadok Database Workspace nesie cely zaznam na sebe (zzzRowData, [Zzz6-F29:
+  // SELECT-ALL]) - brat ho odtial je presnejsie nez citat cislo z bunky a dohladavat ho spat.
+  if (rowEl && rowEl.zzzRowData && rowEl.zzzRowData.entry_id !== undefined
+      && typeof zzz14cs_pair_payload === 'function') {
+    return zzz14cs_pair_payload(rowEl.zzzRowData);
+  }
   const item = rowEl && rowEl.zzzAttachmentItem;
   if (item) {
     return {
@@ -34653,6 +34690,7 @@ function zzz14cs_drag_start_row(rowEl, x, y) {
   const payload = zzz14cs_row_payload(rowEl);
   if (!payload) { zzz6f2_show_toast('This row has no record to carry yet.', 'warn'); return; }
   zzz14csDragRow = payload;
+  if (typeof zzz6f29_hold_cancel === 'function') zzz6f29_hold_cancel();  // [Zzz14-CS:DRAG-ANY-ROW]
   zzz_haptic_pulse(30);
   const chip = document.createElement('div');
   chip.className = 'zzz14cs-drag-chip';
@@ -34670,13 +34708,16 @@ document.addEventListener('pointerdown', (e) => {
   const t = e.target;
   if (!t || !t.closest) return;
   // [Zzz14-CS:DRAG-ROW] riadok sa da tiahnut - ale nie za jeho vlastne ovladace
-  const riadok = t.closest('.zzz1m5-cl-row, .zzz5w5cm-ccl-item');
+  // [Zzz14-CS:DRAG-ANY-ROW] a nielen pripnuty riadok: tah plati na KAZDOM riadku zaznamu, teda aj na
+  // hlavnej CL (.numbers-row) a na riadkoch Database Workspace - to je to "hociaku cl/el".
+  const riadok = t.closest(ZZZ14CS_DRAG_ROW_SELECTOR);
   if (riadok && !t.closest('button, input, textarea, select, a, [contenteditable]')) {
     zzz14csDragFrom = { x: e.clientX, y: e.clientY, cas: Date.now(), riadok };
     return;
   }
   // VYLUCNE volne miesto: nic, co uz ma vlastnu akciu alebo vlastne podrzanie
-  if (t.closest('button, input, textarea, select, a, [contenteditable], .entry-cell, .zzz1m5-cl-row, .zzz5w5cm-ccl-item')) return;
+  if (t.closest('button, input, textarea, select, a, [contenteditable], .entry-cell, '
+                + ZZZ14CS_DRAG_ROW_SELECTOR)) return;
   const okno = t.closest('.entry-modal-box');
   if (!okno) return;
   const btn = okno.querySelector('.zzz1m5-attach-btn');
@@ -34692,7 +34733,16 @@ document.addEventListener('pointermove', (e) => {
   const dy = Math.abs(e.clientY - zzz14csDragFrom.y);
   // [Zzz14-CS:DRAG-ROW] z riadku: chvilu drzat, potom tah VPRAVO - zvisly pohyb je rolovanie
   if (zzz14csDragFrom.riadok) {
-    if (dx > 30 && dy < 25 && Date.now() - zzz14csDragFrom.cas > 350) {
+    // [Zzz14-CS:DRAG-ANY-ROW] gesto je PODRZ A POTOM TIAHNI, nie "tiahni dost dlho". Rozdiel je
+    // podstatny prave na riadkoch Database Workspace: tie sa posuvaju do stran, takze vodorovny tah
+    // od prveho okamihu je ROLOVANIE tabulky. Ked ale prst 350 ms nehne, prehliadac este ziadne
+    // rolovanie nezacal - a az vtedy sa tah berie ako nesenie zaznamu.
+    const zrelo = Date.now() - zzz14csDragFrom.cas > 350;
+    if (!zrelo) {
+      if (Math.abs(dx) > 10 || dy > 10) zzz14csDragFrom = null;   // pohol sa hned - roluje
+      return;
+    }
+    if (dx > 24 && dy < 25) {
       const r = zzz14csDragFrom.riadok;
       zzz14csDragFrom = null;
       zzz14cs_drag_start_row(r, e.clientX, e.clientY);
@@ -34711,6 +34761,14 @@ document.addEventListener('pointerup', (e) => {
   else zzz14cs_drag_cancel();
 }, true);
 document.addEventListener('pointercancel', () => zzz14cs_drag_cancel(), true);
+// [Zzz14-CS:DRAG-ANY-ROW] kym zaznam visi na prste, stranka sa POD NIM nesmie hybat. Bez tohto by
+// prehliadac ten isty pohyb bral aj ako rolovanie tabulky: zaznam by sa niesol doprava a tabulka by
+// pod nim utekala dolava, takze clovek by nikdy nevedel, kam vlastne mieri. Listener musi byt
+// nepasivny, inak prehliadac preventDefault ignoruje; zacat rolovat este nestihol, lebo prst 350 ms
+// stal na mieste.
+document.addEventListener('touchmove', (e) => {
+  if (zzz14csDragChip) e.preventDefault();
+}, { passive: false, capture: true });
 // === [/Zzz14-CS:DRAG-TO-EDGE] ===
 
 // jedine miesto, kde sa rozhoduje tuk vs. podrzanie - vsetky attach cesty idu cezen
@@ -37251,7 +37309,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-17 04:50';
+const ZZZ5_6_BUILD = '2026-10-17 05:40';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -42960,6 +43018,10 @@ function zzz6f29_hold_select_all(rowEl) {
     if (held >= 3000) zzz6f29_hold_select_all(rowEl);
     else { zzz6f29_hold_select_row(rowEl); zzz_haptic_pulse(20); }
   };
+  // [Zzz14-CS:DRAG-ANY-ROW] podrzanie vyberu sa vyhodnocuje az PRI PUSTENI a nepozera sa, ci sa prst
+  // medzitym hol - takze tah zaznamu do comm space by na konci spustil este aj vyber riadku. Tah to
+  // tu ohlasi a toto konkretne podrzanie sa zahodi: jeden prst, jedno gesto, jeden vysledok.
+  window.zzz6f29_hold_cancel = () => { heldCell = null; startedAt = 0; };
   document.addEventListener('touchstart', start, { passive: true, capture: true });
   document.addEventListener('mousedown', start, true);
   document.addEventListener('touchend', end, true);
@@ -45238,7 +45300,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-32 2026-10-17'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-33 2026-10-17'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
