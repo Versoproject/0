@@ -15747,22 +15747,13 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   membersBtn.type = 'button';
   membersBtn.className = 'zzz1r17b-contacts-button zzz5w5cm-membersbtn';
   membersBtn.textContent = 'MEMBERS';
-  membersBtn.title = 'Who is in this record, which groups/teams you can add, and whom to address';
+  membersBtn.title = 'Who is in this record, and make your own packs of them';
   membersBtn.addEventListener('click', () => {
     const rec = (typeof zzz5w5cm_rec_of === 'function' && cnGateKey) ? zzz5w5cm_rec_of(cnGateKey) : null;
     const recTag = rec ? rec.tags : String(entryData['21'] || '');
-    zzz5w5cm_open_members_window(membersBtn, workingTags.slice(), recTag, (list) => {
-      let added = 0;
-      const already = [];
-      list.forEach(nm => {
-        if (workingTags.some(t => zzz10v1_normalize(t) === zzz10v1_normalize(nm))) { already.push(nm); return; }
-        workingTags.push(nm);
-        added += 1;
-      });
-      if (added) { renderChips(); persistLocal(); }
-      zzz6f2_show_toast(`${added} added`
-        + (already.length ? `, ${already.length} already here` : '') + '.');
-    }, cnGateKey);
+    // [Zzz14-CS:MEMBERS-ONLY-PACKS] okno uz do zaznamu nepridava, takze nema komu volat spat -
+    // pridavanie je praca tlacidla ADD CONTACTS vedla
+    zzz5w5cm_open_members_window(membersBtn, workingTags.slice(), recTag, cnGateKey);
   });
   chipsRow.appendChild(membersBtn);
   // kontakty treba mat nacitane, inak by skupiny a baliky neexistovali ani ked ich mam
@@ -28625,7 +28616,30 @@ function zzz5w5cm_build_invites() {
     btn.title = inv.cell === 'r18'
       ? 'Give COMMUNICATION consent - the record opens for you'
       : 'Give USER consent - the record opens for you';
-    btn.addEventListener('click', () => zzz5w5cm_invite_accept(inv));
+    // === [Zzz14-CS:CONSENT-THEN-COPY] Vrso 2026-10-17 (13:25): "ak potvrdim consent... tak treba pri
+    // consente (stlacenim) napr. mat moznost aj 1-2s podrz, kde sa udeli consent, ale zaroven skopiruje
+    // do ineho tabu/ov a pod. Aby sa predislo viacerym krokom a hladaniu."
+    // Suhlas a odlozenie zaznamu su v praxi JEDEN pohyb: poviem ano a hned viem, kam to patri. Doteraz
+    // to boli tri kroky - suhlas, najst zaznam v parovani, otvorit jeho okno presunu. Gesto je rovnake
+    // ako vsade inde v appke: KRATKY TUK KONA to zrejme (suhlas), PODRZANIE pridava volbu (kam s nim).
+    // Okno sa neduplikuje - otvara sa to iste zzz5w5cm_open_pair_window so sekciami COMM SPACE /
+    // ACTUAL COMMUNICATION / OTHER, ktore uz existuje; kopia z neho zaznam v parovani NECHAVA.
+    btn.title += ' | hold 1-2s = consent and pick where to copy it';
+    const poSuhlase = async (ajKopia) => {
+      await zzz5w5cm_invite_accept(inv);
+      if (!ajKopia) return;
+      const row = (zzz5w5cmPairing.rows || []).find(r => String(r.entry_id) === String(inv.entry_id));
+      if (!row) {
+        // suhlas presiel, ale zaznam sa este nenacital - kopirovat naslepo by znamenalo hadat, co sa kopiruje
+        zzz6f2_show_toast('Consent is in. The record is still loading - open it from the list to copy it.', 'warn');
+        return;
+      }
+      zzz_haptic_pulse(20);
+      zzz5w5cm_open_pair_window(btn, row);
+    };
+    zzz_bind_hold_selection_guard(btn);
+    zzz5w7_bind_tiered_hold(btn, [{ ms: 1100, fn: () => poSuhlase(true) }]);
+    btn.addEventListener('click', () => poSuhlase(false));
     mini.appendChild(btn);
     row.appendChild(mini);
 
@@ -32445,22 +32459,22 @@ function zzz5w5cm_scope_fields_of(entryKey) {
   return { r2: entryData['2'] || '', r3: entryData['3'] || '', r4: entryData['4'] || '',
            r5: entryData['5'] || '', tags: entryData['21'] || '' };
 }
-// === [Zzz14-CS:MEMBERS-THIS-RECORD] Vrso 2026-10-17 (12:47): "kua, co si to urobila... stale su tam
-// prednastavene nejake kontakty v packs aj users. Naco? Ved kazda cl bude mat inych members, zbytocne
-// to tam pletie."
-// Okno sa v hlavicke pyta "kto je v TOMTO zazname" a hned pod nou vysypalo CELY adresar: vsetky moje
-// baliky, skupiny, timy a vsetkych ludi, z toho vacsinu s poznamkou "not added here yet". Clovek tak
-// pri kazdom otvoreni cital cudzi zoznam a svojich troch clenov v nom hladal.
-// Su to DVE otazky a maju mat dve zobrazenia v jednom okne:
-//   KTO TU JE   (standard) - len to, co sa tohto zaznamu naozaj tyka
-//   KOHO PRIDAM (rezim)    - cely vyber, presne ako doteraz, aj s patkou a zakladanim balika
-// Rezim drzi premenna mimo funkcie, lebo okno sa po zalozeni/premenovani balika stavia nanovo a
-// clovek by inak vypadol spat do zoznamu clenov uprostred pridavania. Pri BEZNOM otvoreni sa vzdy
-// zacina od clenov - preto keepMode, ktory posielaju len tie vnutorne prestavby.
-let zzz14csMembersAddMode = false;
-function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey, keepMode) {
-  if (!keepMode) zzz14csMembersAddMode = false;
-  const pridavam = !!zzz14csMembersAddMode;
+// === [Zzz14-CS:MEMBERS-THIS-RECORD] Vrso 2026-10-17, dvakrat =================================
+// (12:47) "kua, co si to urobila... stale su tam prednastavene nejake kontakty v packs aj users.
+//   Naco? Ved kazda cl bude mat inych members, zbytocne to tam pletie."
+// (13:37) "ja neviem, co to stale nechapes... ide o NOVU cl / novu komunikaciu, resp. chat - naco tam
+//   potom ma byt v zozname uz vobec definovane nejake kontakty?! Ide mi o to, ze si najprv z ADD
+//   CONTACTS pridam, ake chcem, a potom v MEMBERS si len urobim pack/s podla potreby. To je cele."
+//
+// Napoprve som z toho urobil dva rezimy jedneho okna a nechal "pridavanie" vnutri. To bolo stale zle:
+// pridavanie ludi uz MA svoje miesto - tlacidlo ADD CONTACTS, ktore otvara contacts modul - a druha
+// cesta k tej istej veci sa raz rozide s prvou. MEMBERS teda odpoveda na JEDNU otazku: KTO JE V TOMTO
+// ZAZNAME, a jedinou pracou, ktora sa v nom robi, je zlozit z nich balik.
+// Preto tu uz NIE JE: rezim pridavania, sito na hladanie cudzich ludi, ani ADD CHECKED (nemalo by
+// koho pridat - vsetci v okne uz v zazname su).
+// Balik, skupina a tim ostavaju ako nadpisy nad svojimi ludmi a daju sa zaskrtnut, ale beru VYLUCNE
+// tych svojich clenov, ktori su v TOMTO zazname - inym sa sem niet ako dostat.
+function zzz5w5cm_open_members_window(anchorEl, names, recTag, entryKey) {
   document.querySelectorAll('.zzz5t0-tab-window').forEach(m => m.remove());
   const win = document.createElement('div');
   win.className = 'zzz5t0-tab-window zzz5w5cm-added';
@@ -32472,7 +32486,8 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey, 
 
   const head = document.createElement('div');
   head.style.cssText = 'font-size:9px;color:#999;padding:2px 4px 6px;';
-  head.textContent = `MEMBERS (${inRec.length}) - who is in this record, and what you can add`;
+  // [Zzz14-CS:MEMBERS-ONLY-PACKS] hlavicka hovori, co okno robi: ukazuje clenov a sklada z nich baliky
+  head.textContent = `MEMBERS (${inRec.length}) - who is in this record, and your packs of them`;
   win.appendChild(head);
 
   // === [Zzz5-W5:MEMBERS-TABS] okno ma DVE ZALOZKY ==============================================
@@ -32505,7 +32520,7 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey, 
     });
     tabsRow.appendChild(b);
   };
-  tabBtn('ADDED CONTACTS', body, true);
+  tabBtn('MEMBERS', body, true);
   tabBtn('SCOPE', scopeBody, false);
   win.appendChild(tabsRow);
   win.appendChild(body);
@@ -32564,40 +32579,26 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey, 
   const videny = {};                        // clovek sa kresli PRAVE RAZ, v sekcii USERS
 
   const addPack = (key, label, people, renameTag) => {
-    const list = (people || []).map(x => String(x).trim()).filter(Boolean)
+    const vsetci = (people || []).map(x => String(x).trim()).filter(Boolean)
       .filter((x, i, a) => a.findIndex(y => tagN(y) === tagN(x)) === i);
-    if (!list.length) return;
-    const chyba = list.filter(x => inRecN.indexOf(tagN(x)) < 0);
-    // [Zzz14-CS:MEMBERS-THIS-RECORD] v zozname clenov ma balik/skupina/tim co robit len vtedy, ked
-    // do TOHTO zaznamu niekoho dal. Riadok sa preto ani nepostavi - keby len zmizol cez display,
-    // zaskrtavanie ALL/NONE by ho dalej pocitalo a pridalo by ludi, ktorych clovek nemal na ocich.
-    if (!pridavam && chyba.length === list.length) return;
-    // [Zzz14-CS:MEMBERS-THIS-RECORD] v zozname clenov je balik/skupina/tim len POPIS - hovori, odkial
-    // sa tu clen vzal. Nedá sa rozkliknut ani zaskrtnut, lebo obe cesty vedu k ludom, ktori v zazname
-    // NIE SU: rozbalenie ich vypise a zaskrtnutie celeho balika by ich cez ADD CHECKED aj pridalo -
-    // teda presne to, co tento pohlad nema robit. Pridavanie ma svoj rezim.
-    const lenPopis = !pridavam;
+    // [Zzz14-CS:MEMBERS-THIS-RECORD] balik/skupina/tim pracuje VYLUCNE so svojimi clenmi, ktori su
+    // v tomto zazname. Kto tu nie je, nie je ani v zozname, ani v zaskrtnuti - inak by sa cez balik
+    // dostal do packu niekto, koho clovek v okne vobec nevidel.
+    const list = vsetci.filter(x => inRecN.indexOf(tagN(x)) >= 0);
+    if (!list.length) return;           // tento balik do tohto zaznamu nikoho nedal
     const row = document.createElement('button');
     row.type = 'button';
-    row.className = 'zzz5w5cm-added-pick' + (lenPopis ? ' zzz14cs-pack-info' : '');
+    row.className = 'zzz5w5cm-added-pick';
     const t = document.createElement('span');
     t.textContent = `${label} (${list.length})`;
     row.appendChild(t);
     const st = document.createElement('span');
-    st.className = 'zzz5w5cm-added-mark ' + (chyba.length ? 'is-none' : 'is-match');
-    if (lenPopis) {
-      st.textContent = chyba.length ? `${list.length - chyba.length} of ${list.length} in this record`
-                                    : 'all in this record';
-      row.appendChild(st);
-      row.title = list.join(', ');
-      row.disabled = true;
-      body.appendChild(row);
-      return;                           // ziadny packRows.push - ALL/NONE nema co zaskrtavat
-    }
+    st.className = 'zzz5w5cm-added-mark is-match';
+    st.textContent = list.length === vsetci.length
+      ? 'all of it is here' : `${list.length} of ${vsetci.length} here`;
     // [Zzz14-CS:PACK-OPEN] znacka hovori o TOMTO ZAZNAME (kto je v jeho COMMUNICATION bunke), nie o
     // suhlase - suhlas ma vlastnu znacku pri cloveku. Nazov to musi povedat, inak sa to cita ako "vsetci
     // suhlasili", co by bolo tvrdenie, ktore appka nema odkial vediet.
-    st.textContent = chyba.length ? `${chyba.length} not in this record yet` : 'all in this record';
     row.appendChild(st);
     row.title = list.join(', ')
       + (renameTag ? ' - hold 1s to rename this package' : '');
@@ -32660,7 +32661,7 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey, 
         const ok = await zzz5w5cm_rename_pack(renameTag, nove.trim());
         zzz6f2_show_toast(`"${renameTag}" -> "${nove.trim()}" on ${ok} contact(s).`);
         win.remove();
-        zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey, true);
+        zzz5w5cm_open_members_window(anchorEl, names, recTag, entryKey);
       });
     }
     row.addEventListener('click', () => {
@@ -32680,7 +32681,7 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey, 
     const n = tagN(nm);
     if (!n || videny[n]) return;            // KAZDY RAZ - zosadeny, aj ked je v styroch baliocch
     // [Zzz14-CS:MEMBERS-THIS-RECORD] v zozname clenov su LEN clenovia; ostatnych ponuka rezim pridavania
-    if (!pridavam && inRecN.indexOf(n) < 0) return;
+    if (inRecN.indexOf(n) < 0) return;
     videny[n] = true;
     const row = document.createElement('button');
     row.type = 'button';
@@ -32730,21 +32731,15 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey, 
   // PACKS su MOJE comm own tagy: vidim ich len ja (riadok vo verso_user_contacts chrani RLS). Pre
   // ostatnych je to, co z nich pridam, obycajne meno pod COMM TAGOM zaznamu - moj stitok sa nikam
   // nezapisuje, takze cudzi ho neuvidi ani nahodou.
-  // === [Zzz14-CS:MEMBERS-THIS-RECORD] prepinac medzi dvoma otazkami jedneho okna ================
-  // Stoji nad sekciami, lebo rozhoduje o VSETKOM, co je pod nim. Nazov hovori, co sa stane po stlaceni.
-  const prepinac = document.createElement('button');
-  prepinac.type = 'button';
-  prepinac.className = 'zzz5w5cm-added-foot-btn is-add zzz14cs-members-mode';
-  prepinac.textContent = pridavam ? 'SHOW ONLY THIS RECORD' : '+ ADD PEOPLE';
-  prepinac.title = pridavam
-    ? 'Back to the list of people who are in this record'
-    : 'Open your packs, groups, teams and contacts to pick who to add here';
-  prepinac.addEventListener('click', () => {
-    zzz14csMembersAddMode = !zzz14csMembersAddMode;
-    win.remove();
-    zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey, true);
-  });
-  body.appendChild(prepinac);
+  // === [Zzz14-CS:MEMBERS-ONLY-PACKS] Vrso 2026-10-17 (13:37): "ide mi o to, ze si najprv z ADD
+  // CONTACTS pridam, ake chcem, a potom v MEMBERS si len urobim pack/s podla potreby. To je cele."
+  // Ziadny prepinac rezimov: pridavanie ludi je praca tlacidla ADD CONTACTS vedla, MEMBERS je zoznam
+  // clenov a zakladanie balikov z nich. Veta hore to povie, aby to clovek nemusel hadat.
+  const ako = document.createElement('div');
+  ako.className = 'zzz5w5cm-added-note';
+  ako.textContent = 'Check the people you want and tap + NEW PACK to name them as one. '
+    + 'To bring somebody new into this record, use ADD CONTACTS.';
+  body.appendChild(ako);
 
   const packsSect = sect('PACKS - your own comm own tags');
   // === [Zzz14-CS:PACK-AT-THE-END] -> ZRUSENE 2026-10-17 (12:47) ================================
@@ -32780,7 +32775,7 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey, 
     zzz6f2_show_toast(`"${nazov.trim()}": ${r.ok} of ${vybrati.length} tagged`
       + (r.skipped.length ? ` - not in your contacts yet: ${r.skipped.join(', ')}` : '.'));
     win.remove();
-    zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey, true);
+    zzz5w5cm_open_members_window(anchorEl, names, recTag, entryKey);
   });
   packsSect.appendChild(newPack);   // [Zzz14-CS:MEMBERS-THIS-RECORD] vedla nadpisu sekcie, hore
   const prePacks = packRows.length;
@@ -32790,9 +32785,9 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey, 
     n.className = 'zzz5w5cm-added-note';
     // [Zzz14-CS:MEMBERS-THIS-RECORD] prazdno znamena v kazdom pohlade nieco ine - a hlaska to musi
     // povedat, inak clovek cita "nemam baliky" tam, kde v skutocnosti "ziadny z nich tu nikoho nema"
-    n.textContent = (!pridavam && packs.length)
+    n.textContent = packs.length
       ? 'No pack of yours is in this record.'
-      : 'No pack yet - write the same COMM OWN TAG on several contacts and it becomes one.';
+      : 'No pack yet - check people below and + NEW PACK gives them one name of your own.';
     body.appendChild(n);
   }
 
@@ -32806,7 +32801,7 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey, 
   if (packRows.length === preGrp) {
     const n = document.createElement('div');
     n.className = 'zzz5w5cm-added-note';
-    n.textContent = (!pridavam && (zzz5w5cmMyGroups || []).length)
+    n.textContent = (zzz5w5cmMyGroups || []).length
       ? 'No group of yours is in this record.' : 'No group yet.';
     body.appendChild(n);
   }
@@ -32818,39 +32813,25 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey, 
   if (packRows.length === preTeam) {
     const n = document.createElement('div');
     n.className = 'zzz5w5cm-added-note';
-    n.textContent = (!pridavam && ((zzz5w5cmTeams && zzz5w5cmTeams.list) || []).length)
+    n.textContent = ((zzz5w5cmTeams && zzz5w5cmTeams.list) || []).length
       ? 'No team of yours is in this record.' : 'No team yet.';
     body.appendChild(n);
   }
 
   // USERS su posledni a je ich najviac - preto maju nad sebou sito, ktore sa tyka LEN ich
   sect('USERS');
-  // [Zzz14-CS:MEMBERS-THIS-RECORD] sito je na hladanie, KOHO PRIDAT - v zozname clenov nema co hladat,
-  // tych je par a su vypisani cely cas
-  if (pridavam) { body.appendChild(find); body.appendChild(findNote); }
-  // najprv ludia, ktori UZ v zazname su, potom zvysok (z balikov, skupin a timov) - kazdy RAZ
-  // === [Zzz14-CS:MEMBERS-ADDED-FIRST] Vrso 2026-10-16 (13:05): "pokial neni nikto pridany, tak len
-  // vypisat added contacts podla sekcii." Zalozka sa vola ADDED CONTACTS, ale cely zoznam bol jedna
-  // stena, v ktorej kazdy druhy riadok hlasil "not added here yet" - a to, co uz V ZAZNAME JE (teda
-  // to, na co sa clovek pri otvoreni pyta prve), sa v nej stratilo. Teraz su PRIDANI hore a zvysok -
-  // ludia z balikov, skupin a timov, z ktorych sa da pridavat - stoji pod ciarou. Nikto nezmizol:
-  // ADD CHECKED aj + NEW PACK potrebuju mat z coho vyberat.
+  // [Zzz14-CS:MEMBERS-ONLY-PACKS] sito tu uz nie je: hladalo CUDZICH ludi, ktorych sa dalo pridat,
+  // a tych okno uz neponuka. Clenov zaznamu je par a stoja vypisani cely cas.
+  // === [Zzz14-CS:MEMBERS-ADDED-FIRST] -> ZJEDNODUSENE 2026-10-17 (13:37) =======================
+  // Bola tu ciara "- not added here yet -" a pod nou ludia z balikov, skupin a timov, ktori v zazname
+  // nie su. Odkedy sa v MEMBERS nepridava ([Zzz14-CS:MEMBERS-ONLY-PACKS]), nemaju tu co robit: zoznam
+  // je presne to, co hlavicka slubuje - clenovia tohto zaznamu, kazdy prave raz.
   inRec.forEach(addUser);
-  const poPridanych = userRows.length;
-  const ciara = document.createElement('div');
-  ciara.className = 'zzz5w5cm-added-note';
-  ciara.textContent = poPridanych ? '- not added here yet -' : 'Nobody added yet - pick from below.';
-  body.appendChild(ciara);
-  packs.forEach(p => p.names.forEach(addUser));
-  (zzz5w5cmMyGroups || []).forEach(g => (g.members || []).forEach(addUser));
-  ((zzz5w5cmTeams && zzz5w5cmTeams.list) || []).forEach(t => (t.people || []).forEach(addUser));
-  if (userRows.length === poPridanych) ciara.remove();   // nikto dalsi nie je - ciara by klamala
   if (!userRows.length) {
     const n = document.createElement('div');
     n.className = 'zzz5w5cm-added-note';
     // [Zzz14-CS:MEMBERS-THIS-RECORD] v zozname clenov povedz aj, kde sa ludia beru
-    n.textContent = pridavam ? 'Nobody is in this record yet.'
-                             : 'Nobody is in this record yet - tap + ADD PEOPLE to pick somebody.';
+    n.textContent = 'Nobody is in this record yet - add people with ADD CONTACTS first.';
     body.appendChild(n);
   }
 
@@ -32895,34 +32876,18 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, onAdd, entryKey, 
     b.addEventListener('click', () => setAll(fn));
     foot.appendChild(b);
   });
-  const pickedNames = () => {
-    const out = [];
-    packRows.forEach(p => { if (checked['p|' + p.key]) p.list.forEach(x => out.push(x)); });
-    userRows.forEach(u => { if (checked['u|' + u.n]) out.push(u.nm); });
-    return out.filter((x, i, a) => a.findIndex(y => zzz10v1_normalize(y) === zzz10v1_normalize(x)) === i);
-  };
-  const addBtn = document.createElement('button');
-  addBtn.type = 'button';
-  addBtn.className = 'zzz5w5cm-added-foot-btn is-add';
-  addBtn.textContent = 'ADD CHECKED';
-  addBtn.title = 'Puts the checked people into this record';
-  addBtn.addEventListener('click', () => {
-    const list = pickedNames().filter(x => inRecN.indexOf(zzz10v1_normalize(x)) < 0);
-    if (!list.length) { zzz6f2_show_toast('Nothing checked that is not already in.', 'warn'); return; }
-    if (typeof onAdd === 'function') onAdd(list);
-    win.remove();
-  });
-  foot.appendChild(addBtn);
-  body.appendChild(foot);   // [Zzz14-CS:MEMBERS-THIS-RECORD] + NEW PACK je hore, v sekcii PACKS
+  // [Zzz14-CS:MEMBERS-ONLY-PACKS] ADD CHECKED je prec: pridavalo do zaznamu ludi, ktori v nom este
+  // nie su - lenze take uz okno ziadnych neukazuje, takze by nemalo koho pridat. Ludia sa do zaznamu
+  // dostavaju tlacidlom ADD CONTACTS, jedinou cestou. Patka tak nesie len vyber pre + NEW PACK.
+  body.appendChild(foot);   // + NEW PACK stoji hore, v hlavicke sekcie PACKS
 
   // [Zzz5-W5:MEMBERS-LEGEND] Vrso 2026-10-09 (20:53): "vysvetli, co to znamena tie all, none a hlavne
   // invert aj add checked". Styri slova bez vysvetlenia su styri hadanky - veta pod nimi stoji natvrdo.
   const legend = document.createElement('div');
   legend.className = 'zzz5w5cm-added-legend';
-  legend.textContent = 'ALL = check everything you can see now · NONE = uncheck everything · '
-    + 'INVERT = swap it (checked becomes unchecked and back) · ADD CHECKED = put the checked people '
-    + 'into this record · + NEW PACK = give the checked people one name of your own. '
-    + 'Tap the arrow on a pack, group or team to open it and pick single people.';
+  legend.textContent = 'ALL = check everybody you can see now · NONE = uncheck everybody · '
+    + 'INVERT = swap it (checked becomes unchecked and back) · + NEW PACK = give the checked people '
+    + 'one name of your own. Tap the arrow on a pack, group or team to open it and pick single people.';
   body.appendChild(legend);
 
   // === [Zzz5-W5:MENTION-INFO] mentions su tu INFORMACIA, nie akcia =============================
@@ -37461,7 +37426,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-17 13:45';
+const ZZZ5_6_BUILD = '2026-10-17 15:30';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -45452,7 +45417,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-35 2026-10-17'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-38 2026-10-17'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
