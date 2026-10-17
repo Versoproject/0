@@ -9882,7 +9882,10 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
      farby priorit, pohlady STACKED/COLUMNS a okno pripomienky. Farby su TIE ISTE ako pri chat notifikaciach
      ([Zzz1-CN:NOTIF]: zelena #1e7e34 / oranzova #ea8c00 / cervena #c0392b) - jedna farba, jeden vyznam. === -->
 <style>
-  #versoNotificationsButton.zzz5w8-active { border: 2px solid #D4AF37; color: #D4AF37; }
+  /* [Zzz5-W8:GOLD-TEXT] Vrso 2026-10-17 (23:22): "oznac notif button v layoute, ked je zapnuty, zlatym
+     pismom a opacne vypni" - zlate PISMO aj ramcek, kym je W8 otvoreny; zatvorenim (alebo inym
+     workspacom) zhasne. !important, aby ho neprebil ziadny neskorsi .data-row button. */
+  #versoNotificationsButton.zzz5w8-active { border: 2px solid #D4AF37 !important; color: #D4AF37 !important; }
   .db-workspace.zzz5w8-workspace { margin-top: 0; padding: 6px 8px 10px; }
   .zzz5w8-module { margin-top: 4px; }
   .zzz5w8-acts { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; min-width: 0; }
@@ -28064,12 +28067,17 @@ async function zzz5w8_load_entries(ids) {
 async function zzz5w8_reload() {
   zzz5w8State.loading = true;
   zzz5w8_render();
-  await Promise.all([
-    (typeof zzz1cn_notif_load === 'function') ? zzz1cn_notif_load() : null,
-    zzz5w8_load_items()
-  ]);
-  const ids = (zzz1cnNotifNotes || []).map(r => r.entry_key).concat(zzz5w8Items.map(r => r.entry_id));
-  await zzz5w8_load_entries(ids);
+  try {
+    await Promise.all([
+      (typeof zzz1cn_notif_load === 'function') ? zzz1cn_notif_load() : null,
+      zzz5w8_load_items()
+    ]);
+    const ids = (zzz1cnNotifNotes || []).map(r => r.entry_key).concat(zzz5w8Items.map(r => r.entry_id));
+    await zzz5w8_load_entries(ids);
+  } catch (e) {
+    // [Zzz5-W8:NEVER-BLANK] nacitanie spadlo - povedz to, nekresli prazdno
+    zzz5w8State.error = String((e && (e.message || e.details)) || e);
+  }
   zzz5w8State.loading = false;
   zzz5w8Loaded = true;
   if (typeof zzz1cn_notif_start === 'function') zzz1cn_notif_start();   // pravidelny prepocet ako pri znackach
@@ -28496,7 +28504,47 @@ function zzz5w8_empty(text) {
   return n;
 }
 
+// === [Zzz5-W8:NEVER-BLANK] Vrso 2026-10-17 (23:22): "Nejde otvorit notif workspace".
+// Na jeho telefone sa po tuku neukazalo nic, hoci ten isty subor (nasadeny commit a6252ea) sa v teste
+// otvara aj s ostrymi datami z databazy. Pricinu zvonka nevidim - a presne to bola chyba: ked kreslenie
+// spadne, workspace ostal PRAZDNY a nepovedal ani slovo. Odteraz sa (1) hned po tuku objavi kostra
+// s "Loading...", (2) chyba v kresleni sa vypise PRIAMO do workspacu aj s textom chyby, takze z jedneho
+// screenshotu je vidno, co sa stalo. Prazdne miesto uz nikdy. ===
+function zzz5w8_fail_box(wrap, where, err) {
+  const msg = (err && (err.stack || err.message)) || String(err);
+  console.error('Zzz5-W8 ' + where, err);
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const box = document.createElement('div');
+  box.className = 'zzz5w5cm-module zzz5w8-module';
+  const head = document.createElement('div');
+  head.className = 'zzz5w5cm-module-label';
+  const t = document.createElement('span');
+  t.textContent = 'NOTIFICATIONS (Zzz5-W8) - COULD NOT BE SHOWN';
+  head.appendChild(t);
+  const x = document.createElement('button');
+  x.type = 'button';
+  x.className = 'zzz5w5cm-close';
+  x.textContent = '\u00d7';
+  x.setAttribute('aria-label', 'Close');
+  x.addEventListener('click', () => { close_notification_workspace(); zzz6f40_workspaceOpener = null; });
+  head.appendChild(x);
+  box.appendChild(head);
+  const p = document.createElement('div');
+  p.className = 'zzz5w5cm-view-empty zzz5w8-note is-warn';
+  p.style.whiteSpace = 'pre-wrap';
+  p.textContent = `Something failed while ${where}. Send a screenshot of this - the line below says what it was.\n\n${String(msg).slice(0, 600)}`;
+  box.appendChild(p);
+  wrap.appendChild(box);
+}
 function zzz5w8_render() {
+  try { zzz5w8_render_inner(); }
+  catch (e) {
+    const ws = document.getElementById('versoWorkspaceSection');
+    zzz5w8_fail_box(ws && ws.querySelector('.zzz5w8-workspace'), 'drawing the workspace', e);
+  }
+}
+function zzz5w8_render_inner() {
   const ws = document.getElementById('versoWorkspaceSection');
   const wrap = ws && ws.querySelector('.zzz5w8-workspace');
   if (!wrap) return;
@@ -28738,9 +28786,11 @@ function open_notification_workspace() {
   workspace.innerHTML = '';
   const wrap = document.createElement('div');
   wrap.className = 'db-workspace zzz5w8-workspace';
+  // [Zzz5-W8:NEVER-BLANK] kostra hned - tuk musi byt vidno, aj kym sa caka na databazu
+  wrap.innerHTML = '<div class="zzz5w5cm-module zzz5w8-module"><div class="zzz5w5cm-module-label"><span>NOTIFICATIONS (Zzz5-W8)</span></div><div class="zzz5w5cm-view-empty">Loading...</div></div>';
   workspace.appendChild(wrap);
   zzz5w8_sync_button_gold();
-  zzz5w8_reload();
+  zzz5w8_reload().catch(e => zzz5w8_fail_box(wrap, 'loading notifications', e));
 }
 function close_notification_workspace() {
   const workspace = document.getElementById('versoWorkspaceSection');
@@ -28762,7 +28812,13 @@ function close_notification_workspace() {
       return;
     }
     zzz6f22EntryIdFilter = null;
-    open_notification_workspace();
+    try {
+      open_notification_workspace();
+    } catch (e) {
+      // [Zzz5-W8:NEVER-BLANK] aj keby padlo uz samotne otvorenie, tuk nesmie byt ticho
+      console.error('Zzz5-W8 open', e);
+      zzz6f2_show_toast(`Notifications could not open: ${(e && e.message) || e}`, 'warn');
+    }
     zzz6f40_workspaceOpener = () => open_notification_workspace(); // [Zzz6-F40:WORKSPACE-CAPTURE]
   });
   // iny workspace prepisal zdielanu sekciu - zlaty ramcek musi zhasnut sam
@@ -38959,7 +39015,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-17 20:10';
+const ZZZ5_6_BUILD = '2026-10-17 23:30';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -46989,7 +47045,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-47 2026-10-17'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-48 2026-10-17'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
