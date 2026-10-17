@@ -28150,6 +28150,12 @@ function zzz5w8_collect() {
   const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
   const seen = zzz1cnSeenMap || {};
   (zzz1cnNotifNotes || []).forEach(r => {
+    // === [Zzz5-W8:RECORD-CHATS-ONLY] Vrso 2026-10-18 (01:25): "vyskocilo mi ale dake notes okno neviem
+    // preco". Riadky s klucom "tab:notes" / "draft..." nie su chat ZAZNAMU - su to osobne poznamky
+    // (Notes tab, rozpisany koncept). W8 ich ukazoval ako spravy s cislom "#tab:notes" a tuk na ne
+    // otvoril Notes okno, lebo zaznam s takym cislom neexistuje. Notifikacia je o chate zaznamu, takze
+    // sa beru LEN ciselne kluce - presne tie, pri ktorych svieti aj znacka v comm bunke. ===
+    if (!/^\d+$/.test(String(r.entry_key || ''))) return;
     const kind = zzz1cn_notif_kind(r, meN, seen);
     if (!kind) return;                                 // null = nezapocitava sa, '' = uz videne
     const t = Date.parse(r.created_at || '') || 0;
@@ -28166,7 +28172,7 @@ function zzz5w8_collect() {
   // REMINDERS / SCHEDULE: polozka je "teraz", ked jej cas uz nastal
   zzz5w8Items.forEach(r => {
     const t = Date.parse(r.due_at || '') || 0;
-    const entry = String(r.entry_id || '');
+    const entry = (r.entry_id === null || r.entry_id === undefined) ? '' : String(r.entry_id);   // [Zzz5-W8:ONE-OFF]
     out.push({
       src: r.kind === 'schedule' ? 'schedule' : 'reminder', id: 'item:' + r.id,
       entry, t, due: t <= now, done: !!r.done_at,
@@ -28341,7 +28347,7 @@ function zzz5w8_open_item_window(raw, kind) {
   const paintType = () => {
     Object.keys(typeBtns).forEach(key => typeBtns[key].classList.toggle('is-on', key === k));
     title.textContent = isNew ? (k === 'schedule' ? 'NEW SCHEDULE ITEM' : 'NEW REMINDER')
-      : `${k === 'schedule' ? 'SCHEDULE' : 'REMINDER'} - #${raw.entry_id}`;
+      : `${k === 'schedule' ? 'SCHEDULE' : 'REMINDER'}${raw.entry_id ? ' - #' + raw.entry_id : ' - one-off'}`;
   };
   body.appendChild(typeRow);
 
@@ -28358,8 +28364,9 @@ function zzz5w8_open_item_window(raw, kind) {
   const entryIn = document.createElement('input');
   entryIn.type = 'text';
   entryIn.inputMode = 'numeric';
-  entryIn.placeholder = 'e.g. 174';
-  entryIn.value = raw ? String(raw.entry_id) : '';
+  // [Zzz5-W8:ONE-OFF] Vrso 2026-10-18: "CL - nezadavat en... vsak ide casto iba o jednorazovu akciu"
+  entryIn.placeholder = 'optional - e.g. 174 (empty = one-off reminder)';
+  entryIn.value = (raw && raw.entry_id) ? String(raw.entry_id) : '';
   // [Zzz6-SF:BOUND-TO-ENTRY] k comu polozka patri, sa po vzniku nemeni (strazi to aj trigger v databaze)
   if (!isNew) { entryIn.disabled = true; entryIn.title = 'A reminder stays with its record - add a new one for another record.'; }
   field('ENTRY NUMBER', entryIn);
@@ -28409,8 +28416,8 @@ function zzz5w8_open_item_window(raw, kind) {
   go.addEventListener('click', async () => {
     const me = (zzz0r1_get_current_username() || '').trim();
     if (!me) { say('Log in first - reminders belong to your username.', true); return; }
+    // [Zzz5-W8:ONE-OFF] bez cisla = jednorazova pripomienka, ktora k ziadnemu zaznamu nepatri
     const num = String(entryIn.value || '').replace(/\D/g, '');
-    if (!num) { say('Fill in the ENTRY NUMBER - every reminder belongs to a record (that is what its ENTRY NUMBER cell opens).', true); entryIn.focus(); return; }
     const due = Date.parse(whenIn.value || '');
     if (!due) { say('Pick a date and time.', true); return; }
     const payload = {
@@ -28423,7 +28430,7 @@ function zzz5w8_open_item_window(raw, kind) {
       let res;
       if (isNew) {
         res = await sb.from(ZZZ5W8_TABLE)
-          .insert(Object.assign({ entry_id: Number(num), username: me }, payload)).select('*');
+          .insert(Object.assign({ entry_id: num ? Number(num) : null, username: me }, payload)).select('*');
       } else {
         res = await sb.from(ZZZ5W8_TABLE).update(payload).eq('id', raw.id).select('*');
       }
@@ -28432,11 +28439,11 @@ function zzz5w8_open_item_window(raw, kind) {
       if (!row) throw new Error('The database accepted nothing - you can only change your own reminders.');
       if (isNew) zzz5w8Items.push(row);
       else Object.assign(raw, row);
-      await zzz5w8_load_entries([row.entry_id]);
+      if (row.entry_id !== null && row.entry_id !== undefined) await zzz5w8_load_entries([row.entry_id]);
       // novu vec ukaz tam, kde ju clovek bude hladat
       if (isNew && zzz5w8Tab !== 'all') zzz5w8Tab = k === 'schedule' ? 'schedule' : 'reminders';
       close();
-      zzz6f2_show_toast(isNew ? `Added to #${row.entry_id}.` : 'Changes applied.');
+      zzz6f2_show_toast(isNew ? (row.entry_id ? `Added to #${row.entry_id}.` : 'One-off reminder added.') : 'Changes applied.');
       zzz5w8_render();
     } catch (e) {
       go.disabled = false;
@@ -28444,6 +28451,9 @@ function zzz5w8_open_item_window(raw, kind) {
       if (zzz5w8_is_missing_table(e)) {
         zzz5w8State.missing = true;
         say(`The table from SQL "${ZZZ5W8_SQL_NAME}" is not deployed yet - run it in Supabase, then try again.`, true);
+      } else if (code === '23502' && !num) {
+        // [Zzz5-W8:ONE-OFF] databaza este vyzaduje cislo zaznamu - SQL v2 nie je nasadene
+        say('One-off reminders need SQL "verso_notif_items_v2_optional_entry" in Supabase - until then fill in an ENTRY NUMBER.', true);
       } else if (code === '42501' || code === '23503') {
         // RLS / cudzi kluc: zaznam neexistuje alebo ho tento user nevidi - povedz to rovno
         say(`#${num} does not exist or is not readable for you - a reminder can only belong to a record you can open.`, true);
@@ -28455,23 +28465,30 @@ function zzz5w8_open_item_window(raw, kind) {
   acts.appendChild(go);
   if (!isNew) {
     const done = document.createElement('button');
+    // (OPEN #N nizsie len ked polozka k zaznamu patri)
     done.type = 'button';
     done.className = 'zzz5w5cm-chip zzz5w8-iw-done';
     done.textContent = raw.done_at ? 'NOT DONE YET' : 'DONE';
     done.addEventListener('click', async () => { close(); await zzz5w8_mark_done(raw, !raw.done_at); });
     acts.appendChild(done);
-    const openEn = document.createElement('button');
-    openEn.type = 'button';
-    openEn.className = 'zzz5w5cm-chip';
-    openEn.textContent = `OPEN #${raw.entry_id}`;
-    openEn.addEventListener('click', () => zzz6f29_open_entry_number_window(raw.entry_id));
-    acts.appendChild(openEn);
+    if (raw.entry_id) {
+      const openEn = document.createElement('button');
+      openEn.type = 'button';
+      openEn.className = 'zzz5w5cm-chip';
+      openEn.textContent = `OPEN #${raw.entry_id}`;
+      openEn.addEventListener('click', () => zzz6f29_open_entry_number_window(raw.entry_id));
+      acts.appendChild(openEn);
+    }
   }
   body.appendChild(acts);
   paintType();
   paintGo();
-  unbind = zzz6f41_bind_outside_click(box, close);
-  setTimeout(() => { (isNew ? entryIn : textIn).focus(); }, 0);
+  // === [Zzz5-W8:KEEP-FORM] Vrso 2026-10-18 (01:25): "vyskocilo mi dake notes okno... a ked som ho
+  // zavrel, tak sa zrusil aj reminder". Okno sa zatvaralo KLIKOM MIMO - a kazdy tuk do ineho okna
+  // (Notes, workspace pod nim) bol "mimo", takze rozpisana pripomienka zmizla aj s textom. Formular,
+  // do ktoreho clovek pise, sa zatvara LEN krizikom alebo po uspesnom pridani.
+  // A ZIADNE automaticke focus(): na telefone by vyskocila systemova klavesnica namiesto Verso
+  // klavesnice - pole sa aktivuje az tukom, ako vsade inde. ===
 }
 
 // === kreslenie ======================================================================================
@@ -39057,7 +39074,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-18 01:07';
+const ZZZ5_6_BUILD = '2026-10-18 01:27';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -47087,7 +47104,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-50 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-51 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
