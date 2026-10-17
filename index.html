@@ -28955,6 +28955,22 @@ function zzz5w5cm_open_pair_window(anchorEl, row) {
   kopiruj({ key: ZZZ14CS_SPACE_KEY, label: 'COMM SPACE' });
   sekcia('ACTUAL COMMUNICATION', 'Tabs of the actual comm module. Copy - it stays in pairing.');
   ZZZ5W5CM_CONTACT_TABS.forEach(kopiruj);
+  // === [Zzz14-CS:OTHER-PLACE] Vrso 2026-10-17 (02:53): "len tam vytvor moznost, zatial kludne iba ako
+  // text/button (pripadne aj ako alternativna cesta)."
+  // Miesto si pytal on, takze tu je - ale NEPREDSTIERA, ze uz nieco robi. Tlacidlo, ktore mlci, je to
+  // iste ako ticho ([Zzz5-W5:SAY-WHAT-TO-DO]), preto povie, co mu chyba: ciel. Az ho dostane, zmeni sa
+  // na bezny riadok ako ostatné a tato poznamka zmizne.
+  sekcia('OTHER', 'Your own project or tab - the place is reserved, the target is not set yet.');
+  const other = document.createElement('button');
+  other.type = 'button';
+  other.textContent = 'MY PROJECT / TAB';
+  other.title = 'No target yet - say which project or tab this should copy into';
+  other.addEventListener('click', () => {
+    win.remove();
+    zzz6f2_show_toast('OTHER has no target yet - say which project or tab it should copy into '
+      + 'and it starts working like the rest.', 'warn');
+  });
+  win.appendChild(other);
   document.body.appendChild(win);
   const rect = anchorEl.getBoundingClientRect();
   const h = win.offsetHeight;
@@ -29946,6 +29962,18 @@ function zzz5w5cm_open_move_to(anchorEl) {
   kopiruj2({ key: ZZZ14CS_SPACE_KEY, label: 'COMM SPACE' });
   sekcia2('ACTUAL COMMUNICATION', `Copy (${rows.length}) into the tabs of the actual comm module.`);
   ZZZ5W5CM_CONTACT_TABS.forEach(kopiruj2);
+  // [Zzz14-CS:OTHER-PLACE] to iste miesto aj v hromadnom okne - dve okna tej istej prace
+  sekcia2('OTHER', 'Your own project or tab - the place is reserved, the target is not set yet.');
+  const other2 = document.createElement('button');
+  other2.type = 'button';
+  other2.textContent = 'MY PROJECT / TAB';
+  other2.title = 'No target yet - say which project or tab this should copy into';
+  other2.addEventListener('click', () => {
+    win.remove();
+    zzz6f2_show_toast('OTHER has no target yet - say which project or tab it should copy into '
+      + 'and it starts working like the rest.', 'warn');
+  });
+  win.appendChild(other2);
   document.body.appendChild(win);
   const rect = anchorEl.getBoundingClientRect();
   const h = win.offsetHeight;
@@ -34113,8 +34141,8 @@ function zzz14cs_space_render() {
     const none = document.createElement('div');
     none.className = 'zzz5w5cm-view-empty';
     none.style.cssText = 'padding:8px;color:#888;';
-    none.textContent = 'Nothing here yet. Hold the ATTACH button in a cell for a second '
-      + 'and pick COMM SPACE - the record lands here instead of the main CRM.';
+    none.textContent = 'Nothing here yet. Two ways in: hold a row for a moment and drag it to the right '
+      + 'edge, or hold the ATTACH button in a cell for a second and pick COMM SPACE.';
     body.appendChild(none);
   }
   body.appendChild(zzz5w5cm_build_ccl(ZZZ14CS_SPACE_KEY, rows));
@@ -34497,6 +34525,7 @@ function zzz14cs_drag_cancel() {
   zzz14csDragTimer = null;
   zzz14csDragFrom = null;
   zzz14csDragBtn = null;
+  zzz14csDragRow = null;   // [Zzz14-CS:DRAG-ROW]
   if (zzz14csDragChip && zzz14csDragChip.parentNode) zzz14csDragChip.parentNode.removeChild(zzz14csDragChip);
   zzz14csDragChip = null;
   const h = document.getElementById('zzz14csSpaceHandle');
@@ -34529,18 +34558,76 @@ function zzz14cs_drag_move(x, y) {
 
 function zzz14cs_drag_drop(x) {
   const btn = zzz14csDragBtn;
+  const zRiadku = zzz14csDragRow;
   const pri_okraji = x > window.innerWidth - ZZZ14CS_EDGE_PX;
   zzz14cs_drag_cancel();
-  if (!btn || !pri_okraji) return;
+  if (!pri_okraji) return;
+  // [Zzz14-CS:DRAG-ROW] riadok nesie zaznam sam - pripne sa rovno, bez obchadzky cez tlacidlo
+  if (zRiadku) {
+    zzz5w5cm_attach_to_tab(ZZZ14CS_SPACE_KEY, zRiadku);
+    zzz6f2_show_toast(`${zRiadku.sourceEntryId ? '#' + zRiadku.sourceEntryId : 'CL'} is in COMM SPACE.`, 'ok');
+    zzz14cs_space_open(true);
+    return;
+  }
+  if (!btn) return;
   zzz14csDropToSpace = true;
   btn.click();                    // okno si pripne svoj zaznam samo, len s inym cielom
   zzz14cs_space_open(true);       // nech je vidno, kam to padlo
 }
 
+// === [Zzz14-CS:DRAG-ROW] Vrso 2026-10-17 (02:49): "ako mam attachnut nejaku entry do comm space pod
+// hlavnu comm crm? Uz som ti zadaval aj, ze mas podrzanim napr. riadku cl/el potom len presunut napravo,
+// kde uz sa attachuje k comm crm."
+// Mal pravdu - tah som pustil len na VOLNE MIESTO okna, lebo na riadkoch uz podrzania visia (vyber,
+// okno zaznamu). Lenze clovek tiahne TO, na co sa pozera: riadok.
+// Gesta sa daju oddelit bez toho, aby si zavadzali, lebo kazde z nich konci inak:
+//   PODRZANIE A STAT   = povodne akcie riadku (ich casovace pohyb aj tak rusi sam)
+//   PODRZANIE A TAH VPRAVO = nesiem zaznam; chytí sa az po ~350 ms a po 30 px vodorovne, takze bezne
+//                            rolovanie (zvisle) ani rychly tuk ho nezapnu
+// Na volnom mieste okna ostava povodne podrzanie 3s - tam niet co rusit.
+function zzz14cs_row_payload(rowEl) {
+  const item = rowEl && rowEl.zzzAttachmentItem;
+  if (item) {
+    return {
+      key: item.zzz5w5cmKey || (item.sourceEntryId ? 'el#' + item.sourceEntryId
+            : 'cl#' + zzz6f17_cl_fingerprint(item.fields || {})),
+      fields: Object.assign({}, item.fields || {}),
+      sourceEntryId: item.sourceEntryId || '',
+      entryDate: item.entryDate || ''
+    };
+  }
+  const cell = rowEl && rowEl.querySelector('.entry-number-wrap .entry-cell, .zzz5w5cm-ccl-val');
+  const num = ((cell && cell.textContent) || '').match(/\d+/);
+  if (!num) return null;
+  const r = (typeof zzz6f29_entry_row_of === 'function') ? zzz6f29_entry_row_of(num[0]) : null;
+  return r ? zzz14cs_pair_payload(r) : null;
+}
+function zzz14cs_drag_start_row(rowEl, x, y) {
+  const payload = zzz14cs_row_payload(rowEl);
+  if (!payload) { zzz6f2_show_toast('This row has no record to carry yet.', 'warn'); return; }
+  zzz14csDragRow = payload;
+  zzz_haptic_pulse(30);
+  const chip = document.createElement('div');
+  chip.className = 'zzz14cs-drag-chip';
+  chip.textContent = payload.sourceEntryId ? '#' + payload.sourceEntryId : 'CL';
+  document.body.appendChild(chip);
+  zzz14csDragChip = chip;
+  zzz14cs_drag_move(x, y);
+  const h = document.getElementById('zzz14csSpaceHandle');
+  if (h) h.classList.add('is-target');
+}
+let zzz14csDragRow = null;   // [Zzz14-CS:DRAG-ROW] zaznam nesený z riadku (namiesto ATTACH tlacidla)
+
 document.addEventListener('pointerdown', (e) => {
   zzz14cs_drag_cancel();
   const t = e.target;
   if (!t || !t.closest) return;
+  // [Zzz14-CS:DRAG-ROW] riadok sa da tiahnut - ale nie za jeho vlastne ovladace
+  const riadok = t.closest('.zzz1m5-cl-row, .zzz5w5cm-ccl-item');
+  if (riadok && !t.closest('button, input, textarea, select, a, [contenteditable]')) {
+    zzz14csDragFrom = { x: e.clientX, y: e.clientY, cas: Date.now(), riadok };
+    return;
+  }
   // VYLUCNE volne miesto: nic, co uz ma vlastnu akciu alebo vlastne podrzanie
   if (t.closest('button, input, textarea, select, a, [contenteditable], .entry-cell, .zzz1m5-cl-row, .zzz5w5cm-ccl-item')) return;
   const okno = t.closest('.entry-modal-box');
@@ -34553,12 +34640,23 @@ document.addEventListener('pointerdown', (e) => {
 
 document.addEventListener('pointermove', (e) => {
   if (zzz14csDragChip) { zzz14cs_drag_move(e.clientX, e.clientY); return; }
-  // pohyb PRED naplnenim casu gesto rusi - inak by ho zaplo bezne rolovanie
-  if (zzz14csDragFrom) {
-    const dx = Math.abs(e.clientX - zzz14csDragFrom.x);
-    const dy = Math.abs(e.clientY - zzz14csDragFrom.y);
-    if (dx > 12 || dy > 12) zzz14cs_drag_cancel();
+  if (!zzz14csDragFrom) return;
+  const dx = e.clientX - zzz14csDragFrom.x;
+  const dy = Math.abs(e.clientY - zzz14csDragFrom.y);
+  // [Zzz14-CS:DRAG-ROW] z riadku: chvilu drzat, potom tah VPRAVO - zvisly pohyb je rolovanie
+  if (zzz14csDragFrom.riadok) {
+    if (dx > 30 && dy < 25 && Date.now() - zzz14csDragFrom.cas > 350) {
+      const r = zzz14csDragFrom.riadok;
+      zzz14csDragFrom = null;
+      zzz14cs_drag_start_row(r, e.clientX, e.clientY);
+    } else if (dy > 25) {
+      zzz14csDragFrom = null;     // rolovanie - gesto sa nezapne
+    }
+    return;
   }
+  // pohyb PRED naplnenim casu gesto rusi - inak by ho zaplo bezne rolovanie
+  const adx = Math.abs(dx);
+  if (adx > 12 || dy > 12) zzz14cs_drag_cancel();
 }, true);
 
 document.addEventListener('pointerup', (e) => {
@@ -37106,7 +37204,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-17 03:55';
+const ZZZ5_6_BUILD = '2026-10-17 04:30';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -45093,7 +45191,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-29 2026-10-17'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-31 2026-10-17'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
