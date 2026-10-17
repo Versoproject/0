@@ -10107,6 +10107,33 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
   }
   .zzz14cs-move-sect:first-of-type { border-top: none; margin-top: 0; }
   .zzz14cs-move-note { font-size: 8.5px; color: #8a8a8a; padding: 0 4px 4px; }
+  /* [Zzz14-CS:SELECT-BAR] rezim vyberu hovori nahlas, ze bezi - inak clovek tuka a nic sa "neotvara",
+     a nevie, ci je v rezime alebo je appka pokazena. Pas je fialovy ako tlacidlo SELECT
+     ([Zzz6-F29:SELECT-BUTTON], #7c3aed), aby sa dalo spojit s tym, co ho zaplo. */
+  .zzz14cs-selbar {
+    display: none;
+    position: fixed; top: 0; left: 0; right: 0; z-index: 2400;
+    align-items: center; gap: 8px;
+    padding: 5px 8px;
+    background: #7c3aed; color: #fff;
+    font-size: 10px; font-weight: 700; letter-spacing: .04em;
+    box-shadow: 0 2px 10px rgba(0,0,0,.45);
+  }
+  .zzz14cs-selbar.is-on { display: flex; }
+  .zzz14cs-selbar-txt { flex: 1 1 auto; min-width: 0; }
+  .zzz14cs-selbar-btn {
+    flex: 0 0 auto; padding: 3px 8px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,.55); background: transparent; color: #fff;
+    font-size: 10px; font-weight: 700; letter-spacing: .04em; cursor: pointer;
+  }
+  /* [Zzz14-CS:PIN] ciel sa ZASKRTAVA (viac miest naraz), az potvrdenie kona - rovnaky slovnik ako
+     vsade inde: stvorcek vybera, zlate je zaskrtnute ([Zzz5-W5:CHECK-GOLD]) */
+  .zzz14cs-pin-pick.is-on { color: #e8c86a; border-color: #e8c86a; font-weight: 700; }
+  .zzz14cs-pin-do {
+    margin-top: 6px; border-top: 1px solid #333; width: 100%;
+    color: #8a8a8a; font-weight: 700; letter-spacing: .05em;
+  }
+  .zzz14cs-pin-do.is-ready { color: #D4AF37; }
   .zzz14cs-pack-caret {
     display: inline-block; width: 14px; text-align: center; color: #e8c86a;
     font-size: 11px; margin-right: 2px;
@@ -11126,7 +11153,10 @@ let zzz1m3ReadLine = {};
 document.addEventListener('DOMContentLoaded', () => { zzz1m3ReadLine = zzz1m3_build_read_line(); });
 // [Zzz14-CS:COMM-SPACE] obrazovka napravo sa postavi raz pri starte (zatvorena) - gesto aj uchop teda
 // funguju od prvej chvile, nie az potom, ako clovek nieco otvori
-document.addEventListener('DOMContentLoaded', () => { zzz14cs_space_build(); zzz14cs_space_render(); });
+document.addEventListener('DOMContentLoaded', () => {
+  zzz14cs_space_build(); zzz14cs_space_render();
+  zzz14cs_select_bar_build();                      // [Zzz14-CS:SELECT-BAR]
+});
 // Zzz1-M4a build - musi bezat AZ PO tom, co zzz1r37_build_editable_cl_row / zzz1m4a_build_cl_clone su
 // definovane (su nizsie v subore, ale su to funkcie - hoisting/definicia pred spustenim staci, DOMContentLoaded
 // sa spusti az po plnom naparsovani <script>, takze poradie definicie v subore tu nie je problem).
@@ -11870,6 +11900,8 @@ function zzz6f29_set_select_mode(on) {
   const btn = document.getElementById('versoAutomateButton');
   if (btn) btn.classList.toggle('zzz6f29-armed', on);
   if (!on) zzz6f29_reset_selection();
+  // [Zzz14-CS:SELECT-BAR] rezim musi byt VIDNO, nie len tusit podla ramu tlacidla v rohu
+  if (typeof zzz14cs_select_bar_paint === 'function') zzz14cs_select_bar_paint();
 }
 
 // UPLNY reset (CL, EL AJ TAB) - pouzity pri disarm (Select tlacidlo vypnute) alebo po dokonceni akcie (COPY/DELETE)
@@ -12043,6 +12075,7 @@ function zzz6f29_select_all_in_utility() {
   zzz6f29SelectMode = true;
   const armBtn = document.getElementById('versoAutomateButton');
   if (armBtn) armBtn.classList.add('zzz6f29-armed');
+  if (typeof zzz14cs_select_bar_paint === 'function') zzz14cs_select_bar_paint();   // [Zzz14-CS:SELECT-BAR]
 
   const isSelected = (el) => zzz6f29_selection.el.type === 'rows'
     && zzz6f29_selection.el.rows.some(r => r.row.entry_id === el.zzzRowData.entry_id);
@@ -12057,6 +12090,68 @@ function zzz6f29_select_all_in_utility() {
   zzz6f2_show_toast(`SELECT ALL: ${rowEls.length} entries selected.`);
 }
 // === [/Zzz6-F29:SELECT-ALL] ===
+
+// === [Zzz14-CS:SELECT-BAR] (SYSTEM FUNCTION) REZIM VYBERU O SEBE DA VEDIET ====================
+// Vrso 2026-10-17 (15:03): "mozno na select 1-2s podrz nahradit 2-layout select button... navrhni
+// komplexne riesenie vsade." (15:46) "ano."
+//
+// CO UZ EXISTOVALO: rezim vyberu (zzz6f29SelectMode) je v appke od augusta a robi presne to, co treba
+// - v nom tuk na ENTRY NUMBER oznaci CELY riadok, tuk na inu bunku oznaci tu bunku a bezne akcie sa
+// potlacia. Nechybala teda funkcia, chybalo DVOJE:
+//   (1) rezim o sebe nedal vediet. Jediny priznak bol fialovy ram tlacidla SELECT hore v rohu, takze
+//       clovek, ktory tukol a nic sa "neotvorilo", nevedel, ci je v rezime, alebo je appka pokazena.
+//   (2) to iste oznacovanie sa dalo spravit aj PODRZANIM bunky ENTRY NUMBER (1,2 s riadok, 3 s vsetko)
+//       - druha cesta k tej istej veci, a navyse prave tam, kde teraz zije podrzanie "kam s tym".
+//       Vrso: "1-2s podrz en bunku ju selektuje inde, cize aj to sa bije."
+// Pas teda hovori, ze rezim bezi, kolko je oznacenych a ako sa z neho vyjde; podrzania na bunke su
+// zrusene a ich praca (SELECT ALL) je v pase ako TLACIDLO - dlzka stlacenia nie je ovladaci prvok.
+function zzz14cs_select_count() {
+  const sel = zzz6f29_selection;
+  return (sel.el.rows || []).length + (sel.el.cells || []).length
+       + (sel.cl.cells || []).length + (sel.cl.type === 'cl-row' ? 1 : 0);
+}
+function zzz14cs_select_bar_paint() {
+  const bar = document.getElementById('zzz14csSelectBar');
+  if (!bar) return;
+  bar.classList.toggle('is-on', !!zzz6f29SelectMode);
+  const n = zzz14cs_select_count();
+  const txt = bar.querySelector('.zzz14cs-selbar-txt');
+  if (txt) txt.textContent = n
+    ? `SELECT MODE - ${n} selected`
+    : 'SELECT MODE - tap a row or a cell to select it';
+}
+function zzz14cs_select_bar_build() {
+  if (document.getElementById('zzz14csSelectBar')) return;
+  const bar = document.createElement('div');
+  bar.id = 'zzz14csSelectBar';
+  bar.className = 'zzz14cs-selbar';
+  const txt = document.createElement('span');
+  txt.className = 'zzz14cs-selbar-txt';
+  bar.appendChild(txt);
+  const tlacidlo = (label, title, fn) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'zzz14cs-selbar-btn';
+    b.textContent = label;
+    b.title = title;
+    b.addEventListener('click', (e) => { e.stopPropagation(); fn(); zzz14cs_select_bar_paint(); });
+    bar.appendChild(b);
+  };
+  // SELECT ALL bolo doteraz 3s podrzanie na bunke aj na tlacidle SELECT - v rezime je to bezna akcia,
+  // takze bezne tlacidlo. Podrzanie na SELECT tlacidle ostava pre toho, kto si nan zvykol.
+  tlacidlo('ALL', 'Select everything in this list', () => zzz6f29_select_all_in_utility());
+  tlacidlo('NONE', 'Clear the selection', () => zzz6f29_reset_selection());
+  tlacidlo('DONE', 'Leave select mode', () => zzz6f29_set_select_mode(false));
+  document.body.appendChild(bar);
+  // vyber sa meni tukmi po celej stranke - pas sa prekresli po kazdom z nich, nie pri kazdej
+  // jednotlivej funkcii vyberu (tych je sedem a jedna by sa raz zabudla)
+  document.addEventListener('click', () => {
+    if (!zzz6f29SelectMode) return;
+    setTimeout(zzz14cs_select_bar_paint, 0);
+  }, true);
+  zzz14cs_select_bar_paint();
+}
+// === [/Zzz14-CS:SELECT-BAR] ===
 
 (function bindZzz6F29SelectButton() {
   const btn = document.getElementById('versoAutomateButton'); // Zzz2-R3 "Select" (Vrso premenuje label sam)
@@ -28624,14 +28719,14 @@ function zzz5w5cm_build_invites() {
     // ako vsade inde v appke: KRATKY TUK KONA to zrejme (suhlas), PODRZANIE pridava volbu (kam s nim).
     // Okno sa neduplikuje - otvara sa to iste zzz5w5cm_open_pair_window so sekciami COMM SPACE /
     // ACTUAL COMMUNICATION / OTHER, ktore uz existuje; kopia z neho zaznam v parovani NECHAVA.
-    btn.title += ' | hold 1-2s = consent and pick where to copy it';
+    btn.title += ' | hold 1-2s = consent and pick where to pin it';
     const poSuhlase = async (ajKopia) => {
       await zzz5w5cm_invite_accept(inv);
       if (!ajKopia) return;
       const row = (zzz5w5cmPairing.rows || []).find(r => String(r.entry_id) === String(inv.entry_id));
       if (!row) {
         // suhlas presiel, ale zaznam sa este nenacital - kopirovat naslepo by znamenalo hadat, co sa kopiruje
-        zzz6f2_show_toast('Consent is in. The record is still loading - open it from the list to copy it.', 'warn');
+        zzz6f2_show_toast('Consent is in. The record is still loading - open it from the list to pin it.', 'warn');
         return;
       }
       zzz_haptic_pulse(20);
@@ -28945,6 +29040,101 @@ function zzz14cs_pair_payload(row) {
     fields
   };
 }
+// === [Zzz14-CS:PIN] JEDNO miesto pre "kam este tento zaznam patri" =============================
+// Vrso 2026-10-17 (15:18): "blbo sa mi to vola copy aj move, lebo je to iba dodatocne umiestnenie,
+// tak navrhni nazov... a hlavne by sa malo dat ulozit do viacerych tabov/UI." A k nazvu (po vybere):
+// "pin - asi iba (potom ako pinned oznam, takto bude jasne, ze ide o umiestnenie na viac
+// potencionalnych miest)... napr. nastenka je tak a je spendlik a nie nastennik."
+//
+// PRECO NIE COPY ANI MOVE: ani jedno sa nedeje. Zaznam je stale JEDEN a nikam sa nesťahuje - len
+// pribuda riadok vo verso_placements, teda dalsie miesto, kde na neho vidno ([Zzz5-W5:ATTACH-AS-
+// PLACEMENT]). "Copy" by slubovalo druhy zaznam a "move" by slubovalo, ze z povodneho miesta zmizne;
+// obe by boli nepravdy, ktore by sa raz niekomu vypomstili. PIN hovori presne to, co sa deje:
+// pripichnem ten isty papier na dalsiu nastenku.
+//
+// VIAC MIEST NARAZ: ciele su zaskrtavacie a potvrdzuju sa JEDNYM tlacidlom. Doteraz kazdy ciel okno
+// hned zavrel, takze tri miesta znamenali tri otvorenia toho isteho okna.
+//
+// JEDNA FUNKCIA PRE OBE OKNA: okno jedneho riadku aj hromadne okno vyberu stavaju tuto istu sekciu.
+// Dve kopie tej istej prace sa raz rozidu a clovek sa v druhom okne uci nanovo.
+function zzz14cs_build_pin_section(win, rows, closeWin) {
+  const vybrane = {};          // key -> label
+  const sekcia = (text, podnadpis) => {
+    const h = document.createElement('div');
+    h.className = 'zzz14cs-move-sect';
+    h.textContent = text;
+    win.appendChild(h);
+    if (podnadpis) {
+      const p2 = document.createElement('div');
+      p2.className = 'zzz14cs-move-note';
+      p2.textContent = podnadpis;
+      win.appendChild(p2);
+    }
+  };
+  const vela = rows.length > 1;
+  const ciel = (t) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'zzz14cs-pin-pick';
+    const paint = () => {
+      b.textContent = (vybrane[t.key] ? '\u2611 ' : '\u2610 ') + t.label.toUpperCase();
+      b.classList.toggle('is-on', !!vybrane[t.key]);
+    };
+    paint();
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (vybrane[t.key]) delete vybrane[t.key]; else vybrane[t.key] = t.label.toUpperCase();
+      paint();
+      paintPin();
+    });
+    win.appendChild(b);
+    return paint;
+  };
+  sekcia('PIN', vela
+    ? `Pin these ${rows.length} entry lines to one or more places. They stay where they are.`
+    : 'Pin this record to one or more places. It stays where it is.');
+  sekcia('COMM SPACE', 'The comm CRM on the screen to the right.');
+  ciel({ key: ZZZ14CS_SPACE_KEY, label: 'COMM SPACE' });
+  sekcia('ACTUAL COMMUNICATION', 'Tabs of the actual comm module.');
+  ZZZ5W5CM_CONTACT_TABS.forEach(ciel);
+  // [Zzz14-CS:OTHER-PLACE] miesto si Vrso pytal, takze tu je - ale NEPREDSTIERA, ze uz nieco robi.
+  // Tlacidlo, ktore mlci, je to iste ako ticho ([Zzz5-W5:SAY-WHAT-TO-DO]), preto povie, co mu chyba.
+  sekcia('OTHER', 'Your own project or tab - the place is reserved, the target is not set yet.');
+  const other = document.createElement('button');
+  other.type = 'button';
+  other.textContent = 'MY PROJECT / TAB';
+  other.title = 'No target yet - say which project or tab this should pin into';
+  other.addEventListener('click', () => {
+    closeWin();
+    zzz6f2_show_toast('OTHER has no target yet - say which project or tab it should pin into '
+      + 'and it starts working like the rest.', 'warn');
+  });
+  win.appendChild(other);
+
+  const pin = document.createElement('button');
+  pin.type = 'button';
+  pin.className = 'zzz14cs-pin-do';
+  const paintPin = () => {
+    const n = Object.keys(vybrane).length;
+    pin.textContent = n ? `PIN TO ${n} PLACE${n > 1 ? 'S' : ''}` : 'PIN';
+    pin.classList.toggle('is-ready', !!n);
+  };
+  paintPin();
+  pin.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const kluce = Object.keys(vybrane);
+    if (!kluce.length) { zzz6f2_show_toast('Tick where it should be pinned first.', 'warn'); return; }
+    kluce.forEach(k => rows.forEach(r => zzz5w5cm_attach_to_tab(k, zzz14cs_pair_payload(r))));
+    const kam = kluce.map(k => vybrane[k]).join(', ');
+    closeWin();
+    zzz6f2_show_toast(vela
+      ? `${rows.length} entry line(s) pinned in ${kam}.`
+      : `#${rows[0].entry_id} pinned in ${kam}.`, 'ok');
+    if (zzz5w5cm_is_open()) zzz5w5cm_render();
+  });
+  win.appendChild(pin);
+}
+
 function zzz5w5cm_open_pair_window(anchorEl, row) {
   document.querySelectorAll('.zzz5t0-tab-window').forEach(m => m.remove());
   const win = document.createElement('div');
@@ -28992,47 +29182,8 @@ function zzz5w5cm_open_pair_window(anchorEl, row) {
     b.addEventListener('click', () => { win.remove(); zzz5w5cm_set_pairing_state(row, t.key); });
     win.appendChild(b);
   });
-  // === [Zzz14-CS:PAIR-COPY] Vrso 2026-10-16 (12:55): "treba doriesit nejako jednoduchsie a jasnejsie
-  // kopiu (pretoze hlavny presun z pairing do ostatnych pairing tabov ide automaticky)."
-  // Odkedy presun MEDZI pairing tabmi riadi suhlas ([Zzz5-W5:CONSENT-DECIDES]), jedina rucna praca,
-  // ktora v parovani ostala, je KOPIA do actual tabov - a tá sa doteraz robila oklukou cez prepnutie
-  // modulu a hladanie toho isteho riadku v inom zozname. Teraz je to jeden tuk z toho istého okna.
-  // KOPIA, NIE PRESUN: zaznam v parovani OSTAVA (jeho tab urcuje suhlas, nie ja) - preto je to pod
-  // vlastnym nadpisom a oddelene ciarou, aby sa to nepoplietlo s vyberom vyssie.
-  // [Zzz14-CS:MOVE-SECTIONS] kopia sa deli podla toho, KAM ide - comm space je vlastna obrazovka,
-  // actual communication su taby modulu. Boli v jednom zozname, takze vyzerali ako jedna vec.
-  const kopiruj = (t) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = t.label.toUpperCase();
-    b.addEventListener('click', () => {
-      win.remove();
-      zzz5w5cm_attach_to_tab(t.key, zzz14cs_pair_payload(row));
-      zzz6f2_show_toast(`#${row.entry_id} copied to ${t.label}.`, 'ok');
-      if (zzz5w5cm_is_open()) zzz5w5cm_render();
-    });
-    win.appendChild(b);
-  };
-  sekcia('COMM SPACE', 'The comm CRM on the screen to the right. Copy - it stays in pairing.');
-  kopiruj({ key: ZZZ14CS_SPACE_KEY, label: 'COMM SPACE' });
-  sekcia('ACTUAL COMMUNICATION', 'Tabs of the actual comm module. Copy - it stays in pairing.');
-  ZZZ5W5CM_CONTACT_TABS.forEach(kopiruj);
-  // === [Zzz14-CS:OTHER-PLACE] Vrso 2026-10-17 (02:53): "len tam vytvor moznost, zatial kludne iba ako
-  // text/button (pripadne aj ako alternativna cesta)."
-  // Miesto si pytal on, takze tu je - ale NEPREDSTIERA, ze uz nieco robi. Tlacidlo, ktore mlci, je to
-  // iste ako ticho ([Zzz5-W5:SAY-WHAT-TO-DO]), preto povie, co mu chyba: ciel. Az ho dostane, zmeni sa
-  // na bezny riadok ako ostatné a tato poznamka zmizne.
-  sekcia('OTHER', 'Your own project or tab - the place is reserved, the target is not set yet.');
-  const other = document.createElement('button');
-  other.type = 'button';
-  other.textContent = 'MY PROJECT / TAB';
-  other.title = 'No target yet - say which project or tab this should copy into';
-  other.addEventListener('click', () => {
-    win.remove();
-    zzz6f2_show_toast('OTHER has no target yet - say which project or tab it should copy into '
-      + 'and it starts working like the rest.', 'warn');
-  });
-  win.appendChild(other);
+  // [Zzz14-CS:PIN] dalsie miesta zaznamu - spolocna sekcia pre obe okna
+  zzz14cs_build_pin_section(win, [row], () => win.remove());
   document.body.appendChild(win);
   const rect = anchorEl.getBoundingClientRect();
   const h = win.offsetHeight;
@@ -29976,7 +30127,7 @@ function zzz5w5cm_open_move_to(anchorEl) {
   win.className = 'zzz5t0-tab-window';
   const title = document.createElement('div');
   title.style.cssText = 'font-size:9px;color:#999;padding:2px 4px 6px;';
-  title.textContent = `MOVE TO (${rows.length}) - where to?`;
+  title.textContent = `${rows.length} selected - where to?`;
   win.appendChild(title);
   const pairHead = document.createElement('div');
   pairHead.className = 'zzz14cs-move-sect';
@@ -29989,53 +30140,8 @@ function zzz5w5cm_open_move_to(anchorEl) {
     b.addEventListener('click', () => { win.remove(); zzz5w5cm_move_pair_rows(rows, t.key); });
     win.appendChild(b);
   });
-  // === [Zzz14-CS:COPY-MANY] Vrso 2026-10-16 (03:14): "presun by mal byt jednoduchsi, idealne aj moznost
-  // selektovania viacej naraz a presunu."
-  // Oznacit viac riadkov sa dalo uz davno (podrzanie ENTRY NUMBER) a MOVE TO aj ATTACH TO CONTACTS s
-  // celym vyberom pracuju. Len KOPIA do actual tabov ju nemala - a odkedy presun medzi pairing tabmi
-  // riadi suhlas ([Zzz5-W5:CONSENT-DECIDES]), je kopia uz takmer jedina rucna praca, ktora tu zostala.
-  // Preto stoji v tom istom okne, nad tym istym vyberom, a pod vlastnym nadpisom: zaznamy sa NEPRESUVAJU,
-  // zostavaju tam, kde su.
-  // [Zzz14-CS:MOVE-SECTIONS] rovnake delenie ako v okne jedneho riadku - dve okna tej istej prace
-  // musia vyzerat rovnako, inak sa clovek v jednom z nich uci nanovo
-  const sekcia2 = (text, podnadpis) => {
-    const h = document.createElement('div');
-    h.className = 'zzz14cs-move-sect';
-    h.textContent = text;
-    win.appendChild(h);
-    const p2 = document.createElement('div');
-    p2.className = 'zzz14cs-move-note';
-    p2.textContent = podnadpis;
-    win.appendChild(p2);
-  };
-  const kopiruj2 = (t) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = t.label.toUpperCase();
-    b.addEventListener('click', () => {
-      win.remove();
-      rows.forEach(r => zzz5w5cm_attach_to_tab(t.key, zzz14cs_pair_payload(r)));
-      zzz6f2_show_toast(`${rows.length} entry line(s) copied to ${t.label}.`, 'ok');
-      if (zzz5w5cm_is_open()) zzz5w5cm_render();
-    });
-    win.appendChild(b);
-  };
-  sekcia2('COMM SPACE', `Copy (${rows.length}) - they stay where they are.`);
-  kopiruj2({ key: ZZZ14CS_SPACE_KEY, label: 'COMM SPACE' });
-  sekcia2('ACTUAL COMMUNICATION', `Copy (${rows.length}) into the tabs of the actual comm module.`);
-  ZZZ5W5CM_CONTACT_TABS.forEach(kopiruj2);
-  // [Zzz14-CS:OTHER-PLACE] to iste miesto aj v hromadnom okne - dve okna tej istej prace
-  sekcia2('OTHER', 'Your own project or tab - the place is reserved, the target is not set yet.');
-  const other2 = document.createElement('button');
-  other2.type = 'button';
-  other2.textContent = 'MY PROJECT / TAB';
-  other2.title = 'No target yet - say which project or tab this should copy into';
-  other2.addEventListener('click', () => {
-    win.remove();
-    zzz6f2_show_toast('OTHER has no target yet - say which project or tab it should copy into '
-      + 'and it starts working like the rest.', 'warn');
-  });
-  win.appendChild(other2);
+  // [Zzz14-CS:PIN] tie iste ciele nad celym vyberom - jedna funkcia, dve okna
+  zzz14cs_build_pin_section(win, rows, () => win.remove());
   document.body.appendChild(win);
   const rect = anchorEl.getBoundingClientRect();
   const h = win.offsetHeight;
@@ -34829,7 +34935,19 @@ document.addEventListener('pointerdown', (e) => {
   // hlavnej CL (.numbers-row) a na riadkoch Database Workspace - to je to "hociaku cl/el".
   const riadok = t.closest(ZZZ14CS_DRAG_ROW_SELECTOR);
   if (riadok && !t.closest('button, input, textarea, select, a, [contenteditable]')) {
+    // === [Zzz14-CS:DRAG-3S] Vrso 2026-10-17 (15:46): "no a to sa nebude bit, ked jedno cez pin menu
+    // a druhe manualne rukou? Mozno proste lepsie len ten presun rukou robit ako 3s funkcia, ale na
+    // celej cl/el? Cize ako vyhradena funkcia iba na to."
+    // Mal pravdu. Tah sa predtym zapinal po 350 ms a tahu doprava, takze zdielal zaciatok s kazdym
+    // inym podrzanim na riadku a clovek musel trafit spravnu dlzku. Teraz je to VYHRADENE gesto na
+    // celom riadku: prst stoji TRI SEKUNDY, zaznam sa zdvihne (zavibruje a objavi sa pri prste) a az
+    // potom ho nesie. Je to to iste cislo ako pri tahu z volneho miesta okna - jedno gesto, jedna
+    // dlzka, nic ine sa tak dlho nedrzi.
     zzz14csDragFrom = { x: e.clientX, y: e.clientY, cas: Date.now(), riadok };
+    zzz14csDragTimer = setTimeout(() => {
+      zzz14csDragFrom = null;
+      zzz14cs_drag_start_row(riadok, e.clientX, e.clientY);
+    }, ZZZ14CS_DRAG_MS);
     return;
   }
   // VYLUCNE volne miesto: nic, co uz ma vlastnu akciu alebo vlastne podrzanie
@@ -34850,22 +34968,9 @@ document.addEventListener('pointermove', (e) => {
   const dy = Math.abs(e.clientY - zzz14csDragFrom.y);
   // [Zzz14-CS:DRAG-ROW] z riadku: chvilu drzat, potom tah VPRAVO - zvisly pohyb je rolovanie
   if (zzz14csDragFrom.riadok) {
-    // [Zzz14-CS:DRAG-ANY-ROW] gesto je PODRZ A POTOM TIAHNI, nie "tiahni dost dlho". Rozdiel je
-    // podstatny prave na riadkoch Database Workspace: tie sa posuvaju do stran, takze vodorovny tah
-    // od prveho okamihu je ROLOVANIE tabulky. Ked ale prst 350 ms nehne, prehliadac este ziadne
-    // rolovanie nezacal - a az vtedy sa tah berie ako nesenie zaznamu.
-    const zrelo = Date.now() - zzz14csDragFrom.cas > 350;
-    if (!zrelo) {
-      if (Math.abs(dx) > 10 || dy > 10) zzz14csDragFrom = null;   // pohol sa hned - roluje
-      return;
-    }
-    if (dx > 24 && dy < 25) {
-      const r = zzz14csDragFrom.riadok;
-      zzz14csDragFrom = null;
-      zzz14cs_drag_start_row(r, e.clientX, e.clientY);
-    } else if (dy > 25) {
-      zzz14csDragFrom = null;     // rolovanie - gesto sa nezapne
-    }
+    // [Zzz14-CS:DRAG-3S] kym sa zaznam nezdvihol, je kazdy pohyb rolovanie - gesto sa zrusi.
+    // Riadky Database Workspace sa posuvaju aj do stran, takze to plati v oboch smeroch.
+    if (Math.abs(dx) > 12 || dy > 12) zzz14cs_drag_cancel();
     return;
   }
   // pohyb PRED naplnenim casu gesto rusi - inak by ho zaplo bezne rolovanie
@@ -37426,7 +37531,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-17 15:30';
+const ZZZ5_6_BUILD = '2026-10-17 16:20';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -43135,15 +43240,18 @@ function zzz6f29_hold_select_all(rowEl) {
     if (held >= 3000) zzz6f29_hold_select_all(rowEl);
     else { zzz6f29_hold_select_row(rowEl); zzz_haptic_pulse(20); }
   };
-  // [Zzz14-CS:DRAG-ANY-ROW] podrzanie vyberu sa vyhodnocuje az PRI PUSTENI a nepozera sa, ci sa prst
-  // medzitym hol - takze tah zaznamu do comm space by na konci spustil este aj vyber riadku. Tah to
-  // tu ohlasi a toto konkretne podrzanie sa zahodi: jeden prst, jedno gesto, jeden vysledok.
+  // === [Zzz14-CS:SELECT-BAR] PODRZANIA NA BUNKE ENTRY NUMBER SU ZRUSENE (17. 10.) ==============
+  // Vrso: "1-2s podrz en bunku ju selektuje inde, cize aj to sa bije... navrhni komplexne riesenie
+  // vsade." Oznacovanie sa dalo spravit DVOMA cestami - rezimom SELECT (tuk) aj podrzanim bunky
+  // (1,2 s riadok, 3 s vsetko) - a prave tie podrzania stali v ceste gestu "kam s tym". Dve cesty
+  // k jednej veci sa aj tak raz rozidu, takze ostava tá, ktora o sebe da vediet: rezim SELECT
+  // s pasom. SELECT ALL je v nom TLACIDLO, nie dlzka stlacenia.
+  // Funkcie vyberu (zzz6f29_hold_select_row / _select_all) ZOSTAVAJU - vola ich pas aj tlacidlo
+  // SELECT; zrusene su len tieto vazby na dotyk bunky. 'start' a 'end' su tu nechane zamerne:
+  // su to jedine miesta, kde je popisany cely vzor tiered-hold nad bunkou, a vysvetluju, PRECO
+  // uz nie su naviazane.
   window.zzz6f29_hold_cancel = () => { heldCell = null; startedAt = 0; };
-  document.addEventListener('touchstart', start, { passive: true, capture: true });
-  document.addEventListener('mousedown', start, true);
-  document.addEventListener('touchend', end, true);
-  document.addEventListener('touchcancel', end, true);
-  document.addEventListener('mouseup', end, true);
+  void start; void end;
   document.addEventListener('click', (e) => {
     if (!zzz6f29HoldSwallowClick) return;
     if (!(e.target.closest && e.target.closest(ZZZ6F29_HOLD_CELL_SELECTOR))) return;
@@ -45417,7 +45525,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-38 2026-10-17'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-40 2026-10-17'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
