@@ -10056,6 +10056,9 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
   /* [Zzz14-CS:PICK-CHECKBOX] Vrso 2026-10-17 (02:23): "kludne mozme nechat aj tieto checkboxy, asi
      viditelnejsie." Stvorcek mal velkost bezneho "+" v stlpci, takze v riadku zanikal - teraz je vacsi
      a zaskrtnuty je ZLATY, rovnako ako vsetko zaskrtnute v appke ([Zzz5-W5:CHECK-GOLD]). */
+  /* [Zzz14-CS:PICK-THEN-ADD] oznaceny clovek v Known/Unknown - zlata ako vsetko zaskrtnute */
+  .zzz5w5cm-dir-hit.is-picked { color: #e8c86a; border-color: #e8c86a; font-weight: 700; }
+  .zzz14cs-addcontacts { margin-top: 6px; }
   /* [Zzz14-CS:PACK-OPEN] sipka rozbali balik/skupinu/tim na jednotlivych ludi */
   /* [Zzz14-CS:MOVE-SECTIONS] nadpisy sekcii v okne presunu/kopie - rovnaky tvar ako sekcie v MEMBERS */
   .zzz14cs-move-sect {
@@ -27568,6 +27571,8 @@ let zzz5w5cmModuleOpen = true;
 // sirkou workspacu) do contacts window (to sa ma otvorit stlacenim contacts button)" - druhy, rovnako
 // postaveny modul; jeho taby su Groups/Users/Projects (+ vlastne pridane z radov v bloku).
 let zzz5w5cmContactsWinOpen = false;
+// [Zzz14-CS:PICK-THEN-ADD] koho mam OZNACENEHO v Known/Unknown - vyber patri TOMU otvoreniu
+let zzz14csPeoplePicked = {};
 let zzz5w5cmContactsWinTab = ZZZ5W5CM_USERS_ID;
 // M4a2 je JEDEN fyzicky element - drzi ho vzdy prave jeden modul; klik na tab (alebo na slot) si ho vypyta.
 let zzz5w5cmM4aOwner = 'module'; // 'module' | 'contactswin'
@@ -31024,6 +31029,31 @@ function zzz5w5cm_build_cw_people(tab) {
   const meN = () => zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
   const have = (n) => zzz5w5cmMyContacts.some(c => zzz10v1_normalize(c.name) === n);
 
+  // === [Zzz14-CS:PICK-THEN-ADD] Vrso 2026-10-17 (02:44): "verso3 som klikol (vlavo checkbox) a nahodil
+  // sa hned do users... je to sice rychle, ale matuce. Myslim, ze lepsie by bolo dat add to contacts
+  // button (1 tuk pridat automaticky podla user/group, alebo ak som ukladal tim)."
+  // Tuk na mene ZAPISOVAL kontakt okamzite - jedno nechcene tuknutie a clovek ma v kontaktoch niekoho,
+  // koho si len prezeral. A hlavne: tuk nikde inde v appke nic nezapisuje, tuk OZNACUJE. Tu teda tiez:
+  // tuk zaskrtne, zapise az ADD TO CONTACTS - jedno tlacidlo, jedno rozhodnutie, a zaradenie (podla
+  // zaznamu alebo skupiny, odkial clovek je) si appka doplni sama, ako doteraz.
+  const pridaj = document.createElement('button');
+  pridaj.type = 'button';
+  pridaj.className = 'zzz5w5cm-added-foot-btn is-add zzz14cs-addcontacts';
+  const paintPridaj = () => {
+    const n = Object.keys(zzz14csPeoplePicked).length;
+    pridaj.textContent = n ? `ADD ${n} TO CONTACTS` : 'ADD TO CONTACTS';
+    pridaj.classList.toggle('is-ready', !!n);
+  };
+  pridaj.addEventListener('click', async () => {
+    const vybrane = Object.keys(zzz14csPeoplePicked).map(k => zzz14csPeoplePicked[k]);
+    if (!vybrane.length) { zzz6f2_show_toast('Tap the names you want first.', 'warn'); return; }
+    let ok = 0;
+    for (const v of vybrane) { if (await zzz5w5cm_add_my_contact(v.name, v.origin)) ok += 1; }
+    zzz14csPeoplePicked = {};
+    zzz6f2_show_toast(`${ok} of ${vybrane.length} added to your contacts.`, 'ok');
+    paint();
+  });
+
   // meno, ktore MAM pridat = tlacidlo s "+"; uz pridane sa len oznaci fajkou a nic nerobi
   // [Zzz5-W5:USERS-ARE-PEOPLE] Vrso: "iba manualne (tvojim tuknutim, ale vraj to ide aj 3s podrzanim,
   // ak je username mentioned)" - obe gesta robia to iste a su tu obe, lebo si to druhe pamata.
@@ -31036,16 +31066,30 @@ function zzz5w5cm_build_cw_people(tab) {
     b.textContent = me ? name : (mine ? '✓ ' : '+ ') + name;
     b.title = me ? 'That is you' : mine ? 'Already in your contacts'
       : `Add ${name} to your contacts - tap, or hold 3s`;
-    const add = async () => {
-      // [Zzz5-W5:MENTION-INSERT] ked je pred kurzorom @ alebo &, tuk je ODPOVED na to - nie pridanie
-      if (zzz5w5cm_mention_insert(name)) return;
-      if (me || mine) return;
-      if (await zzz5w5cm_add_my_contact(name, origin)) paint();
-    };
-    b.addEventListener('click', add);
+    // [Zzz14-CS:PICK-THEN-ADD] tuk OZNACUJE, zapisuje az ADD TO CONTACTS
     if (!me && !mine) {
+      const on = () => !!zzz14csPeoplePicked[n];
+      const paintHit = () => {
+        b.textContent = (on() ? '\u2611 ' : '\u2610 ') + name;
+        b.classList.toggle('is-picked', on());
+      };
+      paintHit();
+      b.title = `Tap to pick ${name} - ADD TO CONTACTS below writes the picked ones`;
+      b.addEventListener('click', () => {
+        // [Zzz5-W5:MENTION-INSERT] ked je pred kurzorom @ alebo &, tuk je ODPOVED na to - nie oznacenie
+        if (zzz5w5cm_mention_insert(name)) return;
+        if (on()) delete zzz14csPeoplePicked[n];
+        else zzz14csPeoplePicked[n] = { name, origin };
+        paintHit();
+        paintPridaj();
+      });
+      // podrzanie 3s ostava skratkou pre jedno meno - kto ho pozna, nemusi chodit cez tlacidlo
       zzz_bind_hold_selection_guard(b);
-      zzz5w7_bind_tiered_hold(b, [{ ms: 3000, fn: add }]);
+      zzz5w7_bind_tiered_hold(b, [{ ms: 3000, fn: async () => {
+        if (await zzz5w5cm_add_my_contact(name, origin)) { delete zzz14csPeoplePicked[n]; paint(); }
+      } }]);
+    } else {
+      b.addEventListener('click', () => { zzz5w5cm_mention_insert(name); });
     }
     list.appendChild(b);
   };
@@ -31501,6 +31545,8 @@ function zzz5w5cm_build_cw_people(tab) {
   };
 
   paint();
+  // [Zzz14-CS:PICK-THEN-ADD] tlacidlo patri tam, kde sa z ponuky pridava: Known a Unknown
+  if (tab.people === 'known' || tab.people === 'unknown') { paintPridaj(); box.appendChild(pridaj); }
   // === [Zzz5-W5:LOAD-ONCE] dotahuje sa na pozadie; tab je pouzitelny hned a prekresli sa, az ked pride
   // odpoved. POZOR na podmienku: "Ok === null" znamena "este sa nepodarilo nacitat" - a ked sa to
   // NEPODARI nikdy (neprihlaseny, chyba, odpoved, ktora priznak nenastavi), ostane null, takze kazdy
@@ -31862,6 +31908,7 @@ function zzz5w5cm_cw_use_candidates() {
 
 function zzz5w5cm_cw_close() {
   zzz5w5cmCwLoaded = false;   // [Zzz5-W5:CW-LOAD-ONCE] nove otvorenie sa opyta znova
+  zzz14csPeoplePicked = {};   // [Zzz14-CS:PICK-THEN-ADD] vyber patri tomu otvoreniu, nie dalsej praci
   zzz5w5cmContactsWinOpen = false;
   zzz5w5cmCwSelected = {};
   zzz5w5cmM4aOwner = 'module';
@@ -37204,7 +37251,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-17 04:30';
+const ZZZ5_6_BUILD = '2026-10-17 04:50';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -45191,7 +45238,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-31 2026-10-17'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-32 2026-10-17'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
