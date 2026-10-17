@@ -1469,6 +1469,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     min-width: 0;
     box-sizing: border-box;
   }
+  /* [Zzz6-F48:SAME-CELL-IN-MINI] bunka s vlastnym oknom: vyzera ako pole, tuk otvori okno bunky v CL */
+  .zzz6f48-mini-row-value-input.zzz6f48-mini-row-cellbtn {
+    text-align: left; cursor: pointer; border-color: #D4AF37;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: inherit;
+  }
+  .zzz6f48-mini-row-cellbtn.is-empty { color: #999; }
+  .zzz6f48-mini-row-cellbtn.is-readonly { background-color: #e8e8e8; color: #666; border-color: #bbb; cursor: default; }
   .zzz6f48-mini-empty {
     color: #999;
     font-size: 12px;
@@ -21393,7 +21400,12 @@ function zzz6f14_format_today() {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
+  // [Zzz6-F14:DATE-TIME] Vrso 2026-10-18 (01:41): "entry date ... hlavne zapisat po entry spravny cas".
+  // Datum bez casu nepovedal, v ktorom poradi zaznamy v jeden den vznikli. Tvar "YYYY-MM-DD HH:MM" je
+  // ten isty ako SCHEDULE (R16), triedi sa spravne aj medzi starymi zaznamami, ktore cas nemaju.
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
 }
 
 // zobrazi priradeny datum na Zzz1-R14a buttone a zapise ho do Zzz1-R14 bunky (entryData["14"])
@@ -24129,8 +24141,11 @@ function zzz6f48_close_mini_modal_if_open() {
 // parametra) ostava bezo zmeny. | Vrso -> Claude AI | 2026-09-11 ===
 // [Zzz6-F48:WINDOW-OPEN-MARK] triggerBtn (volitelny) - button, ktoreho okno sa prave otvara, dostane
 // .zzz6f48-window-open (zlaty text) na celu dobu, kym je okno otvorene.
+let zzz6f48MiniObservers = [];   // [Zzz6-F48:SAME-CELL-IN-MINI] pozorovatelia skutocnych buniek, zrusia sa so zatvorenim
 function zzz6f48_open_mini_modal(targetId = 'versoContextWindowStack', triggerBtn = null) {
   zzz6f48_close_mini_modal_if_open(); // defenzivne - najviac jedno MINI okno naraz
+  zzz6f48MiniObservers.forEach(o => { try { o.disconnect(); } catch (e) {} });
+  zzz6f48MiniObservers = [];
   // OPRAVA (Vrso 2026-09-11, "M4a by sa mali dat editovat cl bunky... samozrejme bez moznosti entry do
   // databazy"): tento checklist ma VLASTNE editovatelne inputy (buildRow nizsie), predtym VZDY natvrdo cez
   // entryData/write_to_entry - ked sa otvorilo z M4a (targetId zacina 'versoM4a'), editacia tu by tak
@@ -24186,6 +24201,51 @@ function zzz6f48_open_mini_modal(targetId = 'versoContextWindowStack', triggerBt
     // Editovatelny input s aktualnou hodnotou CL bunky - zmena sa IHNED zapisuje cez write_to_entry (DRY,
     // rovnaky mechanizmus ako priamy zapis do CL bunky, vratane render_entry_cell sync). V M4a mode ide
     // namiesto toho do izolovaneho zzz1m4aFields/zzz1m4a_write_field (viz OPRAVA vyssie).
+    // === [Zzz6-F48:SAME-CELL-IN-MINI] Vrso 2026-10-18 (01:41): "Schedule v cl (aj ked je v ramci mini window)
+    // stale definuje rozsah cl!!! ... ich tam neskopirovala ... ako su, ked ich pridam cez mini window do cl
+    // (vsimni ze tam uz maju ine funkcie, napr. schedule)" + "entry date ma byt vzdy noneditable".
+    // MINI okno ukazovalo KAZDU bunku ako obycajne textove pole - SCHEDULE bez vyberu datumu a casu,
+    // ENTRY DATE prepisovatelny, USER/COMMUNICATION bez vyberu ludi. Bunka v MINI je ale ta ista bunka CL,
+    // len ukazana inde. Preto: bunka, ktora ma v CL vlastne okno (datum, vyber ludi, stitky, subs,
+    // kategoria, prepinac), sa v MINI NEPREPISUJE textom - tuk klikne na SKUTOCNU bunku CL a otvori presne
+    // jej okno (lekcia "Direct element interaction": volat skutocny prvok = identicke spravanie, ziadna
+    // druha kopia logiky). Needitovatelna bunka (ENTRY NUMBER, ENTRY DATE...) je len na citanie.
+    // Obycajne textove bunky ostavaju ako pole - tam je rychly prepis v MINI spravny. ===
+    const realCell = zzz1m4aMode
+      ? (document.querySelector(`#versoM4aCLNumbersRow [data-entry-id="${field.entryId}"]`))
+      : document.getElementById('versoEntryCell' + field.entryId);
+    const ZZZ6F48_SPECIAL_ATTRS = ['data-date-picker', 'data-context-select', 'data-tags-context',
+      'data-subs-context', 'data-category-context', 'data-toggle'];
+    const isReadonly = !!(realCell && realCell.getAttribute('data-readonly') === 'true');
+    const isSpecial = !!(realCell && ZZZ6F48_SPECIAL_ATTRS.some(a => realCell.hasAttribute(a)));
+    if (realCell && (isReadonly || isSpecial)) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'zzz6f48-mini-row-value-input zzz6f48-mini-row-cellbtn' + (isReadonly ? ' is-readonly' : '');
+      const readVal = () => String((zzz1m4aMode ? zzz1m4aFields[field.entryId] : entryData[field.entryId]) || '').trim();
+      const paint = () => {
+        const v = readVal();
+        btn.textContent = v || (isReadonly ? '(set automatically)' : '(prazdne)');
+        btn.classList.toggle('is-empty', !v);
+      };
+      paint();
+      if (isReadonly) {
+        btn.disabled = true;
+        btn.title = 'Set by the system - it cannot be written by hand';
+      } else {
+        btn.title = 'Tap = the same window as this cell in the CL';
+        btn.addEventListener('click', (e) => { e.preventDefault(); realCell.click(); });
+      }
+      // hodnota sa meni v okne bunky - MINI ju ukaze hned, nie az po znovuotvoreni
+      if (typeof MutationObserver === 'function') {
+        const mo = new MutationObserver(paint);
+        mo.observe(realCell, { childList: true, characterData: true, subtree: true, attributes: true });
+        zzz6f48MiniObservers.push(mo);
+      }
+      textWrap.appendChild(btn);
+      row.appendChild(textWrap);
+      return row;
+    }
     const valueInput = document.createElement('input');
     valueInput.type = 'text';
     valueInput.className = 'zzz6f48-mini-row-value-input';
@@ -24231,6 +24291,8 @@ function zzz6f48_open_mini_modal(targetId = 'versoContextWindowStack', triggerBt
 
   function closeModal() {
     removeBox();
+    zzz6f48MiniObservers.forEach(o => { try { o.disconnect(); } catch (e) {} });   // [Zzz6-F48:SAME-CELL-IN-MINI]
+    zzz6f48MiniObservers = [];
     zzz6f48CurrentModalClose = null;
     if (triggerBtn) triggerBtn.classList.remove('zzz6f48-window-open');
     if (zzz6f48CurrentModalButton === triggerBtn) zzz6f48CurrentModalButton = null;
@@ -39074,7 +39136,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-18 01:27';
+const ZZZ5_6_BUILD = '2026-10-18 01:43';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -47104,7 +47166,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-51 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-52 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
