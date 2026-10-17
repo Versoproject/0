@@ -5999,6 +5999,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     font-size: 10px; font-weight: 700; letter-spacing: .05em; cursor: pointer;
   }
   .zzz14cs-closeall:hover { background: rgba(212, 175, 55, .15); }
+  /* [Zzz14-CS:BLOCKED-HERE] zablokovany clen - cervena hovori "tu je zavrete", tuk na znacku otvara */
+  .zzz14cs-blocked-mark {
+    background: #2a1716 !important; color: #e8705f !important; border-color: #c0564a !important;
+    cursor: pointer; font-weight: 700;
+  }
+  .zzz14cs-blocked-mark:hover { background: #3a1d1b !important; }
+  .zzz5w5cm-added-pick.zzz14cs-is-blocked .zzz5w5cm-added-name { opacity: .6; }
   /* [Zzz14-CS:MEMBER-REMOVE] krizik pri clenovi - rovnaky vzor aj farba ako pri kontakte */
   .zzz14cs-member-drop {
     flex: 0 0 auto; width: 20px; height: 20px; line-height: 16px; text-align: center;
@@ -12163,6 +12170,38 @@ function zzz14cs_select_bar_paint() {
     ? `SELECT MODE - ${n} selected`
     : 'SELECT MODE - tap a row or a cell to select it';
 }
+// === [Zzz14-CS:SELECT-ALL-PAGE] Vrso 2026-10-17 (18:00): "ako teraz oznacim vsetky en? Pripadne aspon
+// po nacitanie stranky."
+// ALL v pase oznacilo tri riadky z desiatich. Pricina: zzz6f29_select_all_in_utility si najprv HADA
+// KONTAJNER (posledny dotknuty riadok, inak prvy .db-workspace vo workspace sekcii) a potom berie
+// riadky LEN z neho. Ked ma clovek otvoreny comm workspace a popri nom hlavnu DATABASE WORKSPACE, su
+// to dva rozne kontajnery - a "vsetky" znamenalo "vsetky v tom, ktory som uhadla".
+// Pas pritom nepatri ziadnemu kontajneru, stoji nad celou strankou. Tak aj jeho ALL: VSETKY riadky
+// zaznamov na stranke, bez hadania. Model vyberu ostava ten isty (zzz6f29_toggle_el_row), takze COPY,
+// DELETE aj vsetko ostatne cita presne to, co doteraz. Podrzanie 3 s na tlacidle SELECT si svoje
+// povodne spravanie (jeden kontajner) necha - su to dve rozne otazky, nie dve kopie jednej.
+function zzz14cs_select_all_on_page() {
+  const rowEls = Array.from(document.querySelectorAll('.db-workspace-entry-row'))
+    .filter(el => el.zzzRowData && el.offsetParent !== null);
+  if (!rowEls.length) { zzz6f2_show_toast('Nothing to select - no entry lines on the page.', 'warn'); return; }
+  zzz6f29SelectMode = true;
+  const armBtn = document.getElementById('versoAutomateButton');
+  if (armBtn) armBtn.classList.add('zzz6f29-armed');
+  const jeVybraty = (el) => zzz6f29_selection.el.type === 'rows'
+    && zzz6f29_selection.el.rows.some(r => r.row.entry_id === el.zzzRowData.entry_id);
+  // vsetko uz oznacene -> ALL je prepinac a vyber zrusi; inak doplni, co chyba
+  if (rowEls.every(jeVybraty)) {
+    zzz6f29_reset_el_part();
+    zzz6f2_show_toast(`${rowEls.length} entry line(s) deselected.`);
+    zzz14cs_select_bar_paint();
+    return;
+  }
+  if (zzz6f29_selection.el.type === 'el-cells') zzz6f29_reset_el_part();
+  rowEls.forEach(el => { if (!jeVybraty(el)) zzz6f29_toggle_el_row(el.zzzRowData, el); });
+  zzz6f2_show_toast(`${rowEls.length} entry line(s) selected.`);
+  zzz14cs_select_bar_paint();
+}
+
 function zzz14cs_select_bar_build() {
   if (document.getElementById('zzz14csSelectBar')) return;
   const bar = document.createElement('div');
@@ -12182,7 +12221,7 @@ function zzz14cs_select_bar_build() {
   };
   // SELECT ALL bolo doteraz 3s podrzanie na bunke aj na tlacidle SELECT - v rezime je to bezna akcia,
   // takze bezne tlacidlo. Podrzanie na SELECT tlacidle ostava pre toho, kto si nan zvykol.
-  tlacidlo('ALL', 'Select everything in this list', () => zzz6f29_select_all_in_utility());
+  tlacidlo('ALL', 'Select every entry line on the page', () => zzz14cs_select_all_on_page());
   tlacidlo('NONE', 'Clear the selection', () => zzz6f29_reset_selection());
   tlacidlo('DONE', 'Leave select mode', () => zzz6f29_set_select_mode(false));
   document.body.appendChild(bar);
@@ -15050,11 +15089,18 @@ function zzz1cn_open_comm_setup(host, api) {
   const blockedBtn = document.createElement('button');
   blockedBtn.type = 'button';
   blockedBtn.className = 'zzz1cn-setup-blockedbtn';
-  blockedBtn.textContent = 'BLOCKED USERS';
-  blockedBtn.title = 'Everyone you have blocked, across all your records - and where to unblock them';
+  // [Zzz14-CS:BLOCKED-HERE] setup patri JEDNEMU zaznamu, takze aj tlacidlo hovori o nom: pocet je
+  // pocet zablokovanych TU a zoznam sa otvara zuzeny. Celkovy pohlad je z neho na jeden tuk.
+  const tuKluc = (api && typeof api.key === 'function') ? String(api.key() || '') : '';
+  const tuCislo = (tuKluc.match(/\d+/) || [''])[0];
+  const tuPocet = tuCislo ? (((zzz5w5cmBlocks || {})[tuCislo] || []).length) : 0;
+  blockedBtn.textContent = tuPocet ? `BLOCKED USERS (${tuPocet})` : 'BLOCKED USERS';
+  blockedBtn.title = tuCislo
+    ? `Who is blocked on #${tuCislo} - and one tap to unblock them here`
+    : 'Everyone you have blocked, across all your records - and where to unblock them';
   blockedBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (typeof zzz5w5cm_open_my_blocked === 'function') zzz5w5cm_open_my_blocked(blockedBtn);
+    if (typeof zzz5w5cm_open_my_blocked === 'function') zzz5w5cm_open_my_blocked(blockedBtn, tuCislo);
   });
   head.appendChild(blockedBtn);
   head.appendChild(x);
@@ -29959,7 +30005,17 @@ function zzz5w5cm_pair_selected_items() {
 // a kto nevedel, kde hladat, nevedel ani, koho vlastne blokuje. Toto je jedno miesto so VSETKYMI mojimi
 // blokmi naprieč zaznamami a s odblokovanim priamo v nom. Nic nove sa neuklada: je to pohlad na tie iste
 // riadky, zoradeny podla cloveka, nie podla zaznamu.
-function zzz5w5cm_open_my_blocked(anchorEl) {
+// === [Zzz14-CS:BLOCKED-HERE] Vrso 2026-10-17 (17:51): "mne sa zda, ze si spominala, ze blocked musia
+// byt v ramci danej el, najma v blocked tabe comm setupu? V kazdom pripade potrebujem aj v danom comm
+// window moznost odblokovat usera."
+// Mal pravdu a moja predosla odpoved bola nepresna. Bloky SU per zaznam (verso_blocked_users ma
+// entry_id), ale tento zoznam ich vzdy zoskupoval PODLA LUDI naprieč vsetkymi zaznamami - takze kto ho
+// otvoril z comm setupu jedneho zaznamu, musel si v nom hladat to spravne cislo. Zoznam teda vie byt
+// ZUZENY: s entryId ukazuje, kto je zablokovany PRAVE TU, a pri kazdom mene UNBLOCK; pod tym jeden
+// riadok o zvysku, ktory otvori povodny celkovy pohlad. Nic nezanika, len prestava byt prve.
+function zzz5w5cm_open_my_blocked(anchorEl, entryId) {
+  const tu = String(entryId || '').match(/\d+/);
+  const tuId = tu ? tu[0] : '';
   document.querySelectorAll('.zzz5t0-tab-window').forEach(m => m.remove());
   const win = document.createElement('div');
   win.className = 'zzz5t0-tab-window';
@@ -29972,6 +30028,54 @@ function zzz5w5cm_open_my_blocked(anchorEl) {
   win.appendChild(body);
   const paint = () => {
     body.innerHTML = '';
+    // [Zzz14-CS:BLOCKED-HERE] zuzeny pohlad: len tento zaznam, a odblokovanie je JEDEN tuk
+    if (tuId) {
+      const menaTu = ((zzz5w5cmBlocks || {})[tuId] || []).slice();
+      const inde = Object.keys(zzz5w5cmBlocks || {})
+        .filter(id => String(id) !== tuId)
+        .reduce((a, id) => a + ((zzz5w5cmBlocks[id] || []).length), 0);
+      head.textContent = menaTu.length
+        ? `BLOCKED ON #${tuId} (${menaTu.length})`
+        : `BLOCKED ON #${tuId}`;
+      if (!menaTu.length) {
+        const n = document.createElement('div');
+        n.style.cssText = 'font-size:10px;color:#ddd;padding:4px 6px;max-width:280px;line-height:1.35;';
+        n.textContent = 'Nobody is blocked on this record. You block somebody by holding their name '
+          + 'in MEMBERS for 5 seconds.';
+        body.appendChild(n);
+      }
+      menaTu.sort((a, b) => a.localeCompare(b)).forEach(nm => {
+        const r = document.createElement('div');
+        r.style.cssText = 'display:flex;gap:6px;align-items:center;padding:3px 6px;';
+        const who = document.createElement('span');
+        who.style.cssText = 'flex:1 1 auto;font-size:11px;font-weight:700;color:#f0c419;';
+        who.textContent = nm;
+        r.appendChild(who);
+        const un = document.createElement('button');
+        un.type = 'button';
+        un.className = 'zzz5w5cm-dir-hit';
+        un.textContent = 'UNBLOCK';
+        un.title = `Unblock ${nm} on #${tuId} - their consent never went away, so they come straight back`;
+        un.addEventListener('click', async () => {
+          un.disabled = true;
+          if (await zzz5w5cm_set_blocked(tuId, nm, false)) paint();
+          else un.disabled = false;
+        });
+        r.appendChild(un);
+        body.appendChild(r);
+      });
+      if (inde) {
+        const viac = document.createElement('button');
+        viac.type = 'button';
+        viac.className = 'zzz5w5cm-dir-hit';
+        viac.style.cssText = 'margin:6px 6px 2px;';
+        viac.textContent = `elsewhere: ${inde} more`;
+        viac.title = 'Everyone you have blocked, across all your records';
+        viac.addEventListener('click', () => { win.remove(); zzz5w5cm_open_my_blocked(anchorEl); });
+        body.appendChild(viac);
+      }
+      return;
+    }
     // { meno: [entry_id, ...] } - clovek moze byt zablokovany vo viacerych zaznamoch naraz
     const byName = {};
     Object.keys(zzz5w5cmBlocks || {}).forEach(id => {
@@ -29990,7 +30094,10 @@ function zzz5w5cm_open_my_blocked(anchorEl) {
       note.style.cssText = 'font-size:10px;color:#ddd;padding:4px 6px;max-width:260px;line-height:1.35;';
       note.textContent = zzz5w5cmBlocksOk === false
         ? 'The blocked list needs its SQL script (verso_blocked_users_v1).'
-        : 'You have not blocked anyone. Blocking happens on a record you own - in Teams, hold its chip for 1-2s, or move the line to Blocked User.';
+        // [Zzz14-CS:BLOCK-IN-MEMBERS] od 17. 10. je hlavna cesta MEMBERS - veta, ktora o nej mlci,
+        // posiela cloveka obchadzkou
+        : 'You have not blocked anyone. Blocking happens on a record you own: hold a name in MEMBERS '
+          + 'for 5 seconds, hold a chip in Teams for 1-2s, or move the line to Blocked User.';
       body.appendChild(note);
       return;
     }
@@ -32927,6 +33034,27 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, entryKey) {
       }
       marks.appendChild(sp);
     });
+    // === [Zzz14-CS:BLOCKED-HERE] zablokovany clen to musi POVEDAT - a tym istym tukom sa odblokuje.
+    // Zablokovany clovek z bunky zaznamu nezmizne, len dnu nevidi; bez znacky teda vyzera uplne rovnako
+    // ako ktokolvek iny a clovek nema ako zistit, ze ho sam zavrel. Odblokovanie je TU, lebo tu sa
+    // blokovalo (5 s podrzanie) - jedno miesto, obidva smery.
+    const cisloTu = (String(entryKey || '').match(/\d+/) || [''])[0];
+    if (cisloTu && typeof zzz5w5cm_is_blocked === 'function' && zzz5w5cm_is_blocked(cisloTu, nm)) {
+      row.classList.add('zzz14cs-is-blocked');
+      const bl = document.createElement('span');
+      bl.className = 'zzz5w5cm-added-mark zzz14cs-blocked-mark';
+      bl.textContent = 'blocked here - tap to unblock';
+      bl.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        if (!window.confirm(`Unblock ${nm} on #${cisloTu}?\n\n`
+          + 'Their consent never went away, so the record opens for them again straight away.')) return;
+        if (await zzz5w5cm_set_blocked(cisloTu, nm, false)) {
+          win.remove();
+          zzz5w5cm_open_members_window(anchorEl, names, recTag, entryKey);
+        }
+      });
+      marks.appendChild(bl);
+    }
     row.appendChild(marks);
     // === [Zzz14-CS:MEMBER-REMOVE] Vrso 2026-10-17 (17:22): "ako vymazat v members nejake kontakty?"
     // MEMBERS je zoznam clenov tohto zaznamu - kto sa nan pozera, ocakava, ze ich tam aj odoberie.
@@ -37712,7 +37840,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-17 17:55';
+const ZZZ5_6_BUILD = '2026-10-17 18:35';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -45729,7 +45857,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-42 2026-10-17'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-44 2026-10-17'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
