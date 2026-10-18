@@ -9932,6 +9932,26 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
   .zzz5w8-item.zzz5w8-p-open .zzz5w8-c-prio      { color: #7fcf83; }
   .zzz5w8-item.is-upcoming .zzz5w8-c-when { color: #9aa6ff; }
   .zzz5w8-item.is-done, .zzz5w8-card.is-done { opacity: .45; }
+  /* [Zzz5-W8:LEAN-COLS] vlastna mriezka W8: ikona + 5 uzkych stlpcov + TEXT co najsirsi */
+  .zzz5w8-crm .zzz5w5cm-ccl-row, .zzz5w5cm-ccl-row.zzz5w8-item {
+    grid-template-columns: 38px minmax(0, .62fr) minmax(0, .5fr) minmax(0, .62fr) minmax(0, .52fr) minmax(0, .55fr) minmax(0, 2.4fr);
+  }
+  /* uzke stlpce: tesnejsie odsadenie a stred, nech sa NOTES / OPEN / PLANNED zmestia cele */
+  .zzz5w8-item .zzz5w5cm-ccl-val:not(.zzz5w8-c-text) { padding: 2px 1px; text-align: center; font-size: 8px; text-overflow: clip; }
+  .zzz5w8-mini.is-more { cursor: pointer; }
+  .zzz5w8-mini.is-open { color: #D4AF37 !important; border-color: #D4AF37 !important; }
+  .zzz5w8-more {
+    display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 3px 6px 5px 34px;
+    font-size: 8.5px; color: #cfcfcf; background-color: #151515; border-top: 1px dashed #333;
+  }
+  .zzz5w8-more-item b { color: #8a8a8a; font-weight: 700; font-size: 7.5px; letter-spacing: .03em; }
+  .zzz5w8-c-status { font-weight: 700; text-align: center; }
+  .zzz5w8-place { color: #c9a6ff; font-weight: 700; }
+  .zzz5w8-st-new, .zzz5w8-st-due { color: #f0a640; }
+  .zzz5w8-st-seen { color: #9a9a9a; }
+  .zzz5w8-st-planned { color: #9aa6ff; }
+  .zzz5w8-st-done { color: #7fcf83; }
+  .zzz5w8-c-text { white-space: normal !important; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
   /* [Zzz5-W8:REPEAT] videne a cakajuce na dalsie pripomenutie - tlmene, ale stale v zozname */
   .zzz5w8-item.is-seen { opacity: .7; }
   /* [Zzz5-W8:CL-FORM] formular v tvare CL: rad tmavych nazvov, pod nim rad bielych buniek */
@@ -28116,15 +28136,35 @@ const ZZZ5W8_VIEWS = [
   { key: 'columns', label: 'COLUMNS', title: 'Urgent, attention and open side by side' }
 ];
 // tie iste stlpce a to iste poradie ako PRESET/MINI v comm CRM - len obsah je o notifikaciach
+// === [Zzz5-W8:LEAN-COLS] Vrso 2026-10-18 (02:09): "Su potrebne tie info/bunky? ... zatial skryt a ked
+// tak vytiahnut potrebne info napr. 2x tuk alebo nejakym mechanizmom. Viac mi tam chyba project number,
+// owner, entry number... priority asi ok / text (ma byt co najsirsi!) ... mozno nejaky status napr. ako
+// ten done".
+// Riadok teda nesie len to, podla coho sa clovek rozhoduje: cislo zaznamu, cislo projektu, ownera,
+// prioritu, STATUS a TEXT (najsirsi stlpec). TYP ukazuje ikona v prvom stlpci (obalka / budik / hodiny)
+// a tuk na tu ikonu vytiahne skryte udaje (kedy, trvanie, od koho, nazov projektu) do riadku pod nim -
+// dvojtuk na Androide spolahlivo nechodi (Zzz5-6:DBLTAP), ikona je mechanizmus, ktory funguje vzdy. ===
 const ZZZ5W8_COLS = [
   { k: 'entry', label: 'ENTRY NUMBER' },
-  { k: 'project', label: 'PROJECT NAME' },
-  { k: 'type', label: 'TYPE' },
+  { k: 'pnum', label: 'PROJECT NUMBER' },
+  { k: 'owner', label: 'PROJECT OWNER' },
   { k: 'prio', label: 'PRIORITY' },
-  { k: 'when', label: 'WHEN' },
-  { k: 'from', label: 'FROM' },
+  { k: 'status', label: 'STATUS' },
   { k: 'text', label: 'TEXT' }
 ];
+// skryte udaje - hladaju sa v MINI cez TEXT a ukazu sa po tuku na ikonu
+function zzz5w8_fields_of(entry) {
+  const row = entry ? zzz6f29_entry_row_of(entry) : null;
+  return row ? (zzz_parse_fields_json(row) || {}) : {};
+}
+// STATUS - jedno slovo, co s polozkou je: NEW (sprava/nova), DUE (nastala), SEEN (videna, caka na REPEAT),
+// PLANNED (este nenastala), DONE (hotova - pri pripomienke ju tu clovek aj potvrdi)
+function zzz5w8_status_of(it) {
+  if (it.src === 'chat') return 'NEW';
+  if (it.done) return 'DONE';
+  if (!it.due) return 'PLANNED';
+  return it.fresh ? 'DUE' : 'SEEN';
+}
 // `var`, nie `let`: zzz6f29_entry_row_of (vyssie v subore) sa na zasobu pyta cez typeof - na `let` pred
 // jeho riadkom by typeof spadol v temporal dead zone (ta ista chyba uz v subore bola, viz ZZZ1CN_NOTIF_SELF_USERS)
 var zzz5w8EntryCache = {};          // entry_id -> riadok verso_entries (len zaznamy, ku ktorym mam notifikaciu)
@@ -28243,14 +28283,20 @@ function zzz5w8_collect() {
     // (Notes tab, rozpisany koncept). W8 ich ukazoval ako spravy s cislom "#tab:notes" a tuk na ne
     // otvoril Notes okno, lebo zaznam s takym cislom neexistuje. Notifikacia je o chate zaznamu, takze
     // sa beru LEN ciselne kluce - presne tie, pri ktorych svieti aj znacka v comm bunke. ===
-    if (!/^\d+$/.test(String(r.entry_key || ''))) return;
+    // === OPRAVA [Zzz5-W8:NOTES-BACK] Vrso 2026-10-18 (02:09): "Nejak zmizli open notifs". Vyhodil som
+    // nimi aj jeho OTVORENE poznamky z Notes tabu - a tie medzi notifikacie patria. Chyba nebola v tom,
+    // ze tam boli, ale ze sa tvarili ako zaznam "#tab:notes" a tuk na ne hladal neexistujuci zaznam.
+    // Teraz su spat a nesu svoje miesto (SUBS: NOTES / DRAFT) namiesto cisla; tuk otvori Notes. ===
+    const rawKey = String(r.entry_key || '');
+    const isRecord = /^\d+$/.test(rawKey);
     const kind = zzz1cn_notif_kind(r, meN, seen);
     if (!kind) return;                                 // null = nezapocitava sa, '' = uz videne
     const t = Date.parse(r.created_at || '') || 0;
-    const entry = String(r.entry_key || '');
+    const entry = isRecord ? rawKey : '';
+    const place = isRecord ? '' : (rawKey.indexOf('tab:') === 0 ? rawKey.slice(4).toUpperCase() : (rawKey.indexOf('draft') === 0 ? 'DRAFT' : rawKey));
     out.push({
-      src: 'chat', id: 'chat:' + entry + ':' + t + ':' + (r.username || ''),
-      entry, t, due: true, done: false, fresh: true,
+      src: 'chat', id: 'chat:' + rawKey + ':' + t + ':' + (r.username || ''),
+      entry, key: rawKey, place, t, due: true, done: false, fresh: true,
       prio: kind === 'urg' ? 'urgent' : (kind === 'att' ? 'attention' : 'open'),
       type: 'CHAT', from: String(r.username || ''),
       text: String(r.note_text || '').replace(/\s+/g, ' ').trim(),
@@ -28292,8 +28338,13 @@ function zzz5w8_sort(list) {
   return due.concat(next);
 }
 function zzz5w8_row_values(it) {
+  const f = zzz5w8_fields_of(it.entry);
+  const ownerRow = it.entry ? zzz6f29_entry_row_of(it.entry) : null;
   return {
-    entry: it.entry ? '#' + it.entry : '', project: it.project, type: it.type,
+    entry: it.entry ? '#' + it.entry : (it.place || ''), project: it.project, type: it.type,
+    pnum: String(f.r2 || '').trim(),
+    owner: String(f.r4 || (ownerRow && ownerRow.username) || (it.entry ? '' : it.from) || '').trim(),
+    status: zzz5w8_status_of(it),
     prio: it.prio.toUpperCase(),
     when: zzz5w8_fmt_time(it.t) + (it.dur ? ' \u00b7 ' + zzz5w8_fmt_minutes(it.dur) : '') + (it.due ? '' : ' \u203a'),
     from: it.from, text: it.text
@@ -28304,6 +28355,8 @@ function zzz5w8_row_values(it) {
 const ZZZ5W8_SHORT = { CHAT: 'CHAT', REMINDER: 'REMIND', SCHEDULE: 'SCHED', URGENT: 'URG', ATTENTION: 'ATT', OPEN: 'OPEN' };
 function zzz5w8_match(it, q) {
   const v = zzz5w8_row_values(it);
+  // [Zzz5-W8:LEAN-COLS] skryte udaje sa hladaju cez TEXT - inak by sa podla nich uz hladat nedalo
+  v.text = [v.text, v.type, v.when, v.from, v.project].filter(Boolean).join(' ');
   return ZZZ5W8_COLS.every(c => {
     const want = String((q && q[c.k]) || '').trim();
     if (!want) return true;
@@ -28357,6 +28410,11 @@ function zzz5w8_on_notif_change() {
 
 // TEXT bunka: otvor to, o com notifikacia hovori
 function zzz5w8_open_item(it, anchorEl) {
+  // [Zzz5-W8:NOTES-BACK] poznamka z Notes tabu / konceptu nema zaznam - otvara sa jej Notes zoznam
+  if (it.src === 'chat' && !it.entry && it.key) {
+    if (typeof zzz1cn_open_list === 'function') zzz1cn_open_list(it.key, anchorEl);
+    return;
+  }
   if (it.src === 'chat') {
     // ta ista cesta ako tuk na znacku v comm bunke ([Zzz14-CS:NOTIF-OPENS-CHAT]) - otvara chat, nie notes
     const row = zzz6f29_entry_row_of(it.entry);
@@ -28680,11 +28738,49 @@ function zzz5w8_build_row(it) {
   const mini = document.createElement('span');
   mini.className = 'zzz5w5cm-ccl-mini is-item zzz5w8-mini';
   mini.textContent = it.src === 'chat' ? '✉' : (it.src === 'schedule' ? '◷' : '⏰');
+  // [Zzz5-W8:LEAN-COLS] tuk na ikonu = skryte udaje pod riadkom (kedy, trvanie, od koho, projekt)
+  mini.classList.add('is-more');
+  mini.title = 'Tap = show / hide the details of this line';
+  mini.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const nx = line.nextElementSibling;
+    if (nx && nx.classList.contains('zzz5w8-more')) { nx.remove(); mini.classList.remove('is-open'); return; }
+    const more = document.createElement('div');
+    more.className = 'zzz5w8-more';
+    [['TYPE', v.type], ['WHEN', v.when], ['FROM', v.from], ['PROJECT NAME', v.project]].forEach(([k, val]) => {
+      if (!val) return;
+      const b = document.createElement('span');
+      b.className = 'zzz5w8-more-item';
+      const kk = document.createElement('b');
+      kk.textContent = k + ' ';
+      b.appendChild(kk);
+      b.appendChild(document.createTextNode(val));
+      more.appendChild(b);
+    });
+    line.after(more);
+    mini.classList.add('is-open');
+  });
   line.appendChild(mini);
   ZZZ5W8_COLS.forEach(c => {
     const cell = document.createElement('span');
     cell.className = 'zzz5w5cm-ccl-val zzz5w8-c-' + c.k;
     cell.textContent = (c.k === 'type' || c.k === 'prio') ? (ZZZ5W8_SHORT[v[c.k]] || v[c.k]) : String(v[c.k] || '');
+    if (c.k === 'status') {
+      cell.classList.add('zzz5w8-st-' + v.status.toLowerCase());
+      // [Zzz5-W8:LEAN-COLS] STATUS pripomienky sa potvrdzuje priamo tu ("nakupil som podla pripomienky
+      // a v reminders len potvrdim status ulohy") - tuk prepne DONE / spat. Sprava sa vybavi precitanim.
+      if (it.src !== 'chat') {
+        cell.classList.add('is-editable');
+        cell.title = it.done ? 'Done - tap = not done yet' : 'Tap = mark as done';
+        cell.addEventListener('click', (ev) => { ev.stopPropagation(); zzz5w8_mark_done(it.raw, !it.done); });
+      } else {
+        cell.title = 'Unread - it is marked as read when you open the chat';
+      }
+    }
+    if (c.k === 'entry' && !it.entry && it.place) {
+      cell.classList.add('zzz5w8-place');
+      cell.title = 'A note in ' + it.place + ' - tap the line to open it';
+    }
     if (c.k === 'entry' && it.entry) {
       cell.classList.add('is-entry');
       cell.title = `#${it.entry} - tap = open this record`;
@@ -28699,16 +28795,7 @@ function zzz5w8_build_row(it) {
   });
   line.title = `${it.type} ${v.when} - ${it.text}`;
   line.addEventListener('click', () => zzz5w8_open_item(it, line));
-  // rychle DONE priamo v riadku - len tam, kde je co oznacit (spravy sa "vybavia" precitanim v chate)
-  if (it.src !== 'chat' && !it.done) {
-    const ok = document.createElement('button');
-    ok.type = 'button';
-    ok.className = 'zzz5w8-row-done';
-    ok.textContent = '✓';
-    ok.title = 'Mark as done';
-    ok.addEventListener('click', (ev) => { ev.stopPropagation(); zzz5w8_mark_done(it.raw, true); });
-    line.appendChild(ok);
-  }
+  // [Zzz5-W8:LEAN-COLS] samostatne ✓ tlacidlo nahradila bunka STATUS - jedno miesto na DONE, nie dve
   return line;
 }
 // kompaktna karta pre COLUMNS - tri stlpce vedla seba sa do osmi buniek nezmestia
@@ -28719,7 +28806,7 @@ function zzz5w8_build_card(it) {
   top.className = 'zzz5w8-card-top';
   const en = document.createElement('span');
   en.className = 'zzz5w8-card-en';
-  en.textContent = it.entry ? '#' + it.entry : '';
+  en.textContent = it.entry ? '#' + it.entry : (it.place || '');   // [Zzz5-W8:NOTES-BACK]
   if (it.entry) en.addEventListener('click', (ev) => { ev.stopPropagation(); zzz6f29_open_entry_number_window(it.entry); });
   top.appendChild(en);
   const meta = document.createElement('span');
@@ -39255,7 +39342,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-18 01:57';
+const ZZZ5_6_BUILD = '2026-10-18 02:11';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -47285,7 +47372,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-53 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-54 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
