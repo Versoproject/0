@@ -28285,7 +28285,13 @@ function zzz5w8_fields_of(entry) {
 // STATUS - jedno slovo, co s polozkou je: NEW (sprava/nova), DUE (nastala), SEEN (videna, caka na REPEAT),
 // PLANNED (este nenastala), DONE (hotova - pri pripomienke ju tu clovek aj potvrdi)
 function zzz5w8_status_of(it) {
-  if (it.src === 'chat') return 'NEW';
+  if (it.src === 'chat') {
+    const r = it.raw || {};
+    if (r.id && zzz5w8DoneNotes[String(r.id)]) return 'DONE';
+    // [Zzz5-W8:CHAT-DONE] ulozena poznamka nesie svoj status z Notes
+    if (r.is_saved && r.note_status) return String(r.note_status).toUpperCase();
+    return 'NEW';
+  }
   if (it.done) return 'DONE';
   if (!it.due) return 'PLANNED';
   return it.fresh ? 'DUE' : 'SEEN';
@@ -28319,12 +28325,65 @@ function zzz5w8_is_missing_table(err) {
   return code === '42P01' || code === 'PGRST205' || /does not exist|could not find the table/i.test(msg);
 }
 
+// === [Zzz5-W8:CHAT-DONE] Vrso 2026-10-18 (02:38): "zahrnut status ... aj do notifikacie (napr. niekto
+// napise chat druhemu, nech zatvori okno, a on zaklikne done a zaroven aj precital spravu) ... staci,
+// ze je to extra moznost ako reagovat ... len si splnit notifikaciu, to je cele" + "mali by sa tykat iba
+// tych chatov, resp. notes, ktore neboli ulozene".
+// DONE na chatovej sprave je REAKCIA adresata: riadok vo verso_chat_reactions (SQL verso_chat_reactions_v1),
+// viazany cudzim klucom na tu spravu ([Zzz6-SF:BOUND-TO-ENTRY]) - sprava sa neprepisuje, jej obsah je
+// cudzi a nemenny. Vidi ju adresat aj autor spravy. Zaroven sa sprava oznaci ako precitana.
+// ULOZENA poznamka (is_saved) ma svoj vlastny status v Notes - tu sa len ukaze a tuk otvori Notes.
+// Kazdy za seba: DONE jedneho cloveka neodskrtne nic nikomu inemu. ===
+const ZZZ5W8_REACT_TABLE = 'verso_chat_reactions';
+const ZZZ5W8_REACT_SQL = 'verso_chat_reactions_v1';
+let zzz5w8DoneNotes = {};       // note_id -> true (moje DONE reakcie)
+let zzz5w8ReactMissing = false;
+async function zzz5w8_load_reactions() {
+  const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+  if (!meN) return;
+  try {
+    const { data, error } = await sb.from(ZZZ5W8_REACT_TABLE).select('note_id, username');
+    if (error) throw error;
+    const map = {};
+    (data || []).forEach(r => { if (zzz10v1_normalize(r.username || '') === meN) map[String(r.note_id)] = true; });
+    zzz5w8DoneNotes = map;
+    zzz5w8ReactMissing = false;
+  } catch (e) {
+    zzz5w8ReactMissing = true;   // tabulka este nie je - DONE na sprave potom aspon oznaci precitane
+  }
+}
+async function zzz5w8_chat_done(it) {
+  const r = it.raw || {};
+  const key = String(r.entry_key || it.key || '');
+  const t = Date.parse(r.created_at || '') || Date.now();
+  // precitane: bezna sprava posuva "seen", prioritna "prio" - presne ako ked clovek chat otvori
+  if (typeof zzz1cn_seen_mark === 'function') zzz1cn_seen_mark(key, zzz1cn_prio_of(r) ? 'prio' : 'seen', t);
+  if (zzz5w8ReactMissing || !r.id) {
+    zzz6f2_show_toast(`Marked as read. To record DONE as your reaction, run SQL "${ZZZ5W8_REACT_SQL}" in Supabase.`, 'warn');
+    zzz5w8_render();
+    return;
+  }
+  const me = (zzz0r1_get_current_username() || '').trim();
+  try {
+    const { error } = await sb.from(ZZZ5W8_REACT_TABLE).insert({ note_id: r.id, username: me });
+    if (error && String(error.code) !== '23505') throw error;   // 23505 = uz som raz DONE dal
+    zzz5w8DoneNotes[String(r.id)] = true;
+    zzz6f2_show_toast('Done and read.');
+  } catch (e) {
+    if (zzz5w8_is_missing_table(e)) zzz5w8ReactMissing = true;
+    zzz6f2_show_toast(`Marked as read, but DONE was not recorded: ${(e && (e.message || e.details)) || e}`, 'warn');
+  }
+  zzz5w8_render();
+}
 async function zzz5w8_load_items() {
   const me = (zzz0r1_get_current_username() || '').trim();
   if (!me) { zzz5w8Items = []; zzz5w8State.error = 'Log in to see your reminders and schedule.'; return; }
   try {
+    // OPRAVA [Zzz5-W8:ALL-COLS]: vymenovane stlpce by nove polia (tag, duration_min, notify_before_min,
+    // repeat_min, seen_at - SQL v3) nikdy nenacitali, ani po nasadeni SQL. '*' vrati presne to, co
+    // v databaze je - pred SQL v3 bez nich, po nom s nimi, bez dalsej zmeny kodu.
     const { data, error } = await sb.from(ZZZ5W8_TABLE)
-      .select('id, entry_id, username, kind, title, due_at, priority, done_at, created_at')
+      .select('*')
       .order('due_at', { ascending: true });
     if (error) throw error;
     zzz5w8Items = data || [];
@@ -28365,7 +28424,8 @@ async function zzz5w8_reload() {
   try {
     await Promise.all([
       (typeof zzz1cn_notif_load === 'function') ? zzz1cn_notif_load() : null,
-      zzz5w8_load_items()
+      zzz5w8_load_items(),
+      zzz5w8_load_reactions()
     ]);
     const ids = (zzz1cnNotifNotes || []).map(r => r.entry_key).concat(zzz5w8Items.map(r => r.entry_id));
     await zzz5w8_load_entries(ids);
@@ -28922,7 +28982,20 @@ function zzz5w8_build_row(it) {
         cell.title = it.done ? 'Done - tap = not done yet' : 'Tap = mark as done';
         cell.addEventListener('click', (ev) => { ev.stopPropagation(); zzz5w8_mark_done(it.raw, !it.done); });
       } else {
-        cell.title = 'Unread - it is marked as read when you open the chat';
+        // [Zzz5-W8:CHAT-DONE] neulozena sprava: tuk = DONE (reakcia) + precitane; ulozena: status je v Notes
+        const raw = it.raw || {};
+        if (raw.is_saved) {
+          cell.classList.add('is-editable');
+          cell.title = 'A saved note - its status is set in Notes (tap opens them)';
+          cell.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            if (typeof zzz1cn_open_list === 'function') zzz1cn_open_list(String(raw.entry_key || it.key || ''), cell);
+          });
+        } else {
+          cell.classList.add('is-editable');
+          cell.title = 'Tap = DONE - you did what it asks; it is also marked as read';
+          cell.addEventListener('click', (ev) => { ev.stopPropagation(); zzz5w8_chat_done(it); });
+        }
       }
     }
     if (c.k === 'entry' && !it.entry && it.place) {
@@ -39248,7 +39321,11 @@ async function zzz1cn_notif_load() {
   if (zzz1cnNotifBusy) return zzz1cnNotifMap;
   zzz1cnNotifBusy = true;
   try {
-    const cols = 'entry_key, username, created_at, note_text'
+    // [Zzz5-W8:CHAT-DONE] id, is_saved a note_status potrebuje Notification Workspace (DONE reakcia,
+    // status ulozenej poznamky) - znacky ich nepouzivaju, ale ten isty dopyt slúzi obom
+    const cols = 'id, entry_key, username, created_at, note_text'
+      + (zzz1cn_opt_has('is_saved') ? ', is_saved' : '')
+      + (zzz1cn_opt_has('note_status') ? ', note_status' : '')
       + (zzz1cn_opt_has('note_priority') ? ', note_priority' : '')
       + (zzz1cn_opt_has('is_priority') ? ', is_priority' : '')
       + (zzz1cn_opt_has('note_to') ? ', note_to' : '');
@@ -39490,7 +39567,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-18 02:32';
+const ZZZ5_6_BUILD = '2026-10-18 02:39';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -47520,7 +47597,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-57 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-58 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
