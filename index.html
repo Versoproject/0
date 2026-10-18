@@ -10031,6 +10031,10 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
   }
   .zzz5w8-iw-field input:disabled { background: #e8e8e8; color: #666; border-color: #bbb; }
   .zzz5w8-iw-prio { display: flex; align-items: center; gap: 6px; }
+  /* [Zzz5-W8:FORM-BACK] dva / tri polia v jednom rade - zvisly formular, len kratke polia vedla seba */
+  .zzz5w8-iw-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 6px; }
+  .zzz5w8-iw-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .zzz5w8-iw-hint { font-style: normal; color: #b08d2a; font-weight: 700; }
   .zzz5w8-iw-prio-cap { font-size: 9px; font-weight: 700; color: #444; }
   .zzz5w8-iw-msg { font-size: 9px; color: #8a8a8a; min-height: 0; }
   .zzz5w8-iw-msg.is-warn { color: #f0a640; }
@@ -28319,7 +28323,9 @@ function zzz5w8_collect() {
       dur: Number(r.duration_min) || 0,
       prio: ['urgent', 'attention'].indexOf(r.priority) >= 0 ? r.priority : 'open',
       type: r.kind === 'schedule' ? 'SCHEDULE' : 'REMINDER',
-      from: String(r.username || ''), text: String(r.title || ''),
+      // [Zzz5-W8:TAG] stitok s druhom ide pred text - "rems:lekaren", "scheds:koncert"
+      from: String(r.username || ''),
+      text: [r.tag ? (r.kind === 'schedule' ? 'scheds:' : 'rems:') + r.tag : '', String(r.title || '')].filter(Boolean).join(' \u00b7 '),
       project: zzz5w8_project_of(entry), raw: r
     });
   });
@@ -28460,6 +28466,7 @@ async function zzz5w8_mark_done(raw, on) {
 // Tieto styri stlpce prinasa SQL verso_notif_items_v3_triggers. Kym nie je nasadene, okno funguje dalej
 // bez nich a POVIE to (nic sa ticho nezahodi). ===
 const ZZZ5W8_UNITS = [['min', 1], ['h', 60], ['d', 1440], ['w', 10080]];
+const ZZZ5W8_V3_SQL = 'verso_notif_items_v3_triggers';
 const ZZZ5W8_V3_COLS = ['duration_min', 'notify_before_min', 'repeat_min'];
 function zzz5w8_split_minutes(m) {   // 180 -> {n: 3, u: 'h'}; nasobky sa vyberu od najvacsej jednotky
   const v = Number(m) || 0;
@@ -28473,6 +28480,19 @@ function zzz5w8_split_minutes(m) {   // 180 -> {n: 3, u: 'h'}; nasobky sa vyberu
 function zzz5w8_fmt_minutes(m) {
   const s = zzz5w8_split_minutes(m);
   return s.n ? `${s.n} ${s.u}` : '';
+}
+// [Zzz5-W8:UNIT-TEXT] Vrso 2026-10-18 (02:27): "ked chcem pisat cislice, namiesto volieb sa zrusi
+// klavesnica". Bunka bola uzke cislo + vyberove pole min/h/d/w - tuk sa trafil do vyberu, otvoril sa
+// systemovy zoznam a Verso klavesnica zmizla. Teraz je to JEDNO textove pole: "3h", "2d", "90min",
+// "1w" - pise sa cele na Verso klavesnici, jednotka je pismeno za cislom (bez jednotky = hodiny).
+function zzz5w8_parse_minutes(txt) {
+  const m = /^\s*(\d+(?:[.,]\d+)?)\s*(min|m|h|d|w|t)?\s*$/i.exec(String(txt || ''));
+  if (!m) return null;
+  const n = parseFloat(m[1].replace(',', '.'));
+  if (!n) return null;
+  const u = (m[2] || 'h').toLowerCase();
+  const k = (u === 'min' || u === 'm') ? 1 : (u === 'h' ? 60 : (u === 'd' ? 1440 : 10080));   // t = tyzden
+  return Math.round(n * k);
 }
 function zzz5w8_open_item_window(raw, kind) {
   document.querySelectorAll('.zzz5w8-item-window').forEach(w => { if (w._zzz5w8Close) w._zzz5w8Close(); });
@@ -28514,87 +28534,77 @@ function zzz5w8_open_item_window(raw, kind) {
     return;
   }
 
-  // --- CL tvar: rad nazvov + rad buniek ---
-  const grid = document.createElement('div');
-  grid.className = 'zzz5w8-cl';
-  body.appendChild(grid);
-  const labels = [];
-  const cells = [];
-  const addCol = (label, el) => {
-    const lab = document.createElement('div');
-    lab.className = 'zzz5w8-cl-lab';
-    lab.textContent = label;
-    const cell = document.createElement('div');
-    cell.className = 'zzz5w8-cl-cell';
-    cell.appendChild(el);
-    labels.push(lab);
-    cells.push(cell);
+  // === [Zzz5-W8:FORM-BACK] Vrso 2026-10-18 (02:27): "povodny formular sa mi zdal prehladnejsi".
+  // Spat na zvisly formular (nazov nad polom, cez celu sirku) - ten isty, aky bol pred CL mriezkou -
+  // len s novymi poliami. CL tvar mriezky bol citatelny na velkej obrazovke, na telefone stlacil polia
+  // tak, ze sa do nich dalo zle trafit. ===
+  const typeRow = document.createElement('div');
+  typeRow.className = 'zzz5w8-iw-row';
+  const typeBtns = {};
+  [['reminder', 'REMINDER'], ['schedule', 'SCHEDULE']].forEach(([key, label]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'zzz5w5cm-chip zzz5w8-iw-type';
+    b.textContent = label;
+    b.addEventListener('click', () => { k = key; paint(); });
+    typeBtns[key] = b;
+    typeRow.appendChild(b);
+  });
+  body.appendChild(typeRow);
+
+  const field = (label, el, hint) => {
+    const w = document.createElement('label');
+    w.className = 'zzz5w8-iw-field';
+    const c = document.createElement('span');
+    c.textContent = label;
+    if (hint) {
+      const h = document.createElement('i');
+      h.className = 'zzz5w8-iw-hint';
+      h.textContent = ' ' + hint;
+      c.appendChild(h);
+    }
+    w.appendChild(c);
+    w.appendChild(el);
+    body.appendChild(w);
     return el;
   };
-  const flushRow = () => {
-    labels.splice(0).forEach(l => grid.appendChild(l));
-    cells.splice(0).forEach(c => grid.appendChild(c));
+  const text = (value, placeholder, numeric) => {
+    const i = document.createElement('input');
+    i.type = 'text';
+    if (numeric) i.inputMode = 'numeric';
+    i.placeholder = placeholder;
+    i.value = value || '';
+    return i;
   };
-  // jednotkova bunka: cislo + min/h/d/w (cislo sa pise, jednotka sa vybera - ziadne prevadzanie v hlave)
-  const unitCell = (minutes, placeholder) => {
-    const wrap = document.createElement('div');
-    wrap.className = 'zzz5w8-unit';
-    const s = zzz5w8_split_minutes(minutes);
-    const n = document.createElement('input');
-    n.type = 'text';
-    n.inputMode = 'numeric';
-    n.placeholder = placeholder;
-    n.value = s.n;
-    const u = document.createElement('select');
-    ZZZ5W8_UNITS.forEach(([code]) => {
-      const o = document.createElement('option');
-      o.value = code; o.textContent = code;
-      if (code === s.u) o.selected = true;
-      u.appendChild(o);
-    });
-    wrap.appendChild(n);
-    wrap.appendChild(u);
-    wrap.getMinutes = () => {
-      const v = parseInt(String(n.value || '').replace(/\D/g, ''), 10);
-      if (!v) return null;
-      return v * (ZZZ5W8_UNITS.find(x => x[0] === u.value) || ['', 1])[1];
-    };
-    return wrap;
+  const twoCol = () => {
+    const r = document.createElement('div');
+    r.className = 'zzz5w8-iw-two';
+    body.appendChild(r);
+    return r;
+  };
+  const fieldIn = (host, label, el, hint) => {
+    const w = field(label, el, hint).parentNode;
+    host.appendChild(w);
+    return el;
   };
 
-  // rad 1: ENTRY NUMBER | NAME | TYPE | PRIORITY
-  const entryIn = document.createElement('input');
-  entryIn.type = 'text';
-  entryIn.inputMode = 'numeric';
+  // ENTRY NUMBER + TAG vedla seba
+  const r1 = twoCol();
   // [Zzz5-W8:ONE-OFF] Vrso 2026-10-18: "CL - nezadavat en... vsak ide casto iba o jednorazovu akciu"
-  entryIn.placeholder = 'empty = one-off';
-  entryIn.value = (raw && raw.entry_id) ? String(raw.entry_id) : '';
+  const entryIn = fieldIn(r1, 'ENTRY NUMBER', text((raw && raw.entry_id) ? String(raw.entry_id) : '', 'empty = one-off', true));
   // [Zzz6-SF:BOUND-TO-ENTRY] k comu polozka patri, sa po vzniku nemeni (strazi to aj trigger v databaze)
   if (!isNew) { entryIn.disabled = true; entryIn.title = 'A reminder stays with its record - add a new one for another record.'; }
-  addCol('ENTRY NUMBER', entryIn);
-  const textIn = document.createElement('input');
-  textIn.type = 'text';
-  textIn.placeholder = 'e.g. concert, call back';
+  // === [Zzz5-W8:TAG] Vrso 02:27: "name by som pouzil prave tag (reminds... ako som pisal). Cize moze
+  // ist o cl, el, ale najma o tieto tagged notifikacie". Polozka sa oznacuje STITKOM, ktory nesie aj
+  // svoj druh: rems:koncert / scheds:porada. Prefix doplna appka podla TYPE - clovek pise len slovo. ===
+  const tagIn = fieldIn(r1, 'TAG', text(raw ? String(raw.tag || '') : '', 'e.g. concert, pharmacy'), '(rems:)');
+  const tagCap = tagIn.parentNode.querySelector('.zzz5w8-iw-hint');
+  const textIn = document.createElement('textarea');
+  textIn.rows = 2;
+  textIn.placeholder = 'What should remind you (e.g. birthday party, call back, meeting)';
   textIn.value = raw ? String(raw.title || '') : '';
-  addCol('NAME', textIn);
-  const typeBtn = document.createElement('button');
-  typeBtn.type = 'button';
-  typeBtn.className = 'zzz5w8-cl-type';
-  addCol('TYPE', typeBtn);
-  const prio = zzz1cn_prio_control(raw && raw.priority !== 'open' ? raw.priority : '', null);
-  const prioWrap = document.createElement('span');
-  prioWrap.className = 'zzz5w8-iw-prio';
-  prioWrap.appendChild(prio.el);
-  const prioCap = document.createElement('span');
-  prioCap.className = 'zzz5w8-iw-prio-cap';
-  const paintPrioCap = () => { prioCap.textContent = (prio.get() || 'open').toUpperCase(); };
-  prio.el.addEventListener('click', () => setTimeout(paintPrioCap, 0));
-  paintPrioCap();
-  prioWrap.appendChild(prioCap);
-  addCol('PRIORITY', prioWrap);
-  flushRow();
+  field('TEXT', textIn);
 
-  // rad 2: SCHEDULE | DURATION | NOTIFY BEFORE | REPEAT EVERY
   const whenIn = document.createElement('input');
   whenIn.type = 'datetime-local';
   const toLocal = (ms) => {
@@ -28605,12 +28615,31 @@ function zzz5w8_open_item_window(raw, kind) {
   // novy: najblizsia cela hodina - kalendar zatial netreba, staci pole s datumom a casom
   const start = raw ? (Date.parse(raw.due_at) || Date.now()) : (Math.ceil(Date.now() / 3600000) * 3600000);
   whenIn.value = toLocal(start);
-  // [Zzz5-W8:CL-FORM] SCHEDULE stoji v SIROKOM stlpci (pod NAME) - datum s casom by sa v uzkej bunke orezal
-  const durCell = addCol('DURATION', unitCell(raw && raw.duration_min, '-'));
-  addCol('SCHEDULE', whenIn);
-  const beforeCell = addCol('NOTIFY BEFORE', unitCell(raw && raw.notify_before_min, '-'));
-  const repeatCell = addCol('REPEAT EVERY', unitCell(raw && raw.repeat_min, '-'));
-  flushRow();
+  field('DATE & TIME', whenIn);
+
+  // DURATION / NOTIFY BEFORE / REPEAT EVERY - tri v jednom rade, jedno pole kazde ([Zzz5-W8:UNIT-TEXT])
+  const r3 = document.createElement('div');
+  r3.className = 'zzz5w8-iw-three';
+  body.appendChild(r3);
+  const durIn = fieldIn(r3, 'DURATION', text(zzz5w8_fmt_minutes(raw && raw.duration_min).replace(' ', ''), 'e.g. 3h'));
+  const beforeIn = fieldIn(r3, 'NOTIFY BEFORE', text(zzz5w8_fmt_minutes(raw && raw.notify_before_min).replace(' ', ''), 'e.g. 2d'));
+  const repeatIn = fieldIn(r3, 'REPEAT EVERY', text(zzz5w8_fmt_minutes(raw && raw.repeat_min).replace(' ', ''), 'e.g. 1h'));
+  const unitHint = document.createElement('div');
+  unitHint.className = 'zzz5w8-iw-msg';
+  unitHint.textContent = 'Number + min / h / d / w (e.g. 90min, 3h, 2d, 1w). A number alone = hours.';
+  body.appendChild(unitHint);
+
+  const prio = zzz1cn_prio_control(raw && raw.priority !== 'open' ? raw.priority : '', null);
+  const prioWrap = document.createElement('span');
+  prioWrap.className = 'zzz5w8-iw-prio';
+  prioWrap.appendChild(prio.el);
+  const prioCap = document.createElement('span');
+  prioCap.className = 'zzz5w8-iw-prio-cap';
+  const paintPrioCap = () => { prioCap.textContent = (prio.get() || 'open').toUpperCase(); };
+  prio.el.addEventListener('click', () => setTimeout(paintPrioCap, 0));
+  paintPrioCap();
+  prioWrap.appendChild(prioCap);
+  field('PRIORITY', prioWrap);
 
   const msg = document.createElement('div');
   msg.className = 'zzz5w8-iw-msg';
@@ -28623,30 +28652,31 @@ function zzz5w8_open_item_window(raw, kind) {
   go.type = 'button';
   go.className = 'zzz5w5cm-chip zzz5w8-iw-go';
   const paint = () => {
-    typeBtn.textContent = k === 'schedule' ? 'SCHED' : 'REMIND';
-    typeBtn.title = 'Tap = switch between REMINDER and SCHEDULE';
+    Object.keys(typeBtns).forEach(key => typeBtns[key].classList.toggle('is-on', key === k));
+    if (tagCap) tagCap.textContent = ' (' + (k === 'schedule' ? 'scheds:' : 'rems:') + ')';
     title.textContent = isNew ? (k === 'schedule' ? 'NEW SCHEDULE ITEM' : 'NEW REMINDER')
       : `${k === 'schedule' ? 'SCHEDULE' : 'REMINDER'}${raw.entry_id ? ' - #' + raw.entry_id : ' - one-off'}`;
     go.textContent = isNew ? (k === 'schedule' ? 'ADD TO SCHEDULE' : 'ADD REMINDER') : 'APPLY CHANGES';
   };
-  typeBtn.addEventListener('click', () => { k = k === 'schedule' ? 'reminder' : 'schedule'; paint(); });
   go.addEventListener('click', async () => {
     const me = (zzz0r1_get_current_username() || '').trim();
     if (!me) { say('Log in first - reminders belong to your username.', true); return; }
     // [Zzz5-W8:ONE-OFF] bez cisla = jednorazova pripomienka, ktora k ziadnemu zaznamu nepatri
     const num = String(entryIn.value || '').replace(/\D/g, '');
     const due = Date.parse(whenIn.value || '');
-    if (!due) { say('Pick a date and time in SCHEDULE.', true); return; }
+    if (!due) { say('Pick a DATE & TIME.', true); return; }
+    const mins = {};
+    for (const [key, el, lab] of [['duration_min', durIn, 'DURATION'], ['notify_before_min', beforeIn, 'NOTIFY BEFORE'], ['repeat_min', repeatIn, 'REPEAT EVERY']]) {
+      const v = String(el.value || '').trim();
+      mins[key] = v ? zzz5w8_parse_minutes(v) : null;
+      if (v && mins[key] === null) { say(`${lab}: "${v}" is not a time - write e.g. 3h, 2d, 90min, 1w.`, true); return; }
+    }
     const payload = {
       kind: k, title: String(textIn.value || '').trim(),
       due_at: new Date(due).toISOString(), priority: prio.get() || 'open'
     };
-    const v3 = {
-      duration_min: durCell.getMinutes(),
-      notify_before_min: beforeCell.getMinutes(),
-      repeat_min: repeatCell.getMinutes()
-    };
-    const wantsV3 = ZZZ5W8_V3_COLS.some(c => v3[c] !== null) || (!isNew && ZZZ5W8_V3_COLS.some(c => raw[c] !== undefined));
+    const v3 = Object.assign({ tag: String(tagIn.value || '').trim().replace(/^(rems|scheds):/i, '') || null }, mins);
+    const wantsV3 = Object.keys(v3).some(c => v3[c] !== null) || (!isNew && Object.keys(v3).some(c => raw[c] !== undefined));
     go.disabled = true;
     say('Writing...');
     const write = async (withV3) => {
@@ -28658,7 +28688,7 @@ function zzz5w8_open_item_window(raw, kind) {
     try {
       let res = await write(wantsV3);
       let v3Missing = false;
-      // [Zzz5-W8:CL-FORM] stlpce v3 este nie su v databaze - zapis sa zopakuje bez nich a POVIE sa to
+      // stlpce v3 este nie su v databaze - zapis sa zopakuje bez nich a POVIE sa to
       if (res.error && wantsV3 && (String(res.error.code) === 'PGRST204' || String(res.error.code) === '42703'
           || /column/i.test(String(res.error.message || '')))) {
         v3Missing = true;
@@ -28670,11 +28700,10 @@ function zzz5w8_open_item_window(raw, kind) {
       if (isNew) zzz5w8Items.push(row);
       else Object.assign(raw, row);
       if (row.entry_id !== null && row.entry_id !== undefined) await zzz5w8_load_entries([row.entry_id]);
-      // novu vec ukaz tam, kde ju clovek bude hladat
       if (isNew && zzz5w8Tab !== 'all') zzz5w8Tab = k === 'schedule' ? 'schedule' : 'reminders';
       close();
       zzz6f2_show_toast(v3Missing
-        ? 'Added without DURATION / NOTIFY BEFORE / REPEAT - run SQL "verso_notif_items_v3_triggers" in Supabase for those cells.'
+        ? `Added without TAG / DURATION / NOTIFY BEFORE / REPEAT - run SQL "${ZZZ5W8_V3_SQL}" in Supabase for those.`
         : (isNew ? (row.entry_id ? `Added to #${row.entry_id}.` : 'One-off reminder added.') : 'Changes applied.'),
         v3Missing ? 'warn' : undefined);
       zzz5w8_render();
@@ -28684,11 +28713,12 @@ function zzz5w8_open_item_window(raw, kind) {
       if (zzz5w8_is_missing_table(e)) {
         zzz5w8State.missing = true;
         say(`The table from SQL "${ZZZ5W8_SQL_NAME}" is not deployed yet - run it in Supabase, then try again.`, true);
-      } else if (code === '23502' && !num) {
-        // [Zzz5-W8:ONE-OFF] databaza este vyzaduje cislo zaznamu - SQL v3 nie je nasadene
-        say('One-off reminders need SQL "verso_notif_items_v3_triggers" in Supabase - until then fill in an ENTRY NUMBER.', true);
+      } else if (!num && (code === '23502' || code === '42501')) {
+        // [Zzz5-W8:ONE-OFF] OPRAVA (Vrso 02:27, foto "# does not exist..."): prazdne cislo skoncilo na
+        // hlaske o neexistujucom zazname "#". Pricina je ina - databaza este jednorazove pripomienky
+        // nepozna (SQL v3), a presne to sa teraz povie.
+        say(`One-off reminders need SQL "${ZZZ5W8_V3_SQL}" in Supabase - until then fill in an ENTRY NUMBER.`, true);
       } else if (code === '42501' || code === '23503') {
-        // RLS / cudzi kluc: zaznam neexistuje alebo ho tento user nevidi - povedz to rovno
         say(`#${num} does not exist or is not readable for you - a reminder can only belong to a record you can open.`, true);
       } else {
         say(`Not written: ${(e && (e.message || e.details)) || e}`, true);
@@ -28714,10 +28744,7 @@ function zzz5w8_open_item_window(raw, kind) {
   }
   body.appendChild(acts);
   paint();
-  // === [Zzz5-W8:KEEP-FORM] Vrso 2026-10-18 (01:25): "vyskocilo mi dake notes okno... a ked som ho
-  // zavrel, tak sa zrusil aj reminder". Formular, do ktoreho clovek pise, sa zatvara LEN krizikom alebo
-  // po uspesnom pridani. A ZIADNE automaticke focus(): na telefone by vyskocila systemova klavesnica
-  // namiesto Verso klavesnice - pole sa aktivuje az tukom, ako vsade inde. ===
+  // [Zzz5-W8:KEEP-FORM] zatvara sa LEN krizikom alebo po uspesnom pridani; ziadne automaticke focus()
   // [Zzz5-W8:REPEAT] otvorenie polozky = videl som ju; s REPEAT EVERY sa znova zarata po uplynuti intervalu
   if (!isNew) zzz5w8_mark_seen(raw);
 }
@@ -39342,7 +39369,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-18 02:11';
+const ZZZ5_6_BUILD = '2026-10-18 02:29';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -47372,7 +47399,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-54 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-55 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
