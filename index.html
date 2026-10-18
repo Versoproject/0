@@ -12726,6 +12726,8 @@ function zzz6f33_write_entry_silent(id, text) {
 }
 
 function zzz6f33_clear_whole_cl() {
+  // [Zzz1-F16-trig:SCHEDULE-TRIGGER] vycistena CL = aj jej rozpisany trigger patri prec (submit ho uz zapisal skor)
+  if (typeof zzz1f16Trigger !== 'undefined') zzz1f16Trigger = null;
   Object.keys(entryData).forEach(id => zzz6f33_write_entry_silent(id, ''));
   zzz6x_apply_cl_prefill(); // [Zzz6-X:CL-PREFILLING] cerstva CL hned dostane predvyplnene hodnoty prihlaseneho usera
   refresh_database_workspace_if_open(); // JEDEN refresh na konci, nie 21x pocas cyklu
@@ -14169,6 +14171,38 @@ function zzz1_r26f1_sync_status_dot() {
 // cas sa predvyplni aktualnym casom; ulozenie potom uz vzdy zapise aj cas. | Vrso -> Claude AI | 2026-08-20 ===
 
 const ZZZ1_F16_MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+// [Zzz1-F16-trig:SCHEDULE-TRIGGER] trigger rozpisanej CL - zije len do ENTER (potom ide do databazy) alebo do vycistenia CL
+var zzz1f16Trigger = null;   // var: zzz6f33_clear_whole_cl sa naň pyta cez typeof a moze bezat skor nez tento riadok
+// zapis triggera k zaznamu, ktory prave dostal cislo. Vola sa zo submit_entries_to_db - jedineho miesta,
+// kadial ide kazdy zapis CL (rovnako ako [Zzz5-6:CONSENT-PRESET]).
+async function zzz1f16_apply_trigger(entryId, payload) {
+  const t = zzz1f16Trigger;
+  zzz1f16Trigger = null;
+  if (!t) return;
+  let f = {};
+  try { f = typeof payload.fields_json === 'string' ? JSON.parse(payload.fields_json) : (payload.fields_json || {}); } catch (e) {}
+  const p = zzz1_f16_parse_existing_date(f.r16 || '');
+  if (!p) { zzz6f2_show_toast('SCHEDULE has no date - the reminder settings were not saved.', 'warn'); return; }
+  const due = new Date(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour || 0), Number(p.minute || 0));
+  const me = (zzz0r1_get_current_username() || '').trim();
+  const row = {
+    entry_id: Number(entryId), username: me, kind: t.kind, title: String(f.r3 || '').trim(),
+    due_at: due.toISOString(), priority: 'open', tag: t.tag || null,
+    duration_min: t.duration_min, notify_before_min: t.notify_before_min, repeat_min: t.repeat_min
+  };
+  try {
+    const { error } = await sb.from('verso_notif_items').insert(row);
+    if (error) throw error;
+    zzz6f2_show_toast(`#${entryId}: ${t.kind === 'schedule' ? 'schedule' : 'reminder'} added to NOTIFICATIONS.`);
+  } catch (e) {
+    const code = String((e && e.code) || '');
+    const msg = (code === 'PGRST204' || code === '42703' || /column/i.test(String((e && e.message) || '')))
+      ? 'run SQL "verso_notif_items_v3_triggers" in Supabase'
+      : ((e && (e.message || e.details)) || String(e));
+    // zaznam je ulozeny, trigger nie - povie sa to, nestrati sa potichu
+    zzz6f2_show_toast(`#${entryId} saved, but its SCHEDULE reminder was not: ${msg}`, 'warn');
+  }
+}
 
 // rozparsuje existujucu hodnotu R16 (ocakavany format "YYYY-MM-DD" alebo "YYYY-MM-DD HH:MM"), inak null
 function zzz1_f16_parse_existing_date(value) {
@@ -14273,6 +14307,89 @@ function zzz1_f16_open_schedule_date_modal() {
   box.appendChild(timeRow);
   // === [/Zzz1-F16-time:SCHEDULE-TIME] ===
 
+  // === [Zzz1-F16-trig:SCHEDULE-TRIGGER] Vrso 2026-10-18 (01:41 + 02:30 "ano, dokonci"): SCHEDULE v CL
+  // ma okrem terminu aj TRVANIE a ODKEDY / AKO CASTO PRIPOMINAT - tie iste polia ako W8 formular, aby
+  // to bola jedna funkcia na dvoch miestach, nie dve rozne. Ukladaju sa VEDLA zaznamu (rozhodnutie
+  // Vrso: "1. vedla zaznamu"): bunka R16 ostava len zaciatok (obsah zaznamu), trigger je riadok
+  // verso_notif_items s cudzim klucom na zaznam ([Zzz6-SF:BOUND-TO-ENTRY]) - vznikne v momente, ked
+  // CL dostane cislo (submit_entries_to_db), lebo dovtedy nie je na co ho naviazat.
+  // TAG nesie druh: rems:... / scheds:... (Vrso: "name by som pouzil prave tag"). Zadava owner - CL
+  // pise vzdy jej autor. ===
+  const trig = zzz1f16Trigger || { kind: 'schedule', tag: '', duration_min: null, notify_before_min: null, repeat_min: null };
+  const trigBox = document.createElement('div');
+  trigBox.className = 'zzz1f16-trig';
+  const trigTypes = document.createElement('div');
+  trigTypes.className = 'zzz5w8-iw-row';
+  let trigKind = trig.kind;
+  const trigBtns = {};
+  [['reminder', 'REMINDER'], ['schedule', 'SCHEDULE']].forEach(([key, lab]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'zzz5w5cm-chip zzz5w8-iw-type';
+    b.textContent = lab;
+    b.addEventListener('click', () => { trigKind = key; paintTrig(); });
+    trigBtns[key] = b;
+    trigTypes.appendChild(b);
+  });
+  trigBox.appendChild(trigTypes);
+  const mkField = (host, label, value, ph) => {
+    const w = document.createElement('label');
+    w.className = 'zzz5w8-iw-field';
+    const c = document.createElement('span');
+    c.textContent = label;
+    const i = document.createElement('input');
+    i.type = 'text';
+    i.placeholder = ph;
+    i.value = value || '';
+    w.appendChild(c);
+    w.appendChild(i);
+    host.appendChild(w);
+    return { input: i, cap: c };
+  };
+  const tagF = mkField(trigBox, 'TAG', trig.tag, 'e.g. concert, pharmacy');
+  const three = document.createElement('div');
+  three.className = 'zzz5w8-iw-three';
+  trigBox.appendChild(three);
+  const fm = (m) => (typeof zzz5w8_fmt_minutes === 'function' ? zzz5w8_fmt_minutes(m).replace(' ', '') : '');
+  const durF = mkField(three, 'DURATION', fm(trig.duration_min), 'e.g. 3h');
+  const befF = mkField(three, 'NOTIFY BEFORE', fm(trig.notify_before_min), 'e.g. 2d');
+  const repF = mkField(three, 'REPEAT EVERY', fm(trig.repeat_min), 'e.g. 1h');
+  const trigMsg = document.createElement('div');
+  trigMsg.className = 'zzz5w8-iw-msg';
+  trigMsg.textContent = 'Number + min / h / d / w. Saved with the record when you press ENTER - it then shows in NOTIFICATIONS.';
+  trigBox.appendChild(trigMsg);
+  function paintTrig() {
+    Object.keys(trigBtns).forEach(key => trigBtns[key].classList.toggle('is-on', key === trigKind));
+    tagF.cap.textContent = 'TAG (' + (trigKind === 'schedule' ? 'scheds:' : 'rems:') + ')';
+  }
+  paintTrig();
+  box.appendChild(trigBox);
+  // vrati trigger z poli; null = nic nevyplnene (bunka je len datum, ziadna notifikacia navyse);
+  // false = chyba v zapise casu - povedane v okne, nic sa neulozi
+  function readTrig() {
+    trigMsg.classList.remove('is-warn');
+    trigMsg.textContent = 'Number + min / h / d / w. Saved with the record when you press ENTER - it then shows in NOTIFICATIONS.';
+    const out = { kind: trigKind, tag: String(tagF.input.value || '').trim().replace(/^(rems|scheds):/i, '') };
+    for (const [key, f, lab] of [['duration_min', durF, 'DURATION'], ['notify_before_min', befF, 'NOTIFY BEFORE'], ['repeat_min', repF, 'REPEAT EVERY']]) {
+      const v = String(f.input.value || '').trim();
+      out[key] = v ? zzz5w8_parse_minutes(v) : null;
+      if (v && out[key] === null) {
+        trigMsg.textContent = `${lab}: "${v}" is not a time - write e.g. 3h, 2d, 90min, 1w.`;
+        trigMsg.classList.add('is-warn');
+        return false;
+      }
+    }
+    const any = out.tag || out.duration_min || out.notify_before_min || out.repeat_min;
+    return any ? out : null;
+  }
+  function keepTrig() {
+    const t = readTrig();
+    if (t === false) return false;
+    zzz1f16Trigger = t;
+    return true;
+  }
+  // === [/Zzz1-F16-trig:SCHEDULE-TRIGGER] ===
+
   const actions = document.createElement('div');
   actions.className = 'entry-modal-actions';
 
@@ -14283,6 +14400,7 @@ function zzz1_f16_open_schedule_date_modal() {
   // OPRAVA (2026-08-21, Vrso): pri zatvoreni okna (klik mimo) sa aktualny vyber TICHO ulozi (autosave), aby
   // sa rozpisany vyber nestratil aj bez COPY. DELETE ma vlastnu vetvu (explicitne vymazanie, nie autosave).
   function closeModal() {
+    if (!keepTrig()) return;   // [Zzz1-F16-trig] zly zapis casu - okno ostava, hlaska je v nom
     write_to_entry("16", buildDateStr());
     removeBox();
   }
@@ -14292,13 +14410,14 @@ function zzz1_f16_open_schedule_date_modal() {
   deleteBtn.textContent = 'DELETE';
   deleteBtn.onclick = () => {
     write_to_entry("16", '');
+    zzz1f16Trigger = null;   // [Zzz1-F16-trig] bez terminu nie je co pripominat
     removeBox();
   };
 
   const copyBtn = document.createElement('button');
   copyBtn.className = 'entry-modal-copy';
   copyBtn.textContent = 'COPY';
-  copyBtn.onclick = () => { zzz6f6_copy_cell_to_cl("16", buildDateStr()); zzz6f6_flash_button(copyBtn); }; // toast + flash feedback (DRY)
+  copyBtn.onclick = () => { if (!keepTrig()) return; zzz6f6_copy_cell_to_cl("16", buildDateStr()); zzz6f6_flash_button(copyBtn); }; // toast + flash feedback (DRY)
 
   // [Zzz6-F17:SAME-ACTIONS] Vrso 2026-09-24 - aj SCHEDULE okno ma rovnaku stvoricu ako ostatne kontextove
   // okna; ATTACH najprv ulozi vybrany datum do bunky a potom pripne CL (zdielana funkcia, ziadna nova logika).
@@ -14306,6 +14425,7 @@ function zzz1_f16_open_schedule_date_modal() {
   attachBtn.className = 'zzz1m5-attach-btn';
   attachBtn.textContent = 'ATTACH';
   attachBtn.onclick = () => {
+    if (!keepTrig()) return;
     write_to_entry("16", buildDateStr());
     zzz6f17_context_attachment_add_cl("16");
     removeBox();
@@ -22307,6 +22427,7 @@ async function submit_entries_to_db(options = {}) {
   // Stoji TU, v jedinom mieste, kadial prejde KAZDY zapis zaznamu, nie pri jednotlivych ENTER tlacidlach:
   // ENTER v comm okne aj ENTER na hlavnej stranke konci tu, takze sa preset nema ako stratit.
   try { await zzz5_6_apply_comm_preset(payload.entry_id); } catch (e) {}
+  try { await zzz1f16_apply_trigger(payload.entry_id, payload); } catch (e) {}   // [Zzz1-F16-trig:SCHEDULE-TRIGGER]
   zzz6f38_record_submit(payload); // Zzz6-F38:CL-UNDO (2026-08-30) - Back po tomto zapise presunie zaznam do Trash
   zzz1r_flash_all_cells_success(); // Zzz2-R14: vyrazne zelene bliknutie (1s) celeho CL riadku po uspesnom zapise
   // === [Zzz6-F38:CL-AUTO-CLEAR] (Vrso 2026-08-30, "CL by sa mal vymazat ked uz bola entry uspesna, pred
@@ -39369,7 +39490,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-18 02:30';
+const ZZZ5_6_BUILD = '2026-10-18 02:32';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -47399,7 +47520,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-56 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-57 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
