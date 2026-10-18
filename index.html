@@ -9957,6 +9957,20 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
   .zzz5w8-db { margin-top: 10px; padding-top: 6px; border-top: 1px solid #2a2a2a; }
   .zzz5w8-db-head { font-size: 9px; font-weight: 800; letter-spacing: .06em; color: #D4AF37; padding: 2px 2px 4px; }
   .zzz5w8-place { color: #c9a6ff; font-weight: 700; }
+  /* [Zzz5-W8:MEMBERS] odpovede membera a suhrn ucasti */
+  .zzz5w8-st-yes { color: #7fcf83; } .zzz5w8-st-no { color: #e8705f; } .zzz5w8-st-maybe { color: #f0a640; }
+  .zzz5w8-st-answer\? { color: #f0a640; }
+  .zzz5w5cm-chip.zzz5w8-ans-yes { border-color: #2f7d32; color: #2f7d32; }
+  .zzz5w5cm-chip.zzz5w8-ans-no { border-color: #c0392b; color: #c0392b; }
+  .zzz5w5cm-chip.zzz5w8-ans-maybe { border-color: #ea8c00; color: #b35c00; }
+  .zzz5w5cm-chip.zzz5w8-ans.is-on { color: #fff; }
+  .zzz5w5cm-chip.zzz5w8-ans-yes.is-on { background: #2f7d32; } .zzz5w5cm-chip.zzz5w8-ans-no.is-on { background: #c0392b; }
+  .zzz5w5cm-chip.zzz5w8-ans-maybe.is-on { background: #ea8c00; }
+  .zzz5w8-iw-member-info { white-space: pre-line; font-size: 11px; color: #171717; }
+  .zzz5w8-note-chip {
+    display: inline-block; margin: 3px 0 1px; padding: 2px 8px; font-size: 9px; font-weight: 700;
+    border: 1px solid #D4AF37; border-radius: 999px; color: #8a6d1a; background: #fffbea; cursor: pointer;
+  }
   .zzz5w8-st-new, .zzz5w8-st-due { color: #f0a640; }
   .zzz5w8-st-seen { color: #9a9a9a; }
   .zzz5w8-st-planned { color: #9aa6ff; }
@@ -10045,6 +10059,11 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
   .zzz5w8-iw-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 6px; }
   .zzz5w8-iw-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .zzz5w8-iw-hint { font-style: normal; color: #b08d2a; font-weight: 700; }
+  /* [Zzz5-W8:FILLED] prazdne pole tlmene, vyplnene vyrazne */
+  .zzz5w8-iw-field input, .zzz5w8-iw-field textarea { border-color: #e2d6a6; }
+  .zzz5w8-iw-field input.is-filled, .zzz5w8-iw-field textarea.is-filled {
+    border-width: 2px; border-color: #b8860b; font-weight: 700; background-color: #fffbea;
+  }
   .zzz5w8-iw-prio-cap { font-size: 9px; font-weight: 700; color: #444; }
   .zzz5w8-iw-msg { font-size: 9px; color: #8a8a8a; min-height: 0; }
   .zzz5w8-iw-msg.is-warn { color: #f0a640; }
@@ -17699,7 +17718,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
       const cfg = cnRemArm;
       cnRemArm = null;
       cnPaintClock();
-      zzz5w8_insert_from_chat(cfg, cnEntryKey, body, prio);
+      zzz5w8_insert_from_chat(cfg, cnEntryKey, body, prio, saved);
     }
     if (saved) {
       // [Zzz6-F58:MENTIONS] jedna hlaska povie OBE veci: ze to odislo, a komu sa tym otvoril zaznam
@@ -27875,6 +27894,14 @@ function refresh_database_workspace_if_open() {
   if (workspace.querySelector('.communication-workspace')) {
     return;
   }
+  // === OPRAVA [Zzz5-W8:NOT-DATABASE] Vrso 2026-10-17 (23:22): "Nejde otvorit notif workspace".
+  // Toto bola pricina, ktoru som vtedy nenasiel: Notification Workspace zdiela .db-workspace kvoli vzhladu
+  // a KAZDY zapis do CL (aj zatvorenie comm okna, ktore si odklada rozpisany text) ho tu ticho prepisal
+  // na Database Workspace. Tuk na NOTIFICATIONS teda W8 naozaj otvoril - a o okamih ho nieco zavrelo.
+  // Ta ista vynimka, aku maju Settings a Communication. ===
+  if (workspace.querySelector('.zzz5w8-workspace')) {
+    return;
+  }
   if (workspace.querySelector('.db-workspace')) {
     open_database_workspace();
   }
@@ -28338,6 +28365,8 @@ function zzz5w8_status_of(it) {
     return 'NEW';
   }
   if (it.done) return 'DONE';
+  // [Zzz5-W8:MEMBERS] member pri terminu vidi svoju odpoved, kym nie je DONE
+  if (it.member && it.src === 'schedule') return it.target && it.target.answer ? it.target.answer.toUpperCase() : 'ANSWER?';
   if (!it.due) return 'PLANNED';
   return it.fresh ? 'DUE' : 'SEEN';
 }
@@ -28463,6 +28492,188 @@ async function zzz5w8_load_entries(ids) {
   }
 }
 
+// === [Zzz5-W8:MEMBERS] Vrso 2026-10-18 (02:57): upozornenie pre tagovanych members pri rems aj scheds,
+// "a najma, aby mal owner prehlad napr. aj o ucasti na akcii". Rozhodnutia (Vrso, ta ista sprava):
+//   KOMU      - mentions v sprave, z ktorej polozka vznika (@meno, &meno, @skupina, @team), alebo MEMBERS
+//               vo W8 formulari. Ten isty jazyk, aky chat uz pozna.
+//   ODPOVED   - pri SCHEDULE YES / NO / MAYBE; DONE ostava kazdeho za seba (aj pri REMINDER).
+//   PREHLAD   - ownerovi vo W8 pri polozke, v SCHEDS DATABASE aj pri sprave v chate.
+// Ulozenie: riadok na cloveka vo verso_notif_targets, viazany cudzim klucom na polozku
+// ([Zzz6-SF:BOUND-TO-ENTRY]); polozku tym vidi aj member (RLS), menit ju smie len owner. Odpoved,
+// DONE a "videl som" pise member VO SVOJOM riadku - ownerovu polozku sa nikto iny nedotkne.
+// SQL verso_notif_targets_v1; kym nie je, polozka vznikne bez members a appka to povie. ===
+// === [Zzz5-W8:BASE-TAG] Vrso 2026-10-18 (03:06): "vytvaram v reminderi, tak tam by mal byt automaticky tag
+// ako rems" + "v chatoch... ak nie je prave tagovane, na tieto 2 zakladne veci ako rems a scheds".
+// Druh JE stitok: kazda polozka nesie "rems" alebo "scheds" vzdy, aj bez vlastneho slova. Slovo, ked je,
+// ide za dvojbodku (rems:lekaren). Uklada sa len slovo - druh je uz v stlpci kind, nedubluje sa. ===
+function zzz5w8_tag_label(r) {
+  const base = (r && r.kind === 'schedule') ? 'scheds' : 'rems';
+  const w = String((r && r.tag) || '').trim();
+  return w ? base + ':' + w : base;
+}
+const ZZZ5W8_TARGETS_TABLE = 'verso_notif_targets';
+const ZZZ5W8_TARGETS_SQL = 'verso_notif_targets_v1';
+let zzz5w8Targets = [];            // surove riadky (moje + tie pri mojich polozkach)
+let zzz5w8TargetsMissing = false;
+async function zzz5w8_load_targets() {
+  try {
+    const { data, error } = await sb.from(ZZZ5W8_TARGETS_TABLE).select('*');
+    if (error) throw error;
+    zzz5w8Targets = data || [];
+    zzz5w8TargetsMissing = false;
+  } catch (e) {
+    zzz5w8Targets = [];
+    zzz5w8TargetsMissing = true;
+  }
+}
+function zzz5w8_targets_of(itemId) {
+  return zzz5w8Targets.filter(t => String(t.item_id) === String(itemId));
+}
+function zzz5w8_my_target(itemId) {
+  const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+  return zzz5w8Targets.find(t => String(t.item_id) === String(itemId) && zzz10v1_normalize(t.username || '') === meN) || null;
+}
+// suhrn ucasti pre ownera: "Y 2 · N 1 · ? 1" (? = nema odpoved alebo MAYBE nie je rovnake: M = maybe)
+function zzz5w8_answers_summary(itemId) {
+  const ts = zzz5w8_targets_of(itemId);
+  if (!ts.length) return '';
+  const c = { yes: 0, no: 0, maybe: 0, none: 0 };
+  ts.forEach(t => { c[t.answer && c[t.answer] !== undefined ? t.answer : 'none'] += 1; });
+  return `Y ${c.yes} \u00b7 N ${c.no} \u00b7 M ${c.maybe} \u00b7 ? ${c.none}`;
+}
+// mena z textu: @meno, &meno, @skupina / @team sa rozvinu na ludi; bez mna samotneho, bez opakovania
+function zzz5w8_members_from_text(text) {
+  const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+  const raw = (typeof zzz6f58_names === 'function')
+    ? zzz6f58_names(String(text || ''), false).concat(zzz6f58_names(String(text || ''), true)) : [];
+  const out = [];
+  raw.forEach(n => {
+    const grp = (typeof zzz5w5cm_group_expand === 'function') ? zzz5w5cm_group_expand(n) : null;
+    (grp || [n]).forEach(x => {
+      const v = String(x || '').replace(/^[@&]/, '').trim();
+      if (v && zzz10v1_normalize(v) !== meN && !out.some(o => zzz10v1_normalize(o) === zzz10v1_normalize(v))) out.push(v);
+    });
+  });
+  return out;
+}
+async function zzz5w8_add_targets(itemId, names) {
+  if (!names || !names.length) return { ok: 0, missing: false };
+  try {
+    const rows = names.map(n => ({ item_id: itemId, username: n }));
+    const { data, error } = await sb.from(ZZZ5W8_TARGETS_TABLE).insert(rows).select('*');
+    if (error && String(error.code) !== '23505') throw error;
+    (data || []).forEach(r => zzz5w8Targets.push(r));
+    return { ok: (data || []).length, missing: false };
+  } catch (e) {
+    return { ok: 0, missing: zzz5w8_is_missing_table(e), error: (e && (e.message || e.details)) || String(e) };
+  }
+}
+// zmena vo VLASTNOM riadku membera (odpoved / DONE / videl som)
+async function zzz5w8_target_update(t, patch) {
+  try {
+    const { data, error } = await sb.from(ZZZ5W8_TARGETS_TABLE).update(patch).eq('id', t.id).select('*');
+    if (error) throw error;
+    Object.assign(t, (data || [])[0] || patch);
+    return true;
+  } catch (e) {
+    zzz6f2_show_toast(`Not saved: ${(e && (e.message || e.details)) || e}`, 'warn');
+    return false;
+  }
+}
+// okno odpovede pre membera: YES / NO / MAYBE (len SCHEDULE) + DONE
+function zzz5w8_open_member_window(it) {
+  const r = it.raw || {};
+  const t = zzz5w8_my_target(r.id);
+  if (!t) return;
+  document.querySelectorAll('.zzz5w8-item-window').forEach(w => { if (w._zzz5w8Close) w._zzz5w8Close(); });
+  const { box, removeBox } = zzz6f41_create_context_window();
+  box.classList.add('zzz5w8-item-window');
+  box._zzz5w8Close = removeBox;
+  const head = document.createElement('div');
+  head.className = 'zzz-context-header zzz5w8-iw-head';
+  const ttl = document.createElement('span');
+  ttl.textContent = `${r.kind === 'schedule' ? 'SCHEDULE' : 'REMINDER'} FROM ${String(r.username || '').toUpperCase()}${r.entry_id ? ' - #' + r.entry_id : ''}`;
+  head.appendChild(ttl);
+  const x = document.createElement('button');
+  x.type = 'button'; x.className = 'zzz5w5cm-close'; x.textContent = '\u00d7';
+  x.addEventListener('click', removeBox);
+  head.appendChild(x);
+  box.appendChild(head);
+  const body = document.createElement('div');
+  body.className = 'zzz5w8-iw-body';
+  const info = document.createElement('div');
+  info.className = 'zzz5w8-iw-member-info';
+  info.textContent = [zzz5w8_fmt_time(Date.parse(r.due_at)) + (r.duration_min ? ' \u00b7 ' + zzz5w8_fmt_minutes(r.duration_min) : ''),
+    zzz5w8_tag_label(r), r.title || ''].filter(Boolean).join('\n');
+  body.appendChild(info);
+  const acts = document.createElement('div');
+  acts.className = 'zzz5w8-iw-acts';
+  if (r.kind === 'schedule') {
+    [['yes', 'YES'], ['no', 'NO'], ['maybe', 'MAYBE']].forEach(([a, lab]) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'zzz5w5cm-chip zzz5w8-ans zzz5w8-ans-' + a + (t.answer === a ? ' is-on' : '');
+      b.textContent = lab;
+      b.addEventListener('click', async () => {
+        if (await zzz5w8_target_update(t, { answer: a })) { removeBox(); zzz6f2_show_toast(`Your answer: ${lab}.`); zzz5w8_render(); }
+      });
+      acts.appendChild(b);
+    });
+  }
+  const done = document.createElement('button');
+  done.type = 'button';
+  done.className = 'zzz5w5cm-chip zzz5w8-iw-done';
+  done.textContent = t.done_at ? 'NOT DONE YET' : 'DONE';
+  done.addEventListener('click', async () => {
+    if (await zzz5w8_target_update(t, { done_at: t.done_at ? null : new Date().toISOString() })) { removeBox(); zzz5w8_render(); }
+  });
+  acts.appendChild(done);
+  if (r.entry_id) {
+    const openEn = document.createElement('button');
+    openEn.type = 'button'; openEn.className = 'zzz5w5cm-chip';
+    openEn.textContent = `OPEN #${r.entry_id}`;
+    openEn.addEventListener('click', () => zzz6f29_open_entry_number_window(r.entry_id));
+    acts.appendChild(openEn);
+  }
+  body.appendChild(acts);
+  box.appendChild(body);
+  // [Zzz5-W8:REPEAT] otvorenie = videl som (v mojom riadku)
+  zzz5w8_target_update(t, { seen_at: new Date().toISOString() }).then(() => { if (zzz5w8_is_open()) zzz5w8_render(); });
+}
+// chat: suhrn ucasti pri sprave, z ktorej polozka vznikla (note_id)
+let zzz5w8ChipLoad = null;
+function zzz5w8_paint_note_chips() {
+  document.querySelectorAll('.zzz5w8-note-chip').forEach(el => {
+    const id = String(el.dataset.zzz5w8Note || '');
+    const item = zzz5w8Items.find(i => String(i.note_id || '') === id);
+    if (!item) { el.style.display = 'none'; return; }
+    const sum = zzz5w8_answers_summary(item.id);
+    const mine = zzz5w8_my_target(item.id);
+    el.style.display = '';
+    el.textContent = '\u23f0 ' + zzz5w8_tag_label(item)
+      + ' ' + zzz5w8_fmt_time(Date.parse(item.due_at))
+      + (sum ? ' \u00b7 ' + sum : '') + (mine && mine.answer ? ' \u00b7 you: ' + mine.answer.toUpperCase() : '');
+    el.title = mine ? 'Tap = answer / mark done' : 'Participation of the members you named';
+    el.onclick = (e) => {
+      e.stopPropagation();
+      const it = { raw: item };
+      if (mine) zzz5w8_open_member_window(it); else zzz5w8_open_item_window(item, item.kind);
+    };
+  });
+}
+function zzz5w8_note_chip(note) {
+  const el = document.createElement('div');
+  el.className = 'zzz5w8-note-chip';
+  el.style.display = 'none';
+  el.dataset.zzz5w8Note = String((note && note.id) || '');
+  // polozky sa dotiahnu raz, aj ked W8 este otvoreny nebol - chip potom nakresli to, co uz pozna
+  if (!zzz5w8Loaded && !zzz5w8ChipLoad) {
+    zzz5w8ChipLoad = Promise.all([zzz5w8_load_items(), zzz5w8_load_targets()]).then(() => zzz5w8_paint_note_chips());
+  }
+  setTimeout(zzz5w8_paint_note_chips, 0);
+  return el;
+}
+
 async function zzz5w8_reload() {
   zzz5w8State.loading = true;
   zzz5w8_render();
@@ -28470,7 +28681,8 @@ async function zzz5w8_reload() {
     await Promise.all([
       (typeof zzz1cn_notif_load === 'function') ? zzz1cn_notif_load() : null,
       zzz5w8_load_items(),
-      zzz5w8_load_reactions()
+      zzz5w8_load_reactions(),
+      zzz5w8_load_targets()
     ]);
     const ids = (zzz1cnNotifNotes || []).map(r => r.entry_key).concat(zzz5w8Items.map(r => r.entry_id));
     await zzz5w8_load_entries(ids);
@@ -28534,24 +28746,32 @@ function zzz5w8_collect() {
     });
   });
   // REMINDERS / SCHEDULE: polozka je "teraz", ked jej cas uz nastal
+  const meItems = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
   zzz5w8Items.forEach(r => {
     const t = Date.parse(r.due_at || '') || 0;
     const entry = (r.entry_id === null || r.entry_id === undefined) ? '' : String(r.entry_id);   // [Zzz5-W8:ONE-OFF]
+    // [Zzz5-W8:MEMBERS] cudzia polozka, kde som member: DONE a "videl som" su z MOJHO riadku, nie ownerove
+    const mine = zzz10v1_normalize(r.username || '') === meItems;
+    const tgt = mine ? null : zzz5w8_my_target(r.id);
+    if (!mine && !tgt) return;   // nema ma co zaujimat (nemalo by nastat - RLS by ju nevydala)
+    const st = mine ? r : tgt;
     // [Zzz5-W8:CL-FORM] NOTIFY BEFORE posuva okamih, od ktoreho polozka "nastala" (zacne svietit)
     const from = t - (Number(r.notify_before_min) || 0) * 60000;
     // [Zzz5-W8:REPEAT] nova = nastala, nie je DONE a bud som ju este nevidel, alebo uplynul REPEAT EVERY
-    const seen = Date.parse(r.seen_at || '') || 0;
+    const seen = Date.parse(st.seen_at || '') || 0;
     const rep = (Number(r.repeat_min) || 0) * 60000;
     const fresh = !seen || (rep > 0 && now >= seen + rep);
     out.push({
       src: r.kind === 'schedule' ? 'schedule' : 'reminder', id: 'item:' + r.id,
-      entry, t, due: now >= from, done: !!r.done_at, fresh,
-      dur: Number(r.duration_min) || 0,
+      entry, t, due: now >= from, done: !!st.done_at, fresh,
+      dur: Number(r.duration_min) || 0, member: !mine, target: tgt,
       prio: ['urgent', 'attention'].indexOf(r.priority) >= 0 ? r.priority : 'open',
       type: r.kind === 'schedule' ? 'SCHEDULE' : 'REMINDER',
       // [Zzz5-W8:TAG] stitok s druhom ide pred text - "rems:lekaren", "scheds:koncert"
       from: String(r.username || ''),
-      text: [r.tag ? (r.kind === 'schedule' ? 'scheds:' : 'rems:') + r.tag : '', String(r.title || '')].filter(Boolean).join(' \u00b7 '),
+      text: [zzz5w8_tag_label(r), String(r.title || ''),
+        // [Zzz5-W8:MEMBERS] owner vidi suhrn ucasti priamo v riadku
+        mine ? zzz5w8_answers_summary(r.id) : ''].filter(Boolean).join(' \u00b7 '),
       project: zzz5w8_project_of(entry), raw: r
     });
   });
@@ -28659,6 +28879,7 @@ function zzz5w8_open_item(it, anchorEl) {
     if (typeof zzz1cn_open_list === 'function') zzz1cn_open_list(it.entry, anchorEl);
     return;
   }
+  if (it.member) { zzz5w8_open_member_window(it); return; }   // [Zzz5-W8:MEMBERS] cudziu polozku len odpovedam
   zzz5w8_open_item_window(it.raw, it.src);
 }
 
@@ -28824,17 +29045,25 @@ function zzz5w8_open_item_window(raw, kind, arm) {
   // === [Zzz5-W8:TAG] Vrso 02:27: "name by som pouzil prave tag (reminds... ako som pisal). Cize moze
   // ist o cl, el, ale najma o tieto tagged notifikacie". Polozka sa oznacuje STITKOM, ktory nesie aj
   // svoj druh: rems:koncert / scheds:porada. Prefix doplna appka podla TYPE - clovek pise len slovo. ===
-  const tagIn = fieldIn(r1, 'TAG', text(raw ? String(raw.tag || '') : '', 'e.g. concert, pharmacy'), '(rems:)');
+  const tagIn = fieldIn(r1, 'TAG', text(raw ? String(raw.tag || '') : '', 'optional word, e.g. pharmacy'), '(rems:)');
   const tagCap = tagIn.parentNode.querySelector('.zzz5w8-iw-hint');
   const textIn = document.createElement('textarea');
   textIn.rows = 2;
   textIn.placeholder = 'What should remind you (e.g. birthday party, call back, meeting)';
   textIn.value = raw ? String(raw.title || '') : '';
   field('TEXT', textIn);
+  // [Zzz5-W8:MEMBERS] koho to tyka - @meno, &meno, @skupina; pri uprave sa len PRIDAVAJU dalsi
+  const memIn = text('', '@name, @group (they get it in NOTIFICATIONS)');
+  const memWrap = field('MEMBERS', memIn).parentNode;
+  if (raw && raw.id) {
+    const ts = zzz5w8_targets_of(raw.id);
+    memIn.placeholder = ts.length ? `Already: ${ts.map(t => t.username).join(', ')} - add more with @name` : memIn.placeholder;
+  }
   // === [Zzz5-W8:FROM-CHAT] pri hodinkach z chat line je TEXT samotna sprava - pole sa skryje, cislo
   // zaznamu je chat, v ktorom sa pise (neda sa prepisat); uz nastavene hodnoty sa vratia do poli ===
   if (arm) {
     textIn.parentNode.style.display = 'none';
+    memWrap.style.display = 'none';   // [Zzz5-W8:MEMBERS] z chatu su members mentions v samotnej sprave
     entryIn.value = arm.entry || '';
     entryIn.disabled = true;
     entryIn.title = arm.entry ? `The chat of #${arm.entry}` : 'This chat has no record number yet - it becomes a one-off reminder';
@@ -28894,7 +29123,8 @@ function zzz5w8_open_item_window(raw, kind, arm) {
   go.className = 'zzz5w5cm-chip zzz5w8-iw-go';
   const paint = () => {
     Object.keys(typeBtns).forEach(key => typeBtns[key].classList.toggle('is-on', key === k));
-    if (tagCap) tagCap.textContent = ' (' + (k === 'schedule' ? 'scheds:' : 'rems:') + ')';
+    // [Zzz5-W8:BASE-TAG] druh je stitok vzdy - slovo je len doplnok za dvojbodku
+    if (tagCap) tagCap.textContent = ' ' + (k === 'schedule' ? 'scheds:' : 'rems:') + ' (always)';
     title.textContent = isNew ? (k === 'schedule' ? 'NEW SCHEDULE ITEM' : 'NEW REMINDER')
       : `${k === 'schedule' ? 'SCHEDULE' : 'REMINDER'}${raw.entry_id ? ' - #' + raw.entry_id : ' - one-off'}`;
     go.textContent = isNew ? (k === 'schedule' ? 'ADD TO SCHEDULE' : 'ADD REMINDER') : 'APPLY CHANGES';
@@ -28955,6 +29185,12 @@ function zzz5w8_open_item_window(raw, kind, arm) {
       else Object.assign(raw, row);
       if (row.entry_id !== null && row.entry_id !== undefined) await zzz5w8_load_entries([row.entry_id]);
       if (isNew && zzz5w8Tab !== 'all') zzz5w8Tab = k === 'schedule' ? 'schedule' : 'reminders';
+      // [Zzz5-W8:MEMBERS] members z pola MEMBERS (rovnaky jazyk ako chat: @meno, @skupina)
+      const memNames = zzz5w8_members_from_text(memIn.value);
+      if (memNames.length) {
+        const r2 = await zzz5w8_add_targets(row.id, memNames);
+        if (!r2.ok) zzz6f2_show_toast(r2.missing ? `Members not notified - run SQL "${ZZZ5W8_TARGETS_SQL}" in Supabase.` : `Members not notified: ${r2.error}`, 'warn');
+      }
       close();
       zzz6f2_show_toast(v3Missing
         ? `Added without TAG / DURATION / NOTIFY BEFORE / REPEAT - run SQL "${ZZZ5W8_V3_SQL}" in Supabase for those.`
@@ -29007,6 +29243,14 @@ function zzz5w8_open_item_window(raw, kind, arm) {
   }
   body.appendChild(acts);
   paint();
+  // [Zzz5-W8:FILLED] Vrso 2026-10-18 (03:06): "zvyraznit treba najma to, co sa vyplni" - vyplnene pole
+  // dostane plny zlaty ram a tucne pismo, prazdne ostane tlmene. Na prvy pohlad je vidno, co plati.
+  body.querySelectorAll('input[type=text], textarea, input[type=datetime-local]').forEach(el => {
+    const f = () => el.classList.toggle('is-filled', !!String(el.value || '').trim());
+    f();
+    el.addEventListener('input', f);
+    el.addEventListener('change', f);
+  });
   // [Zzz5-W8:KEEP-FORM] zatvara sa LEN krizikom alebo po uspesnom pridani; ziadne automaticke focus()
   // [Zzz5-W8:REPEAT] otvorenie polozky = videl som ju; s REPEAT EVERY sa znova zarata po uplynuti intervalu
   if (!isNew) zzz5w8_mark_seen(raw);
@@ -29016,7 +29260,7 @@ function zzz5w8_open_item_window(raw, kind, arm) {
 // zaznamu; ulozit ju do Notes nie je nutne" - "ok, zapracuj, ale musim testnut a odobrit".
 // Zapis polozky z odoslanej spravy: TEXT = sprava, cislo zaznamu = chat (koncept bez cisla = one-off),
 // priorita = priorita spravy, ak ju sprava ma, inak to, co bolo nastavene v okne. ===
-async function zzz5w8_insert_from_chat(cfg, entryKey, text, msgPrio) {
+async function zzz5w8_insert_from_chat(cfg, entryKey, text, msgPrio, saved) {
   const me = (zzz0r1_get_current_username() || '').trim();
   const num = /^\d+$/.test(String(entryKey || '')) ? Number(entryKey) : null;
   const lvl = zzz1cn_prio_level(msgPrio) || zzz1cn_prio_level(cfg.priority);
@@ -29037,7 +29281,26 @@ async function zzz5w8_insert_from_chat(cfg, entryKey, text, msgPrio) {
     if (res.error) throw res.error;
     const row = (res.data || [])[0];
     if (row) zzz5w8Items.push(row);
-    zzz6f2_show_toast((base.kind === 'schedule' ? 'Schedule' : 'Reminder') + ' created from your message'
+    // [Zzz5-W8:MEMBERS] prepojenie na spravu (suhrn ucasti v chate) + members z mentions v sprave
+    let memMsg = '';
+    if (row) {
+      const sv = Array.isArray(saved) ? saved[0] : saved;
+      const nid = sv && /^\d+$/.test(String(sv.id || '')) ? Number(sv.id) : null;
+      if (nid) {
+        try {
+          const u = await sb.from(ZZZ5W8_TABLE).update({ note_id: nid }).eq('id', row.id);
+          if (!u.error) row.note_id = nid;
+        } catch (e) {}
+      }
+      const names = zzz5w8_members_from_text(text);
+      if (names.length) {
+        const r2 = await zzz5w8_add_targets(row.id, names);
+        memMsg = r2.ok ? ` Members: ${names.join(', ')}.`
+          : (r2.missing ? ` Members not notified - run SQL "${ZZZ5W8_TARGETS_SQL}".` : ` Members not notified: ${r2.error}.`);
+      }
+      zzz5w8_paint_note_chips();
+    }
+    zzz6f2_show_toast((base.kind === 'schedule' ? 'Schedule' : 'Reminder') + ' created from your message' + memMsg
       + (num ? ` (#${num})` : ' (one-off)') + (v3Missing ? ` - without TAG / DURATION / NOTIFY / REPEAT, SQL "${ZZZ5W8_V3_SQL}" missing.` : '.'),
       v3Missing ? 'warn' : undefined);
     if (zzz5w8_is_open()) zzz5w8_render();
@@ -29077,7 +29340,10 @@ function zzz5w8_build_row(it) {
     if (nx && nx.classList.contains('zzz5w8-more')) { nx.remove(); mini.classList.remove('is-open'); return; }
     const more = document.createElement('div');
     more.className = 'zzz5w8-more';
-    [['TYPE', v.type], ['WHEN', v.when], ['FROM', v.from], ['PROJECT NAME', v.project]].forEach(([k, val]) => {
+    // [Zzz5-W8:MEMBERS] owner vidi pri polozke mena a ich odpovede
+    const ts = (!it.member && it.raw && it.raw.id) ? zzz5w8_targets_of(it.raw.id) : [];
+    const who = ts.map(t => `${t.username}${t.answer ? ' ' + t.answer.toUpperCase() : ' ?'}${t.done_at ? ' \u2713' : ''}`).join(', ');
+    [['TYPE', v.type], ['WHEN', v.when], ['FROM', v.from], ['PROJECT NAME', v.project], ['MEMBERS', who]].forEach(([k, val]) => {
       if (!val) return;
       const b = document.createElement('span');
       b.className = 'zzz5w8-more-item';
@@ -29102,7 +29368,11 @@ function zzz5w8_build_row(it) {
       if (it.src !== 'chat') {
         cell.classList.add('is-editable');
         cell.title = it.done ? 'Done - tap = not done yet' : 'Tap = mark as done';
-        cell.addEventListener('click', (ev) => { ev.stopPropagation(); zzz5w8_mark_done(it.raw, !it.done); });
+        cell.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          if (it.member) { zzz5w8_open_member_window(it); return; }   // [Zzz5-W8:MEMBERS]
+          zzz5w8_mark_done(it.raw, !it.done);
+        });
       } else {
         // [Zzz5-W8:CHAT-DONE] neulozena sprava: tuk = DONE (reakcia) + precitane; ulozena: status je v Notes
         const raw = it.raw || {};
@@ -38706,6 +38976,8 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   body.className = 'zzz1cn-note-text';
   body.textContent = note.note_text;
   wrap.appendChild(body);
+  // [Zzz5-W8:MEMBERS] sprava, z ktorej vznikla pripomienka / termin, nesie jej suhrn ucasti
+  if (note && /^\d+$/.test(String(note.id || '')) && typeof zzz5w8_note_chip === 'function') wrap.appendChild(zzz5w8_note_chip(note));
   return wrap;
 }
 
@@ -39752,7 +40024,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-18 02:50';
+const ZZZ5_6_BUILD = '2026-10-18 03:08';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -47782,7 +48054,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-60 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-61 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
