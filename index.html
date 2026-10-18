@@ -9957,6 +9957,7 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
   .zzz5w8-db { margin-top: 10px; padding-top: 6px; border-top: 1px solid #2a2a2a; }
   .zzz5w8-db-head { font-size: 9px; font-weight: 800; letter-spacing: .06em; color: #D4AF37; padding: 2px 2px 4px; }
   .zzz5w8-place { color: #c9a6ff; font-weight: 700; }
+  .zzz5w8-place-link { color: #6fa8ff; text-decoration: underline dotted; font-weight: 700; word-break: break-word; }
   /* [Zzz5-W8:MEMBERS] odpovede membera a suhrn ucasti */
   .zzz5w8-st-yes { color: #7fcf83; } .zzz5w8-st-no { color: #e8705f; } .zzz5w8-st-maybe { color: #f0a640; }
   .zzz5w8-st-answer\? { color: #f0a640; }
@@ -28506,6 +28507,30 @@ async function zzz5w8_load_entries(ids) {
 // ako rems" + "v chatoch... ak nie je prave tagovane, na tieto 2 zakladne veci ako rems a scheds".
 // Druh JE stitok: kazda polozka nesie "rems" alebo "scheds" vzdy, aj bez vlastneho slova. Slovo, ked je,
 // ide za dvojbodku (rems:lekaren). Uklada sa len slovo - druh je uz v stlpci kind, nedubluje sa. ===
+const ZZZ5W8_PLACE_SQL = 'verso_notif_items_v4_place';
+// [Zzz5-W8:ADDRESS] odkaz na mapy z textu adresy - zatial hladanie (bez API); jedine miesto na zmenu neskor
+function zzz5w8_map_link(place) {
+  return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(String(place || ''));
+}
+async function zzz5w8_set_place(row, place) {
+  try {
+    const { error } = await sb.from(ZZZ5W8_TABLE).update({ place }).eq('id', row.id);
+    if (error) throw error;
+    row.place = place;
+    return true;
+  } catch (e) { return false; }
+}
+function zzz5w8_place_el(place) {
+  const a = document.createElement('a');
+  a.className = 'zzz5w8-place-link';
+  a.href = zzz5w8_map_link(place);
+  a.target = '_blank';
+  a.rel = 'noopener';
+  a.textContent = '\u2316 ' + place;
+  a.title = 'Open in maps';
+  a.addEventListener('click', (e) => e.stopPropagation());
+  return a;
+}
 function zzz5w8_tag_label(r) {
   const base = (r && r.kind === 'schedule') ? 'scheds' : 'rems';
   const w = String((r && r.tag) || '').trim();
@@ -28606,6 +28631,7 @@ function zzz5w8_open_member_window(it) {
   info.textContent = [zzz5w8_fmt_time(Date.parse(r.due_at)) + (r.duration_min ? ' \u00b7 ' + zzz5w8_fmt_minutes(r.duration_min) : ''),
     zzz5w8_tag_label(r), r.title || ''].filter(Boolean).join('\n');
   body.appendChild(info);
+  if (r.place) body.appendChild(zzz5w8_place_el(r.place));   // [Zzz5-W8:ADDRESS]
   const acts = document.createElement('div');
   acts.className = 'zzz5w8-iw-acts';
   if (r.kind === 'schedule') {
@@ -28771,7 +28797,8 @@ function zzz5w8_collect() {
       from: String(r.username || ''),
       text: [zzz5w8_tag_label(r), String(r.title || ''),
         // [Zzz5-W8:MEMBERS] owner vidi suhrn ucasti priamo v riadku
-        mine ? zzz5w8_answers_summary(r.id) : ''].filter(Boolean).join(' \u00b7 '),
+        mine ? zzz5w8_answers_summary(r.id) : '',
+        r.place ? '\u2316 ' + r.place : ''].filter(Boolean).join(' \u00b7 '),   // [Zzz5-W8:ADDRESS]
       project: zzz5w8_project_of(entry), raw: r
     });
   });
@@ -29085,6 +29112,12 @@ function zzz5w8_open_item_window(raw, kind, arm) {
   const start = raw ? (Date.parse(raw.due_at) || Date.now()) : (Math.ceil(Date.now() / 3600000) * 3600000);
   whenIn.value = toLocal((arm && arm.cfg && Date.parse(arm.cfg.due_at)) || start);
   field('DATE & TIME', whenIn);
+  // === [Zzz5-W8:ADDRESS] Vrso 2026-10-18 (03:10): "este chyba adresa. Mapy budem riesit neskor cez API, tak
+  // asi zatial len fiktivnym linkom, resp. adresou, ak sa zapise manualne". Adresa je obycajny text;
+  // v zozname a v okne membera je z nej odkaz na vyhladanie v mapach (bez API - len hladanie podla textu).
+  // Az pribudne mapove API, zmeni sa iba zzz5w8_map_link, nie ulozene data. Stlpec place: SQL v4. ===
+  const placeIn = text((raw && raw.place) || (arm && arm.cfg && arm.cfg.place) || '', 'street, city - or a place name');
+  field('ADDRESS', placeIn);
 
   // DURATION / NOTIFY BEFORE / REPEAT EVERY - tri v jednom rade, jedno pole kazde ([Zzz5-W8:UNIT-TEXT])
   const r3 = document.createElement('div');
@@ -29150,6 +29183,7 @@ function zzz5w8_open_item_window(raw, kind, arm) {
     if (arm) {
       arm.onArm(Object.assign({
         kind: k, tag: String(tagIn.value || '').trim().replace(/^(rems|scheds):/i, '') || null,
+        place: String(placeIn.value || '').trim() || null,
         due_at: new Date(due).toISOString(), priority: prio.get() || ''
       }, mins));
       close();
@@ -29181,6 +29215,13 @@ function zzz5w8_open_item_window(raw, kind, arm) {
       if (res.error) throw res.error;
       const row = (res.data || [])[0];
       if (!row) throw new Error('The database accepted nothing - you can only change your own reminders.');
+      // [Zzz5-W8:ADDRESS] adresa ide samostatnym zapisom - chyba jej stlpca nesmie zhodit zvysok polozky
+      const placeV = String(placeIn.value || '').trim();
+      if (placeV || (row.place !== undefined && row.place)) {
+        if (!(await zzz5w8_set_place(row, placeV || null))) {
+          zzz6f2_show_toast(`Saved without ADDRESS - run SQL "${ZZZ5W8_PLACE_SQL}" in Supabase for addresses.`, 'warn');
+        }
+      }
       if (isNew) zzz5w8Items.push(row);
       else Object.assign(raw, row);
       if (row.entry_id !== null && row.entry_id !== undefined) await zzz5w8_load_entries([row.entry_id]);
@@ -29280,6 +29321,7 @@ async function zzz5w8_insert_from_chat(cfg, entryKey, text, msgPrio, saved) {
     }
     if (res.error) throw res.error;
     const row = (res.data || [])[0];
+    if (row && cfg.place) await zzz5w8_set_place(row, cfg.place);   // [Zzz5-W8:ADDRESS]
     if (row) zzz5w8Items.push(row);
     // [Zzz5-W8:MEMBERS] prepojenie na spravu (suhrn ucasti v chate) + members z mentions v sprave
     let memMsg = '';
@@ -29343,14 +29385,15 @@ function zzz5w8_build_row(it) {
     // [Zzz5-W8:MEMBERS] owner vidi pri polozke mena a ich odpovede
     const ts = (!it.member && it.raw && it.raw.id) ? zzz5w8_targets_of(it.raw.id) : [];
     const who = ts.map(t => `${t.username}${t.answer ? ' ' + t.answer.toUpperCase() : ' ?'}${t.done_at ? ' \u2713' : ''}`).join(', ');
-    [['TYPE', v.type], ['WHEN', v.when], ['FROM', v.from], ['PROJECT NAME', v.project], ['MEMBERS', who]].forEach(([k, val]) => {
+    [['TYPE', v.type], ['WHEN', v.when], ['FROM', v.from], ['PROJECT NAME', v.project], ['MEMBERS', who], ['WHERE', it.raw && it.raw.place]].forEach(([k, val]) => {
       if (!val) return;
       const b = document.createElement('span');
       b.className = 'zzz5w8-more-item';
       const kk = document.createElement('b');
       kk.textContent = k + ' ';
       b.appendChild(kk);
-      b.appendChild(document.createTextNode(val));
+      if (k === 'WHERE') b.appendChild(zzz5w8_place_el(val));   // [Zzz5-W8:ADDRESS] adresa je odkaz
+      else b.appendChild(document.createTextNode(val));
       more.appendChild(b);
     });
     line.after(more);
@@ -40024,7 +40067,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-18 03:08';
+const ZZZ5_6_BUILD = '2026-10-18 03:11';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -48054,7 +48097,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-61 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-62 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
