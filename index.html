@@ -2665,6 +2665,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     cursor: pointer;
   }
   .zzz1cn-target-x:hover { background-color: rgba(212, 175, 55, 0.18); }
+  /* [Zzz5-W8:FROM-CHAT] hodinky v chat line - zlate, ked je pripomienka nastavena a caka na spravu */
+  .zzz1cn-clock {
+    flex: 0 0 22px; height: 24px; padding: 0; margin-left: 2px; box-sizing: border-box;
+    border: 1.5px solid #c9b77a; border-radius: 6px; background-color: #f5f5f0; color: #8a6d1f;
+    font-size: 11px; line-height: 1; cursor: pointer;
+  }
+  .zzz1cn-clock.is-on { background-color: #D4AF37; border-color: #D4AF37; color: #171717; }
   /* [Zzz1-CN:REPLY-PAIR] vyplneny ciel = plny ram na CELOM pare, nielen na bunke */
   .zzz1cn-target-row:has(.zzz1cn-target.is-set) .zzz1cn-target-x {
     border-style: solid;
@@ -17565,6 +17572,32 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
   cnTargetRow.className = 'zzz1cn-target-row';
   cnTargetRow.appendChild(cnTarget);
   cnTargetRow.appendChild(cnTargetX);
+  // === [Zzz5-W8:FROM-CHAT] HODINKY v chat line: nastavia pripomienku / termin, ktory vznikne z NAJBLIZSEJ
+  // odoslanej spravy tohto chatu. Zlate = nastavene a caka na odoslanie; po odoslani zhasnu. ===
+  let cnRemArm = null;
+  const cnClock = document.createElement('button');
+  cnClock.type = 'button';
+  cnClock.className = 'zzz1cn-clock';
+  cnClock.textContent = '\u23f0';
+  const cnPaintClock = () => {
+    cnClock.classList.toggle('is-on', !!cnRemArm);
+    cnClock.title = cnRemArm
+      ? `Your next message becomes ${cnRemArm.kind === 'schedule' ? 'scheds' : 'rems'}:${cnRemArm.tag || ''} on ${zzz5w8_fmt_time(Date.parse(cnRemArm.due_at))} - tap to change`
+      : 'Reminder / schedule from your next message';
+  };
+  cnClock.addEventListener('mousedown', (e) => e.preventDefault());
+  cnClock.addEventListener('click', (e) => {
+    e.preventDefault();
+    const ek = String(cnEntryKey || '');
+    zzz5w8_open_item_window(null, cnRemArm ? cnRemArm.kind : 'schedule', {
+      entry: /^\d+$/.test(ek) ? ek : '',
+      cfg: cnRemArm,
+      onArm: (cfg) => { cnRemArm = cfg; cnPaintClock(); zzz6f2_show_toast('Set - your next message in this chat becomes it.'); },
+      onDisarm: () => { cnRemArm = null; cnPaintClock(); }
+    });
+  });
+  cnPaintClock();
+  cnTargetRow.appendChild(cnClock);
   // klik na oznacenie v chate ho skopiruje sem aj s menom
   // === [Zzz1-CN:NUM-EXPAND] Vrso 2026-09-30: "prave som zistil, ze aj bezny klik na # v chate hned otvori
   // chatnote line, takze tento povel napasuj na to, aby sa zobrazili vsetky info v riadku tak, aby sa
@@ -17661,6 +17694,13 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) { // sourceRo
     // do CHATU = standardne zdielany zaznam (is_private=false); cislo prideli databaza
     // [Zzz1-CN:PRIORITY] priority je vlastnost zapisu rovnako ako privacy - posiela sa spolu s nim
     const saved = await zzz1cn_add(cnEntryKey, body, privNow, target ? { base: Number(target) } : null, name, !!toSaved, !!prio, mOnly);
+    // [Zzz5-W8:FROM-CHAT] sprava odisla - z nej vznikne nastavena pripomienka / termin (len raz)
+    if (saved && cnRemArm) {
+      const cfg = cnRemArm;
+      cnRemArm = null;
+      cnPaintClock();
+      zzz5w8_insert_from_chat(cfg, cnEntryKey, body, prio);
+    }
     if (saved) {
       // [Zzz6-F58:MENTIONS] jedna hlaska povie OBE veci: ze to odislo, a komu sa tym otvoril zaznam
       const extra = (mOnly.length ? ` Only for: ${mOnly.join(', ')}.` : '')
@@ -28680,7 +28720,8 @@ function zzz5w8_parse_minutes(txt) {
   const k = (u === 'min' || u === 'm') ? 1 : (u === 'h' ? 60 : (u === 'd' ? 1440 : 10080));   // t = tyzden
   return Math.round(n * k);
 }
-function zzz5w8_open_item_window(raw, kind) {
+// arm = { entry, cfg, onArm(cfg), onDisarm() } - [Zzz5-W8:FROM-CHAT] okno otvorene hodinkami v chat line
+function zzz5w8_open_item_window(raw, kind, arm) {
   document.querySelectorAll('.zzz5w8-item-window').forEach(w => { if (w._zzz5w8Close) w._zzz5w8Close(); });
   const { box, removeBox } = zzz6f41_create_context_window();
   box.classList.add('zzz5w8-item-window');
@@ -28790,6 +28831,19 @@ function zzz5w8_open_item_window(raw, kind) {
   textIn.placeholder = 'What should remind you (e.g. birthday party, call back, meeting)';
   textIn.value = raw ? String(raw.title || '') : '';
   field('TEXT', textIn);
+  // === [Zzz5-W8:FROM-CHAT] pri hodinkach z chat line je TEXT samotna sprava - pole sa skryje, cislo
+  // zaznamu je chat, v ktorom sa pise (neda sa prepisat); uz nastavene hodnoty sa vratia do poli ===
+  if (arm) {
+    textIn.parentNode.style.display = 'none';
+    entryIn.value = arm.entry || '';
+    entryIn.disabled = true;
+    entryIn.title = arm.entry ? `The chat of #${arm.entry}` : 'This chat has no record number yet - it becomes a one-off reminder';
+    const c = arm.cfg;
+    if (c) {
+      k = c.kind === 'reminder' ? 'reminder' : 'schedule';
+      tagIn.value = c.tag || '';
+    }
+  }
 
   const whenIn = document.createElement('input');
   whenIn.type = 'datetime-local';
@@ -28800,16 +28854,17 @@ function zzz5w8_open_item_window(raw, kind) {
   };
   // novy: najblizsia cela hodina - kalendar zatial netreba, staci pole s datumom a casom
   const start = raw ? (Date.parse(raw.due_at) || Date.now()) : (Math.ceil(Date.now() / 3600000) * 3600000);
-  whenIn.value = toLocal(start);
+  whenIn.value = toLocal((arm && arm.cfg && Date.parse(arm.cfg.due_at)) || start);
   field('DATE & TIME', whenIn);
 
   // DURATION / NOTIFY BEFORE / REPEAT EVERY - tri v jednom rade, jedno pole kazde ([Zzz5-W8:UNIT-TEXT])
   const r3 = document.createElement('div');
   r3.className = 'zzz5w8-iw-three';
   body.appendChild(r3);
-  const durIn = fieldIn(r3, 'DURATION', text(zzz5w8_fmt_minutes(raw && raw.duration_min).replace(' ', ''), 'e.g. 3h'));
-  const beforeIn = fieldIn(r3, 'NOTIFY BEFORE', text(zzz5w8_fmt_minutes(raw && raw.notify_before_min).replace(' ', ''), 'e.g. 2d'));
-  const repeatIn = fieldIn(r3, 'REPEAT EVERY', text(zzz5w8_fmt_minutes(raw && raw.repeat_min).replace(' ', ''), 'e.g. 1h'));
+  const src3 = raw || (arm && arm.cfg) || null;
+  const durIn = fieldIn(r3, 'DURATION', text(zzz5w8_fmt_minutes(src3 && src3.duration_min).replace(' ', ''), 'e.g. 3h'));
+  const beforeIn = fieldIn(r3, 'NOTIFY BEFORE', text(zzz5w8_fmt_minutes(src3 && src3.notify_before_min).replace(' ', ''), 'e.g. 2d'));
+  const repeatIn = fieldIn(r3, 'REPEAT EVERY', text(zzz5w8_fmt_minutes(src3 && src3.repeat_min).replace(' ', ''), 'e.g. 1h'));
   const unitHint = document.createElement('div');
   unitHint.className = 'zzz5w8-iw-msg';
   unitHint.textContent = 'Number + min / h / d / w (e.g. 90min, 3h, 2d, 1w). A number alone = hours.';
@@ -28843,6 +28898,10 @@ function zzz5w8_open_item_window(raw, kind) {
     title.textContent = isNew ? (k === 'schedule' ? 'NEW SCHEDULE ITEM' : 'NEW REMINDER')
       : `${k === 'schedule' ? 'SCHEDULE' : 'REMINDER'}${raw.entry_id ? ' - #' + raw.entry_id : ' - one-off'}`;
     go.textContent = isNew ? (k === 'schedule' ? 'ADD TO SCHEDULE' : 'ADD REMINDER') : 'APPLY CHANGES';
+    if (arm) {
+      title.textContent = (k === 'schedule' ? 'SCHEDULE' : 'REMINDER') + ' FROM YOUR NEXT MESSAGE';
+      go.textContent = 'SET FOR NEXT MESSAGE';
+    }
   };
   go.addEventListener('click', async () => {
     const me = (zzz0r1_get_current_username() || '').trim();
@@ -28856,6 +28915,15 @@ function zzz5w8_open_item_window(raw, kind) {
       const v = String(el.value || '').trim();
       mins[key] = v ? zzz5w8_parse_minutes(v) : null;
       if (v && mins[key] === null) { say(`${lab}: "${v}" is not a time - write e.g. 3h, 2d, 90min, 1w.`, true); return; }
+    }
+    // [Zzz5-W8:FROM-CHAT] z chat line sa nic nezapisuje hned - nastavenie caka na najblizsiu odoslanu spravu
+    if (arm) {
+      arm.onArm(Object.assign({
+        kind: k, tag: String(tagIn.value || '').trim().replace(/^(rems|scheds):/i, '') || null,
+        due_at: new Date(due).toISOString(), priority: prio.get() || ''
+      }, mins));
+      close();
+      return;
     }
     const payload = {
       kind: k, title: String(textIn.value || '').trim(),
@@ -28928,11 +28996,60 @@ function zzz5w8_open_item_window(raw, kind) {
       acts.appendChild(openEn);
     }
   }
+  if (arm && arm.cfg) {
+    const off = document.createElement('button');
+    off.type = 'button';
+    off.className = 'zzz5w5cm-chip zzz5w8-iw-done';
+    off.textContent = 'CANCEL IT';
+    off.title = 'The next message is sent without a reminder';
+    off.addEventListener('click', () => { arm.onDisarm(); close(); });
+    acts.appendChild(off);
+  }
   body.appendChild(acts);
   paint();
   // [Zzz5-W8:KEEP-FORM] zatvara sa LEN krizikom alebo po uspesnom pridani; ziadne automaticke focus()
   // [Zzz5-W8:REPEAT] otvorenie polozky = videl som ju; s REPEAT EVERY sa znova zarata po uplynuti intervalu
   if (!isNew) zzz5w8_mark_seen(raw);
+}
+// === [Zzz5-W8:FROM-CHAT] Vrso 2026-10-18 (02:47): navrh "zakladat rems: a scheds: priamo v chate - hodinky
+// v chat line; sprava sa posle normalne a z jej textu, s casom a tagom, vznikne pripomienka k tomu
+// zaznamu; ulozit ju do Notes nie je nutne" - "ok, zapracuj, ale musim testnut a odobrit".
+// Zapis polozky z odoslanej spravy: TEXT = sprava, cislo zaznamu = chat (koncept bez cisla = one-off),
+// priorita = priorita spravy, ak ju sprava ma, inak to, co bolo nastavene v okne. ===
+async function zzz5w8_insert_from_chat(cfg, entryKey, text, msgPrio) {
+  const me = (zzz0r1_get_current_username() || '').trim();
+  const num = /^\d+$/.test(String(entryKey || '')) ? Number(entryKey) : null;
+  const lvl = zzz1cn_prio_level(msgPrio) || zzz1cn_prio_level(cfg.priority);
+  const base = {
+    entry_id: num, username: me, kind: cfg.kind === 'reminder' ? 'reminder' : 'schedule',
+    title: String(text || '').trim(), due_at: cfg.due_at, priority: lvl || 'open'
+  };
+  const v3 = { tag: cfg.tag || null, duration_min: cfg.duration_min, notify_before_min: cfg.notify_before_min, repeat_min: cfg.repeat_min };
+  const wantsV3 = Object.keys(v3).some(c => v3[c] !== null && v3[c] !== undefined);
+  try {
+    let res = await sb.from(ZZZ5W8_TABLE).insert(Object.assign({}, base, wantsV3 ? v3 : {})).select('*');
+    let v3Missing = false;
+    if (res.error && wantsV3 && (String(res.error.code) === 'PGRST204' || String(res.error.code) === '42703'
+        || /column/i.test(String(res.error.message || '')))) {
+      v3Missing = true;
+      res = await sb.from(ZZZ5W8_TABLE).insert(base).select('*');
+    }
+    if (res.error) throw res.error;
+    const row = (res.data || [])[0];
+    if (row) zzz5w8Items.push(row);
+    zzz6f2_show_toast((base.kind === 'schedule' ? 'Schedule' : 'Reminder') + ' created from your message'
+      + (num ? ` (#${num})` : ' (one-off)') + (v3Missing ? ` - without TAG / DURATION / NOTIFY / REPEAT, SQL "${ZZZ5W8_V3_SQL}" missing.` : '.'),
+      v3Missing ? 'warn' : undefined);
+    if (zzz5w8_is_open()) zzz5w8_render();
+    return true;
+  } catch (e) {
+    const code = String((e && e.code) || '');
+    const why = (!num && (code === '23502' || code === '42501'))
+      ? `one-off reminders need SQL "${ZZZ5W8_V3_SQL}"`
+      : ((e && (e.message || e.details)) || String(e));
+    zzz6f2_show_toast(`The message was sent, but the reminder was not created: ${why}`, 'warn');
+    return false;
+  }
 }
 async function zzz5w8_mark_seen(raw) {
   if (!raw || raw.seen_at === undefined) return;   // stlpec este nie je (SQL v3) - nic sa nezapisuje
@@ -39635,7 +39752,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-18 02:46';
+const ZZZ5_6_BUILD = '2026-10-18 02:50';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -47665,7 +47782,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-59 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-60 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
