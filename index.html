@@ -9946,6 +9946,9 @@ priebezne rozsirovat o dalsie R* pribudajuce do numbers-row | Vrso -> Claude AI 
   }
   .zzz5w8-more-item b { color: #8a8a8a; font-weight: 700; font-size: 7.5px; letter-spacing: .03em; }
   .zzz5w8-c-status { font-weight: 700; text-align: center; }
+  /* [Zzz5-W8:KIND-DB] databaza pod aktivnym zoznamom v Reminders / Schedule */
+  .zzz5w8-db { margin-top: 10px; padding-top: 6px; border-top: 1px solid #2a2a2a; }
+  .zzz5w8-db-head { font-size: 9px; font-weight: 800; letter-spacing: .06em; color: #D4AF37; padding: 2px 2px 4px; }
   .zzz5w8-place { color: #c9a6ff; font-weight: 700; }
   .zzz5w8-st-new, .zzz5w8-st-due { color: #f0a640; }
   .zzz5w8-st-seen { color: #9a9a9a; }
@@ -28246,7 +28249,9 @@ const ZZZ5W8_TABLE = 'verso_notif_items';
 const ZZZ5W8_SQL_NAME = 'verso_notif_items_v1';
 const ZZZ5W8_TABS = [
   { key: 'all', label: 'All' },
-  { key: 'notifications', label: 'Notifications' },
+  // [Zzz5-W8:KIND-DB] Vrso 02:44: "prepis aj notification tab na communication" - spravy z komunikacie;
+  // vsetky styri spolu tvoria NOTIFICATIONS (a Notification Dashboard). Kluc ostava, meni sa len nazov.
+  { key: 'notifications', label: 'Communication' },
   { key: 'reminders', label: 'Reminders' },
   { key: 'schedule', label: 'Schedule' }
 ];
@@ -28539,7 +28544,7 @@ function zzz5w8_row_values(it) {
 }
 // [Zzz5-W8:SHORT-CELLS] v bunke 8,5 px sa "SCHEDULE" a "ATTENTION" orezali na "SCHED..." a "ATTE...".
 // Bunka preto ukazuje skratku, ale HLADA sa aj podla celeho slova - "urgent" v MINI musi najst URG.
-const ZZZ5W8_SHORT = { CHAT: 'CHAT', REMINDER: 'REMIND', SCHEDULE: 'SCHED', URGENT: 'URG', ATTENTION: 'ATT', OPEN: 'OPEN' };
+const ZZZ5W8_SHORT = { CHAT: 'CHAT', REMINDER: 'REMIND', SCHEDULE: 'SCHED', URGENT: 'URG', ATTENTION: 'ATT', OPEN: 'OPEN', PLANNED: 'PLAN', PENDING: 'PEND' };
 function zzz5w8_match(it, q) {
   const v = zzz5w8_row_values(it);
   // [Zzz5-W8:LEAN-COLS] skryte udaje sa hladaju cez TEXT - inak by sa podla nich uz hladat nedalo
@@ -28972,7 +28977,7 @@ function zzz5w8_build_row(it) {
   ZZZ5W8_COLS.forEach(c => {
     const cell = document.createElement('span');
     cell.className = 'zzz5w5cm-ccl-val zzz5w8-c-' + c.k;
-    cell.textContent = (c.k === 'type' || c.k === 'prio') ? (ZZZ5W8_SHORT[v[c.k]] || v[c.k]) : String(v[c.k] || '');
+    cell.textContent = (c.k === 'type' || c.k === 'prio' || c.k === 'status') ? (ZZZ5W8_SHORT[v[c.k]] || v[c.k]) : String(v[c.k] || '');
     if (c.k === 'status') {
       cell.classList.add('zzz5w8-st-' + v.status.toLowerCase());
       // [Zzz5-W8:LEAN-COLS] STATUS pripomienky sa potvrdzuje priamo tu ("nakupil som podla pripomienky
@@ -29084,6 +29089,109 @@ function zzz5w8_fail_box(wrap, where, err) {
   box.appendChild(p);
   wrap.appendChild(box);
 }
+// === [Zzz5-W8:KIND-DB] spolocne stavebne kusy - horny zoznam aj databaza pod nim pouzivaju TIE ISTE ===
+// notif CRM: rad nazvov (PRESET) + rad hladania (MINI); q = objekt hladania, onChange = prekresli telo
+function zzz5w8_build_crm(q, onChange) {
+  const crm = document.createElement('div');
+  crm.className = 'zzz5w5cm-ccl zzz5w8-crm';
+  const rl = document.createElement('div');
+  rl.className = 'zzz5w5cm-ccl-row zzz5w5cm-ccl-rl';
+  const pre = document.createElement('span');
+  pre.className = 'zzz5w5cm-ccl-mini';
+  pre.textContent = 'PRESET';
+  pre.title = 'Notification command line - the row below is a permanent search';
+  rl.appendChild(pre);
+  ZZZ5W8_COLS.forEach(c => {
+    const lab = document.createElement('span');
+    lab.className = 'zzz5w5cm-ccl-lab';
+    lab.textContent = c.label;
+    rl.appendChild(lab);
+  });
+  crm.appendChild(rl);
+  const cl = document.createElement('div');
+  cl.className = 'zzz5w5cm-ccl-row zzz5w5cm-ccl-cl';
+  const clCap = document.createElement('span');
+  clCap.className = 'zzz5w5cm-ccl-mini is-search';
+  clCap.textContent = 'MINI';
+  clCap.title = 'The cells in this row search this list - tap MINI to clear them';
+  cl.appendChild(clCap);
+  const inputs = [];
+  ZZZ5W8_COLS.forEach(c => {
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'zzz5w5cm-ccl-cell' + (String(q[c.k] || '').trim() ? ' is-on' : '');
+    inp.value = q[c.k] || '';
+    inp.placeholder = 'contains (a, b = or)';
+    // prekresluje sa LEN telo - pole s kurzorom musi ostat ([Zzz5-W5:COMM-CL])
+    inp.addEventListener('input', () => {
+      q[c.k] = inp.value;
+      inp.classList.toggle('is-on', !!inp.value.trim());
+      onChange();
+    });
+    inputs.push(inp);
+    cl.appendChild(inp);
+  });
+  clCap.addEventListener('click', () => {
+    ZZZ5W8_COLS.forEach((c, i) => { q[c.k] = ''; inputs[i].value = ''; inputs[i].classList.remove('is-on'); });
+    onChange();
+  });
+  crm.appendChild(cl);
+  return crm;
+}
+// telo zoznamu podla zvoleneho pohladu (LIST / STACKED / COLUMNS); splitAt = cas, od ktoreho je "UPCOMING"
+// (bez neho sa deli podla toho, ci polozka uz nastala)
+function zzz5w8_paint_items(body, vis, emptyText, anyAtAll, splitAt) {
+  body.innerHTML = '';
+  const isUp = (it) => (splitAt ? it.t >= splitAt : !it.due);
+  if (zzz5w8View === 'list') {
+    const list = document.createElement('div');
+    list.className = 'zzz5w5cm-ccl-body zzz5w8-list';
+    if (!vis.length) list.appendChild(zzz5w8_empty(emptyText));
+    let upcomingShown = false;
+    const anyNow = vis.some(i => !isUp(i));
+    vis.forEach(it => {
+      // deliaca ciara medzi "pride" a "uz bolo/nastalo" - poradie sa tam otaca, nech to oko vie
+      if (splitAt) {
+        if (!isUp(it) && !upcomingShown && vis.some(isUp)) {
+          const d = document.createElement('div');
+          d.className = 'zzz5w8-divider';
+          d.textContent = 'PAST';
+          list.appendChild(d);
+          upcomingShown = true;
+        }
+      } else if (isUp(it) && !upcomingShown && anyNow) {
+        const d = document.createElement('div');
+        d.className = 'zzz5w8-divider';
+        d.textContent = 'UPCOMING';
+        list.appendChild(d);
+        upcomingShown = true;
+      }
+      list.appendChild(zzz5w8_build_row(it));
+    });
+    body.appendChild(list);
+    return;
+  }
+  const groups = document.createElement('div');
+  groups.className = zzz5w8View === 'columns' ? 'zzz5w8-cols' : 'zzz5w8-stack';
+  ZZZ5W8_PRIOS.filter(p => zzz5w8Prio[p.key]).forEach(p => {
+    const part = vis.filter(i => i.prio === p.key);
+    const g = document.createElement('div');
+    g.className = 'zzz5w8-group zzz5w8-p-' + p.key;
+    const h = document.createElement('div');
+    h.className = 'zzz5w8-group-head';
+    h.textContent = `${p.label} (${part.length})`;
+    g.appendChild(h);
+    const gb = document.createElement('div');
+    gb.className = zzz5w8View === 'columns' ? 'zzz5w8-group-body' : 'zzz5w5cm-ccl-body zzz5w8-group-body';
+    if (!part.length) gb.appendChild(zzz5w8_empty('Nothing here.'));
+    part.forEach(it => gb.appendChild(zzz5w8View === 'columns' ? zzz5w8_build_card(it) : zzz5w8_build_row(it)));
+    g.appendChild(gb);
+    groups.appendChild(g);
+  });
+  body.appendChild(groups);
+  if (!vis.length && !anyAtAll) body.appendChild(zzz5w8_empty(emptyText));
+}
+
 function zzz5w8_render() {
   try { zzz5w8_render_inner(); }
   catch (e) {
@@ -29204,52 +29312,8 @@ function zzz5w8_render_inner() {
   mod.appendChild(bar);
 
   // --- notif CRM: hlavicka + MINI (search prednastaveny, filtruje pri pisani) ---
-  const crm = document.createElement('div');
-  crm.className = 'zzz5w5cm-ccl zzz5w8-crm';
-  const rl = document.createElement('div');
-  rl.className = 'zzz5w5cm-ccl-row zzz5w5cm-ccl-rl';
-  const pre = document.createElement('span');
-  pre.className = 'zzz5w5cm-ccl-mini';
-  pre.textContent = 'PRESET';
-  pre.title = 'Notification command line - the row below is a permanent search';
-  rl.appendChild(pre);
-  ZZZ5W8_COLS.forEach(c => {
-    const lab = document.createElement('span');
-    lab.className = 'zzz5w5cm-ccl-lab';
-    lab.textContent = c.label;
-    rl.appendChild(lab);
-  });
-  crm.appendChild(rl);
   const q = zzz5w8Q[zzz5w8Tab] || (zzz5w8Q[zzz5w8Tab] = {});
-  const cl = document.createElement('div');
-  cl.className = 'zzz5w5cm-ccl-row zzz5w5cm-ccl-cl';
-  const clCap = document.createElement('span');
-  clCap.className = 'zzz5w5cm-ccl-mini is-search';
-  clCap.textContent = 'MINI';
-  clCap.title = 'The cells in this row search this tab - tap MINI to clear them';
-  cl.appendChild(clCap);
-  const inputs = [];
-  ZZZ5W8_COLS.forEach(c => {
-    const inp = document.createElement('input');
-    inp.type = 'text';
-    inp.className = 'zzz5w5cm-ccl-cell' + (String(q[c.k] || '').trim() ? ' is-on' : '');
-    inp.value = q[c.k] || '';
-    inp.placeholder = c.k === 'when' ? 'e.g. 18.10.' : 'contains (a, b = or)';
-    // prekresluje sa LEN telo - pole s kurzorom musi ostat ([Zzz5-W5:COMM-CL])
-    inp.addEventListener('input', () => {
-      q[c.k] = inp.value;
-      inp.classList.toggle('is-on', !!inp.value.trim());
-      paintBody();
-    });
-    inputs.push(inp);
-    cl.appendChild(inp);
-  });
-  clCap.addEventListener('click', () => {
-    ZZZ5W8_COLS.forEach((c, i) => { q[c.k] = ''; inputs[i].value = ''; inputs[i].classList.remove('is-on'); });
-    paintBody();
-  });
-  crm.appendChild(cl);
-  mod.appendChild(crm);
+  mod.appendChild(zzz5w8_build_crm(q, () => paintBody()));
 
   const body = document.createElement('div');
   body.className = 'zzz5w8-body';
@@ -29259,55 +29323,59 @@ function zzz5w8_render_inner() {
   note.className = 'zzz5w5cm-view-empty zzz5w8-note';
   mod.appendChild(note);
 
+  const isKindTab = zzz5w8Tab === 'reminders' || zzz5w8Tab === 'schedule';
   function paintBody() {
-    body.innerHTML = '';
-    const vis = zzz5w8_visible(all);
-    const anyInTab = all.some(i => zzz5w8_in_tab(i, zzz5w8Tab) && (zzz5w8ShowDone || !i.done));
+    // [Zzz5-W8:KIND-DB] v Reminders / Schedule je hore len to, co PRAVE NASTALO - zvysok je v databaze pod nim
+    const vis = zzz5w8_visible(all).filter(i => !isKindTab || i.due);
+    const anyInTab = all.some(i => zzz5w8_in_tab(i, zzz5w8Tab) && (zzz5w8ShowDone || !i.done) && (!isKindTab || i.due));
     const emptyText = zzz5w8State.loading && !zzz5w8Loaded ? 'Loading...'
       : (anyInTab ? 'Nothing matches the priorities or the search above.'
-        : (zzz5w8Tab === 'notifications' || zzz5w8Tab === 'all'
-          ? 'Nothing new - no unread chat messages, nothing due.'
-          : `Nothing planned yet - tap + ${zzz5w8Tab === 'schedule' ? 'SCHEDULE' : 'REMINDER'}.`));
-    if (zzz5w8View === 'list') {
-      const list = document.createElement('div');
-      list.className = 'zzz5w5cm-ccl-body zzz5w8-list';
-      if (!vis.length) list.appendChild(zzz5w8_empty(emptyText));
-      let upcomingShown = false;
-      vis.forEach(it => {
-        // deliaca ciara medzi "uz nastalo" a "pride" - poradie sa tam otaca, nech to oko vie
-        if (!it.due && !upcomingShown && vis.some(i => i.due)) {
-          const d = document.createElement('div');
-          d.className = 'zzz5w8-divider';
-          d.textContent = 'UPCOMING';
-          list.appendChild(d);
-        }
-        if (!it.due) upcomingShown = true;
-        list.appendChild(zzz5w8_build_row(it));
-      });
-      body.appendChild(list);
-    } else {
-      const groups = document.createElement('div');
-      groups.className = zzz5w8View === 'columns' ? 'zzz5w8-cols' : 'zzz5w8-stack';
-      ZZZ5W8_PRIOS.filter(p => zzz5w8Prio[p.key]).forEach(p => {
-        const part = vis.filter(i => i.prio === p.key);
-        const g = document.createElement('div');
-        g.className = 'zzz5w8-group zzz5w8-p-' + p.key;
-        const h = document.createElement('div');
-        h.className = 'zzz5w8-group-head';
-        h.textContent = `${p.label} (${part.length})`;
-        g.appendChild(h);
-        const gb = document.createElement('div');
-        gb.className = zzz5w8View === 'columns' ? 'zzz5w8-group-body' : 'zzz5w5cm-ccl-body zzz5w8-group-body';
-        if (!part.length) gb.appendChild(zzz5w8_empty('Nothing here.'));
-        part.forEach(it => gb.appendChild(zzz5w8View === 'columns' ? zzz5w8_build_card(it) : zzz5w8_build_row(it)));
-        g.appendChild(gb);
-        groups.appendChild(g);
-      });
-      body.appendChild(groups);
-      if (!vis.length && !anyInTab) body.appendChild(zzz5w8_empty(emptyText));
-    }
+        : (isKindTab
+          ? `Nothing due right now - everything you planned is in the ${zzz5w8Tab === 'schedule' ? 'SCHEDS' : 'REMS'} DATABASE below.`
+          : 'Nothing new - no unread chat messages, nothing due.'));
+    zzz5w8_paint_items(body, vis, emptyText, anyInTab);
   }
   paintBody();
+
+  // === [Zzz5-W8:KIND-DB] Vrso 2026-10-18 (02:44): "v rems aj scheds tabe by mala byt aj extra databaza
+  // pre prihlaseneho usera, ktore vsetky zaznamy sa ho tykaju, resp. su dlhodobejsie... tiez formou
+  // specializovanych notification crm (ako ma contacts module) ... idealne tiez vyuzit alternativy
+  // prehladu formou list, stack alebo columns".
+  // Pod aktivnym zoznamom je CELA databaza toho druhu: vsetko, co som naplanoval - aj hotove, aj dlho
+  // dopredu, aj davno minule. Ma VLASTNU notif CRM (vlastne MINI hladanie, nezavisle od hornej) a ten
+  // isty prepinac LIST / STACKED / COLUMNS aj filter priorit. Poradie: najprv co pride (najblizsie
+  // hore), potom co uz bolo (najnovsie hore). Datum ide pred text, lebo pri dlhodobych veciach je to
+  // prve, co clovek hlada. "Tykaju sa ho" je dnes: co si zadal sam - polozky, kde ho oznaci niekto iny,
+  // pribudnu s Notification triggers. ===
+  if (isKindTab) {
+    const kind = zzz5w8Tab === 'schedule' ? 'schedule' : 'reminder';
+    const dbWrap = document.createElement('div');
+    dbWrap.className = 'zzz5w8-db';
+    const head = document.createElement('div');
+    head.className = 'zzz5w8-db-head';
+    const allKind = all.filter(i => i.src === kind);
+    head.textContent = `${kind === 'schedule' ? 'SCHEDS' : 'REMS'} DATABASE (${allKind.length})`;
+    head.title = 'Everything of this kind you planned - done, far ahead and long past included';
+    dbWrap.appendChild(head);
+    const dq = zzz5w8Q['db:' + kind] || (zzz5w8Q['db:' + kind] = {});
+    dbWrap.appendChild(zzz5w8_build_crm(dq, () => paintDb()));
+    const dbBody = document.createElement('div');
+    dbBody.className = 'zzz5w8-body';
+    dbWrap.appendChild(dbBody);
+    function paintDb() {
+      const now = Date.now();
+      const rows = allKind
+        .map(i => Object.assign({}, i, { text: [zzz5w8_fmt_time(i.t), i.text].filter(Boolean).join(' · ') }))
+        .filter(i => zzz5w8Prio[i.prio] && zzz5w8_match(i, dq));
+      const next = rows.filter(i => i.t >= now).sort((a, b) => a.t - b.t);
+      const past = rows.filter(i => i.t < now).sort((a, b) => b.t - a.t);
+      zzz5w8_paint_items(dbBody, next.concat(past), allKind.length
+        ? 'Nothing matches the priorities or the search above.'
+        : `Nothing planned yet - tap + ${kind === 'schedule' ? 'SCHEDULE' : 'REMINDER'}.`, allKind.length > 0, now);
+    }
+    paintDb();
+    mod.appendChild(dbWrap);
+  }
 
   // [Zzz5-W8:WHY] co chyba a co s tym - nie prazdna obrazovka
   const notes = [];
@@ -39567,7 +39635,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-18 02:39';
+const ZZZ5_6_BUILD = '2026-10-18 02:46';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -47597,7 +47665,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-58 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-59 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
