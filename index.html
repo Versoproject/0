@@ -39369,7 +39369,7 @@ function zzz1cn_ws_save_tab(k) { try { localStorage.setItem(ZZZ1CN_WS_TAB_KEY, k
 // okna ho pouzije. Je to jedna hodnota, nie zasobnik: workspace je jeden a vracia sa vzdy do neho.
 let zzz5_6WsReturn = false;
 
-const ZZZ5_6_BUILD = '2026-10-18 02:29';
+const ZZZ5_6_BUILD = '2026-10-18 02:30';
 
 // === [Zzz5-6:DBLTAP] DVOJTUK MERANY SAMI - nativny dblclick na Androide nechodi ======================
 // Vrso 2026-10-02 (13:23): "2x tuk nefunguje ani v jednom na max window". Notes okno pocuvalo nativny
@@ -47399,7 +47399,7 @@ function zzz10v1_build_email_field() {
 // === [Zzz-B9:2.4-REG-MESSAGES] Registracia na serveri (B9, 2026-10-12): aktivacny kod generuje a overuje LEN
 // verso-auth-gate (akcie reserve + register). Tu su jasne hlasky pre pouzivatela (anglicky UI) + technicky
 // detail (kod dovodu) pre nas. Stav sa ukazuje priamo pod polami (versoRegisterSetupStatus), nie len v toaste. | Vrso -> Claude AI | 2026-10-12 ===
-const VERSO_BUILD = 'B11-55 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
+const VERSO_BUILD = 'B11-56 2026-10-18'; // [Zzz-B9:2.4-BUILD-TAG] zobrazuje sa dole v REGISTER SETUP - pri kazdom novom index.html sa zmeni
 const ZZZ10V1_REASON_TEXT = {
   invalid_username: 'This username is not allowed (max 40 characters).',
   invalid_email: 'Please enter a valid email address.',
@@ -48313,6 +48313,26 @@ function zzz_vkb_text_backspace(el) {
   } catch (e) { el.value = el.value.slice(0, -1); }
   zzz_vkb_text_fire(el, 'deleteContentBackward', null);
 }
+// [Zzz14-B11:VKB-BS-HOLD] zmaze slovo pred kurzorom (aj medzery za nim) - ta ista cesta ako ⌫, len s vyberom
+function zzz_vkb_text_backspace_word(el) {
+  if (el.isContentEditable) {
+    try { const sel = window.getSelection(); if (sel && sel.modify) sel.modify('extend', 'backward', 'word'); } catch (e) {}
+    zzz_vkb_text_backspace(el);
+    return;
+  }
+  try {
+    const a = el.selectionStart, b2 = el.selectionEnd;
+    if (a === null || a === undefined) { zzz_vkb_text_backspace(el); return; }
+    if (a !== b2) { zzz_vkb_text_backspace(el); return; }
+    const v = String(el.value || '');
+    let j = a;
+    while (j > 0 && /\s/.test(v[j - 1])) j--;
+    while (j > 0 && !/\s/.test(v[j - 1])) j--;
+    if (j === a) return;
+    el.setSelectionRange(j, a);
+  } catch (e) {}
+  zzz_vkb_text_backspace(el);
+}
 function zzz_vkb_text_enter(el) { // the app's own Enter handlers run as with a real keyboard
   const o = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
   const go = el.dispatchEvent(new KeyboardEvent('keydown', o));
@@ -48492,6 +48512,22 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     b.innerHTML = html;
     b.addEventListener('pointerdown', (e) => { e.preventDefault(); closePop(); if (!b.disabled) fn(b); });
     b.addEventListener('contextmenu', (e) => e.preventDefault());
+    // === [Zzz14-B11:VKB-BS-HOLD] Vrso 2026-10-18 (02:27): "ked podrzim [spat], nic - idealne keby mazala
+    // zrychlene, ako sa zvykne, ale iba po slovach postupne, kludne so zrychlujucou sa tendenciou".
+    // Podrzanie ⌫: po 450 ms zacne mazat PO SLOVACH (v textovom poli) a kazde dalsie slovo pride
+    // rychlejsie (350 ms -> az 90 ms). V tajnom poli (heslo) slova nie su, tam ide po znakoch.
+    // Pustenie prsta, odchod z klavesy alebo zrusenie gesta mazanie hned zastavi. ===
+    if (html === '\u232b') {
+      let holdT = null;
+      const stop = () => { if (holdT) { clearTimeout(holdT); holdT = null; } };
+      const step = (gap) => {
+        if (b.disabled) { stop(); return; }
+        if (isText) zzz_vkb_text_backspace_word(target); else fn(b);
+        holdT = setTimeout(() => step(Math.max(90, Math.round(gap * 0.8))), gap);
+      };
+      b.addEventListener('pointerdown', () => { stop(); holdT = setTimeout(() => step(350), 450); });
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, stop));
+    }
     row.appendChild(b);
     return b;
   };
