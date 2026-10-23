@@ -8153,6 +8153,16 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   #versoDashboardSection.zzz3d-full .zzz3d-arrow { width: 44px; font-size: 28px; }
   #versoDashboardSection.zzz3d-full .zzz3d-msg { font-size: 12px; }
   .zzz3d-head { cursor: pointer; }
+  
+  #versoWorkspaceSection.zzz5w8-full:has(> .zzz5w8-workspace) { position: fixed; inset: 0; z-index: 3000; margin: 0;
+    overflow-y: auto; -webkit-overflow-scrolling: touch; background-color: #0b0b0b;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); box-sizing: border-box; }
+  #versoWorkspaceSection.zzz5w8-full > .zzz5w8-workspace { margin-top: 0 !important; }
+  .zzz5w8-module > .zzz5w5cm-module-label { cursor: pointer; }
+  .zzz1cn-setup.is-full { position: fixed !important; left: 0 !important; top: 0 !important; right: 0; bottom: 0;
+    width: 100vw !important; max-width: none !important; height: 100vh; height: 100dvh; border-radius: 0;
+    z-index: 3100; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); }
+  .zzz1cn-setup-head { cursor: pointer; }
   .zzz3d-msg.is-warn { color: #f0a640; }
 </style>
 
@@ -13174,6 +13184,22 @@ function zzz1cn_open_comm_setup(host, api) {
   head.appendChild(x);
   win.appendChild(head);
 
+  let setupLastTap = 0;
+  head.title = 'Double tap = full screen / back';
+  head.addEventListener('click', (ev) => {
+    if (ev.target.closest('button')) return;
+    const now = Date.now();
+    if (now - setupLastTap < 400) {
+      setupLastTap = 0;
+      const on = !win.classList.contains('is-full');
+      win.classList.toggle('is-full', on);
+      if (on) win.scrollTop = 0;
+      zzz_haptic_pulse(15);
+      return;
+    }
+    setupLastTap = now;
+  });
+
   zzz14pt_setup_tabs(win, api);
 
   const gkey = api.key();
@@ -14710,7 +14736,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     zzz5w5cm_load_my_contacts().catch(() => {});
   }
 
-  zzz56PrivCtx = cnGateKey;
+  zzz56_ctx_set(cnGateKey);
   if (cnGateKey) zzz56_reach_load(cnGateKey, true).then(() => zzz56_priv_refresh()).catch(() => {});
   if (cnGateKey && typeof zzz14cs_last_remember === 'function') zzz14cs_last_remember(cnGateKey);
   const cnPrivBtn0 = zzz56_priv_button();
@@ -15704,7 +15730,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     }
   };
   const cnSendToChatInner = async (raw, name, target, priv, toSaved, prio) => {
-    if (!zzz1cn_prio_level(prio) && typeof zzz56_prio_mode === 'function') prio = zzz56_prio_mode();
+    if (!zzz1cn_prio_level(prio) && typeof zzz56_prio_mode === 'function') prio = zzz56_prio_mode(cnGateKey);
 
     let cnTaskTags = '';
     if (cnTaskArm) {
@@ -24959,6 +24985,7 @@ function zzz5w8_render() {
   }
   if (typeof zzz3d_render === 'function') zzz3d_render();
 }
+var zzz5w8LastLabelTap = 0;
 function zzz5w8_render_inner() {
   const ws = document.getElementById('versoWorkspaceSection');
   const wrap = ws && ws.querySelector('.zzz5w8-workspace');
@@ -24996,6 +25023,19 @@ function zzz5w8_render_inner() {
   acts.appendChild(x);
   label.appendChild(acts);
   mod.appendChild(label);
+
+  label.title = 'Double tap = full screen / back';
+  label.addEventListener('click', (ev) => {
+    if (ev.target.closest('button')) return;
+    const now = Date.now();
+    if (now - zzz5w8LastLabelTap < 400) {
+      zzz5w8LastLabelTap = 0;
+      zzz5w8_set_full(!zzz5w8_is_full());
+      zzz_haptic_pulse(15);
+      return;
+    }
+    zzz5w8LastLabelTap = now;
+  });
 
   const modes = document.createElement('div');
   modes.className = 'zzz5w8-modes';
@@ -25188,9 +25228,20 @@ function zzz5w8_stick_under_crm() {
   if (gap > 0) wrap.style.marginTop = `-${gap}px`;
 }
 
-function open_notification_workspace(mode) {
+function zzz5w8_set_full(on) {
+  const ws = document.getElementById('versoWorkspaceSection');
+  if (!ws) return;
+  ws.classList.toggle('zzz5w8-full', !!on);
+  if (on) ws.scrollTop = 0;
+}
+function zzz5w8_is_full() {
+  const ws = document.getElementById('versoWorkspaceSection');
+  return !!(ws && ws.classList.contains('zzz5w8-full') && zzz5w8_is_open());
+}
+function open_notification_workspace(mode, full) {
   const workspace = document.getElementById('versoWorkspaceSection');
   if (!workspace) return;
+  zzz5w8_set_full(!!full);
   zzz5w8Mode = ZZZ5W8_MODE_TITLES[mode] ? mode : 'main';
   zzz10t2_hide_m4a_template();
   if (typeof zzz5w5cm_rescue_m4a === 'function') zzz5w5cm_rescue_m4a();
@@ -25209,6 +25260,7 @@ function close_notification_workspace() {
   if (!workspace || !zzz5w8_is_open()) return;
   document.querySelectorAll('.zzz5w8-item-window').forEach(w => { if (w._zzz5w8Close) w._zzz5w8Close(); });
   workspace.innerHTML = '';
+  zzz5w8_set_full(false);
   zzz5w8_sync_button_gold();
 }
 
@@ -25440,10 +25492,23 @@ function zzz3d_render_now() {
     head.appendChild(x);
   }
 
-  head.title = 'Tap = full screen (main screen) / back to the small dashboard';
+  head.title = 'Tap = full screen / back · double tap = Notification Workspace (full screen)';
   head.addEventListener('click', (ev) => {
     if (ev.target.closest('button')) return;
-    zzz3d_full(!box.classList.contains('zzz3d-full'));
+    const now = Date.now();
+    if (now - zzz3dLastHeadTap < 400) {
+      zzz3dLastHeadTap = 0;
+      if (zzz3dHeadTimer) { clearTimeout(zzz3dHeadTimer); zzz3dHeadTimer = null; }
+      zzz3d_open_w8_full();
+      return;
+    }
+    zzz3dLastHeadTap = now;
+    if (zzz3dHeadTimer) clearTimeout(zzz3dHeadTimer);
+    zzz3dHeadTimer = setTimeout(() => {
+      zzz3dHeadTimer = null;
+      const bx = document.getElementById('versoDashboardSection');
+      if (bx) zzz3d_full(!bx.classList.contains('zzz3d-full'));
+    }, 320);
   });
   box.appendChild(head);
 
@@ -25576,6 +25641,17 @@ function zzz3d_render_now() {
 }
 
 let zzz3dLastHeadTap = 0;
+let zzz3dHeadTimer = null;
+function zzz3d_open_w8_full() {
+  const bx = document.getElementById('versoDashboardSection');
+  if (bx && bx.classList.contains('zzz3d-full')) zzz3d_full(false);
+  if (!zzz5w8_is_open()) {
+    const btn = document.getElementById('versoNotificationsButton');
+    if (btn) btn.click();
+  }
+  zzz5w8_set_full(true);
+  zzz_haptic_pulse(15);
+}
 var zzz3dHomeFor = '';
 function zzz3d_full(on) {
   const box = document.getElementById('versoDashboardSection');
@@ -27238,13 +27314,13 @@ const ZZZ56_PRIV_KEY = 'zzz56_private_mode';
     const raw = localStorage.getItem(ZZZ56_PRIV_KEY);
     if (!raw) return;
     const v = JSON.parse(raw);
-    zzz56PrivOn = !!v.on;
     zzz56PrivPresetId = v.id || null;
   } catch (e) {   }
 })();
 function zzz56_priv_save() {
-  try { localStorage.setItem(ZZZ56_PRIV_KEY, JSON.stringify({ on: zzz56PrivOn, id: zzz56PrivPresetId })); }
+  try { localStorage.setItem(ZZZ56_PRIV_KEY, JSON.stringify({ id: zzz56PrivPresetId })); }
   catch (e) {   }
+  zzz56_modes_put(zzz56PrivCtx, { priv: zzz56PrivOn });
 }
 
 const ZZZ56_REACH_TTL = 60000;
@@ -27307,6 +27383,35 @@ function zzz56_is_private_note(n) {
 function zzz56_priv_presets() { return (zzz5w5cmMyGroups || []).filter(g => g.priv); }
 
 let zzz56PrivCtx = '';
+
+const ZZZ56_MODES_KEY = 'zzz56_chat_modes';
+try { localStorage.removeItem('zzz56_prio_mode'); } catch (e) {}
+function zzz56_modes_all() {
+  try { const v = JSON.parse(localStorage.getItem(ZZZ56_MODES_KEY) || '{}'); return (v && typeof v === 'object') ? v : {}; }
+  catch (e) { return {}; }
+}
+function zzz56_modes_get(k) {
+  const m = zzz56_modes_all()[String(k || '')] || {};
+  return { priv: !!m.priv, prio: zzz1cn_prio_level(m.prio || '') || '' };
+}
+function zzz56_modes_put(k, patch) {
+  k = String(k || '');
+  if (!k) return;
+  const all = zzz56_modes_all();
+  const cur = Object.assign({}, all[k] || {}, patch);
+  if (!cur.priv && !cur.prio) delete all[k]; else all[k] = cur;
+  try { localStorage.setItem(ZZZ56_MODES_KEY, JSON.stringify(all)); } catch (e) {}
+}
+function zzz56_ctx_set(k) {
+  zzz56PrivCtx = k || '';
+  const m = zzz56_modes_get(zzz56PrivCtx);
+  zzz56PrivOn = m.priv;
+  zzz56PrioMode = m.prio;
+}
+function zzz56_priv_on(k) {
+  if (!k || String(k) === String(zzz56PrivCtx)) return !!zzz56PrivOn;
+  return zzz56_modes_get(k).priv;
+}
 function zzz56_sel_key(entryKey) { return 'zzz56_priv_sel_' + String(entryKey || ''); }
 function zzz56_sel_get(entryKey) {
   try { const v = JSON.parse(localStorage.getItem(zzz56_sel_key(entryKey)) || '[]'); return Array.isArray(v) ? v : []; }
@@ -27541,8 +27646,10 @@ function zzz56_priv_open_presets(anchorEl) {
 }
 
 let zzz56PrioMode = '';
-try { zzz56PrioMode = zzz1cn_prio_level(localStorage.getItem('zzz56_prio_mode') || ''); } catch (e) {}
-function zzz56_prio_mode() { return zzz56PrioMode || ''; }
+function zzz56_prio_mode(k) {
+  if (!k || String(k) === String(zzz56PrivCtx)) return zzz56PrioMode || '';
+  return zzz56_modes_get(k).prio;
+}
 function zzz56_prio_button() {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -27551,7 +27658,7 @@ function zzz56_prio_button() {
   btn.addEventListener('click', (e) => {
     e.preventDefault();
     zzz56PrioMode = zzz1cn_prio_next(zzz56PrioMode);
-    try { localStorage.setItem('zzz56_prio_mode', zzz56PrioMode); } catch (_) {}
+    zzz56_modes_put(zzz56PrivCtx, { prio: zzz56PrioMode });
     zzz_haptic_pulse(zzz56PrioMode ? 30 : 15);
     zzz6f2_show_toast(zzz56PrioMode ? `PRIORITY ${zzz56PrioMode.toUpperCase()} on - every next message goes as ${zzz56PrioMode.toUpperCase()} until you switch it off.` : 'PRIORITY off.');
     zzz56_prio_refresh();
@@ -31867,7 +31974,7 @@ function zzz14cs_feed_composer(comp, items) {
     busy = true; send.disabled = true;
     try {
       const mOnly = zzz6f58_names(text, true);
-      const saved = await zzz1cn_add(String(n.entry_key), text, false, n.note_number ? { base: Number(n.note_number) } : null, '', false, zzz1cn_prio_level(zzz14csFeedPrio) || zzz56_prio_mode(), mOnly);
+      const saved = await zzz1cn_add(String(n.entry_key), text, false, n.note_number ? { base: Number(n.note_number) } : null, '', false, zzz1cn_prio_level(zzz14csFeedPrio) || zzz56_prio_mode(String(n.entry_key)), mOnly);
       if (saved) {
         zzz6f2_show_toast(`Chatnote #${zzz5w7_label_of(saved)} sent to #${n.entry_key}.`);
         zzzLastActAt = Date.now();
@@ -33066,7 +33173,7 @@ async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, i
     return null;
   }
 
-  if (zzz56PrivOn) {
+  if (zzz56_priv_on(entryKey)) {
     const meP = zzz10v1_normalize(username || '');
     const circle = zzz56_priv_recipients(entryKey).filter(n => zzz10v1_normalize(n) !== meP);
     if (!circle.length) {
@@ -41413,7 +41520,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'PRIO-COLORS 2026-10-23';
+const VERSO_BUILD = 'CHAT-MODES 2026-10-23';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
