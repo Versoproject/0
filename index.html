@@ -3367,6 +3367,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz14sh-panel { border: 1px solid #555; border-radius: 8px; padding: 5px; margin: 4px 0; background: #151515; }
   .zzz14sh-body { margin-top: 4px; }
   .zzz14sh-body input[type=date] { width: 128px; }
+  .zzz14pt-cl-head { display: block; width: 100%; text-align: left; margin-top: 8px; background: #1a1a1a; color: #C0C0C0; border: 1px solid #555; border-radius: 8px; font-size: 11px; font-weight: 800; padding: 4px 8px; }   
+  .zzz14pt-cl-head.is-open { color: #D4AF37; border-color: #D4AF37; }
+  .zzz14pt-cl-row { border-color: #6b5a1e; font-size: 11px; }
   .zzz14sh-sum { color: #D4AF37; font-size: 10px; font-weight: 700; margin: 4px 0 2px; }
   
   .zzz14pt-wait-head { color: #16a34a; font-weight: 800; font-size: 11px; margin: 4px 0 2px; }
@@ -14221,6 +14224,43 @@ function zzz14pt_overview() {
       r.addEventListener('click', () => zzz_open_chat_entry(t.entry, t.startId));
       list.appendChild(r);
     });
+
+    const cls = (zzz1cnNotifNotes || []).filter(n => /(^|,)\s*closing:/.test(String(n.note_tags || '').toLowerCase()) && /^\d+$/.test(String(n.entry_key)))
+      .map(n => {
+        const m = String(n.note_tags || '').toLowerCase().match(/closing:([^\/,\s]+)\/(\w+)/) || [];
+        const c = zzz14ptCache[Number(n.entry_key)];
+        const type = c && c.cfg && c.cfg.types.find(t => String(t.id).toLowerCase() === m[1]);
+        return { n, typeName: type ? type.name : (m[1] || '?'), per: m[2] || '', t: Date.parse(n.created_at || '') || 0,
+          project: (zzz5w8_project_of(String(n.entry_key)) || '#' + n.entry_key) };
+      })
+      .filter(c => {
+        const p = f.period || 'all';
+        const r = (p === 'closing' || p === 'prevclosing') ? null : zzz14sh_range(p, now);
+        if (r && !(c.t >= r[0] && c.t < r[1])) return false;
+        const d = f.dates || {};
+        if (d.from && c.t < Date.parse(d.from + 'T00:00:00')) return false;
+        if (d.to) { const e = new Date(d.to + 'T00:00:00'); if (c.t >= new Date(e.getFullYear(), e.getMonth(), e.getDate() + 1).getTime()) return false; }
+        return true;
+      })
+      .filter(c => !anyOn(f.proj) || f.proj[c.project])
+      .filter(c => !anyOn(f.type) || f.type[c.typeName])
+      .filter(c => !q || zzz10v1_normalize([c.project, c.typeName, c.n.note_text].join(' ')).includes(q))
+      .sort((a, b) => b.t - a.t);
+    const ch = document.createElement('button'); ch.type = 'button'; ch.className = 'zzz14pt-cl-head' + (st.closingsOpen ? ' is-open' : '');
+    ch.textContent = `${st.closingsOpen ? '\u25be' : '\u25b8'} CLOSINGS (${cls.length})`;
+    ch.title = 'Automatic closings of the periods set in DEVS (server) - tap = open / close';
+    ch.addEventListener('click', () => { st.closingsOpen = !st.closingsOpen; zzz14sh_save('tasksdb', st); paint(); });
+    list.appendChild(ch);
+    if (st.closingsOpen) {
+      if (!cls.length) { const e = document.createElement('div'); e.className = 'zzz5w5cm-view-empty'; e.textContent = 'No closing yet - set a closing period in DEVS; the server writes one at the end of each period with tasks.'; list.appendChild(e); }
+      cls.forEach(c => {
+        const r = document.createElement('div'); r.className = 'zzz14pt-ov-task zzz14pt-cl-row';
+        r.textContent = (hid.proj ? '' : c.project + ' \u00b7 ') + String(c.n.note_text || '').replace(/^\S+\s*CLOSING\s*\u00b7\s*/, '') ;
+        r.title = 'Tap = open this closing in its chat';
+        r.addEventListener('click', () => zzz_open_chat_entry(String(c.n.entry_key), c.n.id));
+        list.appendChild(r);
+      });
+    }
     sh.refreshPanel();
   };
   box.append(head, list);
@@ -41336,7 +41376,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'UPD-TWO 2026-10-23';
+const VERSO_BUILD = 'PT-CLOSING 2026-10-23';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
