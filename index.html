@@ -3305,6 +3305,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     font-size: 9px; font-weight: 800; letter-spacing: 0.4px; color: #D4AF37;
   }
   
+  .zzz14pt-tsline { display: flex; gap: 6px; align-items: center; padding: 2px 4px 0; }
+  .zzz14pt-tsbtn { background: #16a34a; color: #fff; border: 0; border-radius: 10px; font-weight: 800; font-size: 11px; padding: 3px 12px; }
+  .zzz14pt-tsok { color: #16a34a; font-weight: 800; font-size: 11px; }
+  .zzz14pt-tswait { color: #8a8f98; font-size: 11px; }
+  .zzz14pt-taskdone { background: #16a34a; color: #fff; border-radius: 8px; font-size: 10px; font-weight: 800; padding: 1px 8px; }
+  .zzz1-quickchip.is-taskname { opacity: .45; text-decoration: line-through; }
+  
   .zzz14pt-chiprow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 3px 6px; border-top: 1px dashed #c9b37a; }
   .zzz14pt-rowlab { font-size: 9px; font-weight: 800; color: #8a6d1f; letter-spacing: .05em; }
   .zzz14pt-taskchip { border: 1.5px solid; border-radius: 12px; background: transparent; font-size: 11px; font-weight: 800; padding: 2px 9px; }
@@ -12553,6 +12560,12 @@ function zzz1_build_quickchips_row(getVal, setVal, fixedValues = []) {
       btn.type = 'button';
       btn.className = 'zzz1-quickchip-text';
       btn.textContent = text;
+
+      if (typeof zzz14pt_is_task_chip_name === 'function' && zzz14pt_is_task_chip_name(text)) {
+        chip.classList.add('is-taskname');
+        btn.title = `"${text}" is a task chip of this project - use it in the TASKS row. Your own chip with this name is off here.`;
+        btn.onclick = () => zzz6f2_show_toast(btn.title, 'warn');
+      } else
       btn.onclick = () => {
         const current = getVal();
         setVal(current ? (current + '\n' + text) : text);
@@ -12587,6 +12600,11 @@ function zzz1_build_quickchips_row(getVal, setVal, fixedValues = []) {
       committed = true;
       const val = input.value.trim();
       if (input.parentNode === row) row.replaceChild(addBtn, input);
+      if (val && typeof zzz14pt_is_task_chip_name === 'function' && zzz14pt_is_task_chip_name(val)) {
+        zzz6f2_show_toast(`"${val}" is already a task chip of this project (COMM SETUP > PROJECT TASKS) - pick another name.`, 'warn');
+        renderChips();
+        return;
+      }
       if (val) {
         hasLocalEdit = true;
         myChips.push(val);
@@ -13628,7 +13646,7 @@ function zzz14pt_task_subs(entryId) {
     const cur = tasks[k];
     if (!cur || tc.stepIdx >= cur.stepIdx) tasks[k] = tc;
   });
-  return Object.keys(tasks).sort((a, b) => a - b).map(k => `task:#${k} ${tasks[k].chip}`);
+  return Object.keys(tasks).sort((a, b) => a - b).map(k => `task:#${k} ${zzz14pt_task_is_done(key, Number(k), tasks[k].typeId) ? 'done' : tasks[k].chip}`);
 }
 function zzz14pt_paint_chiprow(row, entryKey, arm, onArm) {
   const key = Number(String(entryKey || '').replace(/\D/g, ''));
@@ -13662,6 +13680,138 @@ function zzz14pt_paint_chiprow(row, entryKey, arm, onArm) {
       row.appendChild(b);
     });
   });
+}
+
+const ZZZ14PT_TS_TABLE = 'verso_tasksents';
+let zzz14ptTs = {};
+let zzz14ptTsAt = 0;
+async function zzz14pt_ts_load(entryId) {
+  const id = Number(String(entryId || '').replace(/\D/g, ''));
+  try {
+    let q = sb.from(ZZZ14PT_TS_TABLE).select('entry_id, task_no, type_id, chip, username, created_at, note_id').order('id', { ascending: true }).limit(2000);
+    if (id) q = q.eq('entry_id', id);
+    const { data, error } = await q;
+    if (error) throw error;
+    if (id) zzz14ptTs[id] = [];
+    else zzz14ptTs = {};
+    (data || []).forEach(r => { (zzz14ptTs[r.entry_id] = zzz14ptTs[r.entry_id] || []).push(r); });
+    if (!id) zzz14ptTsAt = Date.now();
+  } catch (e) {   }
+}
+
+async function zzz14pt_notif_sync() {
+  const keys = {};
+  (zzz1cnNotifNotes || []).forEach(n => { if (/task:/i.test(String(n.note_tags || '')) && /^\d+$/.test(String(n.entry_key))) keys[n.entry_key] = 1; });
+  const list = Object.keys(keys);
+  if (!list.length) return;
+  await Promise.all(list.map(k => zzz14pt_load(k)));
+  if (Date.now() - zzz14ptTsAt > 20000) await zzz14pt_ts_load(0);
+}
+function zzz14pt_ts_of(entryId, taskNo, typeId, chip) {
+  const id = Number(String(entryId || '').replace(/\D/g, ''));
+  return (zzz14ptTs[id] || []).find(r => Number(r.task_no) === Number(taskNo) && String(r.type_id).toLowerCase() === String(typeId).toLowerCase()
+    && String(r.chip).toLowerCase() === String(chip).toLowerCase()) || null;
+}
+function zzz14pt_step_of(entryId, typeId, chip) {
+  const c = zzz14ptCache[Number(String(entryId || '').replace(/\D/g, ''))];
+  const type = c && c.cfg && c.cfg.types.find(t => String(t.id).toLowerCase() === String(typeId).toLowerCase());
+  const step = type && type.steps.find(s => String(s.chip).trim().toLowerCase() === String(chip).toLowerCase());
+  return step ? { type, step } : null;
+}
+
+function zzz14pt_note_confirmed(n) {
+  const t = zzz14pt_parse_tag(n && n.note_tags);
+  return !!(t && zzz14pt_ts_of(n.entry_key, n.note_number, t.typeId, t.chip));
+}
+function zzz14pt_task_is_done(entryId, taskNo, typeId) {
+  const c = zzz14ptCache[Number(String(entryId || '').replace(/\D/g, ''))];
+  const type = c && c.cfg && c.cfg.types.find(t => String(t.id).toLowerCase() === String(typeId).toLowerCase());
+  if (!type) return false;
+  const need = type.steps.filter(s => s.tasksent);
+  return need.length > 0 && need.every(s => zzz14pt_ts_of(entryId, taskNo, typeId, String(s.chip).trim().toLowerCase()));
+}
+function zzz14pt_note_task_done(n) {
+  const t = zzz14pt_parse_tag(n && n.note_tags);
+  return !!(t && zzz14pt_task_is_done(n.entry_key, n.note_number, t.typeId));
+}
+
+function zzz14pt_can_confirm(entryId, step) {
+  if (!step || !step.tasksent) return false;
+  const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+  if (!me) return false;
+  const row = (typeof zzz6f29_entry_row_of === 'function') ? zzz6f29_entry_row_of(entryId) : null;
+  const f = row ? (zzz_parse_fields_json(row) || {}) : {};
+  if (step.who.owner && row && (zzz10v1_normalize(row.username || '') === me || zzz10v1_normalize(f.r4 || '') === me)) return true;
+  if (step.who.delegates && typeof zzz1cn_is_delegate === 'function' && zzz1cn_is_delegate(String(entryId))) return true;
+  return (step.who.users || []).some(u => zzz10v1_normalize(u) === me);
+}
+function zzz14pt_note_ts_ui(wrap, note, tc, onChanged) {
+  const st = zzz14pt_step_of(note.entry_key, tc.typeId, tc.chip);
+  if (!st || !st.step.tasksent) return;
+  const box = document.createElement('div');
+  box.className = 'zzz14pt-tsline';
+  const done = zzz14pt_ts_of(note.entry_key, note.note_number, tc.typeId, tc.chip);
+  if (done) {
+    box.innerHTML = '';
+    const ok = document.createElement('span'); ok.className = 'zzz14pt-tsok';
+    ok.textContent = `✓ TASKSENT · ${done.username} · ${zzz5w8_fmt_time(Date.parse(done.created_at || '') || Date.now())}`;
+    box.appendChild(ok);
+    if (zzz14pt_task_is_done(note.entry_key, note.note_number, tc.typeId) && !String(note.note_part || '').trim()) {
+      const d = document.createElement('span'); d.className = 'zzz14pt-taskdone'; d.textContent = 'TASK DONE';
+      box.appendChild(d);
+    }
+  } else if (zzz14pt_can_confirm(note.entry_key, st.step)) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz14pt-tsbtn';
+    b.textContent = 'TASKSENT';
+    b.title = `Confirm ${tc.chip} of ${tc.typeName} #${note.note_number} - the first who taps confirms it for everyone`;
+    b.addEventListener('click', async (e) => { e.stopPropagation(); b.disabled = true; await zzz14pt_confirm(note, tc); if (onChanged) onChanged(); });
+    box.appendChild(b);
+  } else {
+    const w = document.createElement('span'); w.className = 'zzz14pt-tswait';
+    const who = [st.step.who.owner ? 'owner' : '', st.step.who.delegates ? 'delegates' : ''].concat(st.step.who.users || []).filter(Boolean).join(', ');
+    w.textContent = `waits for TASKSENT (${who || '-'})`;
+    box.appendChild(w);
+  }
+  Promise.resolve().then(() => wrap.appendChild(box));
+}
+async function zzz14pt_confirm(note, tc) {
+  const me = (zzz0r1_get_current_username() || '').trim();
+  const row = { entry_id: Number(note.entry_key), task_no: Number(note.note_number), type_id: String(tc.typeId).toLowerCase(),
+    chip: String(tc.chip).trim().toLowerCase(), note_id: Number(note.id) || null, username: me };
+  const { error } = await sb.from(ZZZ14PT_TS_TABLE).insert(row);
+  await zzz14pt_ts_load(note.entry_key);
+  if (error) {
+    const dup = String(error.code) === '23505' || /duplicate/i.test(error.message || '');
+    const by = zzz14pt_ts_of(note.entry_key, note.note_number, tc.typeId, tc.chip);
+    zzz6f2_show_toast(dup ? `${tc.chip} #${note.note_number} was already confirmed${by ? ' by ' + by.username : ''}.`
+      : `TASKSENT not saved: ${error.message || error} (only the people set in PROJECT TASKS may confirm this step).`, 'warn');
+  } else {
+    zzz_haptic_pulse(30);
+    zzz6f2_show_toast(`✓ TASKSENT ${tc.chip} #${note.note_number}.`);
+    if (zzz14pt_task_is_done(note.entry_key, note.note_number, tc.typeId)) await zzz14pt_write_done(note.entry_key, note.note_number, tc.typeId);
+  }
+  try { zzz1cn_notif_recount(); } catch (e) {}
+  zzz5_6_live_ping('tasksent');
+}
+
+async function zzz14pt_write_done(entryId, taskNo, typeId) {
+  const c = zzz14ptCache[Number(entryId)];
+  const type = c && c.cfg && c.cfg.types.find(t => String(t.id).toLowerCase() === String(typeId).toLowerCase());
+  if (!type) return;
+  const parts = type.steps.filter(s => s.tasksent).map(s => {
+    const r = zzz14pt_ts_of(entryId, taskNo, typeId, String(s.chip).trim().toLowerCase());
+    return `${s.chip} ✓ ${r ? r.username + ' ' + zzz5w8_fmt_time(Date.parse(r.created_at || '') || Date.now()) : ''}`;
+  });
+  const text = `✓ TASK DONE · ${type.name} #${taskNo} · ` + parts.join(' · ');
+  try { await zzz1cn_add(String(entryId), text, false, { base: Number(taskNo) }, '', true, '', [], ''); } catch (e) {}
+  zzz6f2_show_toast(`${type.name} #${taskNo} is DONE - summary saved to Notes.`);
+}
+
+function zzz14pt_is_task_chip_name(text) {
+  const key = Number(String((typeof zzz56PrivCtx !== 'undefined' && zzz56PrivCtx) || '').replace(/\D/g, ''));
+  const c = key ? zzz14ptCache[key] : null;
+  const t = String(text || '').trim().toLowerCase();
+  return !!(t && c && c.cfg && c.cfg.types.some(ty => ty.steps.some(s => String(s.chip).trim().toLowerCase() === t)));
 }
 
 function zzz1_context_can_edit(consentKey, entryKey) {
@@ -14706,7 +14856,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
   cnTaskRow.style.display = 'none';
   box.appendChild(cnTaskRow);
   cnTaskPaint = () => zzz14pt_paint_chiprow(cnTaskRow, cnGateKey, cnTaskArm, (arm) => { cnTaskArm = arm; cnTaskPaint(); });
-  if (cnGateKey) zzz14pt_load(cnGateKey).then(() => { cnTaskPaint(); cnRefreshFeed(); }).catch(() => {});
+  if (cnGateKey) Promise.all([zzz14pt_load(cnGateKey), zzz14pt_ts_load(cnGateKey)]).then(() => { cnTaskPaint(); cnRefreshFeed(); }).catch(() => {});
   if (cnQuickChips) {
     box.appendChild(cnQuickChips);
 
@@ -23013,7 +23163,7 @@ function zzz5w8_collect() {
     const isRecord = /^\d+$/.test(rawKey);
     const kind = zzz1cn_notif_kind(r, meN, seen);
 
-    const done = !!(r.id && (zzz5w8DoneNotes[String(r.id)] || zzz5w8_note_is_done(r)));
+    const done = !!(r.id && (zzz5w8DoneNotes[String(r.id)] || zzz5w8_note_is_done(r) || (typeof zzz14pt_note_task_done === 'function' && zzz14pt_note_task_done(r))));
     let sh = r.id ? zzz5w8Shifts['note:' + r.id] : null;
 
     if (!sh && !done && kind === null && zzz1cn_self_shifted(meN) && zzz10v1_normalize(r.username || '') === meN) sh = { until: null, self: true };
@@ -32881,7 +33031,8 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
     headId.appendChild(wait);
   }
 
-  { const tc = zzz14pt_chip_of(note); if (tc) { const c = document.createElement('span'); c.className = 'zzz14pt-notechip'; c.textContent = tc.chip; c.style.borderColor = tc.color; c.style.color = tc.color; c.title = `${tc.typeName} task - step ${tc.stepIdx + 1}: ${tc.chip}`; headId.insertBefore(c, headId.firstChild); wrap.classList.add('zzz14pt-tasknote'); } }
+  { const tc = zzz14pt_chip_of(note); if (tc) { zzz14pt_note_ts_ui(wrap, note, tc, onChanged); }
+    if (tc) { const c = document.createElement('span'); c.className = 'zzz14pt-notechip'; c.textContent = tc.chip; c.style.borderColor = tc.color; c.style.color = tc.color; c.title = `${tc.typeName} task - step ${tc.stepIdx + 1}: ${tc.chip}`; headId.insertBefore(c, headId.firstChild); wrap.classList.add('zzz14pt-tasknote'); } }
   headLeft.appendChild(headMarks);
   headLeft.appendChild(headId);
 
@@ -33667,6 +33818,7 @@ function zzz1cn_notif_kind(r, meN, seen) {
   if (!t) return null;
   if (!zzz1cn_notif_counts_self(meN) && zzz10v1_normalize(r.username || '') === meN) return null;
   if (!zzz1cn_notif_linked(r, meN)) return null;
+  if (typeof zzz14pt_note_confirmed === 'function' && zzz14pt_note_confirmed(r)) return '';
   const mark = (seen || {})[key] || { seen: 0, prio: 0 };
   const lvl = zzz1cn_prio_of(r);
   if (!lvl) return t > mark.seen ? 'green' : '';
@@ -33747,6 +33899,7 @@ async function zzz1cn_notif_load(opts) {
     }
     zzz1cnDelta.maxTs = Math.max(zzz1cnDelta.maxTs && !full ? zzz1cnDelta.maxTs : 0, zzz1cn_notes_maxts(zzz1cnNotifNotes));
     zzz1cn_prefetch_entries();
+    try { await zzz14pt_notif_sync(); } catch (e) {}
   } catch (e) {
     if (zzz1cnNotifNotes === null) zzz1cnNotifNotes = [];
   } finally {
@@ -40608,7 +40761,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'UPDATE-LIVE 2026-10-23';
+const VERSO_BUILD = 'PT-TASKSENT 2026-10-23';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
