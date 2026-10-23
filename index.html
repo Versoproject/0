@@ -1907,6 +1907,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     color: #D4AF37; font-weight: 700; font-size: 13px; letter-spacing: 0.5px; text-decoration: none;
   }
   .zzz14b17-app-dl-note { margin-top: 5px; font-size: 11px; color: #777; line-height: 1.35; }
+  .zzz14b17-app-dl-btn.zzz14b17-app-dl-ok { border-color: #4CAF50; color: #4CAF50; }   
+  .zzz14b17-web-load-btn { min-height: 30px; padding: 4px 10px; font-size: 12px; margin-left: 6px; cursor: pointer; }
   
   
   .zzz-support-cl-row {
@@ -40005,6 +40007,19 @@ function open_settings_workspace() {
     tabContent.appendChild(slot);
   } else if (zzz10_0ActiveTab === 'settings' && typeof zzz16_render_settings === 'function') {
     zzz16_render_settings(tabContent);
+
+    try {
+      const inApp2 = zzz14b17_in_app() || (typeof zzz_layer_app === 'function' && zzz_layer_app());
+      if (inApp2) {
+        const rd = document.createElement('a');
+        rd.className = 'zzz14b17-app-dl-btn';
+        rd.href = 'intent://reader#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end';
+        rd.textContent = 'VERSO READER · read notifications aloud';
+        const rdw = document.createElement('div'); rdw.className = 'zzz14b17-app-settings';
+        rdw.appendChild(rd);
+        tabContent.appendChild(rdw);
+      }
+    } catch (e) {}
   } else {
 
     const placeholder = document.createElement('div');
@@ -40028,19 +40043,25 @@ function open_settings_workspace() {
     const inApp = zzz14b17_in_app() || (typeof zzz_layer_app === 'function' && zzz_layer_app());
     av.textContent = 'Verso app ' + (code ? '1.0.' + code : (inApp ? '? (open Verso once from the app icon)' : '- (browser)')) + ' · newest 1.0.' + ZZZ14B17_APP_LATEST;
     wrap.appendChild(av);
-  } catch (e) {}
 
-  try {
-    const inApp2 = zzz14b17_in_app() || (typeof zzz_layer_app === 'function' && zzz_layer_app());
-    if (inApp2) {
-      const rd = document.createElement('a');
-      rd.className = 'zzz14b17-app-dl-btn';
-      rd.href = 'intent://reader#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end';
-      rd.textContent = 'VERSO READER · read notifications aloud';
-      const rdw = document.createElement('div'); rdw.className = 'zzz14b17-app-settings';
-      rdw.appendChild(rd);
-      wrap.appendChild(rdw);
-    }
+    zzz14b17_live_app().then((live) => {
+      if (!live) return;
+      av.textContent = 'Verso app ' + (code ? '1.0.' + code : (inApp ? '?' : '- (browser)')) + ' · newest 1.0.' + live
+        + (code ? (code >= live ? ' \u2713 up to date' : ' \u2192 update available') : '');
+    });
+    const wv = document.createElement('div'); wv.className = 'zzz-build-tag';
+    wv.textContent = 'Verso web ' + VERSO_BUILD;
+    wrap.appendChild(wv);
+    zzz14b17_live_web().then((live) => {
+      if (!live) return;
+      if (live === VERSO_BUILD) { wv.textContent = 'Verso web ' + VERSO_BUILD + ' \u2713 up to date'; return; }
+      wv.textContent = 'Verso web ' + VERSO_BUILD + ' · newest ' + live + ' ';
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'zzz14b17-app-dl-btn zzz14b17-web-load-btn';
+      b.textContent = 'Load new version';
+      b.addEventListener('click', () => { try { zzz_dev_reload_now(); } catch (e) { location.reload(); } });
+      wv.appendChild(b);
+    });
   } catch (e) {}
 
   zzz10t2_hide_m4a_template();
@@ -40587,7 +40608,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'PT-TASKNOTE 2026-10-23';
+const VERSO_BUILD = 'UPDATE-LIVE 2026-10-23';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -43314,6 +43335,28 @@ function zzz14b17_render_app_download(btnHost, noteHost, mode) {
     : 'Android app, not from Google Play: Android asks once to allow installing. If the download disappears, open Downloads → verso.apk. In the app, log in and turn notifications on again.';
   wrap.appendChild(a);
   (noteHost || btnHost).appendChild(note);
+
+  if (inApp) zzz14b17_live_app().then((live) => {
+    if (!live) return;
+    const have = zzz14b17_app_code();
+    if (have && have >= live) {
+      a.textContent = 'Verso app 1.0.' + have + ' · up to date \u2713';
+      a.classList.add('zzz14b17-app-dl-ok');
+      note.textContent = 'Nothing to update. (Tap = check again / reinstall the newest version.)';
+    } else {
+      a.textContent = 'Update Verso app ' + (have ? '1.0.' + have + ' \u2192 ' : 'to ') + '1.0.' + live;
+      note.textContent = 'New version 1.0.' + live + ' is ready. One tap: Verso fetches it, checks it and Android asks "Update?". You stay logged in.';
+    }
+  });
+}
+
+function zzz14b17_live_app() {
+  return fetch('/verso-apk.json?v=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
+    .then(j => (j && Number(j.versionCode)) || null).catch(() => null);
+}
+function zzz14b17_live_web() {
+  return fetch('/verso-web.json?v=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
+    .then(j => (j && j.build) || null).catch(() => null);
 }
 
 function zzz_render_account_recovery(box) {
