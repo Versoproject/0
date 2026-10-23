@@ -8736,6 +8736,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz5w9-status.is-upd { color: #ea8c00; }
   .zzz5w9-status.is-na, .zzz5w9-status.is-info { color: #a1a1aa; }
   .zzz5w9-status.is-bad { color: #c0392b; }
+  .zzz5w9-notice { color: #D4AF37; font-size: 8.5px; line-height: 1.3; }
   .zzz5w9-fp { color: #6b6b6b; font-size: 8px; font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
   .db-workspace.zzz5w8-workspace { padding-top: 0; }
   
@@ -41528,7 +41529,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'CHAT-NAME-COLORS 2026-10-23';
+const VERSO_BUILD = 'W9-GATE 2026-10-24';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -44404,6 +44405,7 @@ function zzz14b17_render_app_download(btnHost, noteHost, mode) {
 function zzz14b17_dl_panel(opts) {
   if (!window.fetch || !window.ReadableStream || !window.crypto || !crypto.subtle) return false;
   const o = opts || {};
+
   const manUrl = o.manifest || '/verso-apk.json', fileUrl = o.file || ZZZ14B17_APP_URL,
     fileName = o.fileName || 'verso.apk', fileType = o.type || 'application/vnd.android.package-archive';
   let ov = document.getElementById('zzz14b17DlPanel');
@@ -44426,10 +44428,10 @@ function zzz14b17_dl_panel(opts) {
   btn.addEventListener('click', close);
   (async () => {
     try {
-      const man = await (await fetch(manUrl + '?v=' + Date.now(), { cache: 'no-store' })).json();
+      const man = o.man || await (await fetch(manUrl + '?v=' + Date.now(), { cache: 'no-store' })).json();
       const mb = (Number(man.bytes) / 1048576).toFixed(1);
       info.textContent = 'version ' + (man.versionName || man.version) + ' \u00b7 ' + mb + ' MB \u00b7 signed by The Verso Project';
-      const r = await fetch(fileUrl + '?v=' + (man.versionCode || man.version || Date.now()), { cache: 'no-store' });
+      const r = await fetch(o.man ? fileUrl : fileUrl + '?v=' + (man.versionCode || man.version || Date.now()), { cache: 'no-store' });
       if (!r.ok || !r.body) throw new Error('HTTP ' + r.status);
       const rd = r.body.getReader(); const parts = []; let got = 0;
       for (;;) {
@@ -44530,6 +44532,12 @@ const zzz5w9Picked = new Set();
 let zzz5w9Catalog = null;
 const zzz5w9Man = {};
 
+const zzz5w9Rel = {};
+const ZZZ5W9_GATE_FN = SUPABASE_URL + '/functions/v1/verso-apps';
+
+const ZZZ5W9_GATE_NOTICE = 'Download is tied to your Verso account and recorded. You are responsible for its use - do not pass the file on.';
+function zzz5w9_logged_in() { return !!zzz0auth_sessionToken; }
+
 function zzz5w9_is_open() { return !!document.querySelector('#versoWorkspaceSection .zzz5w9-workspace'); }
 function zzz5w9_in_app() { return zzz14b17_in_app() || (typeof zzz_layer_app === 'function' && zzz_layer_app()); }
 function zzz5w9_fetch_json(u) {
@@ -44543,6 +44551,11 @@ function zzz5w9_item(id) { return (zzz5w9Catalog && zzz5w9Catalog.apps || []).fi
 
 function zzz5w9_carrier(a) { return a && a.kind === 'part' ? zzz5w9_item(a.in) : a; }
 function zzz5w9_downloadable(a) {
+  if (a && a.kind === 'gated') {
+
+    const r = zzz5w9Rel[a.gate];
+    return !!(r && r.sha256 && zzz5w9_logged_in() && !zzz5w9_in_app());
+  }
   const c = zzz5w9_carrier(a);
   return !!(c && c.kind === 'apk' && c.file && c.manifest && zzz5w9Man[c.manifest] && zzz5w9Man[c.manifest].sha256);
 }
@@ -44551,6 +44564,13 @@ function zzz5w9_status(a) {
   const inApp = zzz5w9_in_app();
   const isVersoApp = (x) => x && x.id === 'verso-app';
   const c = zzz5w9_carrier(a);
+  if (a.kind === 'gated') {
+    const r = zzz5w9Rel[a.gate];
+    if (inApp) return { text: 'already in your Verso app \u2713 - not needed', cls: 'is-ok' };
+    if (!r) return { text: 'no published version yet', cls: 'is-na' };
+    if (!zzz5w9_logged_in()) return { text: 'log in to Verso to download (registered users only)', cls: 'is-na' };
+    return { text: 'ready for your account \u00b7 ' + r.version_name, cls: 'is-info', action: 'install', actionLabel: 'INSTALL' };
+  }
   if (a.kind === 'data') {
     const m = zzz5w9Man[a.manifest];
     if (!inApp) return { text: 'needs Verso app', cls: 'is-na' };
@@ -44574,7 +44594,34 @@ function zzz5w9_status(a) {
   return { text: 'not detected', cls: 'is-na', action: 'install', actionLabel: 'INSTALL' };
 }
 
+async function zzz5w9_download_gated(a, onClose) {
+  if (!zzz5w9_logged_in()) { zzz6f2_show_toast('APPS: log in to Verso first - Verso apps are downloaded only by registered users.', 'warn'); if (onClose) onClose('error'); return; }
+  let res, body;
+  try {
+    res = await fetch(ZZZ5W9_GATE_FN, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + zzz0auth_sessionToken },
+      body: JSON.stringify({ action: 'download', app_id: a.gate })
+    });
+    body = await res.json().catch(() => ({}));
+  } catch (e) {
+    zzz6f2_show_toast('APPS: no connection to Verso - the download needs it (it is recorded to your account). ' + ((e && e.message) || e), 'warn');
+    if (onClose) onClose('error'); return;
+  }
+  if (!res.ok || !body.url) {
+    zzz6f2_show_toast('APPS: ' + (body.error || ('HTTP ' + res.status)) + (body.detail ? ' (' + body.detail + ')' : ''), 'warn');
+    if (onClose) onClose('error'); return;
+  }
+  const ok = zzz14b17_dl_panel({
+    man: { versionName: body.version_name, sha256: body.sha256, bytes: body.bytes },
+    file: body.url, fileName: body.file_name || (a.gate + '.apk'), title: a.name,
+    savedMsg: '\u2713 ' + (body.file_name || 'file') + ' saved \u2192 open it (Downloads) and tap Install. ' + ZZZ5W9_GATE_NOTICE,
+    onClose
+  });
+  if (!ok) { zzz6f2_show_toast('APPS: this browser cannot check the SHA-256 fingerprint, so the download is not offered here. Open Verso in Chrome.', 'warn'); if (onClose) onClose('error'); }
+}
 function zzz5w9_download(a, onClose) {
+  if (a && a.kind === 'gated') { zzz5w9_download_gated(a, onClose); return; }
   const c = zzz5w9_carrier(a);
   if (!c || !zzz5w9_downloadable(c)) { zzz6f2_show_toast('APPS: ' + (a && a.name) + ' has no SHA-256 fingerprint - Verso does not offer it.', 'warn'); if (onClose) onClose('error'); return; }
   const ok = zzz14b17_dl_panel({ manifest: c.manifest, file: c.file, fileName: c.fileName || c.file.split('/').pop(), title: c.name, onClose });
@@ -44670,8 +44717,12 @@ function zzz5w9_render() {
     const stl = document.createElement('div'); stl.className = 'zzz5w9-status ' + st.cls; stl.textContent = st.text;
     mid.append(nm, inf, stl);
 
-    const man = zzz5w9Man[a.manifest];
+    const man = a.kind === 'gated' ? (zzz5w9Rel[a.gate] && { versionName: zzz5w9Rel[a.gate].version_name, bytes: zzz5w9Rel[a.gate].bytes, sha256: zzz5w9Rel[a.gate].sha256 }) : zzz5w9Man[a.manifest];
     const car = a.kind === 'part' ? zzz5w9_carrier(a) : null;
+    if (a.kind === 'gated' && !zzz5w9_in_app()) {
+      const nt = document.createElement('div'); nt.className = 'zzz5w9-notice'; nt.textContent = ZZZ5W9_GATE_NOTICE;
+      mid.appendChild(nt);
+    }
     if (car) {
       const cm = zzz5w9Man[car.manifest];
       const fp = document.createElement('div'); fp.className = 'zzz5w9-fp';
@@ -44709,6 +44760,14 @@ async function zzz5w9_load() {
   zzz5w9_render();
   const mans = Array.from(new Set((zzz5w9Catalog.apps || []).map(a => a.manifest).filter(Boolean)));
   await Promise.all(mans.map(u => zzz5w9_fetch_json(u).then(j => { zzz5w9Man[u] = j; }).catch(() => {})));
+  const gates = Array.from(new Set((zzz5w9Catalog.apps || []).filter(a => a.kind === 'gated').map(a => a.gate)));
+  if (gates.length) {
+    try {
+      const { data } = await sb.from('verso_app_releases').select('app_id, version_code, version_name, sha256, bytes')
+        .in('app_id', gates).order('version_code', { ascending: false });
+      (data || []).forEach(r => { if (!zzz5w9Rel[r.app_id]) zzz5w9Rel[r.app_id] = r; });
+    } catch (e) {   }
+  }
   zzz5w9_render();
 }
 
