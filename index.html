@@ -3354,6 +3354,17 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   
   .zzz14pt-q { position: absolute; top: -6px; left: -6px; background: #c0392b; color: #fff; border-radius: 10px; font-size: 10px; font-weight: 800; padding: 1px 5px; pointer-events: none; }
   
+  .zzz14sh { width: 100%; }
+  .zzz14sh-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .zzz14sh-btn { background: #1e1e1e; color: #D4AF37; border: 1.5px solid #D4AF37; border-radius: 8px; font-size: 11px; font-weight: 800; padding: 2px 10px; }
+  .zzz14sh-btn.is-on { background: #D4AF37; color: #111; }
+  .zzz14sh-active { color: #9aa0a6; font-size: 10px; flex: 1 1 100%; }
+  .zzz14sh-active:empty { display: none; }
+  .zzz14sh-panel { border: 1px solid #555; border-radius: 8px; padding: 5px; margin: 4px 0; background: #151515; }
+  .zzz14sh-body { margin-top: 4px; }
+  .zzz14sh-body input[type=date] { width: 128px; }
+  .zzz14sh-sum { color: #D4AF37; font-size: 10px; font-weight: 700; margin: 4px 0 2px; }
+  
   .zzz14pt-wait-head { color: #16a34a; font-weight: 800; font-size: 11px; margin: 4px 0 2px; }
   .zzz14pt-ov-chips { margin-bottom: 4px; }
   .zzz14pt-ov-chiprow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 2px 0; }
@@ -13923,11 +13934,174 @@ function zzz14pt_task_info(n) {
     canMe: need && !ts && zzz14pt_can_confirm(n.entry_key, st.step), who });
 }
 
-let zzz14ptOvFilter = 'open';
-let zzz14ptOvTypes = {};
-let zzz14ptOvSteps = {};
-let zzz14ptOvProj = {};
-let zzz14ptOvQ = '';
+const ZZZ14SH_LS = 'verso.show.';
+function zzz14sh_key(name) { return ZZZ14SH_LS + name + '.' + zzz10v1_normalize((zzz0r1_get_current_username() || '').trim()); }
+function zzz14sh_load(name, def) {
+  try { const v = JSON.parse(localStorage.getItem(zzz14sh_key(name)) || 'null'); if (v && typeof v === 'object') return Object.assign({}, def, v); } catch (e) {}
+  return JSON.parse(JSON.stringify(def));
+}
+function zzz14sh_save(name, st) { try { localStorage.setItem(zzz14sh_key(name), JSON.stringify(st)); } catch (e) {} }
+
+function zzz14sh_range(kind, now) {
+  const d = new Date(now || Date.now());
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if (kind === 'today') return [start.getTime(), new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime()];
+  if (kind === 'week') { const wd = (start.getDay() + 6) % 7; return [new Date(d.getFullYear(), d.getMonth(), d.getDate() - wd).getTime(), new Date(d.getFullYear(), d.getMonth(), d.getDate() - wd + 7).getTime()]; }
+  if (kind === 'month') { const s = new Date(d.getFullYear(), d.getMonth(), 1); return [s.getTime(), new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime()]; }
+  if (kind === 'year') { const s = new Date(d.getFullYear(), 0, 1); return [s.getTime(), new Date(d.getFullYear() + 1, 0, 1).getTime()]; }
+  return null;
+}
+
+function zzz14sh_closing(period, close, now, shift) {
+  if (!period) return null;
+  const [hh, mm] = String(close || '23:59').split(':').map(Number);
+  const d = new Date(now || Date.now());
+  let end;
+  if (period === 'hour') { end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours() + 1); }
+  else if (period === 'day') { end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, mm); if (end <= d) end = new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1, hh, mm); }
+  else if (period === 'week') { end = new Date(d.getFullYear(), d.getMonth(), d.getDate() + ((7 - d.getDay()) % 7), hh, mm); if (end <= d) end = new Date(end.getFullYear(), end.getMonth(), end.getDate() + 7, hh, mm); }
+  else if (period === 'month') { end = new Date(d.getFullYear(), d.getMonth() + 1, 0, hh, mm); if (end <= d) end = new Date(d.getFullYear(), d.getMonth() + 2, 0, hh, mm); }
+  else if (period === 'year') { end = new Date(d.getFullYear(), 11, 31, hh, mm); if (end <= d) end = new Date(d.getFullYear() + 1, 11, 31, hh, mm); }
+  else return null;
+  const back = (e) => {
+
+    if (period === 'hour') return new Date(e.getFullYear(), e.getMonth(), e.getDate(), e.getHours() - 1);
+    if (period === 'day') return new Date(e.getFullYear(), e.getMonth(), e.getDate() - 1, hh, mm);
+    if (period === 'week') return new Date(e.getFullYear(), e.getMonth(), e.getDate() - 7, hh, mm);
+    if (period === 'month') return new Date(e.getFullYear(), e.getMonth(), 0, hh, mm);
+    return new Date(e.getFullYear() - 1, 11, 31, hh, mm);
+  };
+  let start = back(end);
+  for (let i = 0; i < -(shift || 0); i++) { end = start; start = back(end); }
+  return [start.getTime(), end.getTime()];
+}
+
+function zzz14sh_build(spec) {
+  const st = zzz14sh_load(spec.name, spec.defaults);
+  st.f = st.f || {}; st.h = st.h || {}; st.mine = st.mine || [];
+  const wrap = document.createElement('div'); wrap.className = 'zzz14sh';
+  wrap.setAttribute('data-zzz-nodraft', '1');
+  const bar = document.createElement('div'); bar.className = 'zzz14sh-bar';
+  const showBtn = document.createElement('button'); showBtn.type = 'button'; showBtn.className = 'zzz14sh-btn'; showBtn.textContent = 'SHOW';
+  showBtn.title = 'Filter, hide parts of the rows, presets (daily / monthly summary...)';
+  const active = document.createElement('span'); active.className = 'zzz14sh-active';
+  const q = document.createElement('input'); q.type = 'text'; q.className = 'zzz14pt-ov-q'; q.placeholder = 'search'; q.value = st.q || '';
+  bar.append(showBtn, q, active);
+  const panel = document.createElement('div'); panel.className = 'zzz14sh-panel'; panel.style.display = st.open ? '' : 'none';
+  const sum = document.createElement('div'); sum.className = 'zzz14sh-sum';
+  wrap.append(bar, panel, sum);
+  let tab = 'filter';
+  const save = () => { zzz14sh_save(spec.name, st); };
+  const changed = () => { save(); paintActive(); if (spec.onChange) spec.onChange(); };
+  showBtn.addEventListener('click', () => { st.open = !st.open; panel.style.display = st.open ? '' : 'none'; showBtn.classList.toggle('is-on', !!st.open); save(); if (st.open) paintPanel(); });
+  showBtn.classList.toggle('is-on', !!st.open);
+  q.addEventListener('input', () => { st.q = q.value; changed(); });
+  const paintActive = () => {
+    const parts = [];
+    spec.filters.forEach(f => {
+      const v = st.f[f.k];
+      if (f.kind === 'one' && v && v !== (spec.defaults.f || {})[f.k]) parts.push(`${f.label}: ${(f.options().find(o => o.v === v) || {}).label || v}`);
+      if (f.kind === 'many' && v && Object.keys(v).some(k => v[k])) parts.push(`${f.label}: ${Object.keys(v).filter(k => v[k]).join(', ')}`);
+      if (f.kind === 'text' && v) parts.push(`${f.label}: ${v}`);
+      if (f.kind === 'dates' && v && (v.from || v.to)) parts.push(`${f.label}: ${v.from || '…'}–${v.to || '…'}`);
+    });
+    const hid = spec.hides.filter(h => st.h[h.k]).map(h => h.label);
+    if (hid.length) parts.push('hide: ' + hid.join(', '));
+    active.textContent = parts.join(' · ');
+  };
+  const chipBtn = (label, on, color, fn) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz14pt-ov-chip' + (on ? ' is-on' : '');
+    b.textContent = label;
+    if (color) { b.style.borderColor = color; b.style.color = on ? '#111' : color; if (on) b.style.backgroundColor = color; }
+    b.addEventListener('click', fn);
+    return b;
+  };
+  const paintPanel = () => {
+    panel.innerHTML = '';
+    const tabs = document.createElement('div'); tabs.className = 'zzz14pt-tabs';
+    [['filter', 'FILTER'], ['hide', 'HIDE'], ['presets', 'PRESETS']].forEach(([k, l]) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz14pt-tab' + (tab === k ? ' is-on' : ''); b.textContent = l;
+      b.addEventListener('click', () => { tab = k; paintPanel(); });
+      tabs.appendChild(b);
+    });
+    panel.appendChild(tabs);
+    const body = document.createElement('div'); body.className = 'zzz14sh-body';
+    panel.appendChild(body);
+    if (tab === 'filter') {
+      spec.filters.forEach(f => {
+        const opts = f.options ? f.options() : [];
+        if ((f.kind === 'one' || f.kind === 'many') && !opts.length) return;
+        const r = document.createElement('div'); r.className = 'zzz14pt-ov-chiprow';
+        const l = document.createElement('span'); l.className = 'zzz14pt-ov-lab'; l.textContent = f.label; r.appendChild(l);
+        if (f.kind === 'one') {
+          opts.forEach(o => r.appendChild(chipBtn(o.label, (st.f[f.k] || '') === o.v, o.color, () => { st.f[f.k] = o.v; changed(); paintPanel(); })));
+        } else if (f.kind === 'many') {
+          const m = st.f[f.k] || (st.f[f.k] = {});
+          opts.forEach(o => r.appendChild(chipBtn(o.label, !!m[o.v], o.color, () => { if (m[o.v]) delete m[o.v]; else m[o.v] = true; changed(); paintPanel(); })));
+        } else if (f.kind === 'text') {
+          const i = document.createElement('input'); i.type = 'text'; i.className = 'zzz14pt-in is-users'; i.placeholder = f.placeholder || ''; i.value = st.f[f.k] || '';
+          i.addEventListener('input', () => { st.f[f.k] = i.value; changed(); });
+          r.appendChild(i);
+        } else if (f.kind === 'dates') {
+          const v = st.f[f.k] || (st.f[f.k] = {});
+          ['from', 'to'].forEach(side => {
+            const i = document.createElement('input'); i.type = 'date'; i.className = 'zzz14pt-in'; i.value = v[side] || '';
+            i.title = side === 'from' ? 'From (including)' : 'To (including)';
+            i.addEventListener('change', () => { v[side] = i.value; changed(); });
+            r.appendChild(i);
+          });
+        }
+        body.appendChild(r);
+      });
+      const clr = document.createElement('button'); clr.type = 'button'; clr.className = 'zzz14pt-btn'; clr.textContent = 'CLEAR FILTER';
+      clr.addEventListener('click', () => { st.f = JSON.parse(JSON.stringify(spec.defaults.f || {})); st.q = ''; q.value = ''; changed(); paintPanel(); });
+      body.appendChild(clr);
+    } else if (tab === 'hide') {
+      const r = document.createElement('div'); r.className = 'zzz14pt-ov-chiprow';
+      spec.hides.forEach(h => r.appendChild(chipBtn(h.label, !!st.h[h.k], '', () => { st.h[h.k] = !st.h[h.k]; changed(); paintPanel(); })));
+      body.appendChild(r);
+      const n = document.createElement('div'); n.className = 'zzz14pt-note'; n.textContent = 'Lit = hidden in the rows. Nothing is removed - only not shown.';
+      body.appendChild(n);
+    } else {
+      const all = (spec.presets || []).map(p => Object.assign({ builtin: true }, p)).concat(st.mine.map(p => Object.assign({ builtin: false }, p)));
+      all.forEach((p, i) => {
+        const r = document.createElement('div'); r.className = 'zzz14pt-ov-chiprow';
+        r.appendChild(chipBtn(p.name, false, '#D4AF37', () => {
+          st.f = JSON.parse(JSON.stringify(Object.assign({}, spec.defaults.f || {}, p.state.f || {})));
+          st.h = JSON.parse(JSON.stringify(p.state.h || {}));
+          st.q = p.state.q || ''; q.value = st.q;
+          changed(); tab = 'filter'; paintPanel();
+          zzz6f2_show_toast(`Preset "${p.name}" applied.`);
+        }));
+        if (!p.builtin) {
+          const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz14pt-btn is-x'; x.textContent = '×'; x.title = 'Remove this preset of yours';
+          x.addEventListener('click', () => { st.mine.splice(i - (spec.presets || []).length, 1); save(); paintPanel(); });
+          r.appendChild(x);
+        }
+        body.appendChild(r);
+      });
+      const r = document.createElement('div'); r.className = 'zzz14pt-ov-chiprow';
+      const nm = document.createElement('input'); nm.type = 'text'; nm.className = 'zzz14pt-in is-users'; nm.placeholder = 'name of the current view';
+      const sv = document.createElement('button'); sv.type = 'button'; sv.className = 'zzz14pt-btn is-add'; sv.textContent = 'SAVE AS PRESET';
+      sv.addEventListener('click', () => {
+        const name = String(nm.value || '').trim();
+        if (!name) { zzz6f2_show_toast('Give the preset a name.', 'warn'); return; }
+        st.mine.push({ name, state: { f: JSON.parse(JSON.stringify(st.f)), h: JSON.parse(JSON.stringify(st.h)), q: st.q || '' } });
+        save(); paintPanel(); zzz6f2_show_toast(`Preset "${name}" saved (this device).`);
+      });
+      r.append(nm, sv);
+      body.appendChild(r);
+    }
+  };
+  if (st.open) paintPanel();
+  paintActive();
+  return {
+    el: wrap, state: st,
+    setSummary: (txt) => { sum.textContent = txt || ''; sum.style.display = txt ? '' : 'none'; },
+    refreshPanel: () => { if (st.open) paintPanel(); paintActive(); }
+  };
+}
+
 function zzz14pt_overview() {
   const box = document.createElement('div');
   box.className = 'zzz14pt-ov';
@@ -13935,96 +14109,117 @@ function zzz14pt_overview() {
   const head = document.createElement('div'); head.className = 'zzz14pt-ov-head';
   const ttl = document.createElement('span'); ttl.className = 'zzz14pt-ov-title'; ttl.textContent = 'TASKS DATABASE';
   head.appendChild(ttl);
-  const chipsBar = document.createElement('div'); chipsBar.className = 'zzz14pt-ov-chips';
   const list = document.createElement('div'); list.className = 'zzz14pt-ov-list';
-  const any = (m) => Object.keys(m).some(k => m[k]);
-  const paintChips = (tasks) => {
-    chipsBar.innerHTML = '';
-    const types = {}, steps = {}, projs = {};
-    tasks.forEach(t => {
-      types[t.typeName.toLowerCase()] = t.typeName;
-      projs[t.project] = 1;
-      t.steps.forEach(st => { const k = String(st.chip).toLowerCase(); if (!steps[k]) steps[k] = st; });
-    });
-    const row = (label, keys, map, mk) => {
-      if (!keys.length) return;
-      const r = document.createElement('div'); r.className = 'zzz14pt-ov-chiprow';
-      const l = document.createElement('span'); l.className = 'zzz14pt-ov-lab'; l.textContent = label; r.appendChild(l);
-      keys.forEach(k => {
-        const b = document.createElement('button'); b.type = 'button';
-        const on = !!map[k];
-        b.className = 'zzz14pt-ov-chip' + (on ? ' is-on' : '');
-        mk(b, k, on);
-        b.addEventListener('click', () => { if (map[k]) delete map[k]; else map[k] = true; paint(); });
-        r.appendChild(b);
-      });
-      chipsBar.appendChild(r);
-    };
-    if (Object.keys(projs).length > 1) row('PROJECT', Object.keys(projs).sort(), zzz14ptOvProj, (b, k) => { b.textContent = k; });
-    row('TYPE', Object.keys(types).sort(), zzz14ptOvTypes, (b, k) => { b.textContent = types[k]; });
-    row('STEP', Object.keys(steps), zzz14ptOvSteps, (b, k, on) => {
-      const st = steps[k]; b.textContent = st.chip; b.style.borderColor = st.color; b.style.color = on ? '#111' : st.color;
-      if (on) b.style.backgroundColor = st.color;
-      b.title = `Tasks that stand at ${st.chip} now`;
-    });
+  let tasksNow = [];
+  const typesOf = () => { const m = {}; tasksNow.forEach(t => { m[t.typeName] = 1; }); return Object.keys(m).sort().map(v => ({ v, label: v })); };
+  const stepsOf = () => { const m = {}; tasksNow.forEach(t => t.steps.forEach(s => { if (!m[s.chip]) m[s.chip] = s.color; })); return Object.keys(m).map(v => ({ v, label: v, color: m[v] })); };
+  const projOf = () => { const m = {}; tasksNow.forEach(t => { m[t.project] = 1; }); return Object.keys(m).sort().map(v => ({ v, label: v })); };
+  const sh = zzz14sh_build({
+    name: 'tasksdb',
+    defaults: { f: { state: 'open', period: 'all' }, h: {} },
+    filters: [
+      { k: 'state', label: 'STATE', kind: 'one', options: () => [{ v: 'open', label: 'OPEN' }, { v: 'mine', label: 'WAITING FOR ME' }, { v: 'done', label: 'DONE' }, { v: 'all', label: 'ALL' }] },
+      { k: 'period', label: 'PERIOD', kind: 'one', options: () => [{ v: 'all', label: 'ALL' }, { v: 'today', label: 'TODAY' }, { v: 'week', label: 'WEEK' }, { v: 'month', label: 'MONTH' }, { v: 'year', label: 'YEAR' }, { v: 'closing', label: 'THIS CLOSING' }, { v: 'prevclosing', label: 'LAST CLOSING' }] },
+      { k: 'dates', label: 'DATE', kind: 'dates' },
+      { k: 'type', label: 'TYPE', kind: 'many', options: typesOf },
+      { k: 'step', label: 'STEP', kind: 'many', options: stepsOf },
+      { k: 'proj', label: 'PROJECT', kind: 'many', options: projOf },
+      { k: 'prio', label: 'PRIORITY', kind: 'many', options: () => [{ v: 'urgent', label: 'URGENT', color: '#c0392b' }, { v: 'attention', label: 'ATTENTION', color: '#ea8c00' }, { v: 'open', label: 'OPEN', color: '#16a34a' }] },
+      { k: 'by', label: 'CONFIRMED BY', kind: 'text', placeholder: 'names (a, b)' },
+      { k: 'waits', label: 'WAITS FOR', kind: 'text', placeholder: 'names / owner / delegates' }
+    ],
+    hides: [{ k: 'text', label: 'text' }, { k: 'time', label: 'time' }, { k: 'steps', label: 'steps' }, { k: 'who', label: 'names' }, { k: 'proj', label: 'project headers' }],
+    presets: [
+      { name: 'Daily closing', state: { f: { state: 'all', period: 'closing' } } },
+      { name: 'Last closing', state: { f: { state: 'all', period: 'prevclosing' } } },
+      { name: 'Today', state: { f: { state: 'all', period: 'today' } } },
+      { name: 'Monthly summary', state: { f: { state: 'all', period: 'month' } } },
+      { name: 'Waiting for me', state: { f: { state: 'mine', period: 'all' } } }
+    ],
+    onChange: () => paint()
+  });
+  head.appendChild(sh.el);
+  const names = (txt) => String(txt || '').split(',').map(x => zzz10v1_normalize(x.trim())).filter(Boolean);
+  const anyOn = (m) => !!m && Object.keys(m).some(k => m[k]);
+  const inRange = (t, f, now) => {
+    const p = f.period || 'all';
+    if (p === 'closing' || p === 'prevclosing') {
+      const r = zzz14sh_closing(t.period, t.close, now, p === 'prevclosing' ? -1 : 0);
+      if (!r) return false;
+      return t.t >= r[0] && t.t < r[1];
+    }
+    const r = zzz14sh_range(p, now);
+    if (r && !(t.t >= r[0] && t.t < r[1])) return false;
+    const d = f.dates || {};
+    if (d.from && t.t < Date.parse(d.from + 'T00:00:00')) return false;
+    if (d.to) { const e = new Date(d.to + 'T00:00:00'); if (t.t >= new Date(e.getFullYear(), e.getMonth(), e.getDate() + 1).getTime()) return false; }
+    return true;
   };
   const paint = () => {
     list.innerHTML = '';
-    const tasks = zzz14pt_collect_tasks();
-    paintChips(tasks);
-    const q = zzz10v1_normalize(zzz14ptOvQ.trim());
-    const vis = tasks.filter(t => zzz14ptOvFilter === 'all' || (zzz14ptOvFilter === 'done' ? t.done : (!t.done && (zzz14ptOvFilter !== 'mine' || t.mine))))
-      .filter(t => !any(zzz14ptOvProj) || zzz14ptOvProj[t.project])
-      .filter(t => !any(zzz14ptOvTypes) || zzz14ptOvTypes[t.typeName.toLowerCase()])
-      .filter(t => !any(zzz14ptOvSteps) || (t.current && zzz14ptOvSteps[String(t.current).toLowerCase()]))
+    tasksNow = zzz14pt_collect_tasks();
+    const st = sh.state, f = st.f || {}, hid = st.h || {};
+    const now = Date.now();
+    const q = zzz10v1_normalize(String(st.q || '').trim());
+    const byN = names(f.by), waitN = names(f.waits);
+    const timeOk = tasksNow.filter(t => inRange(t, f, now));
+    const vis = timeOk
+      .filter(t => f.state === 'all' || (f.state === 'done' ? t.done : (!t.done && (f.state !== 'mine' || t.mine))))
+      .filter(t => !anyOn(f.proj) || f.proj[t.project])
+      .filter(t => !anyOn(f.type) || f.type[t.typeName])
+      .filter(t => !anyOn(f.step) || (t.current && f.step[t.current]))
+      .filter(t => !anyOn(f.prio) || f.prio[t.prio || 'open'])
+      .filter(t => !byN.length || t.steps.some(s => s.by && byN.indexOf(zzz10v1_normalize(s.by)) >= 0))
+      .filter(t => !waitN.length || t.steps.some(s => s.need && !s.by && waitN.some(w => zzz10v1_normalize(s.who).includes(w))))
       .filter(t => !q || zzz10v1_normalize([t.project, t.typeName, '#' + t.no, t.steps.map(s => s.chip + ' ' + (s.by || '') + ' ' + s.who).join(' '), t.text].join(' ')).includes(q));
+
+    const per = {};
+    vis.forEach(t => { const o = per[t.typeName] || (per[t.typeName] = { n: 0, done: 0, ts: 0 }); o.n++; if (t.done) o.done++; o.ts += t.steps.filter(s => s.by).length; });
+    const types = Object.keys(per);
+    sh.setSummary(types.length
+      ? `SUMMARY · ${vis.length} task(s) · done ${vis.filter(t => t.done).length} · open ${vis.filter(t => !t.done).length}` + ' · ' + types.map(k => `${k}: ${per[k].n} (done ${per[k].done}, steps ✓ ${per[k].ts})`).join(' · ')
+      : '');
     if (!vis.length) {
       const e = document.createElement('div'); e.className = 'zzz5w5cm-view-empty';
-      e.textContent = tasks.length ? 'No task matches the filters.' : 'No tasks yet - set PROJECT TASKS in a record (COMM SETUP) and start one with its first chip.';
+      e.textContent = tasksNow.length ? 'No task matches the SHOW settings.' : 'No tasks yet - set DEVS in a record (COMM SETUP) and start one with its first chip.';
       list.appendChild(e);
     }
     let lastProj = '';
     vis.forEach(t => {
-      if (t.project !== lastProj) {
+      if (t.project !== lastProj && !hid.proj) {
         lastProj = t.project;
         const ph = document.createElement('div'); ph.className = 'zzz14pt-ov-proj'; ph.textContent = t.project;
         list.appendChild(ph);
       }
       const r = document.createElement('div'); r.className = 'zzz14pt-ov-task' + (t.done ? ' is-done' : '') + (t.mine ? ' is-mine' : '');
       const top = document.createElement('div'); top.className = 'zzz14pt-ov-top';
-      top.textContent = `${t.typeName} #${t.no}` + (t.current && !t.done ? ' · at ' + t.current : '') + (t.text ? ' · ' + t.text : '') + (t.t ? ' · ' + zzz5w8_fmt_time(t.t) : '');
+      top.textContent = `${t.typeName} #${t.no}` + (t.current && !t.done ? ' · at ' + t.current : '')
+        + (t.text && !hid.text ? ' · ' + t.text : '') + (t.t && !hid.time ? ' · ' + zzz5w8_fmt_time(t.t) : '');
       if (t.done) { const d = document.createElement('span'); d.className = 'zzz14pt-taskdone'; d.textContent = 'DONE'; top.appendChild(d); }
       r.appendChild(top);
-      const steps = document.createElement('div'); steps.className = 'zzz14pt-ov-steps';
-      t.steps.forEach(st => {
-        const c = document.createElement('span'); c.className = 'zzz14pt-ov-step' + (st.by ? ' is-ok' : '');
-        c.style.borderColor = st.color;
-        c.textContent = st.by ? `${st.chip} ✓ ${st.by} ${st.at}` : (st.need ? `${st.chip} ⏳ ${st.who}` : `${st.chip}`);
-        if (st.canMe && st.note) {
-          const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz14pt-tsbtn'; b.textContent = 'TASKSENT';
-          b.addEventListener('click', async (ev) => { ev.stopPropagation(); b.disabled = true; await zzz14pt_confirm(st.note, st.tc); zzz5w8_render(); });
-          c.appendChild(b);
-        }
-        steps.appendChild(c);
-      });
-      r.appendChild(steps);
+      if (!hid.steps) {
+        const steps = document.createElement('div'); steps.className = 'zzz14pt-ov-steps';
+        t.steps.forEach(stp => {
+          const c = document.createElement('span'); c.className = 'zzz14pt-ov-step' + (stp.by ? ' is-ok' : '');
+          c.style.borderColor = stp.color;
+          c.textContent = stp.by ? `${stp.chip} ✓` + (hid.who ? '' : ` ${stp.by}`) + (hid.time ? '' : ` ${stp.at}`)
+            : (stp.need ? `${stp.chip} ⏳` + (hid.who ? '' : ` ${stp.who}`) : `${stp.chip}`);
+          if (stp.canMe && stp.note) {
+            const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz14pt-tsbtn'; b.textContent = 'TASKSENT';
+            b.addEventListener('click', async (ev) => { ev.stopPropagation(); b.disabled = true; await zzz14pt_confirm(stp.note, stp.tc); zzz5w8_render(); });
+            c.appendChild(b);
+          }
+          steps.appendChild(c);
+        });
+        r.appendChild(steps);
+      }
       r.title = 'Tap = open this task in its chat';
       r.addEventListener('click', () => zzz_open_chat_entry(t.entry, t.startId));
       list.appendChild(r);
     });
+    sh.refreshPanel();
   };
-  [['mine', 'WAITING FOR ME'], ['open', 'OPEN'], ['done', 'DONE'], ['all', 'ALL']].forEach(([k, lab]) => {
-    const b = document.createElement('button'); b.type = 'button';
-    b.className = 'zzz5w5cm-chip' + (zzz14ptOvFilter === k ? ' is-on' : '');
-    b.textContent = lab;
-    b.addEventListener('click', () => { zzz14ptOvFilter = k; head.querySelectorAll('.zzz5w5cm-chip').forEach(x => x.classList.toggle('is-on', x === b)); paint(); });
-    head.appendChild(b);
-  });
-  const inp = document.createElement('input'); inp.type = 'text'; inp.className = 'zzz14pt-ov-q'; inp.placeholder = 'search tasks';
-  inp.value = zzz14ptOvQ;
-  inp.addEventListener('input', () => { zzz14ptOvQ = inp.value; paint(); });
-  head.appendChild(inp);
-  box.append(head, chipsBar, list);
+  box.append(head, list);
   paint();
   return box;
 }
@@ -14058,7 +14253,9 @@ function zzz14pt_collect_tasks() {
     return { entry: g.entry, no: g.no, typeId: g.typeId, typeName: type ? type.name : g.typeName, steps, done, current,
       mine: steps.some(s => s.canMe), startId: start && start.id, t: Date.parse((start && start.created_at) || '') || 0,
       text: String((start && start.note_text) || '').replace(/\s+/g, ' ').slice(0, 60),
-      project: (zzz5w8_project_of(g.entry) || '#' + g.entry) };
+      project: (zzz5w8_project_of(g.entry) || '#' + g.entry),
+
+      period: type ? (type.period || '') : '', close: type ? (type.close || '23:59') : '23:59', prio: zzz1cn_prio_of(start) || 'open' };
   }).sort((a, b) => a.project.localeCompare(b.project) || (b.t - a.t));
 }
 
@@ -41121,7 +41318,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'MODE-COLORS 2026-10-23';
+const VERSO_BUILD = 'PT-SHOW 2026-10-23';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
