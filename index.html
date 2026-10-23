@@ -13494,6 +13494,9 @@ function zzz14pt_norm(cfg) {
   const types = Array.isArray(c.types) ? c.types : [];
   return { types: types.map((t, i) => ({
     id: String(t.id || ('t' + (i + 1))), name: String(t.name || '').slice(0, 40),
+
+    period: ['hour', 'day', 'week', 'month', 'year'].indexOf(String(t.period || '')) >= 0 ? String(t.period) : '',
+    close: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(t.close || '')) ? String(t.close) : '23:59',
     steps: (Array.isArray(t.steps) ? t.steps : []).map(st => ({
       chip: String(st.chip || '').slice(0, 24), color: /^#[0-9a-f]{6}$/i.test(st.color || '') ? st.color : '#D4AF37',
       prio: zzz1cn_prio_level(st.prio), who: {
@@ -13543,7 +13546,7 @@ function zzz14pt_setup_tabs(win, api) {
   const bar = document.createElement('div');
   bar.className = 'zzz14pt-tabs';
   const tA = document.createElement('button'); tA.type = 'button'; tA.className = 'zzz14pt-tab is-on'; tA.textContent = 'ACCESS';
-  const tP = document.createElement('button'); tP.type = 'button'; tP.className = 'zzz14pt-tab'; tP.textContent = 'PROJECT TASKS';
+  const tP = document.createElement('button'); tP.type = 'button'; tP.className = 'zzz14pt-tab'; tP.textContent = 'DEVS';
   bar.append(tA, tP);
   win.appendChild(bar);
   const panel = document.createElement('div');
@@ -13573,7 +13576,7 @@ async function zzz14pt_render(panel, api) {
   note.textContent = zzz14ptMissing
     ? 'Project tasks are not switched on in the database yet - settings cannot be saved.'
     : (canEdit
-      ? 'Task types and their steps in order. A step = its chip in the chat, colour, priority, who confirms it (TASKSENT) and if its window opens by itself in COMM SPACE. Saved as a new version - nothing is overwritten.'
+      ? 'DEVS = how tasks of this project are made (like a CL): task types, their steps in order (chip in the chat, colour, priority, who confirms = TASKSENT, opens by itself in COMM SPACE) and the closing period. TASKS are the records made from them in the chat. Saved as a new version - nothing is overwritten.'
       : 'Only the record owner / project owner sets project tasks. This is what applies here.')
     + (st && st.by ? ` Last saved by ${st.by}${st.when ? ', ' + zzz5w8_fmt_time(Date.parse(st.when)) : ''}.` : '');
   panel.appendChild(note);
@@ -13612,6 +13615,24 @@ async function zzz14pt_render(panel, api) {
       th.appendChild(inp(t.name, 'task type (e.g. Order, Dev)', v => { t.name = v; }, 'is-name'));
       th.appendChild(btn('×', 'Remove this task type (older versions stay saved)', () => { cfg.types.splice(ti, 1); mark(); paint(); }, 'is-x'));
       card.appendChild(th);
+
+      const per = document.createElement('div'); per.className = 'zzz14pt-who';
+      const pl = document.createElement('span'); pl.className = 'zzz14pt-lbl'; pl.textContent = 'closing:';
+      per.appendChild(pl);
+      const ps = document.createElement('select'); ps.className = 'zzz14pt-prio'; ps.disabled = !canEdit;
+      ps.title = 'Closing period of this task type - summaries / closings go by it';
+      [['', 'none'], ['hour', 'every hour'], ['day', 'daily'], ['week', 'weekly (Sun)'], ['month', 'monthly (last day)'], ['year', 'yearly (31. 12.)']].forEach(([v, l]) => {
+        const o = document.createElement('option'); o.value = v; o.textContent = l; if ((t.period || '') === v) o.selected = true; ps.appendChild(o);
+      });
+      ps.addEventListener('change', () => { t.period = ps.value; mark(); paint(); });
+      per.appendChild(ps);
+      if (t.period && t.period !== 'hour') {
+        const tc = document.createElement('input'); tc.type = 'time'; tc.className = 'zzz14pt-in'; tc.value = t.close || '23:59'; tc.disabled = !canEdit;
+        tc.title = 'Closing time';
+        tc.addEventListener('change', () => { t.close = tc.value || '23:59'; mark(); });
+        per.appendChild(tc);
+      }
+      card.appendChild(per);
       t.steps.forEach((stp, si) => {
         const r = document.createElement('div'); r.className = 'zzz14pt-step';
         const top = document.createElement('div'); top.className = 'zzz14pt-steptop';
@@ -13658,7 +13679,7 @@ async function zzz14pt_render(panel, api) {
   paint();
   const foot = document.createElement('div'); foot.className = 'zzz14pt-foot';
   foot.appendChild(btn('+ task type', 'Add a task type (e.g. Order, Dev, Bug)', () => {
-    cfg.types.push({ id: 't' + Date.now().toString(36), name: '', steps: [] }); mark(); paint();
+    cfg.types.push({ id: 't' + Date.now().toString(36), name: '', period: '', close: '23:59', steps: [] }); mark(); paint();
   }, 'is-add'));
   const saveBtn = btn('SAVE', 'Save as a new version', async () => {
     const bad = cfg.types.find(t => !String(t.name || '').trim() || !t.steps.length || t.steps.some(x => !String(x.chip || '').trim()));
@@ -13702,6 +13723,11 @@ function zzz14pt_task_of(notes, num) {
   const base = (notes || []).find(n => Number(n.note_number) === Number(num) && !String(n.note_part || '').trim());
   const t = base && zzz14pt_parse_tag(base.note_tags);
   return t ? Object.assign({ note: base }, t) : null;
+}
+
+function zzz14pt_dev_subs(entryId) {
+  const c = zzz14ptCache[Number(String(entryId || '').replace(/\D/g, ''))];
+  return ((c && c.cfg && c.cfg.types) || []).filter(t => t.name).map(t => `dev:${t.name}${t.period ? '/' + t.period : ''}`);
 }
 
 function zzz14pt_task_subs(entryId) {
@@ -16509,10 +16535,11 @@ function zzz6f8_all_subs(rec) {
     const f = zzz_parse_fields_json(rec) || {};
     return zzz6f8_parse_subs(f.r8 || '')
       .concat(zzz6f8_parse_subs(rec[ZZZ1CN_REFS_COL] || ''))
+      .concat(zzz14pt_dev_subs(rec.entry_id))
       .concat(zzz14pt_task_subs(rec.entry_id));
   }
   const key = zzz1cn_openadd_key(zzz1cn_current_entry_key());
-  return zzz6f8_parse_subs(entryData['8'] || '').concat(zzz1cn_refs_get(key)).concat(zzz14pt_task_subs(zzz1cn_current_entry_key()));
+  return zzz6f8_parse_subs(entryData['8'] || '').concat(zzz1cn_refs_get(key)).concat(zzz14pt_dev_subs(zzz1cn_current_entry_key())).concat(zzz14pt_task_subs(zzz1cn_current_entry_key()));
 }
 
 function zzz1cn_current_entry_key() {
@@ -41093,7 +41120,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'CHAIN-CLOCK 2026-10-23';
+const VERSO_BUILD = 'PT-DEVS 2026-10-23';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
