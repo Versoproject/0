@@ -3305,6 +3305,20 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     font-size: 9px; font-weight: 800; letter-spacing: 0.4px; color: #D4AF37;
   }
   
+  .zzz14pt-ov { margin-top: 8px; border-top: 1px solid #3a3a3a; padding-top: 6px; }
+  .zzz14pt-ov-head { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 4px; }
+  .zzz14pt-ov-title { color: #C0C0C0; font-weight: 800; font-size: 11px; letter-spacing: .05em; margin-right: 6px; }
+  .zzz14pt-ov-q { flex: 1 1 100px; min-width: 0; font-size: 11px; border: 1px solid #ea8c00; border-radius: 10px; padding: 2px 8px; }
+  .zzz14pt-ov-proj { color: #D4AF37; font-weight: 800; font-size: 11px; margin: 6px 0 2px; }
+  .zzz14pt-ov-task { border: 1px solid #333; border-radius: 8px; padding: 4px 6px; margin-bottom: 4px; cursor: pointer; font-size: 12px; color: #ddd; }
+  .zzz14pt-ov-task.is-mine { border-color: #16a34a; }
+  .zzz14pt-ov-task.is-done { opacity: .7; }
+  .zzz14pt-ov-top { display: flex; gap: 6px; align-items: center; }
+  .zzz14pt-ov-steps { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+  .zzz14pt-ov-step { border: 1.5px solid; border-radius: 10px; padding: 1px 7px; font-size: 10.5px; display: inline-flex; gap: 4px; align-items: center; }
+  .zzz14pt-ov-step.is-ok { color: #16a34a; }
+  .zzz5w8-c-status.zzz14pt-st.is-ts { background: #16a34a; color: #fff; border-radius: 8px; font-weight: 800; font-size: 7px !important; overflow: visible; }
+  
   .zzz14pt-tsline { display: flex; gap: 6px; align-items: center; padding: 2px 4px 0; }
   .zzz14pt-tsbtn { background: #16a34a; color: #fff; border: 0; border-radius: 10px; font-weight: 800; font-size: 11px; padding: 3px 12px; }
   .zzz14pt-tsok { color: #16a34a; font-weight: 800; font-size: 11px; }
@@ -13814,6 +13828,114 @@ function zzz14pt_is_task_chip_name(text) {
   return !!(t && c && c.cfg && c.cfg.types.some(ty => ty.steps.some(s => String(s.chip).trim().toLowerCase() === t)));
 }
 
+function zzz14pt_task_info(n) {
+  const tc = zzz14pt_chip_of(n);
+  if (!tc) return null;
+  const st = zzz14pt_step_of(n.entry_key, tc.typeId, tc.chip);
+  if (!st) return null;
+  const ts = zzz14pt_ts_of(n.entry_key, n.note_number, tc.typeId, tc.chip);
+  const need = !!st.step.tasksent;
+  const who = [st.step.who.owner ? 'owner' : '', st.step.who.delegates ? 'delegates' : ''].concat(st.step.who.users || []).filter(Boolean).join(', ');
+  return Object.assign({}, tc, { prio: st.step.prio || '', need, pending: need && !ts, confirmed: !!ts, by: ts ? ts.username : '',
+    canMe: need && !ts && zzz14pt_can_confirm(n.entry_key, st.step), who });
+}
+let zzz14ptOvFilter = 'mine';
+let zzz14ptOvQ = '';
+function zzz14pt_overview() {
+  const box = document.createElement('div');
+  box.className = 'zzz14pt-ov';
+  box.setAttribute('data-zzz-nodraft', '1');
+  const head = document.createElement('div'); head.className = 'zzz14pt-ov-head';
+  const ttl = document.createElement('span'); ttl.className = 'zzz14pt-ov-title'; ttl.textContent = 'PROJECT TASKS';
+  head.appendChild(ttl);
+  const list = document.createElement('div'); list.className = 'zzz14pt-ov-list';
+  const paint = () => {
+    list.innerHTML = '';
+    const tasks = zzz14pt_collect_tasks();
+    const q = zzz10v1_normalize(zzz14ptOvQ.trim());
+    const vis = tasks.filter(t => zzz14ptOvFilter === 'all' || (zzz14ptOvFilter === 'done' ? t.done : (!t.done && (zzz14ptOvFilter !== 'mine' || t.mine))))
+      .filter(t => !q || zzz10v1_normalize([t.project, t.typeName, '#' + t.no, t.steps.map(s => s.chip + ' ' + (s.by || '') + ' ' + s.who).join(' '), t.text].join(' ')).includes(q));
+    if (!vis.length) {
+      const e = document.createElement('div'); e.className = 'zzz5w5cm-view-empty';
+      e.textContent = tasks.length ? 'No task matches.' : 'No tasks yet - set PROJECT TASKS in a record (COMM SETUP) and start one with its first chip.';
+      list.appendChild(e);
+    }
+    let lastProj = '';
+    vis.forEach(t => {
+      if (t.project !== lastProj) {
+        lastProj = t.project;
+        const ph = document.createElement('div'); ph.className = 'zzz14pt-ov-proj'; ph.textContent = t.project;
+        list.appendChild(ph);
+      }
+      const r = document.createElement('div'); r.className = 'zzz14pt-ov-task' + (t.done ? ' is-done' : '') + (t.mine ? ' is-mine' : '');
+      const top = document.createElement('div'); top.className = 'zzz14pt-ov-top';
+      top.textContent = `${t.typeName} #${t.no}` + (t.text ? ' · ' + t.text : '');
+      if (t.done) { const d = document.createElement('span'); d.className = 'zzz14pt-taskdone'; d.textContent = 'DONE'; top.appendChild(d); }
+      r.appendChild(top);
+      const steps = document.createElement('div'); steps.className = 'zzz14pt-ov-steps';
+      t.steps.forEach(st => {
+        const c = document.createElement('span'); c.className = 'zzz14pt-ov-step' + (st.by ? ' is-ok' : '');
+        c.style.borderColor = st.color;
+        c.textContent = st.by ? `${st.chip} ✓ ${st.by} ${st.at}` : (st.need ? `${st.chip} ⏳ ${st.who}` : `${st.chip}`);
+        if (st.canMe && st.note) {
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz14pt-tsbtn'; b.textContent = 'TASKSENT';
+          b.addEventListener('click', async (ev) => { ev.stopPropagation(); b.disabled = true; await zzz14pt_confirm(st.note, st.tc); zzz5w8_render(); });
+          c.appendChild(b);
+        }
+        steps.appendChild(c);
+      });
+      r.appendChild(steps);
+      r.title = 'Tap = open this task in its chat';
+      r.addEventListener('click', () => zzz_open_chat_entry(t.entry, t.startId));
+      list.appendChild(r);
+    });
+  };
+  [['mine', 'WAITING FOR ME'], ['open', 'OPEN'], ['done', 'DONE'], ['all', 'ALL']].forEach(([k, lab]) => {
+    const b = document.createElement('button'); b.type = 'button';
+    b.className = 'zzz5w5cm-chip' + (zzz14ptOvFilter === k ? ' is-on' : '');
+    b.textContent = lab;
+    b.addEventListener('click', () => { zzz14ptOvFilter = k; head.querySelectorAll('.zzz5w5cm-chip').forEach(x => x.classList.toggle('is-on', x === b)); paint(); });
+    head.appendChild(b);
+  });
+  const inp = document.createElement('input'); inp.type = 'text'; inp.className = 'zzz14pt-ov-q'; inp.placeholder = 'search tasks';
+  inp.value = zzz14ptOvQ;
+  inp.addEventListener('input', () => { zzz14ptOvQ = inp.value; paint(); });
+  head.appendChild(inp);
+  box.append(head, list);
+  paint();
+  return box;
+}
+
+function zzz14pt_collect_tasks() {
+  const by = {};
+  (zzz1cnNotifNotes || []).forEach(n => {
+    const tc = zzz14pt_chip_of(n);
+    if (!tc || !/^\d+$/.test(String(n.entry_key))) return;
+    const k = n.entry_key + '|' + n.note_number + '|' + tc.typeId;
+    const g = by[k] || (by[k] = { entry: String(n.entry_key), no: Number(n.note_number), typeId: tc.typeId, typeName: tc.typeName, notes: [] });
+    g.notes.push(n);
+  });
+  return Object.keys(by).map(k => {
+    const g = by[k];
+    const c = zzz14ptCache[Number(g.entry)];
+    const type = c && c.cfg && c.cfg.types.find(t => String(t.id).toLowerCase() === g.typeId);
+    const start = g.notes.find(n => !String(n.note_part || '').trim()) || g.notes[0];
+    const steps = (type ? type.steps : []).map(stp => {
+      const chip = String(stp.chip).trim().toLowerCase();
+      const note = g.notes.filter(n => (zzz14pt_parse_tag(n.note_tags) || {}).chip === chip).pop() || null;
+      const ts = zzz14pt_ts_of(g.entry, g.no, g.typeId, chip);
+      const who = [stp.who.owner ? 'owner' : '', stp.who.delegates ? 'delegates' : ''].concat(stp.who.users || []).filter(Boolean).join(', ');
+      return { chip: stp.chip, color: stp.color, need: !!stp.tasksent, by: ts ? ts.username : '', at: ts ? zzz5w8_fmt_time(Date.parse(ts.created_at || '') || 0) : '',
+        who, note, tc: note ? zzz14pt_chip_of(note) : null, canMe: !!(note && stp.tasksent && !ts && zzz14pt_can_confirm(g.entry, stp)) };
+    });
+    const done = zzz14pt_task_is_done(g.entry, g.no, g.typeId);
+    return { entry: g.entry, no: g.no, typeId: g.typeId, typeName: type ? type.name : g.typeName, steps, done,
+      mine: steps.some(s => s.canMe), startId: start && start.id, t: Date.parse((start && start.created_at) || '') || 0,
+      text: String((start && start.note_text) || '').replace(/\s+/g, ' ').slice(0, 60),
+      project: (zzz5w8_project_of(g.entry) || '#' + g.entry) };
+  }).sort((a, b) => a.project.localeCompare(b.project) || (b.t - a.t));
+}
+
 function zzz1_context_can_edit(consentKey, entryKey) {
   if (zzz1r5_is_final()) return false;
   const current = zzz0r1_get_current_username();
@@ -22587,7 +22709,9 @@ const ZZZ5W8_TABS = [
 
   { key: 'notifications', label: 'Communication' },
   { key: 'reminders', label: 'Reminders' },
-  { key: 'schedule', label: 'Schedule' }
+  { key: 'schedule', label: 'Schedule' },
+
+  { key: 'tasks', label: 'Tasks' }
 ];
 const ZZZ5W8_PRIOS = [
   { key: 'urgent', label: 'URGENT' },
@@ -23161,7 +23285,7 @@ function zzz5w8_collect() {
 
     const rawKey = String(r.entry_key || '');
     const isRecord = /^\d+$/.test(rawKey);
-    const kind = zzz1cn_notif_kind(r, meN, seen);
+    let kind = zzz1cn_notif_kind(r, meN, seen);
 
     const done = !!(r.id && (zzz5w8DoneNotes[String(r.id)] || zzz5w8_note_is_done(r) || (typeof zzz14pt_note_task_done === 'function' && zzz14pt_note_task_done(r))));
     let sh = r.id ? zzz5w8Shifts['note:' + r.id] : null;
@@ -23171,6 +23295,12 @@ function zzz5w8_collect() {
     if (!sh && !done && kind === '' && r.id) {
       const tt = Date.parse(r.created_at || '') || 0;
       if (tt >= ZZZ1CN_URG_EXPLICIT_FROM && now - tt < 3 * 86400000) sh = { until: null, read: true };
+    }
+
+    const task = (typeof zzz14pt_task_info === 'function') ? zzz14pt_task_info(r) : null;
+    if (task && !done && task.pending && task.canMe) {
+      if (sh && (sh.read || sh.self)) sh = null;
+      if (!kind) kind = task.prio === 'urgent' ? 'urg' : (task.prio === 'attention' ? 'att' : 'green');
     }
     if (kind === null && !done && !sh) return;
     if (!kind && !done && !sh) return;
@@ -23186,8 +23316,8 @@ function zzz5w8_collect() {
       entry, key: rawKey, place, t, due: true, done, fresh: !!kind || back,
       shifted, back, shift: sh || null,
       prio: ['urgent', 'attention'].indexOf(lvl) >= 0 ? lvl : 'open',
-      type: 'CHAT', from: String(r.username || ''),
-      text: (zzz3d_miss_has(r.id) ? '\u26a0 chat did not load \u00b7 ' : '') + String(r.note_text || '').replace(/\s+/g, ' ').trim(),
+      type: task ? 'TASK' : 'CHAT', from: String(r.username || ''), task,
+      text: (task ? `[${task.chip}] ` : '') + (zzz3d_miss_has(r.id) ? '\u26a0 chat did not load \u00b7 ' : '') + String(r.note_text || '').replace(/\s+/g, ' ').trim(),
       project: zzz5w8_project_of(entry), raw: r
     });
   });
@@ -23244,7 +23374,8 @@ function zzz5w8_collect() {
 }
 function zzz5w8_in_tab(it, tab) {
   if (tab === 'all') return true;
-  if (tab === 'notifications') return it.src === 'chat' || it.src === 'invite';
+  if (tab === 'tasks') return it.src === 'chat' && !!it.task;
+  if (tab === 'notifications') return (it.src === 'chat' && !it.task) || it.src === 'invite';
   if (tab === 'reminders') return it.src === 'reminder';
   return it.src === 'schedule';
 }
@@ -24009,6 +24140,7 @@ function zzz5w8_open_keep(it, anchor) {
 }
 function zzz5w8_to_shifted(it) {
   if (!it || it.src !== 'chat' || it.done || it.shifted) return;
+  if (it.task && it.task.pending && it.task.canMe) return;
   try { zzz5w8_shift(it, 0, true); } catch (e) {}
 }
 function zzz5w8_open_shift(it, anchor) {
@@ -24118,6 +24250,14 @@ function zzz5w8_build_row(it) {
         cell.classList.add('is-editable');
         cell.title = 'Tap = give consent or later';
         cell.addEventListener('click', (ev) => { ev.stopPropagation(); zzz5w8_open_invite(it); });
+      } else if (it.task && !it.done) {
+        cell.textContent = it.task.pending ? (it.task.canMe ? 'TASKSENT' : 'WAIT') : 'SENT';
+        cell.classList.add('zzz14pt-st');
+        if (it.task.pending && it.task.canMe) {
+          cell.classList.add('is-editable', 'is-ts');
+          cell.title = `Confirm ${it.task.chip} of ${it.task.typeName} #${(it.raw || {}).note_number} - first tap confirms it for everyone`;
+          cell.addEventListener('click', async (ev) => { ev.stopPropagation(); await zzz14pt_confirm(it.raw, it.task); zzz5w8_render(); });
+        } else cell.title = it.task.pending ? `Waits for TASKSENT (${it.task.who})` : `Confirmed by ${it.task.by}`;
       } else if (it.src !== 'chat') {
         cell.classList.add('is-editable');
         cell.title = it.done ? 'Done - tap = not done yet' : 'Tap = mark as done';
@@ -24498,6 +24638,7 @@ function zzz5w8_render_inner() {
     zzz5w8_paint_items(body, vis, emptyText, anyInTab);
   }
   paintBody();
+  if (zzz5w8Tab === 'tasks' && typeof zzz14pt_overview === 'function') mod.appendChild(zzz14pt_overview());
 
   if (isKindTab) {
     const kind = zzz5w8Tab === 'schedule' ? 'schedule' : 'reminder';
@@ -40764,7 +40905,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'APP-LOGIN-TAB 2026-10-23';
+const VERSO_BUILD = 'PT-TASKS-TAB 2026-10-23';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
