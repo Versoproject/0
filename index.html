@@ -40925,7 +40925,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'INTENT-PKG 2026-10-23';
+const VERSO_BUILD = 'UI-SUB 2026-10-23';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -41980,14 +41980,18 @@ function zzz_wip_logout_wipe() {
 const ZZZ_UI_PREFIX = 'verso_ui_v1:';
 const zzzUi = { last: '', restored: false, restoring: false };
 function zzz_ui_snapshot() {
-  const st = { ws: '', wsMode: '', author: false, space: false, comm: [], notes: [], y: Math.round(window.scrollY || 0) };
+  const st = { ws: '', wsMode: '', author: false, space: false, comm: [], notes: [], y: Math.round(window.scrollY || 0), sub: {}, commSub: {} };
   try {
     const ws = document.getElementById('versoWorkspaceSection');
     const w = ws && ws.querySelector('.db-workspace');
     if (w) {
       const c = w.classList;
-      if (c.contains('settings-workspace')) st.ws = 'settings';
-      else if (c.contains('zzz5w8-workspace')) { st.ws = 'notif'; st.wsMode = w.dataset.mode || ''; }
+
+      if (c.contains('settings-workspace')) { st.ws = 'settings'; st.sub.settingsTab = (typeof zzz10_0ActiveTab !== 'undefined') ? zzz10_0ActiveTab : ''; }
+      else if (c.contains('zzz5w8-workspace')) {
+        st.ws = 'notif'; st.wsMode = w.dataset.mode || '';
+        try { st.sub.notifTab = zzz5w8Tab; st.sub.notifView = zzz5w8View; st.sub.notifPrio = Object.assign({}, zzz5w8Prio); } catch (e) {}
+      }
       else if (c.contains('communication-workspace')) st.ws = 'comm';
       else if (c.contains('organizer-workspace')) st.ws = 'org';
       else if (c.contains('trash-workspace')) {
@@ -42001,7 +42005,16 @@ function zzz_ui_snapshot() {
       if (!win.isConnected) return;
       const m = String(win.textContent || '').slice(0, 400).match(/#\s?(\d{1,7})/);
       if (m && st.comm.indexOf(m[1]) < 0) st.comm.push(m[1]);
+
+      if (m) {
+        const set = win.querySelector('.zzz1cn-setup');
+        const feed = win.querySelector('.zzz1cn-feed');
+        st.commSub[m[1]] = { setup: !!(set && set.isConnected), pt: !!(set && set.classList.contains('is-pt')),
+          feedY: feed ? Math.round(feed.scrollTop) : 0, feedEnd: feed ? (feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40) : true };
+      }
     });
+    const dash = document.getElementById('versoDashboardSection');
+    st.sub.dashFull = !!(dash && dash.classList.contains('zzz3d-full'));
     document.querySelectorAll('.zzz1cn-list-window:not(.zzz1cn-ws-window):not(.zzz5-6-inline)').forEach(win => {
       const k = win.dataset.zzzUiEntry || '';
       if (k && st.notes.indexOf(k) < 0) st.notes.push(k);
@@ -42039,12 +42052,37 @@ async function zzz_ui_restore() {
   try {
     const wsFn = { settings: 'open_settings_workspace', notif: 'open_notification_workspace', comm: 'open_communication_workspace',
       org: 'open_organizer_workspace', archive: 'open_archive_workspace', trash: 'open_trash_workspace', db: 'open_database_workspace' }[st.ws];
+    const sub = st.sub || {};
+
+    try {
+      if (st.ws === 'settings' && sub.settingsTab && typeof ZZZ10_0_TABS !== 'undefined' && ZZZ10_0_TABS.some(t => t.key === sub.settingsTab)) zzz10_0ActiveTab = sub.settingsTab;
+      if (st.ws === 'notif') {
+        if (sub.notifTab) zzz5w8Tab = sub.notifTab;
+        if (sub.notifView) zzz5w8View = sub.notifView;
+        if (sub.notifPrio && typeof sub.notifPrio === 'object') zzz5w8Prio = Object.assign({ urgent: true, attention: true, open: true }, sub.notifPrio);
+      }
+    } catch (e) {}
     if (wsFn) { await call(wsFn, st.ws === 'notif' ? (st.wsMode || undefined) : undefined); did++; await wait(400); }
     if (st.author) { await call('zzz1cn_open_notes_workspace', null); did++; await wait(400); }
     for (const k of (st.notes || []).slice(0, 3)) { await call('zzz1cn_open_list', k, null); did++; await wait(300); }
-    for (const id of (st.comm || []).slice(0, 3)) { await call('zzz14cs_open_comm_by_entry', id); did++; await wait(400); }
+    for (const id of (st.comm || []).slice(0, 3)) {
+      await call('zzz14cs_open_comm_by_entry', id); did++; await wait(400);
+
+      try {
+        const cs = (st.commSub || {})[id];
+        const win = Array.from(document.querySelectorAll('.zzz1r17b-comm-window')).find(w => {
+          const m = String(w.textContent || '').slice(0, 400).match(/#\s?(\d{1,7})/); return m && m[1] === id; });
+        if (cs && win) {
+          if (cs.setup && !win.querySelector('.zzz1cn-setup')) { const g = win.querySelector('.zzz1cn-gate-btn'); if (g) { g.click(); await wait(300); } }
+          if (cs.pt) { const t = Array.from(win.querySelectorAll('.zzz14pt-tab')).find(b => /PROJECT TASKS/i.test(b.textContent)); if (t && !t.classList.contains('is-on')) { t.click(); await wait(300); } }
+          const feed = win.querySelector('.zzz1cn-feed');
+          if (feed && !cs.feedEnd && cs.feedY) feed.scrollTop = cs.feedY;
+        }
+      } catch (e) {}
+    }
     if (st.space && typeof zzz14cs_space_open === 'function' && !(st.comm || []).length) { try { zzz14cs_space_open(true); did++; } catch (e) {} }
     if (st.y) { await wait(300); try { window.scrollTo(0, st.y); } catch (e) {} }
+    if (sub.dashFull && !did && typeof zzz3d_full === 'function') { try { zzz3d_full(true); did++; } catch (e) {} }
   } finally { zzzUi.restoring = false; }
   if (did) { try { zzz6f2_show_toast('Restored what you had open.', 'ok', 2500); } catch (e) {} }
 }
