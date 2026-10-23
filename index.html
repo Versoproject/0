@@ -50,9 +50,10 @@
   #zzzSplash .zzz-chain-info { position: absolute; inset: 0; pointer-events: none; container-type: size; }
   #zzzSplash .zzz-ci-wx { position: absolute; left: 22cqw; top: 29%; width: 16cqw; height: 13cqw; opacity: 1; } 
   #zzzSplash .zzz-ci-wx svg { width: 100%; height: 100%; display: block; }
-  #zzzSplash .zzz-ci-date, #zzzSplash .zzz-ci-time { position: absolute; left: 0; right: 0; text-align: center; color: #3f3f3f; white-space: nowrap; font-family: system-ui, sans-serif; font-variant-numeric: tabular-nums; }
-  #zzzSplash .zzz-ci-date { top: 23.5%; font-size: 6cqw; font-weight: 600; }
-  #zzzSplash .zzz-ci-time { top: 30%; font-size: 9cqw; font-weight: 800; padding-left: 14cqw; }
+  <!--x-->
+  #zzzSplash .zzz-ci-date { position: absolute; left: 0; right: 0; text-align: center; color: #3f3f3f; white-space: nowrap; font-family: system-ui, sans-serif; font-variant-numeric: tabular-nums; top: 23.5%; font-size: 5cqw; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+  #zzzSplash .zzz-ci-clock { position: absolute; left: 52cqw; top: 26%; width: 19cqw; height: 19cqw; }
+  #zzzSplash .zzz-ci-clock svg { width: 100%; height: 100%; display: block; }
   .zzz-chain-box { position: relative; width: min(200px, 46vw); aspect-ratio: 1; }
   .zzz-chain-box > i, .zzz-chain-spin > i, .zzz-chain-spin { position: absolute; inset: 0; display: block; }
   .zzz-chain-text { background: #555; -webkit-mask: url("verso-chain-text.png") center/100% 100% no-repeat; mask: url("verso-chain-text.png") center/100% 100% no-repeat; }
@@ -64,7 +65,7 @@
 </style>
 <div id="zzzSplash" aria-label="Verso is loading" role="status">
   <div class="zzz-chain-box zzz-chain-run"><i class="zzz-chain-text"></i><span class="zzz-chain-spin"><i class="zzz-chain-fill"></i><i class="zzz-chain-ink"></i></span>
-    <span class="zzz-chain-info" aria-hidden="true"><span class="zzz-ci-wx"></span><span class="zzz-ci-date"></span><span class="zzz-ci-time"></span></span></div>
+    <span class="zzz-chain-info" aria-hidden="true"><span class="zzz-ci-wx"></span><span class="zzz-ci-date"></span><span class="zzz-ci-clock"></span></span></div>
 </div>
 <script>
 (function () {
@@ -95,18 +96,42 @@ function zzz_ci_icon(code, isDay) {
 }
 
 var zzzCiExt = {};
+var ZZZ_CI_DAYS_SK = ['Nedeľa', 'Pondelok', 'Utorok', 'Streda', 'Štvrtok', 'Piatok', 'Sobota'];
 function zzz_chain_info_set(o) {
   o = o || {};
   if ('wx' in o) zzzCiExt.wx = o.wx;
   if ('time' in o) zzzCiExt.time = o.time;
   if ('date' in o) zzzCiExt.date = o.date;
+  if ('day' in o) zzzCiExt.day = o.day;
   if (o.place) { ZZZ_CI_PLACE = o.place; zzz_ci_weather(); }
   zzz_ci_paint();
+}
+
+function zzz_ci_clock_svg(h, m) {
+  var GOLD = '#c9a44f';
+  var hourAngle = ((h % 12) + (m / 60)) * 30;
+  var minAngle = m * 6;
+  var ticks = '';
+  [0, 90, 180, 270].forEach(function (a) {
+    ticks += '<line x1="24" y1="4.5" x2="24" y2="8" stroke="' + GOLD + '" stroke-width="2" stroke-linecap="round" transform="rotate(' + a + ' 24 24)"/>';
+  });
+  return '<svg viewBox="0 0 48 48" aria-hidden="true">'
+    + '<circle cx="24" cy="24" r="21" fill="none" stroke="' + GOLD + '" stroke-width="2.2"/>'
+    + ticks
+    + '<line x1="24" y1="24" x2="24" y2="12" stroke="' + GOLD + '" stroke-width="3.4" stroke-linecap="round" transform="rotate(' + hourAngle + ' 24 24)"/>'
+    + '<line x1="24" y1="24" x2="24" y2="6.5" stroke="' + GOLD + '" stroke-width="2.4" stroke-linecap="round" transform="rotate(' + minAngle + ' 24 24)"/>'
+    + '<circle cx="24" cy="24" r="2.4" fill="' + GOLD + '"/>'
+    + '</svg>';
 }
 function zzz_ci_paint() {
   var d = (zzzCiExt.time instanceof Date) ? zzzCiExt.time : new Date();
   var date = zzzCiExt.date || (d.getDate() + '. ' + (d.getMonth() + 1) + '.');
-  var time = (typeof zzzCiExt.time === 'string' && zzzCiExt.time) || (('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2));
+  var day = zzzCiExt.day || ZZZ_CI_DAYS_SK[d.getDay()];
+  var dateLine = day + ', ' + date;
+  var tp = (typeof zzzCiExt.time === 'string' && zzzCiExt.time)
+    ? (function (s) { var p = s.split(':'); return { h: Number(p[0]) || 0, m: Number(p[1]) || 0 }; })(zzzCiExt.time)
+    : { h: d.getHours(), m: d.getMinutes() };
+  var clock = zzz_ci_clock_svg(tp.h, tp.m);
   var W = zzzCiExt.wx || zzzCiWx;
   var wx = W ? zzz_ci_icon(W.code, W.day) : zzz_ci_icon(2, 1);
   var title = W ? (ZZZ_CI_PLACE.name + (typeof W.temp === 'number' ? ' ' + Math.round(W.temp) + ' °C' : '')) : ZZZ_CI_PLACE.name;
@@ -117,9 +142,9 @@ function zzz_ci_paint() {
   var els = document.querySelectorAll('.zzz-chain-info');
   for (var i = 0; i < els.length; i++) {
     var e = els[i];
-    var a = e.querySelector('.zzz-ci-date'), b = e.querySelector('.zzz-ci-time'), w = e.querySelector('.zzz-ci-wx');
-    if (a && a.textContent !== date) a.textContent = date;
-    if (b && b.textContent !== time) b.textContent = time;
+    var a = e.querySelector('.zzz-ci-date'), c = e.querySelector('.zzz-ci-clock'), w = e.querySelector('.zzz-ci-wx');
+    if (a && a.textContent !== dateLine) a.textContent = dateLine;
+    if (c && c._zzzClock !== clock) { c.innerHTML = clock; c._zzzClock = clock; }
     if (w && w._zzzWx !== wx) { w.innerHTML = wx; w._zzzWx = wx; }
     if (w && w.title !== title) w.title = title;
   }
@@ -382,11 +407,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
 .zzz-chain-info { position: absolute; inset: 0; pointer-events: none; z-index: 1; container-type: size; }
 .zzz-ci-wx { position: absolute; left: 22cqw; top: 29%; width: 16cqw; height: 13cqw; opacity: 1; } 
 .zzz-ci-wx svg { width: 100%; height: 100%; display: block; }
-.zzz-ci-date, .zzz-ci-time { position: absolute; left: 0; right: 0; text-align: center; color: #3f3f3f; font-variant-numeric: tabular-nums;
+.zzz-ci-date { position: absolute; left: 0; right: 0; text-align: center; color: #3f3f3f; font-variant-numeric: tabular-nums;
   text-shadow: 0 0 2px #fff, 0 0 3px #fff; white-space: nowrap; }
 
-.zzz-ci-date { top: 23.5%; font-size: 6cqw; font-weight: 600; letter-spacing: .04em; }
-.zzz-ci-time { top: 30%; font-size: 9cqw; font-weight: 800; padding-left: 14cqw; }
+.zzz-ci-date { top: 23.5%; font-size: 5cqw; font-weight: 600; letter-spacing: .04em; overflow: hidden; text-overflow: ellipsis; }
+
+.zzz-ci-clock { position: absolute; left: 52cqw; top: 26%; width: 19cqw; height: 19cqw; }
+.zzz-ci-clock svg { width: 100%; height: 100%; display: block; }
 
 .circle#versoAIButton { position: relative; background-image: none !important; background-color: transparent !important; }
 .circle#versoAIButton > .zzz-chain-logo { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; pointer-events: none; z-index: 0; }
@@ -8149,7 +8176,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
 
         <div class="circle" id="versoEntryButton" aria-label="Verso Entry">
           <span class="zzz-chain-logo" aria-hidden="true"><img src="verso-chain-center.png" alt="" /><span class="zzz-chain-spin"><i class="zzz-chain-fill"></i><i class="zzz-chain-ink"></i></span></span>
-          <span class="zzz-chain-info" aria-hidden="true"><span class="zzz-ci-wx"></span><span class="zzz-ci-date"></span><span class="zzz-ci-time"></span></span>
+          <span class="zzz-chain-info" aria-hidden="true"><span class="zzz-ci-wx"></span><span class="zzz-ci-date"></span><span class="zzz-ci-clock"></span></span>
           
           <span class="zzz6-f7-username" id="zzz6f7UsernameLabel">username</span>
           
