@@ -23234,6 +23234,7 @@ function zzz5w8_open_member_window(it) {
   document.querySelectorAll('.zzz5w8-item-window').forEach(w => { if (w._zzz5w8Close) w._zzz5w8Close(); });
   const { box, removeBox } = zzz6f41_create_context_window();
   box.classList.add('zzz5w8-item-window');
+  box.dataset.zzzUiNotif = 'member:' + (r.id || '');
   box._zzz5w8Close = removeBox;
   const head = document.createElement('div');
   head.className = 'zzz-context-header zzz5w8-iw-head';
@@ -23652,6 +23653,7 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl) {
   document.querySelectorAll('.zzz5w8-item-window').forEach(w => { if (w._zzz5w8Close) w._zzz5w8Close(); });
   const { box, removeBox } = zzz6f41_create_context_window();
   box.classList.add('zzz5w8-item-window');
+  box.dataset.zzzUiNotif = raw && raw.id ? 'item:' + raw.id : '';
   let unbind = () => {};
   const close = () => { unbind(); removeBox(); };
   box._zzz5w8Close = close;
@@ -40397,6 +40399,7 @@ function open_settings_workspace() {
         rd.className = 'zzz14b17-app-dl-btn';
         rd.href = 'intent://reader#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end';
         rd.textContent = 'VERSO READER · read notifications aloud';
+        rd.addEventListener('click', () => zzz_ui_native_mark('reader'));
         const rdw = document.createElement('div'); rdw.className = 'zzz14b17-app-settings';
         rdw.appendChild(rd);
         tabContent.appendChild(rdw);
@@ -40993,7 +40996,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'UI-GUARD 2026-10-23';
+const VERSO_BUILD = 'UI-RESUME3 2026-10-23';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -42083,6 +42086,13 @@ function zzz_ui_snapshot() {
     });
     const dash = document.getElementById('versoDashboardSection');
     st.sub.dashFull = !!(dash && dash.classList.contains('zzz3d-full'));
+
+    const nw = document.querySelector('.zzz5w8-item-window');
+    if (nw && nw.isConnected && nw.dataset.zzzUiNotif) st.sub.notifWin = nw.dataset.zzzUiNotif;
+
+    st.sub.scroll = zzz_ui_scroll_snapshot();
+
+    try { const nv = JSON.parse(localStorage.getItem('verso_native_open') || 'null'); if (nv && nv.what && Date.now() - nv.t < 30 * 60000) st.sub.native = nv.what; } catch (e) {}
     document.querySelectorAll('.zzz1cn-list-window:not(.zzz1cn-ws-window):not(.zzz5-6-inline)').forEach(win => {
       const k = win.dataset.zzzUiEntry || '';
       if (k && st.notes.indexOf(k) < 0) st.notes.push(k);
@@ -42091,6 +42101,56 @@ function zzz_ui_snapshot() {
   return st;
 }
 function zzz_ui_user() { return (typeof zzz_wip_user === 'function') ? zzz_wip_user() : ''; }
+
+const zzzUiScrolled = new Set();
+document.addEventListener('scroll', (e) => { const t = e.target; if (t && t.nodeType === 1 && t !== document.documentElement) zzzUiScrolled.add(t); }, true);
+function zzz_ui_el_key(el) {
+  if (el.id) return { id: el.id };
+  const cls = Array.from(el.classList).filter(c => /^[a-zA-Z][\w-]*$/.test(c)).slice(0, 3);
+  if (!cls.length) return null;
+  const sel = el.tagName.toLowerCase() + '.' + cls.join('.');
+  const i = Array.from(document.querySelectorAll(sel)).indexOf(el);
+  return i < 0 ? null : { sel, i };
+}
+function zzz_ui_scroll_snapshot() {
+  const out = [];
+  zzzUiScrolled.forEach(el => {
+    if (!el.isConnected) { zzzUiScrolled.delete(el); return; }
+    if (!el.scrollTop && !el.scrollLeft) return;
+    const k = zzz_ui_el_key(el);
+    if (k) out.push(Object.assign(k, { top: Math.round(el.scrollTop), left: Math.round(el.scrollLeft) }));
+  });
+  return out.slice(0, 20);
+}
+function zzz_ui_scroll_apply(list) {
+  (list || []).forEach(k => {
+    try {
+      const el = k.id ? document.getElementById(k.id) : (document.querySelectorAll(k.sel)[k.i] || null);
+      if (el) { el.scrollTop = k.top || 0; el.scrollLeft = k.left || 0; }
+    } catch (e) {}
+  });
+}
+
+function zzz_ui_native_mark(what) { try { localStorage.setItem('verso_native_open', JSON.stringify({ what, t: Date.now() })); } catch (e) {} }
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  try {
+    const nv = JSON.parse(localStorage.getItem('verso_native_open') || 'null');
+    if (nv && Date.now() - nv.t > 1500) { localStorage.removeItem('verso_native_open'); const c = document.getElementById('zzzUiNativeChip'); if (c) c.remove(); }
+  } catch (e) {}
+});
+function zzz_ui_native_chip(what) {
+  if (what !== 'reader' || typeof ZZZ14B17_PACKAGE === 'undefined') return;
+  if (document.getElementById('zzzUiNativeChip')) return;
+  const a = document.createElement('a');
+  a.id = 'zzzUiNativeChip';
+  a.href = 'intent://reader#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end';
+  a.textContent = '\u21a9 Back to VERSO READER';
+  a.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2147483500;padding:10px 18px;border-radius:22px;background:#D4AF37;color:#171717;font:800 14px/1.2 system-ui,sans-serif;text-decoration:none;box-shadow:0 4px 16px rgba(0,0,0,.5)';
+  a.addEventListener('click', () => { zzz_ui_native_mark('reader'); setTimeout(() => a.remove(), 300); });
+  document.body.appendChild(a);
+  setTimeout(() => { try { a.remove(); } catch (e) {} }, 60000);
+}
 function zzz_ui_save(force) {
   if (zzzUi.restoring) return;
 
@@ -42153,6 +42213,23 @@ async function zzz_ui_restore() {
     if (st.space && typeof zzz14cs_space_open === 'function' && !(st.comm || []).length) { try { zzz14cs_space_open(true); did++; } catch (e) {} }
     if (st.y) { await wait(300); try { window.scrollTo(0, st.y); } catch (e) {} }
     if (sub.dashFull && !did && typeof zzz3d_full === 'function') { try { zzz3d_full(true); did++; } catch (e) {} }
+
+    if (sub.notifWin) {
+      const [kindW, idW] = String(sub.notifWin).split(':');
+      let raw = null;
+      for (let i = 0; i < 12 && !raw; i++) {
+        try { raw = (zzz5w8Items || []).find(x => String(x.id) === idW) || null; } catch (e) {}
+        if (!raw) await wait(500);
+      }
+      if (raw) {
+        try { if (kindW === 'member') zzz5w8_open_member_window({ raw }); else zzz5w8_open_item_window(raw, raw.kind); did++; } catch (e) {}
+        await wait(300);
+      }
+    }
+
+    if (sub.scroll && sub.scroll.length) { await wait(500); zzz_ui_scroll_apply(sub.scroll); }
+
+    if (sub.native) { zzz_ui_native_chip(sub.native); did++; }
   } finally { zzzUi.restoring = false; }
   if (did) { try { zzz6f2_show_toast('Restored what you had open.', 'ok', 2500); } catch (e) {} }
 }
