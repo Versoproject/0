@@ -3325,6 +3325,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     font-size: 9px; font-weight: 800; letter-spacing: 0.4px; color: #D4AF37;
   }
   
+  .zzz14pt-q { position: absolute; top: -6px; left: -6px; background: #c0392b; color: #fff; border-radius: 10px; font-size: 10px; font-weight: 800; padding: 1px 5px; pointer-events: none; }
+  
   .zzz14pt-ov { margin-top: 8px; border-top: 1px solid #3a3a3a; padding-top: 6px; }
   .zzz14pt-ov-head { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 4px; }
   .zzz14pt-ov-title { color: #C0C0C0; font-weight: 800; font-size: 11px; letter-spacing: .05em; margin-right: 6px; }
@@ -13956,6 +13958,71 @@ function zzz14pt_collect_tasks() {
   }).sort((a, b) => a.project.localeCompare(b.project) || (b.t - a.t));
 }
 
+const ZZZ14PT_AUTO_LS = 'verso.pt.autoopen.';
+function zzz14pt_auto_key() { return ZZZ14PT_AUTO_LS + zzz10v1_normalize((zzz0r1_get_current_username() || '').trim()); }
+function zzz14pt_auto_state() {
+  try { const v = JSON.parse(localStorage.getItem(zzz14pt_auto_key()) || '{}') || {}; return { current: v.current || null, opened: v.opened || {} }; }
+  catch (e) { return { current: null, opened: {} }; }
+}
+function zzz14pt_auto_save(st) {
+  try {
+    Object.keys(st.opened).forEach(k => { if (Date.now() - st.opened[k] > 14 * 864e5) delete st.opened[k]; });
+    localStorage.setItem(zzz14pt_auto_key(), JSON.stringify(st));
+  } catch (e) {}
+}
+
+function zzz14pt_auto_candidates() {
+  if (!Array.isArray(zzz1cnNotifNotes)) return [];
+  const pinned = new Set((typeof zzz5w5cm_tab_list === 'function' ? zzz5w5cm_tab_list(ZZZ14CS_SPACE_KEY) : [])
+    .filter(it => it.sourceEntryId).map(it => String(it.sourceEntryId)));
+  if (!pinned.size) return [];
+  return zzz1cnNotifNotes.filter(n => {
+    if (!pinned.has(String(n.entry_key))) return false;
+    const ti = zzz14pt_task_info(n);
+    if (!ti || !ti.pending || !ti.canMe || ti.prio !== 'urgent') return false;
+    const st = zzz14pt_step_of(n.entry_key, ti.typeId, ti.chip);
+    return !!(st && st.step.auto_open);
+  }).sort((a, b) => (Date.parse(a.created_at || '') || 0) - (Date.parse(b.created_at || '') || 0));
+}
+let zzz14ptAutoT = null;
+function zzz14pt_auto_tick() {
+  if (zzz14ptAutoT) return;
+  zzz14ptAutoT = setTimeout(() => { zzz14ptAutoT = null; try { zzz14pt_auto_run(); } catch (e) {} }, 400);
+}
+function zzz14pt_auto_run() {
+  if (typeof zzz6f7_isLoggedIn === 'undefined' || !zzz6f7_isLoggedIn) return;
+  const st = zzz14pt_auto_state();
+  const cands = zzz14pt_auto_candidates();
+  const ids = cands.map(n => String(n.id));
+
+  if (st.current && ids.indexOf(String(st.current)) < 0) st.current = null;
+  const waiting = cands.filter(n => String(n.id) !== String(st.current) && !st.opened[String(n.id)]);
+  zzz14pt_auto_paint(waiting.length);
+  if (st.current) { zzz14pt_auto_save(st); return; }
+  const next = waiting[0];
+  if (!next) { zzz14pt_auto_save(st); return; }
+
+  if (document.visibilityState !== 'visible') return;
+  if (typeof zzz_dev_au_editing === 'function' && zzz_dev_au_editing()) return;
+  st.current = String(next.id);
+  st.opened[String(next.id)] = Date.now();
+  zzz14pt_auto_save(st);
+  zzz14pt_auto_paint(waiting.length - 1);
+  zzz_haptic_pulse(40);
+  Promise.resolve(zzz14cs_open_comm_by_entry(String(next.entry_key), { space: true }))
+    .then(() => zzz3d_focus_chat_msg(next.id, String(next.entry_key)));
+}
+
+function zzz14pt_auto_paint(n) {
+  const h = document.getElementById('zzz14csSpaceHandle');
+  if (!h) return;
+  let q = h.querySelector('.zzz14pt-q');
+  if (!n) { if (q) q.remove(); return; }
+  if (!q) { q = document.createElement('span'); q.className = 'zzz14pt-q'; h.appendChild(q); }
+  q.textContent = '+' + n;
+  q.title = `${n} urgent task step(s) waiting - the next opens after TASKSENT of the open one`;
+}
+
 function zzz1_context_can_edit(consentKey, entryKey) {
   if (zzz1r5_is_final()) return false;
   const current = zzz0r1_get_current_username();
@@ -23477,6 +23544,7 @@ function zzz5w8_emit_change() {
 }
 
 function zzz5w8_on_notif_change() {
+  if (typeof zzz14pt_auto_tick === 'function') zzz14pt_auto_tick();
   if (typeof zzz3d_render === 'function') zzz3d_render();
   if (typeof zzz14cs_feed_refresh === 'function') zzz14cs_feed_refresh();
   if (!zzz5w8_is_open()) return;
@@ -40925,7 +40993,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'UI-SUB 2026-10-23';
+const VERSO_BUILD = 'PT-AUTO-OPEN 2026-10-23';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
