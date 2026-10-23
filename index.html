@@ -3327,6 +3327,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   
   .zzz14pt-q { position: absolute; top: -6px; left: -6px; background: #c0392b; color: #fff; border-radius: 10px; font-size: 10px; font-weight: 800; padding: 1px 5px; pointer-events: none; }
   
+  .zzz14pt-wait-head { color: #16a34a; font-weight: 800; font-size: 11px; margin: 4px 0 2px; }
+  .zzz14pt-ov-chips { margin-bottom: 4px; }
+  .zzz14pt-ov-chiprow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 2px 0; }
+  .zzz14pt-ov-lab { color: #9aa0a6; font-size: 9px; font-weight: 800; min-width: 44px; }
+  .zzz14pt-ov-chip { border: 1.5px solid #888; border-radius: 12px; background: transparent; color: #ccc; font-size: 11px; font-weight: 700; padding: 1px 9px; }
+  .zzz14pt-ov-chip.is-on { background: #C0C0C0; color: #111; }
+  
   .zzz14pt-ov { margin-top: 8px; border-top: 1px solid #3a3a3a; padding-top: 6px; }
   .zzz14pt-ov-head { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 4px; }
   .zzz14pt-ov-title { color: #C0C0C0; font-weight: 800; font-size: 11px; letter-spacing: .05em; margin-right: 6px; }
@@ -13861,25 +13868,65 @@ function zzz14pt_task_info(n) {
   return Object.assign({}, tc, { prio: st.step.prio || '', need, pending: need && !ts, confirmed: !!ts, by: ts ? ts.username : '',
     canMe: need && !ts && zzz14pt_can_confirm(n.entry_key, st.step), who });
 }
-let zzz14ptOvFilter = 'mine';
+
+let zzz14ptOvFilter = 'open';
+let zzz14ptOvTypes = {};
+let zzz14ptOvSteps = {};
+let zzz14ptOvProj = {};
 let zzz14ptOvQ = '';
 function zzz14pt_overview() {
   const box = document.createElement('div');
   box.className = 'zzz14pt-ov';
   box.setAttribute('data-zzz-nodraft', '1');
   const head = document.createElement('div'); head.className = 'zzz14pt-ov-head';
-  const ttl = document.createElement('span'); ttl.className = 'zzz14pt-ov-title'; ttl.textContent = 'PROJECT TASKS';
+  const ttl = document.createElement('span'); ttl.className = 'zzz14pt-ov-title'; ttl.textContent = 'TASKS DATABASE';
   head.appendChild(ttl);
+  const chipsBar = document.createElement('div'); chipsBar.className = 'zzz14pt-ov-chips';
   const list = document.createElement('div'); list.className = 'zzz14pt-ov-list';
+  const any = (m) => Object.keys(m).some(k => m[k]);
+  const paintChips = (tasks) => {
+    chipsBar.innerHTML = '';
+    const types = {}, steps = {}, projs = {};
+    tasks.forEach(t => {
+      types[t.typeName.toLowerCase()] = t.typeName;
+      projs[t.project] = 1;
+      t.steps.forEach(st => { const k = String(st.chip).toLowerCase(); if (!steps[k]) steps[k] = st; });
+    });
+    const row = (label, keys, map, mk) => {
+      if (!keys.length) return;
+      const r = document.createElement('div'); r.className = 'zzz14pt-ov-chiprow';
+      const l = document.createElement('span'); l.className = 'zzz14pt-ov-lab'; l.textContent = label; r.appendChild(l);
+      keys.forEach(k => {
+        const b = document.createElement('button'); b.type = 'button';
+        const on = !!map[k];
+        b.className = 'zzz14pt-ov-chip' + (on ? ' is-on' : '');
+        mk(b, k, on);
+        b.addEventListener('click', () => { if (map[k]) delete map[k]; else map[k] = true; paint(); });
+        r.appendChild(b);
+      });
+      chipsBar.appendChild(r);
+    };
+    if (Object.keys(projs).length > 1) row('PROJECT', Object.keys(projs).sort(), zzz14ptOvProj, (b, k) => { b.textContent = k; });
+    row('TYPE', Object.keys(types).sort(), zzz14ptOvTypes, (b, k) => { b.textContent = types[k]; });
+    row('STEP', Object.keys(steps), zzz14ptOvSteps, (b, k, on) => {
+      const st = steps[k]; b.textContent = st.chip; b.style.borderColor = st.color; b.style.color = on ? '#111' : st.color;
+      if (on) b.style.backgroundColor = st.color;
+      b.title = `Tasks that stand at ${st.chip} now`;
+    });
+  };
   const paint = () => {
     list.innerHTML = '';
     const tasks = zzz14pt_collect_tasks();
+    paintChips(tasks);
     const q = zzz10v1_normalize(zzz14ptOvQ.trim());
     const vis = tasks.filter(t => zzz14ptOvFilter === 'all' || (zzz14ptOvFilter === 'done' ? t.done : (!t.done && (zzz14ptOvFilter !== 'mine' || t.mine))))
+      .filter(t => !any(zzz14ptOvProj) || zzz14ptOvProj[t.project])
+      .filter(t => !any(zzz14ptOvTypes) || zzz14ptOvTypes[t.typeName.toLowerCase()])
+      .filter(t => !any(zzz14ptOvSteps) || (t.current && zzz14ptOvSteps[String(t.current).toLowerCase()]))
       .filter(t => !q || zzz10v1_normalize([t.project, t.typeName, '#' + t.no, t.steps.map(s => s.chip + ' ' + (s.by || '') + ' ' + s.who).join(' '), t.text].join(' ')).includes(q));
     if (!vis.length) {
       const e = document.createElement('div'); e.className = 'zzz5w5cm-view-empty';
-      e.textContent = tasks.length ? 'No task matches.' : 'No tasks yet - set PROJECT TASKS in a record (COMM SETUP) and start one with its first chip.';
+      e.textContent = tasks.length ? 'No task matches the filters.' : 'No tasks yet - set PROJECT TASKS in a record (COMM SETUP) and start one with its first chip.';
       list.appendChild(e);
     }
     let lastProj = '';
@@ -13891,7 +13938,7 @@ function zzz14pt_overview() {
       }
       const r = document.createElement('div'); r.className = 'zzz14pt-ov-task' + (t.done ? ' is-done' : '') + (t.mine ? ' is-mine' : '');
       const top = document.createElement('div'); top.className = 'zzz14pt-ov-top';
-      top.textContent = `${t.typeName} #${t.no}` + (t.text ? ' · ' + t.text : '');
+      top.textContent = `${t.typeName} #${t.no}` + (t.current && !t.done ? ' · at ' + t.current : '') + (t.text ? ' · ' + t.text : '') + (t.t ? ' · ' + zzz5w8_fmt_time(t.t) : '');
       if (t.done) { const d = document.createElement('span'); d.className = 'zzz14pt-taskdone'; d.textContent = 'DONE'; top.appendChild(d); }
       r.appendChild(top);
       const steps = document.createElement('div'); steps.className = 'zzz14pt-ov-steps';
@@ -13923,7 +13970,7 @@ function zzz14pt_overview() {
   inp.value = zzz14ptOvQ;
   inp.addEventListener('input', () => { zzz14ptOvQ = inp.value; paint(); });
   head.appendChild(inp);
-  box.append(head, list);
+  box.append(head, chipsBar, list);
   paint();
   return box;
 }
@@ -13951,7 +13998,10 @@ function zzz14pt_collect_tasks() {
         who, note, tc: note ? zzz14pt_chip_of(note) : null, canMe: !!(note && stp.tasksent && !ts && zzz14pt_can_confirm(g.entry, stp)) };
     });
     const done = zzz14pt_task_is_done(g.entry, g.no, g.typeId);
-    return { entry: g.entry, no: g.no, typeId: g.typeId, typeName: type ? type.name : g.typeName, steps, done,
+    let curIdx = -1;
+    g.notes.forEach(n => { const tc = zzz14pt_chip_of(n); if (tc && tc.stepIdx > curIdx) curIdx = tc.stepIdx; });
+    const current = (type && curIdx >= 0 && type.steps[curIdx]) ? type.steps[curIdx].chip : '';
+    return { entry: g.entry, no: g.no, typeId: g.typeId, typeName: type ? type.name : g.typeName, steps, done, current,
       mine: steps.some(s => s.canMe), startId: start && start.id, t: Date.parse((start && start.created_at) || '') || 0,
       text: String((start && start.note_text) || '').replace(/\s+/g, ' ').slice(0, 60),
       project: (zzz5w8_project_of(g.entry) || '#' + g.entry) };
@@ -24704,10 +24754,12 @@ function zzz5w8_render_inner() {
     bar.appendChild(b);
   });
   mod.appendChild(bar);
+  const isTaskTab = zzz5w8Tab === 'tasks';
+  if (isTaskTab) bar.style.display = 'none';
 
   const qk = zzz5w8Mode + ':' + zzz5w8Tab;
   const q = zzz5w8Q[qk] || (zzz5w8Q[qk] = {});
-  mod.appendChild(zzz5w8_build_crm(q, () => paintBody()));
+  if (!isTaskTab) mod.appendChild(zzz5w8_build_crm(q, () => paintBody()));
 
   const body = document.createElement('div');
   body.className = 'zzz5w8-body';
@@ -24719,6 +24771,18 @@ function zzz5w8_render_inner() {
 
   const isKindTab = zzz5w8Mode === 'main' && (zzz5w8Tab === 'reminders' || zzz5w8Tab === 'schedule');
   function paintBody() {
+
+    if (isTaskTab) {
+      body.innerHTML = '';
+      const wait = all.filter(i => i.task && i.task.pending && i.task.canMe && !i.done);
+      const h = document.createElement('div'); h.className = 'zzz14pt-wait-head';
+      h.textContent = `WAITING FOR YOUR TASKSENT (${wait.length})`;
+      body.appendChild(h);
+      const box = document.createElement('div');
+      body.appendChild(box);
+      zzz5w8_paint_items(box, zzz5w8_sort(wait), 'Nothing waits for your TASKSENT.', wait.length > 0);
+      return;
+    }
 
     const vis = zzz5w8_visible(all).filter(i => !isKindTab || i.due);
     const anyInTab = all.some(i => zzz5w8_in_tab(i, zzz5w8Tab) && zzz5w8_in_mode(i) && (!isKindTab || i.due));
@@ -24732,7 +24796,7 @@ function zzz5w8_render_inner() {
     zzz5w8_paint_items(body, vis, emptyText, anyInTab);
   }
   paintBody();
-  if (zzz5w8Tab === 'tasks' && typeof zzz14pt_overview === 'function') mod.appendChild(zzz14pt_overview());
+  if (isTaskTab && typeof zzz14pt_overview === 'function') mod.appendChild(zzz14pt_overview());
 
   if (isKindTab) {
     const kind = zzz5w8Tab === 'schedule' ? 'schedule' : 'reminder';
@@ -41002,7 +41066,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'PRIO-FIX-2 2026-10-23';
+const VERSO_BUILD = 'PT-TASK-DB 2026-10-23';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
