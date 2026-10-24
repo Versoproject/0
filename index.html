@@ -9652,6 +9652,23 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   
   .zzz1r17b-comm-window.zzz1cn-compact .zzz1cn-note.zzz1cn-note-mine:not(.zzz1cn-row-full) .zzz1cn-note-head { max-width: none; }
   
+  .zzz1cn-note.zzz1cn-has-origin { flex-wrap: wrap; }
+  .zzz1cn-reply-origin {
+    flex: 1 0 100%;
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+    margin-bottom: 4px;
+    padding: 3px 6px;
+    border-left: 3px solid #D4AF37;
+    border-radius: 4px;
+    background-color: rgba(212, 175, 55, 0.12);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .zzz1cn-reply-origin-lab { flex: 0 0 auto; font-weight: 700; color: #a8861f; }
+  .zzz1cn-reply-origin-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #555; }
+  
   
   .zzz1r17b-chips-row .zzz1cn-note-btn.zzz5-6-privbtn-chips,
   .zzz1-quickchips-row .zzz1cn-note-btn.zzz5-6-privbtn-chips {   
@@ -10626,6 +10643,7 @@ async function zzz_open_chat_entry(key, focusNoteId) {
   if (typeof zzz1r17b_silent_copy_row_to_cl === 'function') zzz1r17b_silent_copy_row_to_cl(row);
   zzz6f18_open_context_select_modal(row);
   if (focusNoteId && typeof zzz3d_focus_chat_msg === 'function') zzz3d_focus_chat_msg(focusNoteId, k);
+  if (focusNoteId && typeof zzz1cn_reply_focus_begin === 'function') zzz1cn_reply_focus_begin(focusNoteId, k);
   return true;
 }
 function zzz6f29_open_readonly_viewer(label, value, row) {
@@ -24063,7 +24081,7 @@ function zzz5w8_open_item(it, anchorEl) {
   }
   if (it.src === 'chat') {
 
-    zzz_open_chat_entry(it.entry);
+    zzz_open_chat_entry(it.entry, it.raw && it.raw.id);
     return;
   }
   if (it.member) { zzz5w8_open_member_window(it); return; }
@@ -33922,7 +33940,68 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   wrap.appendChild(body);
 
   if (note && /^\d+$/.test(String(note.id || '')) && typeof zzz5w8_note_chip === 'function') wrap.appendChild(zzz5w8_note_chip(note));
+  zzz1cn_reply_origin_attach(wrap, note);
   return wrap;
+}
+
+let zzz1cnReplyFocus = null;
+const ZZZ1CN_REPLY_FOCUS_MS = 120000;
+function zzz1cn_reply_origin_attach(wrap, note) {
+  const f = zzz1cnReplyFocus;
+  if (!f || !f.orig || Date.now() > f.until || !note || String(note.id) !== String(f.id)) return;
+  const old = wrap.querySelector(':scope > .zzz1cn-reply-origin');
+  if (old) old.remove();
+  const q = document.createElement('div');
+  q.className = 'zzz1cn-reply-origin';
+  const lab = document.createElement('span');
+  lab.className = 'zzz1cn-reply-origin-lab';
+  lab.textContent = `\u21a9 #${f.base} @${f.orig.username || '-'}`;
+  const tx = document.createElement('span');
+  tx.className = 'zzz1cn-reply-origin-text';
+  tx.textContent = zzz5w7_body_of(f.orig).replace(/\s+/g, ' ').trim();
+  q.appendChild(lab);
+  q.appendChild(tx);
+  q.title = 'The message this is a reply to - tap = go to it';
+  q.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const feed = wrap.parentElement;
+    const target = feed && Array.from(feed.querySelectorAll('.zzz1cn-note')).find(x => {
+      const nm = x.querySelector('.zzz1cn-note-number');
+      return nm && nm.textContent.trim() === String(f.base);
+    });
+    if (!target) { zzz6f2_show_toast(`#${f.base} is not loaded in this chat view (filter or older messages).`, 'warn'); return; }
+    target.classList.add('zzz1cn-row-full');
+    try { target.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) { target.scrollIntoView(); }
+    target.classList.add('zzz3d-flash');
+    setTimeout(() => target.classList.remove('zzz3d-flash'), 2500);
+  });
+  wrap.classList.add('zzz1cn-has-origin');
+  wrap.insertBefore(q, wrap.firstChild);
+}
+async function zzz1cn_reply_focus_begin(noteId, chatKey) {
+  zzz1cnReplyFocus = null;
+  const id = Number(noteId);
+  if (!id) return;
+  let n = (zzz1cnNotifNotes || []).find(x => String(x.id) === String(id)) || null;
+  try {
+    if (!n || n.note_number == null || !('note_part' in n)) {
+      const { data } = await sb.from(ZZZ1CN_TABLE).select('id, entry_key, note_number, note_part, note_text').eq('id', id).maybeSingle();
+      n = data || n;
+    }
+  } catch (e) {}
+  const sub = n ? zzz5w7_sub_of(n) : null;
+  if (!sub || !sub.base) return;
+  const key = String((n && n.entry_key) || chatKey || '');
+  let orig = null;
+  try {
+    const { data } = await sb.from(ZZZ1CN_TABLE).select('id, username, note_text, note_number, note_part')
+      .eq('entry_key', key).eq('note_number', sub.base);
+    orig = (data || []).find(x => !zzz5w7_sub_of(x)) || null;
+  } catch (e) {}
+  if (!orig) return;
+  zzz1cnReplyFocus = { id, key, base: sub.base, until: Date.now() + ZZZ1CN_REPLY_FOCUS_MS, orig };
+  const el = document.querySelector(`.zzz1r17b-comm-window [data-zzz1cn-id="${id}"]`);
+  if (el) zzz1cn_reply_origin_attach(el, { id });
 }
 
 const ZZZ5W7_SUB_RE = /^\[#(\d+)-([a-z]+)\]\s*/;
@@ -41569,7 +41648,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'CHAT-TAP 2026-10-24';
+const VERSO_BUILD = 'CHAT-REPLY-ORIGIN 2026-10-24';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
