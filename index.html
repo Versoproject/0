@@ -8772,6 +8772,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz5w9-status.is-na, .zzz5w9-status.is-info { color: #a1a1aa; }
   .zzz5w9-status.is-bad { color: #c0392b; }
   
+  .zzz-place-chip { display: inline-block; padding: 1px 8px; margin: 0 2px; border-radius: 10px; border: 1px solid #D4AF37;
+    color: #D4AF37; background: #171717; font-weight: 700; font-size: 0.9em; cursor: pointer; }
+  
   .zzz-runtime-label { margin: 8px 0 4px; font-size: 12px; font-weight: 700; letter-spacing: 0.03em; text-align: center; }
   .zzz-runtime-label.is-app { color: #7fcf83; }
   .zzz-runtime-label.is-webapp, .zzz-runtime-label.is-web { color: #ea8c00; }
@@ -11123,6 +11126,79 @@ function zzz_register_link_check(pokus) {
 }
 window.addEventListener('hashchange', () => zzz_register_link_check(0));
 window.addEventListener('load', () => setTimeout(() => zzz_register_link_check(0), 900));
+
+const ZZZ_PLACE_RE = /\bverso:((?:apps=[a-z-]+(?:&app=[a-z0-9-]+)?)|(?:en=\d+))/gi;
+function zzz_place_internal(hash) { return 'verso:' + hash; }
+function zzz_place_label(hash) {
+  let m = /^apps=([a-z-]+)(?:&app=([a-z0-9-]+))?/i.exec(hash || '');
+  if (m) {
+    const tab = (typeof ZZZ5W9_TABS !== 'undefined' && ZZZ5W9_TABS.find(t => t.key === m[1].toLowerCase())) || null;
+    const it = m[2] && typeof zzz5w9_item === 'function' ? zzz5w9_item(m[2].toLowerCase()) : null;
+    return 'VERSO › APPS › ' + (tab ? tab.label : m[1].toUpperCase()) + (m[2] ? ' › ' + (it ? it.name : m[2]) : '');
+  }
+  m = /^en=(\d+)/i.exec(hash || '');
+  return m ? 'VERSO › #' + m[1] : 'VERSO';
+}
+function zzz_place_open(hash) {
+  if (location.hash === '#' + hash) { try { window.dispatchEvent(new HashChangeEvent('hashchange')); } catch (e) {} return; }
+  location.hash = hash;
+}
+
+function zzz_place_linkify(el) {
+  if (!el) return;
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+  const todo = []; let node;
+  while ((node = walker.nextNode())) {
+    if (node.parentElement && node.parentElement.closest('.zzz-place-chip')) continue;
+    ZZZ_PLACE_RE.lastIndex = 0;
+    if (ZZZ_PLACE_RE.test(node.nodeValue)) todo.push(node);
+  }
+  todo.forEach(tn => {
+    const frag = document.createDocumentFragment(); const txt = tn.nodeValue; let last = 0, m;
+    ZZZ_PLACE_RE.lastIndex = 0;
+    while ((m = ZZZ_PLACE_RE.exec(txt))) {
+      if (m.index > last) frag.appendChild(document.createTextNode(txt.slice(last, m.index)));
+      const hash = m[1];
+      const chip = document.createElement('span'); chip.className = 'zzz-place-chip'; chip.textContent = zzz_place_label(hash);
+      chip.title = 'Open in Verso (verso:' + hash + ')';
+      chip.addEventListener('click', (ev) => { ev.stopPropagation(); zzz_place_open(hash); });
+      frag.appendChild(chip); last = m.index + m[0].length;
+    }
+    if (last < txt.length) frag.appendChild(document.createTextNode(txt.slice(last)));
+    tn.parentNode.replaceChild(frag, tn);
+  });
+}
+
+function zzz_place_row(hash) {
+  const row = document.createElement('div'); row.className = 'zzz-share-row';
+  const txt = document.createElement('div'); txt.className = 'zzz-share-txt';
+  const l = document.createElement('div'); l.className = 'zzz-share-label'; l.textContent = zzz_place_label(hash);
+  const u = document.createElement('div'); u.className = 'zzz-share-url'; u.textContent = zzz_place_internal(hash) + '  (inside Verso)';
+  txt.append(l, u);
+  const op = document.createElement('button'); op.type = 'button'; op.className = 'zzz-share-btn'; op.textContent = 'OPEN';
+  op.addEventListener('click', () => zzz_place_open(hash));
+  const cp = document.createElement('button'); cp.type = 'button'; cp.className = 'zzz-share-btn'; cp.textContent = 'COPY';
+  cp.addEventListener('click', async () => {
+    const v = zzz_place_internal(hash);
+    try { await navigator.clipboard.writeText(v); zzz6f2_show_toast('Verso link copied: ' + v + ' - paste it into a chat or note.'); }
+    catch (e) { zzz6f2_show_toast('Copy this Verso link: ' + v, 'warn'); }
+  });
+  row.append(txt, op, cp);
+  return row;
+}
+
+function zzz5w9_public_enter() {
+  if (typeof zzz6f7_isLoggedIn !== 'undefined' && zzz6f7_isLoggedIn) return;
+  zzz5w9PublicHidLogin = true;
+  try { if (zzz6f36LoginModalOverlay) zzz6f36LoginModalOverlay.style.display = 'none'; } catch (e) {}
+}
+function zzz5w9_public_leave() {
+  if (!zzz5w9PublicHidLogin) return;
+  zzz5w9PublicHidLogin = false;
+  try { if (zzz6f36LoginModalOverlay && zzz6f36LoginModalOverlay.isConnected) zzz6f36LoginModalOverlay.style.display = ''; else zzz6f36_open_login_modal(); } catch (e) {}
+  try { if (/apps=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+}
+var zzz5w9PublicHidLogin = false;
 
 function zzz14cs_select_all_on_page() {
   const rowEls = Array.from(document.querySelectorAll('.db-workspace-entry-row'))
@@ -15377,6 +15453,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
       const t = String(cnHide.txt || '').trim();
       body.textContent = t ? zzz5w7_hide_strip(String(n.note_text || ''), t) : String(n.note_text || '');
       zzz6f58_linkify(body);
+      try { zzz_place_linkify(body); } catch (e) {}
     }
   };
 
@@ -41297,8 +41374,8 @@ function open_settings_workspace() {
 
     try {
       const links = document.createElement('div'); links.className = 'zzz-share-box';
-      links.appendChild(zzz_share_row('VERSO HOME (web)', '', 'Verso'));
-      links.appendChild(zzz_share_row('VERSO › APPS › VERSO SYSTEM APPS', 'apps=verso', 'Verso · apps'));
+
+      links.appendChild(zzz_place_row('apps=verso'));
       wrap.appendChild(links);
     } catch (e) {}
   }
@@ -41890,7 +41967,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'APP-OR-WEB 2026-10-24';
+const VERSO_BUILD = 'PLACE-LINKS 2026-10-24';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -44462,6 +44539,17 @@ function zzz6f36_render_login(body) {
   try { const lab = document.createElement('div'); lab.className = 'zzz-runtime-label is-' + zzz_verso_runtime(); lab.textContent = zzz_verso_runtime_label(); newRow.appendChild(lab); } catch (e) {}
   body.appendChild(newRow);
 
+  try {
+    const pub = document.createElement('div'); pub.className = 'zzz-share-box';
+    pub.appendChild(zzz_share_row('VERSO HOME (web)', '', 'Verso'));
+    const ar = zzz_share_row('VERSO APPS - what Verso offers', 'apps=verso', 'Verso · apps');
+    const op = document.createElement('button'); op.type = 'button'; op.className = 'zzz-share-btn'; op.textContent = 'OPEN';
+    op.addEventListener('click', () => zzz_place_open('apps=verso'));
+    ar.insertBefore(op, ar.lastChild);
+    pub.appendChild(ar);
+    body.appendChild(pub);
+  } catch (e) {}
+
 }
 
 let zzz6f36LoginModalOverlay = null;
@@ -45184,6 +45272,7 @@ async function zzz5w9_load() {
 }
 
 function open_apps_workspace() {
+  try { zzz5w9_public_enter(); } catch (e) {}
   const workspace = document.getElementById('versoWorkspaceSection');
   if (!workspace) return;
   try { zzz10t2_hide_m4a_template(); } catch (e) {}
@@ -45217,6 +45306,7 @@ function close_apps_workspace() {
   workspace.innerHTML = '';
   try { zzz6f40_workspaceOpener = null; } catch (e) {}
   if (typeof zzz2rws_queue_sync === 'function') zzz2rws_queue_sync();
+  try { zzz5w9_public_leave(); } catch (e) {}
 }
 (function bindZzz5W9AppsButton() {
   const btn = document.getElementById('versoAppsButton');
