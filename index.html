@@ -9746,6 +9746,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz1r17b-comm-window .zzz1cn-note-savedmark { font-size: calc(var(--zzz1cn-fs) * 0.72); }
   .zzz1r17b-comm-window .zzz1cn-reply-origin { font-size: calc(var(--zzz1cn-fs) * 0.85); }
   
+  .zzz1r17b-comm-window .zzz1cn-note:not(.zzz1cn-note-mine) .zzz1cn-note-id > * { order: 4; }
+  .zzz1r17b-comm-window .zzz1cn-note:not(.zzz1cn-note-mine) .zzz1cn-note-id > .zzz1cn-note-user { order: 1; }
+  .zzz1r17b-comm-window .zzz1cn-note:not(.zzz1cn-note-mine) .zzz1cn-note-id > .zzz1cn-note-name { order: 2; }
+  .zzz1r17b-comm-window .zzz1cn-note:not(.zzz1cn-note-mine) .zzz1cn-note-id > .zzz1cn-note-time { order: 3; }
+  
+  .zzz1r17b-comm-window .zzz1cn-note-time { padding: 6px 6px; margin: -6px -6px; position: relative; }
+  
   .zzz1r17b-comm-window textarea.zzz1r17b-notes-area,
   .zzz1r17b-comm-window .zzz5w7-inline .zzz5w7-inline-text,
   .zzz1r17b-comm-window .zzz5w7-inline .zzz5w7-inline-name {
@@ -16024,6 +16031,9 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
 
   let cnNlSendChat = null;
   const cnOpenOptions = (openAt) => {
+
+    const nlPrevEl = cnOptionsBar.style.display !== 'none' ? cnOptionsBar.querySelector('.zzz5w7-inline-text') : null;
+    const nlPrev = nlPrevEl ? String(nlPrevEl.value || '') : '';
     cnOptionsBar.innerHTML = '';
     cnOptionsBar.style.display = '';
     const bar = document.createElement('div');
@@ -16049,7 +16059,10 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     };
     const textIn = document.createElement('input');
     textIn.type = 'text'; textIn.className = 'zzz5w7-inline-text'; textIn.placeholder = 'note text...';
-    textIn.value = notesArea.value || '';
+
+    const nlMoved = (!openAt && !nlPrev) ? String(notesArea.value || '') : '';
+    textIn.value = nlPrev || nlMoved;
+    if (nlMoved) { notesArea.value = ''; workingNotes = ''; }
 
     const flags = document.createElement('div');
     flags.className = 'zzz5w7-inline-flags';
@@ -16091,8 +16104,13 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
 
     cancel.type = 'button'; cancel.className = 'zzz1cn-note-btn zzz1cn-note-btn-close'; cancel.textContent = '\u00d7';
     cancel.title = 'Close the note line - back to the plain chat line (the reverse of holding ENTER CHATNOTE)';
-    const close = () => {
+    const close = (sent) => {
       cnNlSendChat = null;
+
+      const left = String(textIn.value || '').trim();
+      if (!sent && left && !String(notesArea.value || '').trim()) {
+        notesArea.value = textIn.value; workingNotes = textIn.value; persistLocal();
+      }
       cnOptionsBar.style.display = 'none';
       cnOptionsBar.innerHTML = '';
       cnPlaceOptions(0);
@@ -16100,16 +16118,18 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     };
     const send = async () => {
       const t = textIn.value.trim();
-      if (!t) { close(); return; }
+      if (!t) { close(false); return; }
       const tnum = parseInt(cnTarget.value, 10) || 0;
       if (!cnTargetCheck(tnum)) return;
 
       const nm = nameIn.value.trim() || String(nlThreadName(tnum) || '').trim();
-      await cnSendToChat(t, nm, tnum, privChk.checked, true, prioCtl.get());
-      close();
+      const okSaved = await cnSendToChat(t, nm, tnum, privChk.checked, true, prioCtl.get());
+      if (!okSaved) return;
+      textIn.value = '';
+      close(true);
     };
     ok.addEventListener('click', send);
-    cancel.addEventListener('click', close);
+    cancel.addEventListener('click', () => close(false));
 
     cnNlSendChat = async () => {
       const t = textIn.value.trim();
@@ -16117,14 +16137,14 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
       const tnum = parseInt(cnTarget.value, 10) || 0;
       if (!cnTargetCheck(tnum)) return true;
       const nm = nameIn.value.trim() || String(nlThreadName(tnum) || '').trim();
-      await cnSendToChat(t, nm, tnum, privChk.checked, false, prioCtl.get());
-      close();
+      const okSent = await cnSendToChat(t, nm, tnum, privChk.checked, false, prioCtl.get());
+      if (okSent) { textIn.value = ''; close(true); }
       return true;
     };
 
     [nameIn, textIn].forEach(el => el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); send(); }
-      if (e.key === 'Escape') { e.preventDefault(); close(); }
+      if (e.key === 'Escape') { e.preventDefault(); close(false); }
     }));
     bar.appendChild(nameIn); bar.appendChild(textIn);
     bar.appendChild(flags); bar.appendChild(ok); bar.appendChild(cancel);
@@ -34328,9 +34348,10 @@ function zzz1cn_bind_time_toggle(el, n, shortForm) {
     const on = zzz1cn_time_exact.has(key);
     el.textContent = zzz1cn_time_text(n, shortForm);
     el.classList.toggle('is-exact', on);
+
     el.title = on
-      ? 'Exact time of the record - tap twice to fold it back'
-      : `${zzz1cn_time_label_exact(n)} - tap twice to keep it open`;
+      ? `Exact time of the record - ${shortForm ? 'tap' : 'tap twice'} to fold it back`
+      : `${zzz1cn_time_label_exact(n)} - ${shortForm ? 'tap' : 'tap twice'} to keep it open`;
   };
   const toggle = () => {
     if (zzz1cn_time_exact.has(key)) zzz1cn_time_exact.delete(key);
@@ -34341,11 +34362,12 @@ function zzz1cn_bind_time_toggle(el, n, shortForm) {
   el.addEventListener('click', (e) => {
 
     e.stopPropagation();
+    if (shortForm) { toggle(); return; }
     const now = Date.now();
     if (now - last < 400) { last = 0; toggle(); return; }
     last = now;
   });
-  el.addEventListener('dblclick', (e) => { e.stopPropagation(); last = 0; toggle(); });
+  el.addEventListener('dblclick', (e) => { e.stopPropagation(); last = 0; if (!shortForm) toggle(); });
   paint();
   return paint;
 }
@@ -41804,7 +41826,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'CHAT-SEL-CLEAR 2026-10-24';
+const VERSO_BUILD = 'CHAT-NL-CLEAN 2026-10-24';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
