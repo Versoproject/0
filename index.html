@@ -33967,6 +33967,7 @@ function zzz6f58_linkify(el) {
   el.dataset.zzz6f58 = '1';
 }
 
+let zzz1cnReadingNote = null;
 function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   const wrap = document.createElement('div');
 
@@ -33983,6 +33984,8 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
 
   wrap.addEventListener('click', (e) => {
     const t = e.target;
+
+    if (zzz1cnReadingNote === wrap && zzz16_is_reading()) { zzz16_stop_reading(); zzz1cnReadingNote = null; return; }
     if (t && t.closest && t.closest('button, input, label, a, textarea, select, .zzz1cn-note-number, .zzz1cn-note-time, .zzz6f58-mention')) return;
 
     try {
@@ -34000,11 +34003,15 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
     const win = wrap.closest('.zzz1r17b-comm-window');
     if (win && typeof zzz1cn_fit_comm_window === 'function') zzz1cn_fit_comm_window(win);
   });
+
   zzz_bind_long_press(wrap, 1200, () => {
     zzz_haptic_pulse(20);
-    if (typeof zzz16_read_text === 'function') {
-      zzz16_read_text([{ user: note.username || '', entry: String(note.entry_key || ''), prio: zzz1cn_prio_of(note), text: String(note.note_text || '') }]);
-    }
+    if (zzz1cnReadingNote === wrap && zzz16_is_reading()) { zzz16_stop_reading(); zzz1cnReadingNote = null; return; }
+    if (typeof zzz16_mode === 'function' && zzz16_mode() !== 'my') { zzz6f2_show_toast('Reading the message text aloud works only on MY DEVICE.', 'warn'); return; }
+    const txt = zzz5w7_body_of(note).replace(/\s+/g, ' ').trim();
+    if (!txt) return;
+    if (zzz16_speak(txt)) zzz1cnReadingNote = wrap;
+    else zzz6f2_show_toast('Text could not be read aloud - this browser has no speech voice.', 'warn');
   }, (e) => {
 
     const t = e && e.target;
@@ -35392,7 +35399,6 @@ function zzz16_urgent_banner(items, anyPrio) {
   const close = () => {
     clearTimeout(zzz16State.urgentTimer);
     const e = document.getElementById('zzz16UrgentBanner'); if (e) e.remove();
-    zzz16_stop_reading();
     if (typeof zzz16_clear_system === 'function') zzz16_clear_system();
   };
   let holdT = null, held = false, startY = 0, startX = 0, dx = 0, swiping = false, down = false;
@@ -35404,7 +35410,7 @@ function zzz16_urgent_banner(items, anyPrio) {
       return all.find(i => i.src === 'chat' && i.raw && last.id != null && String(i.raw.id) === String(last.id)) || null;
     } catch (e) { return null; }
   };
-  x.addEventListener('click', (e) => { e.stopPropagation(); close(); });
+  x.addEventListener('click', (e) => { e.stopPropagation(); zzz16_stop_reading(); close(); });
   b.addEventListener('contextmenu', (e) => e.preventDefault());
 
   ['touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup'].forEach(t => b.addEventListener(t, (e) => e.stopPropagation(), { passive: true }));
@@ -35440,6 +35446,7 @@ function zzz16_urgent_banner(items, anyPrio) {
       if (dx > 0) zzz3d_done(it); else zzz3d_shift(it);
       return;
     }
+    zzz16_stop_reading();
     close();
 
     try { const it = dashItem(); if (it) zzz5w8_to_shifted(it); } catch (e) {}
@@ -35492,9 +35499,9 @@ function zzz16_on_recount(meN, seen) {
 function zzz16_stop_reading() {
   try { if ('speechSynthesis' in window && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel(); } catch (e) {}
 }
-document.addEventListener('pointerdown', () => {
-  try { if ('speechSynthesis' in window && speechSynthesis.speaking) speechSynthesis.cancel(); } catch (e) {}
-}, true);
+function zzz16_is_reading() {
+  try { return 'speechSynthesis' in window && (speechSynthesis.speaking || speechSynthesis.pending); } catch (e) { return false; }
+}
 function zzz16_read_text(items) {
   if (zzz16_mode() !== 'my') { zzz6f2_show_toast('Reading the message text aloud works only on MY DEVICE.', 'warn'); return false; }
   const parts = (items || []).filter(i => i && i.text).slice(-3).map(i => `${i.user || 'Niekto'} píše: ${String(i.text).replace(/\s+/g, ' ').slice(0, 300)}`);
@@ -42020,7 +42027,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'URGENT-VIBRATE 2026-10-24';
+const VERSO_BUILD = 'READ-STOP 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
