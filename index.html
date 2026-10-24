@@ -8771,6 +8771,16 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz5w9-status.is-upd { color: #ea8c00; }
   .zzz5w9-status.is-na, .zzz5w9-status.is-info { color: #a1a1aa; }
   .zzz5w9-status.is-bad { color: #c0392b; }
+  
+  .zzz5w9-share { flex: 0 0 auto; border-color: #6b6b6b; color: #c0c0c0; }
+  .zzz5w9-row.is-focus { outline: 1.5px solid #D4AF37; border-radius: 8px; }
+  .zzz-share-box { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+  .zzz-share-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid #2a2a2a; border-radius: 10px; background: #111; }
+  .zzz-share-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .zzz-share-label { color: #D4AF37; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; }
+  .zzz-share-url { color: #c0c0c0; font-size: 11px; font-family: ui-monospace, monospace; overflow-wrap: anywhere; text-decoration: none; }
+  .zzz-share-btn { flex: 0 0 auto; height: 30px; padding: 0 12px; border-radius: 8px; border: 1.5px solid #D4AF37; background: #171717;
+    color: #D4AF37; font-size: 10px; font-weight: 700; cursor: pointer; }
   .zzz5w9-notice { color: #D4AF37; font-size: 8.5px; line-height: 1.3; }
   .zzz5w9-fp { color: #6b6b6b; font-size: 8px; font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
   .db-workspace.zzz5w8-workspace { padding-top: 0; }
@@ -11065,10 +11075,49 @@ function zzz14pl_check(pokus) {
   }
   zzz14plDone = tab;
   if (typeof ZZZ5W9_TABS !== 'undefined' && ZZZ5W9_TABS.some(t => t.key === tab)) zzz5w9Tab = tab;
+  const am = String(location.hash || '').match(/[#&]app=([a-z0-9-]+)/i);
+  zzz5w9Focus = am ? am[1].toLowerCase() : '';
   open_apps_workspace();
 }
 window.addEventListener('hashchange', () => zzz14pl_check(0));
 window.addEventListener('load', () => setTimeout(() => zzz14pl_check(0), 800));
+
+function zzz_place_url(hash) { return location.origin + '/' + (hash ? '#' + hash : ''); }
+async function zzz_share_link(url, title) {
+  try {
+    if (navigator.share) { await navigator.share({ title: title || 'Verso', text: title || 'Verso', url }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(url); zzz6f2_show_toast('Link copied: ' + url); }
+  catch (e) { zzz6f2_show_toast('Copy this link: ' + url, 'warn'); }
+}
+
+function zzz_share_row(label, hash, title) {
+  const url = zzz_place_url(hash);
+  const row = document.createElement('div'); row.className = 'zzz-share-row';
+  const l = document.createElement('div'); l.className = 'zzz-share-label'; l.textContent = label;
+  const a = document.createElement('a'); a.className = 'zzz-share-url'; a.href = url; a.textContent = url.replace(/^https?:\/\//, '');
+  a.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    try { navigator.clipboard.writeText(url).then(() => zzz6f2_show_toast('Link copied: ' + url)); } catch (e) {}
+  });
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-share-btn'; b.textContent = 'SHARE';
+  b.addEventListener('click', () => zzz_share_link(url, title));
+  const txt = document.createElement('div'); txt.className = 'zzz-share-txt'; txt.append(l, a);
+  row.append(txt, b);
+  return row;
+}
+
+function zzz_register_link_check(pokus) {
+  if (!/^#register\b/i.test(String(location.hash || ''))) return;
+  if (typeof open_register_setup_standalone !== 'function' || !document.getElementById('versoWorkspaceSection')) {
+    if ((pokus || 0) < 20) setTimeout(() => zzz_register_link_check((pokus || 0) + 1), 500);
+    return;
+  }
+  if (typeof zzz6f7_isLoggedIn !== 'undefined' && zzz6f7_isLoggedIn) return;
+  open_register_setup_standalone();
+}
+window.addEventListener('hashchange', () => zzz_register_link_check(0));
+window.addEventListener('load', () => setTimeout(() => zzz_register_link_check(0), 900));
 
 function zzz14cs_select_all_on_page() {
   const rowEls = Array.from(document.querySelectorAll('.db-workspace-entry-row'))
@@ -41240,6 +41289,13 @@ function open_settings_workspace() {
     wrap.appendChild(settingsBuildTag);
 
     try { const up = document.createElement('div'); zzz14b17_settings_updates(up); wrap.appendChild(up); } catch (e) {}
+
+    try {
+      const links = document.createElement('div'); links.className = 'zzz-share-box';
+      links.appendChild(zzz_share_row('VERSO HOME (web)', '', 'Verso'));
+      links.appendChild(zzz_share_row('VERSO › APPS › VERSO SYSTEM APPS', 'apps=verso', 'Verso · apps'));
+      wrap.appendChild(links);
+    } catch (e) {}
   }
 
   zzz10t2_hide_m4a_template();
@@ -41829,7 +41885,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'URGENT-BANNER-TEXT 2026-10-24';
+const VERSO_BUILD = 'SHARE-LINKS 2026-10-24';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -42374,6 +42430,8 @@ function open_register_setup_standalone() {
     const btns = document.createElement('div'); btns.className = 'zzz14b17-new-btns';
     dl.appendChild(btns);
     zzz14b17_render_app_download(btns, dl, 'download');
+
+    dl.appendChild(zzz_share_row('REGISTER LINK (registration + Verso app download)', 'register', 'Verso · register'));
     wrap.appendChild(dl);
   } catch (e) {}
 }
@@ -44828,6 +44886,7 @@ const ZZZ5W9_TABS = [
   { key: 'third', label: 'THIRD-PARTY APPS' }
 ];
 let zzz5w9Tab = 'verso';
+let zzz5w9Focus = '';
 const zzz5w9Picked = new Set();
 let zzz5w9Catalog = null;
 const zzz5w9Man = {};
@@ -45036,6 +45095,15 @@ function zzz5w9_render() {
       mid.appendChild(fp);
     }
     r.append(pick, mid);
+
+    const sh = document.createElement('button');
+    sh.type = 'button'; sh.className = 'zzz5w9-btn zzz5w9-share'; sh.textContent = 'SHARE';
+    sh.addEventListener('click', () => zzz_share_link(zzz_place_url('apps=' + a.tab + '&app=' + a.id), 'Verso · ' + a.name));
+    r.appendChild(sh);
+    if (zzz5w9Focus && zzz5w9Focus === a.id) {
+      r.classList.add('is-focus');
+      setTimeout(() => { try { r.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {} }, 60);
+    }
     if (st.action) {
       const go = document.createElement('button');
       go.type = 'button'; go.className = 'zzz5w9-btn zzz5w9-go' + (st.action === 'update' ? ' is-upd' : '');
