@@ -3539,6 +3539,14 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz14pt-in.is-users { flex: 1 1 90px; }
   .zzz14pt-in.zzz14pt-min { width: 48px; }
   
+  .zzz14pt-valline { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 2px 4px 0; font-size: 11px; }
+  .zzz14pt-valtxt { font-weight: 800; color: #4a3b10; }
+  .zzz14pt-valform { display: inline-flex; gap: 3px; align-items: center; font-size: 11px; font-weight: 700; }
+  .zzz14pt-in.zzz14pt-num { width: 70px; }
+  .zzz14pt-in.zzz14pt-amt { width: 64px; text-align: right; }
+  .zzz14pt-valbtn { background: transparent; border: 1px solid #b08d2c; color: #8a6a12; border-radius: 9px; font-size: 10px; font-weight: 800; padding: 1px 7px; }
+  .zzz14pt-valbtn.is-ok { background: #16a34a; border-color: #16a34a; color: #fff; }
+  
   .zzz14pt-notechip.is-tap { cursor: pointer; box-shadow: 0 0 0 2px rgba(22,163,74,.55); animation: zzz14ptTap 1.6s ease-in-out infinite; }
   .zzz14pt-notechip.is-next::before { content: '\2192  '; }
   @keyframes zzz14ptTap { 50% { box-shadow: 0 0 0 4px rgba(22,163,74,.25); } }
@@ -14164,7 +14172,11 @@ function zzz14pt_norm(cfg) {
       },
       tasksent: st.tasksent !== false, auto_open: !!st.auto_open,
 
-      takeover_min: Math.max(0, Math.min(1440, parseInt(st.takeover_min, 10) || 0))
+      takeover_min: Math.max(0, Math.min(1440, parseInt(st.takeover_min, 10) || 0)),
+
+      writes: ['text', 'num', 'amount', 'num_amount'].indexOf(String(st.writes || '')) >= 0 ? String(st.writes) : 'text',
+
+      consent: ['owner', 'taker', 'both'].indexOf(String(st.consent || '')) >= 0 ? String(st.consent) : ''
     }))
   })) };
 }
@@ -14453,6 +14465,20 @@ async function zzz14pt_render(panel, api) {
         const tku = document.createElement('span'); tku.textContent = 'min';
         tkw.append(tkl, tki, tku);
         opt.appendChild(tkw);
+
+        const fx = document.createElement('div'); fx.className = 'zzz14pt-who';
+        const sel = (label, cur, opts, title, onCh) => {
+          const l = document.createElement('span'); l.className = 'zzz14pt-lbl'; l.textContent = label;
+          const se = document.createElement('select'); se.className = 'zzz14pt-prio'; se.disabled = !canEdit; se.title = title;
+          opts.forEach(([v, t2]) => { const o = document.createElement('option'); o.value = v; o.textContent = t2; if (cur === v) o.selected = true; se.appendChild(o); });
+          se.addEventListener('change', () => { onCh(se.value); mark(); });
+          fx.append(l, se);
+        };
+        sel('writes:', stp.writes || 'text', [['text', 'text'], ['num', 'number'], ['amount', 'amount €'], ['num_amount', 'number + amount €']],
+          'What is written into this step besides the text (e.g. ORDER = number + amount, CLEARING = amount)', v => { stp.writes = v; });
+        sel('consent:', stp.consent || '', [['', 'nobody'], ['owner', 'owner'], ['taker', 'who took the task'], ['both', 'both']],
+          'Who has to give the consent of this step (e.g. CLEARING = owner) - it goes into the closing', v => { stp.consent = v; });
+        r.appendChild(fx);
         opt.appendChild(chk(stp.auto_open, 'opens by itself', v => { stp.auto_open = v; }, 'In COMM SPACE the window of this step opens by itself (urgent notification queue)'));
         r.appendChild(opt);
         card.appendChild(r);
@@ -14566,12 +14592,71 @@ function zzz14pt_paint_chiprow(row, entryKey, arm, onArm) {
       row.appendChild(b);
     });
   });
+
+  if (arm && arm.step && arm.step.writes && arm.step.writes !== 'text') {
+    const f = document.createElement('span'); f.className = 'zzz14pt-valform'; f.setAttribute('data-zzz-nodraft', '1');
+    if (arm.step.writes !== 'amount') {
+      const l = document.createElement('span'); l.textContent = 'No.';
+      const i = document.createElement('input'); i.type = 'text'; i.className = 'zzz14pt-in zzz14pt-num'; i.value = arm.num || '';
+      i.title = 'Number of this step (e.g. order number)'; i.addEventListener('input', () => { arm.num = i.value; });
+      f.append(l, i);
+    }
+    if (arm.step.writes !== 'num') {
+      const l = document.createElement('span'); l.textContent = '€';
+      const i = document.createElement('input'); i.type = 'text'; i.inputMode = 'decimal'; i.className = 'zzz14pt-in zzz14pt-amt'; i.value = arm.amount || '';
+      i.title = 'Amount (minus = expense)'; i.addEventListener('input', () => { arm.amount = i.value; });
+      f.append(l, i);
+    }
+    row.appendChild(f);
+  }
 }
 
 const ZZZ14PT_TS_TABLE = 'verso_tasksents';
 let zzz14ptTs = {};
 let zzz14ptTsAt = 0;
+
+const ZZZ14PT_VAL_TABLE = 'verso_task_values';
+let zzz14ptVals = {};
+async function zzz14pt_vals_load(entryId) {
+  const id = Number(String(entryId || '').replace(/\D/g, ''));
+  try {
+    let q = sb.from(ZZZ14PT_VAL_TABLE).select('id, entry_id, task_no, type_id, chip, note_id, username, kind, num, amount, created_at').order('id', { ascending: true }).limit(5000);
+    if (id) q = q.eq('entry_id', id);
+    const { data, error } = await q;
+    if (error) throw error;
+    if (id) zzz14ptVals[id] = []; else zzz14ptVals = {};
+    (data || []).forEach(r => { (zzz14ptVals[r.entry_id] = zzz14ptVals[r.entry_id] || []).push(r); });
+  } catch (e) {   }
+}
+function zzz14pt_value_of(note) {
+  const rows = (zzz14ptVals[Number(note.entry_key)] || []).filter(r => r.kind === 'value' && Number(r.note_id) === Number(note.id));
+  return rows.length ? rows[rows.length - 1] : null;
+}
+function zzz14pt_consents_of(entryId, taskNo, typeId, chip) {
+  return (zzz14ptVals[Number(entryId)] || []).filter(r => r.kind === 'consent' && Number(r.task_no) === Number(taskNo)
+    && String(r.type_id).toLowerCase() === String(typeId).toLowerCase() && String(r.chip).toLowerCase() === String(chip).toLowerCase());
+}
+function zzz14pt_fmt_amount(a) {
+  const n = Number(a); if (!isFinite(n)) return '';
+  return n.toLocaleString('sk-SK', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+}
+function zzz14pt_parse_amount(v) {
+  const t = String(v == null ? '' : v).trim().replace(/\s|€/g, '').replace(',', '.');
+  if (!t) return null;
+  if (!/^-?\d{1,11}(\.\d{1,2})?$/.test(t)) return NaN;
+  return Number(t);
+}
+async function zzz14pt_save_value(entryId, taskNo, typeId, chip, noteId, num, amount) {
+  const me = (zzz0r1_get_current_username() || '').trim();
+  const row = { entry_id: Number(entryId), task_no: Number(taskNo), type_id: String(typeId).toLowerCase(), chip: String(chip).trim().toLowerCase(),
+    note_id: Number(noteId) || null, username: me, kind: 'value', num: String(num || '').trim() || null, amount: (amount === null || amount === undefined || isNaN(amount)) ? null : amount };
+  const { error } = await sb.from(ZZZ14PT_VAL_TABLE).insert(row);
+  await zzz14pt_vals_load(entryId);
+  if (error) { zzz6f2_show_toast(`Number / amount not saved: ${error.message || error} (only the author of the step, who took the task or the owner).`, 'warn'); return false; }
+  return true;
+}
 async function zzz14pt_ts_load(entryId) {
+  zzz14pt_vals_load(entryId);
   const id = Number(String(entryId || '').replace(/\D/g, ''));
   try {
     let q = sb.from(ZZZ14PT_TS_TABLE).select('entry_id, task_no, type_id, chip, username, created_at, note_id').order('id', { ascending: true }).limit(2000);
@@ -14644,6 +14729,92 @@ function zzz14pt_can_confirm(entryId, step, ctx) {
   } else if (step.who.owner && isOwner) return true;
   if (step.who.delegates && typeof zzz1cn_is_delegate === 'function' && zzz1cn_is_delegate(String(entryId))) return true;
   return (step.who.users || []).some(u => zzz10v1_normalize(u) === me);
+}
+
+function zzz14pt_is_owner(entryId) {
+  const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+  const row = (typeof zzz6f29_entry_row_of === 'function') ? zzz6f29_entry_row_of(entryId) : null;
+  const f = row ? (zzz_parse_fields_json(row) || {}) : {};
+  return !!me && !!row && (zzz10v1_normalize(row.username || '') === me || zzz10v1_normalize(f.r4 || '') === me);
+}
+function zzz14pt_can_value(note, tc) {
+  const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+  if (!me) return false;
+  if (zzz10v1_normalize(note.username || '') === me || zzz14pt_is_owner(note.entry_key)) return true;
+  return zzz10v1_normalize(zzz14pt_taker_of(note.entry_key, note.note_number, tc.typeId)) === me;
+}
+function zzz14pt_can_consent(note, tc, step) {
+  const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+  if (!me || !step || !step.consent) return false;
+  if ((step.consent === 'owner' || step.consent === 'both') && zzz14pt_is_owner(note.entry_key)) return true;
+  return (step.consent === 'taker' || step.consent === 'both') && zzz10v1_normalize(zzz14pt_taker_of(note.entry_key, note.note_number, tc.typeId)) === me;
+}
+
+function zzz14pt_note_vals_ui(wrap, note, tc, onChanged) {
+  const st = zzz14pt_step_of(note.entry_key, tc.typeId, tc.chip);
+  if (!st || (st.step.writes === 'text' && !st.step.consent)) return;
+  const box = document.createElement('div'); box.className = 'zzz14pt-valline';
+  const v = zzz14pt_value_of(note);
+  const wantNum = st.step.writes === 'num' || st.step.writes === 'num_amount';
+  const wantAmt = st.step.writes === 'amount' || st.step.writes === 'num_amount';
+  if (wantNum || wantAmt) {
+    const shown = document.createElement('span'); shown.className = 'zzz14pt-valtxt';
+    const parts = [];
+    if (wantNum) parts.push('No. ' + ((v && v.num) || '–'));
+    if (wantAmt) parts.push((v && v.amount !== null && v.amount !== undefined) ? zzz14pt_fmt_amount(v.amount) : '– €');
+    shown.textContent = parts.join(' · ');
+    box.appendChild(shown);
+    if (zzz14pt_can_value(note, tc)) {
+      const ed = document.createElement('button'); ed.type = 'button'; ed.className = 'zzz14pt-valbtn'; ed.textContent = v ? 'edit' : '+ add';
+      ed.title = 'Write the number / amount of this step (a correction is saved as a new row, the last one counts)';
+      ed.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const f = document.createElement('span'); f.className = 'zzz14pt-valform'; f.setAttribute('data-zzz-nodraft', '1');
+        let ni = null, ai = null;
+        if (wantNum) { const l = document.createElement('span'); l.textContent = 'No.'; ni = document.createElement('input'); ni.type = 'text'; ni.className = 'zzz14pt-in zzz14pt-num'; ni.value = (v && v.num) || ''; f.append(l, ni); }
+        if (wantAmt) { const l = document.createElement('span'); l.textContent = '€'; ai = document.createElement('input'); ai.type = 'text'; ai.inputMode = 'decimal'; ai.className = 'zzz14pt-in zzz14pt-amt'; ai.value = (v && v.amount !== null && v.amount !== undefined) ? String(v.amount) : ''; f.append(l, ai); }
+        const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'zzz14pt-valbtn is-ok'; ok.textContent = 'OK';
+        ok.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          const amt = ai ? zzz14pt_parse_amount(ai.value) : null;
+          if (ai && Number.isNaN(amt)) { zzz6f2_show_toast('Amount: a number like 25,50 or -3 (minus = expense).', 'warn'); return; }
+          ok.disabled = true;
+          if (await zzz14pt_save_value(note.entry_key, note.note_number, tc.typeId, tc.chip, note.id, ni ? ni.value : '', amt)) { if (onChanged) onChanged(); }
+          else ok.disabled = false;
+        });
+        f.appendChild(ok);
+        ed.replaceWith(f);
+        (ni || ai).focus();
+      });
+      box.appendChild(ed);
+    }
+  }
+  if (st.step.consent) {
+    const cs = zzz14pt_consents_of(note.entry_key, note.note_number, tc.typeId, tc.chip);
+    cs.forEach(c => { const o = document.createElement('span'); o.className = 'zzz14pt-tsok'; o.textContent = `✓ consent ${c.username} · ${zzz5w8_fmt_time(Date.parse(c.created_at || '') || Date.now())}`; box.appendChild(o); });
+    const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+    const mine = cs.some(c => zzz10v1_normalize(c.username) === me);
+    if (!mine && zzz14pt_can_consent(note, tc, st.step)) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz14pt-tsbtn'; b.textContent = 'CONSENT';
+      b.title = `Consent of ${tc.chip} #${note.note_number} - it is written into the closing`;
+      b.addEventListener('click', async (e) => {
+        e.stopPropagation(); b.disabled = true;
+        const row = { entry_id: Number(note.entry_key), task_no: Number(note.note_number), type_id: String(tc.typeId).toLowerCase(), chip: String(tc.chip).trim().toLowerCase(),
+          note_id: Number(note.id) || null, username: (zzz0r1_get_current_username() || '').trim(), kind: 'consent' };
+        const { error } = await sb.from(ZZZ14PT_VAL_TABLE).insert(row);
+        await zzz14pt_vals_load(note.entry_key);
+        if (error) { b.disabled = false; zzz6f2_show_toast(`Consent not saved: ${error.message || error}`, 'warn'); return; }
+        zzz_haptic_pulse(30); zzz6f2_show_toast(`✓ Consent ${tc.chip} #${note.note_number}.`);
+        if (onChanged) onChanged();
+      });
+      box.appendChild(b);
+    } else if (!cs.length) {
+      const w = document.createElement('span'); w.className = 'zzz14pt-tswait';
+      w.textContent = `waits for consent (${st.step.consent === 'taker' ? 'who took the task' : st.step.consent})`;
+      box.appendChild(w);
+    }
+  }
+  Promise.resolve().then(() => wrap.appendChild(box));
 }
 function zzz14pt_note_ts_ui(wrap, note, tc, onChanged, chipEl) {
   const st = zzz14pt_step_of(note.entry_key, tc.typeId, tc.chip);
@@ -16676,7 +16847,10 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
       }
       if (!zzz1cn_prio_level(prio)) prio = a.step.prio || '';
       cnTaskTags = zzz14pt_tag(a.type, a.step);
+      if (a.amount !== undefined && Number.isNaN(zzz14pt_parse_amount(a.amount))) { zzz6f2_show_toast('Amount: a number like 25,50 or -3 (minus = expense).', 'warn'); return null; }
     }
+    const cnTaskArmSnap = cnTaskArm;
+    const cnKnownIds = new Set((cnFeedNotes || []).map(x => String(x.id)));
     if (!target && !cnTaskTags && !zzz1cn_newchat_ok(cnGateKey)) {
       zzz6f2_show_toast('Only the owner may start a new chat here. Reply to an existing one instead.', 'warn');
       return null;
@@ -16699,6 +16873,18 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
       return a && Number(a.note_number) === Number(target) ? Number(a.id) : 0;
     })();
     const saved = await zzz1cn_add(cnEntryKey, body, privNow, target ? { base: Number(target) } : null, name, !!toSaved, zzz1cn_prio_level(prio), mOnly, cnTaskTags, cnReplyTo);
+    if (saved && cnTaskArmSnap && (String(cnTaskArmSnap.num || '').trim() || String(cnTaskArmSnap.amount || '').trim())) {
+      try {
+        let nid = saved.id, nno = saved.note_number;
+        if (!nid || !nno) {
+          const { data } = await sb.from(ZZZ1CN_TABLE).select('id, note_number').eq('entry_key', String(cnEntryKey)).eq('note_tags', cnTaskTags)
+            .eq('username', (zzz0r1_get_current_username() || '').trim()).order('id', { ascending: false }).limit(10);
+          const hit = (data || []).find(x => !cnKnownIds.has(String(x.id)));
+          if (hit) { nid = hit.id; nno = hit.note_number; }
+        }
+        if (nid && nno) await zzz14pt_save_value(cnGateKey || cnEntryKey, nno, cnTaskArmSnap.type.id, cnTaskArmSnap.step.chip, nid, cnTaskArmSnap.num || '', zzz14pt_parse_amount(cnTaskArmSnap.amount));
+      } catch (e) {}
+    }
     if (saved) cnOptionsAnchor = null;
 
     if (saved && cnRemArm) {
@@ -35219,7 +35405,7 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
 
   { const tc = zzz14pt_chip_of(note);
     if (tc) { const c = document.createElement('span'); c.className = 'zzz14pt-notechip'; c.textContent = tc.chip; c.style.borderColor = tc.color; c.style.color = tc.color; c.title = `${tc.typeName} task - step ${tc.stepIdx + 1}: ${tc.chip}`; headId.insertBefore(c, headId.firstChild); wrap.classList.add('zzz14pt-tasknote');
-      zzz14pt_note_ts_ui(wrap, note, tc, onChanged, c); } }
+      zzz14pt_note_ts_ui(wrap, note, tc, onChanged, c); zzz14pt_note_vals_ui(wrap, note, tc, onChanged); } }
   headLeft.appendChild(headMarks);
   headLeft.appendChild(headId);
 
@@ -43480,7 +43666,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'CONTACTS-COUNT 2026-10-25';
+const VERSO_BUILD = 'TASK-FIELDS 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
