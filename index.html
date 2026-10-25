@@ -5968,6 +5968,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz14b2-voice { display: flex; gap: 4px; flex: 0 0 auto; }
   .zzz14b2-voice .zzz16-btn.is-on { background: #D4AF37; color: #171717; border-color: #D4AF37; }
   
+  .zzz1cn-repliers { display: inline-flex; gap: 3px; align-items: center; margin-left: 4px; vertical-align: middle; }
+  .zzz1cn-replier { border: 1px solid #8a8f98; background: transparent; color: #c0c4cc; border-radius: 9px; font-size: 9px; font-weight: 700; padding: 0 6px; line-height: 15px; cursor: pointer; }
+  .zzz1cn-replier-more { font-size: 9px; color: #8a8f98; }
+  
 
   
   
@@ -8894,9 +8898,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz1cn-note .zzz5w8-alarm-btn { padding: 0 6px !important; min-height: 20px !important; font-size: 13px !important; }
   .zzz1cn-note.is-sw-keep { box-shadow: inset 0 0 0 2px #8a8f98; opacity: .6; }
   .zzz1cn-note.is-sw-shift { box-shadow: inset 0 0 0 2px #4a7fd0; }
-  .zzz1cn-note.zzz5w8-msg-hidden:not(.zzz1cn-row-full) { max-height: 26px; overflow: hidden; opacity: .4; padding-top: 2px !important; padding-bottom: 2px !important; }
-  .zzz1cn-note.zzz5w8-msg-hidden:not(.zzz1cn-row-full) > :not(.zzz1cn-note-head) { display: none !important; }
+  .zzz1cn-note.zzz5w8-msg-hidden:not(.zzz1cn-row-full):not(.zzz5w8-hidden-view *) { max-height: 26px; overflow: hidden; opacity: .4; padding-top: 2px !important; padding-bottom: 2px !important; }
+  .zzz1cn-note.zzz5w8-msg-hidden:not(.zzz1cn-row-full):not(.zzz5w8-hidden-view *) > :not(.zzz1cn-note-head):not(.zzz5w8-unhide) { display: none !important; }
   .zzz1cn-note.zzz5w8-msg-hidden::before { content: '\2298 hidden'; font-size: 10px; font-weight: 700; color: #6b6f76; margin-right: 6px; }
+  
+  .zzz1cn-note > .zzz5w8-unhide { display: none; }
+  .zzz5w8-hidden-view .zzz1cn-note.zzz5w8-msg-hidden > .zzz5w8-unhide, .zzz1cn-note.zzz5w8-msg-hidden.zzz1cn-row-full > .zzz5w8-unhide { display: inline-block !important; float: right; margin: 2px 0 2px 6px;
+    border: 1px solid #D4AF37; color: #D4AF37; background: transparent; border-radius: 9px; font-size: 10px; font-weight: 800; padding: 1px 8px; }
   .zzz5w8-modes button { flex: 1 1 0; min-width: 0; background: transparent; color: #c0c4cc; border: none;
     border-left: 1px solid #8a8f98; padding: 6px 4px; font-size: 11px; font-weight: 700; letter-spacing: .06em;
     cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -16566,6 +16574,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     }
     if (o.private && !zzz56_is_private_note(n)) return false;
     if (o.alarm && !zzz5w8_note_has_alarm(n)) return false;
+    if (o.hidden && !zzz5w8_note_hidden(n)) return false;
     if (o.mine && zzz10v1_normalize(n.username || '') !== zzz10v1_normalize(zzz0r1_get_current_username() || '')) return false;
     if (cnView.at && Number(ord) !== Number(cnView.at)) return false;
 
@@ -16874,6 +16883,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
   let cnFeedNotes = [];
 
   const cnRefreshFeed = async () => {
+    cnFeed.classList.toggle('zzz5w8-hidden-view', !!(cnView.on && cnView.on.hidden));
 
     const nlWasInFeed = cnFeed.contains(cnOptionsBar);
     if (nlWasInFeed) cnPlaceOptions(0);
@@ -16973,6 +16983,33 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
           chip.textContent = `${open ? '\u25be' : '\u25b8'} ${list.length} ${list.length === 1 ? 'reply' : 'replies'}${fresh && !open ? ` \u00b7 ${fresh} new` : ''}`;
           chip.classList.toggle('zzz1cn-reply-new', !!fresh && !open);
           chip.title = cnFocus ? 'Tap = fold the thread and go back to the previous view' : 'Tap = open this thread with all its replies (only this thread is shown)';
+
+          const who = []; list.forEach(n => { const u = String(n.username || '').trim(); if (u && !who.some(x => zzz10v1_normalize(x) === zzz10v1_normalize(u))) who.push(u); });
+          if (who.length) {
+            const pw = document.createElement('span'); pw.className = 'zzz1cn-repliers';
+            who.slice(0, 3).forEach(u => {
+              const c = document.createElement('button'); c.type = 'button'; c.className = 'zzz1cn-replier'; c.textContent = u;
+              c.title = `Tap = open the thread at the last reply of ${u}`;
+              c.addEventListener('pointerdown', (e) => e.stopPropagation());
+              c.addEventListener('click', (e) => {
+                e.stopPropagation(); e.preventDefault();
+                const go = () => {
+                  const rows = Array.from(cnFeed.querySelectorAll(`.zzz1cn-thread[data-zzz1cn-thread="${rid}"] .zzz1cn-note`))
+                    .filter(w => w._zzz1cnNote && zzz10v1_normalize(w._zzz1cnNote.username || '') === zzz10v1_normalize(u));
+                  const t = rows[rows.length - 1];
+                  if (!t) return;
+                  try { t.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) { t.scrollIntoView(); }
+                  t.classList.add('zzz3d-flash'); setTimeout(() => t.classList.remove('zzz3d-flash'), 2500);
+                };
+                if (cnFeed.querySelector(`.zzz1cn-thread[data-zzz1cn-thread="${rid}"]`) && zzz1cnThreadAll.has(rid)) { go(); return; }
+                zzz1cnThreadOpen.add(rid); zzz1cnThreadAll.add(rid);
+                Promise.resolve(cnRefreshFeed()).then(() => setTimeout(go, 60));
+              });
+              pw.appendChild(c);
+            });
+            if (who.length > 3) { const m = document.createElement('span'); m.className = 'zzz1cn-replier-more'; m.textContent = `+${who.length - 3}`; pw.appendChild(m); }
+            chip.insertAdjacentElement('afterend', pw);
+          }
         }
         cnFeed.appendChild(el);
         if (!open || !passKids.length) return;
@@ -25190,15 +25227,35 @@ function zzz5w8_item_of_note(n) {
     text: String(n.note_text || '').replace(/\s+/g, ' ').trim(), project: '', raw: n
   };
 }
+function zzz5w8_note_hidden(n) {
+  const sh = (n && n.id != null) ? zzz5w8Shifts['note:' + n.id] : null;
+  return !!(sh && sh.hidden);
+}
 function zzz5w8_paint_chat_hidden(wrap) {
   if (!wrap || !wrap.dataset) return;
   const id = wrap.dataset.zzz1cnId;
   const sh = id ? zzz5w8Shifts['note:' + id] : null;
-  wrap.classList.toggle('zzz5w8-msg-hidden', !!(sh && sh.hidden));
+  const hid = !!(sh && sh.hidden);
+  wrap.classList.toggle('zzz5w8-msg-hidden', hid);
+
+  let b = wrap.querySelector(':scope > .zzz5w8-unhide');
+  if (hid && !b && wrap._zzz5w8Note) {
+    b = document.createElement('button'); b.type = 'button'; b.className = 'zzz5w8-unhide'; b.textContent = '\u21a9 SHOW AGAIN';
+    b.title = 'Bring this message back into your chat (only your view)';
+    b.addEventListener('pointerdown', (e) => e.stopPropagation());
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation(); e.preventDefault();
+      b.disabled = true;
+      await zzz5w8_hide(zzz5w8_item_of_note(wrap._zzz5w8Note), false);
+      zzz6f2_show_toast('Back in your chat.', 'ok');
+    });
+    wrap.insertBefore(b, wrap.firstChild);
+  } else if (!hid && b) b.remove();
 }
 function zzz5w8_bind_chat_swipe(wrap, note) {
   if (!wrap || !note || note.id == null || !/^\d+$/.test(String(note.id))) return;
   wrap.dataset.zzz1cnId = wrap.dataset.zzz1cnId || String(note.id);
+  wrap._zzz5w8Note = note;
   zzz5w8_paint_chat_hidden(wrap);
   zzz5w8_bind_swipe(wrap, () => zzz5w8_swipe_hide(zzz5w8_item_of_note(note)),
     () => zzz5w8_shift_prompt(zzz5w8_item_of_note(note), wrap));
@@ -36613,7 +36670,9 @@ const ZZZ5W7_FILTERS = [
   ['private',  'PRIVATE',  'private: only you, or only the people it is addressed to'],
   ['mine',     'MY',       'notes by the signed-in user'],
 
-  ['alarm',    '\u23f0 ALARM', 'only messages with a reminder / schedule (ALARM)']
+  ['alarm',    '\u23f0 ALARM', 'only messages with a reminder / schedule (ALARM)'],
+
+  ['hidden',   '\u2298 HIDDEN', 'only messages you hid (swipe right) - tap SHOW AGAIN to bring one back']
 ];
 
 let zzz5w8Watches = [];
@@ -39687,6 +39746,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     }
     if (o.private && !zzz56_is_private_note(n)) return false;
     if (o.alarm && !zzz5w8_note_has_alarm(n)) return false;
+    if (o.hidden && !zzz5w8_note_hidden(n)) return false;
     const me = zzz10v1_normalize(zzz0r1_get_current_username() || '');
     if (o.mine && zzz10v1_normalize(n.username || '') !== me) return false;
 
@@ -44329,7 +44389,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'VOICE-DIA 2026-10-25';
+const VERSO_BUILD = 'CHAT-HIDDEN 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -47153,7 +47213,7 @@ function zzz_verso_runtime() {
   return 'web';
 }
 
-const VERSO_FOR_APP = 41;
+const VERSO_FOR_APP = 42;
 function zzz_verso_runtime_info() {
   const r = zzz_verso_runtime();
   let b = ''; try { b = String(VERSO_BUILD || ''); } catch (e) {}
