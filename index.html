@@ -17110,7 +17110,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
   cnSave.className = 'zzz1cn-save-btn';
 
   cnSave.innerHTML = '<span>ENTER</span><span>CHATNOTE</span>';
-  cnSave.title = 'Click = enter into the chat (not saved to Notes) / hold 1-2s = note line / hold 3s = open Notes';
+  cnSave.title = 'Click = enter into the chat (not saved to Notes) / hold 1-2s = send as a reply (to the # in the reply cell or the chat named in NAME) / hold 3s = open Notes';
   notesArea._vkbOk = cnSave;
 
   const cnTarget = document.createElement('input');
@@ -17620,8 +17620,30 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
   };
 
   zzz_bind_hold_selection_guard(cnSave);
+
+  const cnHoldReply = async () => {
+    const text = String(notesArea.value || '').trim();
+    if (!text) { zzz6f2_show_toast('Write the reply first, then hold ENTER.', 'warn'); return; }
+    let tnum = parseInt(cnTarget.value, 10) || 0;
+    const typed = String(cnTargetName.value || cnTargetNameVal || '').trim();
+    const notes = cnFeedNotes || [];
+    if (!tnum && typed) {
+      const nq = zzz10v1_normalize(typed);
+      const hits = notes.filter(n => zzz10v1_normalize(String(n.note_name || '').trim()) === nq && Number(n.note_number) > 0);
+      if (hits.length) tnum = Number(hits.reduce((a, b) => ((zzz1cn_time_of(b) || 0) > (zzz1cn_time_of(a) || 0) ? b : a)).note_number);
+    }
+    if (!tnum) { zzz6f2_show_toast(typed ? `No chat named "${typed}" here - tap ENTER to start it as a new chat.` : 'Hold ENTER = reply: put the chat # into the reply cell or write the chat name first.', 'warn'); return; }
+    if (!cnTargetCheck(tnum)) return;
+    const thread = notes.filter(n => Number(n.note_number) === tnum);
+    const root = thread.find(n => !String(n.note_part || '').trim()) || thread.slice().sort((a, b) => Number(a.id) - Number(b.id))[0];
+    if (!cnOptionsAnchor || !thread.some(n => String(n.id) === String(cnOptionsAnchor))) cnOptionsAnchor = root ? String(root.id) : null;
+    const nm = String(cnNameForNum(tnum) || typed || '').trim();
+    zzz_haptic_pulse(30);
+    const ok = await cnSendToChat(text, nm, tnum, false, false);
+    if (ok) zzz6f2_show_toast(`↩ Reply to #${tnum}${nm ? ' "' + nm + '"' : ''}.`, 'ok');
+  };
   zzz5w7_bind_tiered_hold(cnSave, [
-    { ms: 1200, fn: () => cnOpenOptions() },
+    { ms: 1200, fn: () => cnHoldReply() },
     { ms: 3000, fn: () => zzz1cn_open_list(cnEntryKey, cnSave) }
   ]);
 
@@ -44389,7 +44411,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'CHAT-HIDDEN 2026-10-25';
+const VERSO_BUILD = 'ENTER-REPLY 2026-10-26';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
