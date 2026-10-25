@@ -149,8 +149,31 @@ function zzz_ci_clock_svg(h, m) {
     + zzz_ci_tip_label(minLabelAngle, minText)
     + '</svg>';
 }
+
+var zzzTime = { offset: 0, synced: 0, source: 'device', err: null };
+function zzz_now() { return new Date(Date.now() + zzzTime.offset); }
+function zzz_tz() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { return ''; } }
+function zzz_time_sync() {
+  if (typeof fetch !== 'function' || (typeof navigator !== 'undefined' && navigator.onLine === false)) return Promise.resolve(false);
+  var t0 = Date.now();
+  return fetch(location.pathname + '?t=' + t0, { method: 'HEAD', cache: 'no-store' }).then(function (r) {
+    var t1 = Date.now(), h = r.headers.get('date'), srv = h ? Date.parse(h) : NaN;
+    if (!r.ok || !isFinite(srv)) throw new Error(r.ok ? 'no Date header' : 'HTTP ' + r.status);
+    zzzTime.offset = (srv + 500) - (t0 + t1) / 2;
+    zzzTime.synced = t1; zzzTime.source = 'server'; zzzTime.err = null;
+    try { zzz_ci_paint(); } catch (e) {}
+    return true;
+  }).catch(function (e) { zzzTime.err = String((e && e.message) || e); return false; });
+}
+try {
+  zzz_time_sync();
+  setInterval(zzz_time_sync, 10 * 60 * 1000);
+  window.addEventListener('online', zzz_time_sync);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && Date.now() - zzzTime.synced > 60000) zzz_time_sync(); });
+} catch (e) {}
+
 function zzz_ci_paint() {
-  var d = (zzzCiExt.time instanceof Date) ? zzzCiExt.time : new Date();
+  var d = (zzzCiExt.time instanceof Date) ? zzzCiExt.time : zzz_now();
   var date = zzzCiExt.date || (d.getDate() + '. ' + (d.getMonth() + 1) + '.');
   var day = zzzCiExt.day || ZZZ_CI_DAYS_SK[d.getDay()];
   var dateLine = day + ', ' + date;
@@ -19165,7 +19188,7 @@ function zzz4f1_renumber_local_entry(oldId, newId) {
 }
 
 function zzz6f14_format_today() {
-  const d = new Date();
+  const d = zzz_now();
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
@@ -36208,10 +36231,10 @@ function zzz22_live_paint() {
   const L = zzz22Live;
   if (!L) return;
   if (!L.box.isConnected) { if (L.tick) clearInterval(L.tick); zzz22Live = null; return; }
-  const d = new Date();
+  const d = zzz_now();
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   L.timeEl.textContent = d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
-  L.timeSub.textContent = days[d.getDay()] + ' ' + d.getDate() + '. ' + (d.getMonth() + 1) + '. ' + d.getFullYear() + ' · ' + zzz22_tz_line(d) + ' · device clock';
+  L.timeSub.textContent = days[d.getDay()] + ' ' + d.getDate() + '. ' + (d.getMonth() + 1) + '. ' + d.getFullYear() + ' · ' + zzz22_tz_line(d) + (zzzTime.source === 'server' ? ' · server clock (synced ' + zzz22_hm(zzzTime.synced) + ')' : ' · device clock');
   const P = ZZZ_CI_PLACE;
   L.wxName.textContent = 'Weather · ' + P.name;
   const W = zzzCiExt.wx || zzzCiWx;
@@ -42585,7 +42608,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'B22-LIVE-DATA 2026-10-25';
+const VERSO_BUILD = 'TIME-SERVER-1 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
