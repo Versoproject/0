@@ -9780,6 +9780,26 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz1r17b-comm-window .zzz1cn-note-savedmark { font-size: calc(var(--zzz1cn-fs) * 0.72); }
   .zzz1r17b-comm-window .zzz1cn-reply-origin { font-size: calc(var(--zzz1cn-fs) * 0.85); }
   
+  
+  .zzz1r17b-comm-window .zzz1cn-thread {
+    display: flex;
+    flex-direction: column;
+    margin: -2px 0 6px 18px;
+    padding-left: 8px;
+    border-left: 3px solid rgba(212, 175, 55, 0.6);
+  }
+  .zzz1r17b-comm-window .zzz1cn-thread-more {
+    align-self: flex-start;
+    margin: 2px 0 4px;
+    padding: 2px 10px;
+    border: 1px dashed #D4AF37;
+    border-radius: 10px;
+    background: transparent;
+    color: #8a6d1f;
+    font-weight: 700;
+    font-size: calc(var(--zzz1cn-fs) * 0.72);
+  }
+  .zzz1r17b-comm-window .zzz1cn-reply-count.zzz1cn-reply-new { background: #D4AF37; color: #171717; }
   .zzz1r17b-comm-window .zzz1cn-reply-count {
     order: 40 !important;
     display: inline-block;
@@ -15606,7 +15626,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
   const cnFindHits = () => {
     const q = zzz10v1_normalize(cnFindIn.value.trim());
     if (!q) return [];
-    return Array.from(cnFeed.querySelectorAll(':scope > .zzz1cn-note')).filter(el => {
+    return Array.from(cnFeed.querySelectorAll('.zzz1cn-note[data-zzz1cn-id]')).filter(el => {
       const n = cnFeedNotes.find(x => String(x.id) === el.dataset.zzz1cnId);
       if (!n) return false;
       return zzz10v1_normalize(`${n.note_name || ''} ${n.note_text || ''} ${n.username || ''} ${zzz5w7_label_of(n)}`).includes(q);
@@ -15772,7 +15792,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
 
   const cnRefreshFeed = async () => {
 
-    const nlWasInFeed = cnOptionsBar.parentElement === cnFeed;
+    const nlWasInFeed = cnFeed.contains(cnOptionsBar);
     if (nlWasInFeed) cnPlaceOptions(0);
 
     const cnWasBottom = (cnFeed.scrollHeight - cnFeed.clientHeight - cnFeed.scrollTop) < 6;
@@ -15803,10 +15823,8 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     });
     const cnRows = notes.map((n, i) => ({ n, ord: i + 1 }));
     const cnOrdOf = new Map(cnRows.map(r => [r.n, r.ord]));
-    (cnView.sort ? zzz5w7_sort_time(notes, cnView) : notes).forEach((n) => {
+    const cnMakeRow = (n) => {
       const i = (cnOrdOf.get(n) || 1) - 1;
-      if (!cnPasses(n, i + 1)) return;
-      cnShown++;
       const el = zzz1cn_build_note(n.entry_key || cnEntryKey, n, cnRefreshFeed, i + 1);
 
       el.dataset.zzz1cnNum = String(Number(n.note_number) || 0);
@@ -15816,8 +15834,77 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
         el.classList.add('zzz1cn-note-selmode');
         if (cnSel.ids.has(n.id)) el.classList.add('zzz1cn-note-sel');
       }
-      cnFeed.appendChild(el);
-    });
+      return el;
+    };
+
+    const cnMe = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+    const cnThreadMode = zzz1cn_threads_on(cnMe) && !cnView.sort && !cnView.replyRoot;
+    if (!cnThreadMode) {
+      (cnView.sort ? zzz5w7_sort_time(notes, cnView) : notes).forEach((n) => {
+        const i = (cnOrdOf.get(n) || 1) - 1;
+        if (!cnPasses(n, i + 1)) return;
+        cnShown++;
+        cnFeed.appendChild(cnMakeRow(n));
+      });
+    } else {
+      const inList = new Set(notes.map(n => String(n.id)));
+      const rootOf = (n) => {
+        let cur = n, guard = 0;
+        while (cur && cur.reply_to_id != null && inList.has(String(cur.reply_to_id)) && guard++ < 200) cur = zzz1cnNoteMap.get(String(cur.reply_to_id));
+        return cur || n;
+      };
+      const tms = (n) => zzz1cn_time_of(n) || 0;
+      const kids = new Map();
+      const roots = [];
+      notes.forEach(n => {
+        const r = rootOf(n);
+        if (r === n) { roots.push(n); return; }
+        const k = String(r.id);
+        if (!kids.has(k)) kids.set(k, []);
+        kids.get(k).push(n);
+      });
+      kids.forEach(list => list.sort((a, b) => tms(a) - tms(b)));
+      const lastAct = (r) => { const l = kids.get(String(r.id)); return Math.max(tms(r), l && l.length ? tms(l[l.length - 1]) : 0); };
+      roots.sort((a, b) => lastAct(a) - lastAct(b));
+      const seen = zzz1cn_thread_seen_map();
+      roots.forEach((r) => {
+        const i = (cnOrdOf.get(r) || 1) - 1;
+        const list = kids.get(String(r.id)) || [];
+        const passRoot = cnPasses(r, i + 1);
+        const passKids = list.filter(n => cnPasses(n, (cnOrdOf.get(n) || 1)));
+        if (!passRoot && !passKids.length) return;
+        cnShown++;
+        const el = cnMakeRow(r);
+        const rid = String(r.id);
+        const open = zzz1cnThreadOpen.has(rid);
+
+        if (seen[rid] == null && list.length) { seen[rid] = lastAct(r); zzz1cn_thread_seen_set(rid, seen[rid]); }
+        const fresh = list.filter(n => tms(n) > (seen[rid] || 0) && zzz10v1_normalize(n.username || '') !== cnMe).length;
+        const chip = el.querySelector('.zzz1cn-reply-count');
+        if (chip && list.length) {
+          chip.textContent = `${open ? '\u25be' : '\u25b8'} ${list.length} ${list.length === 1 ? 'reply' : 'replies'}${fresh && !open ? ` \u00b7 ${fresh} new` : ''}`;
+          chip.classList.toggle('zzz1cn-reply-new', !!fresh && !open);
+          chip.title = open ? 'Tap = fold the replies' : 'Tap = show the replies (newest 3) - hold = all';
+        }
+        cnFeed.appendChild(el);
+        if (!open || !passKids.length) return;
+        const box = document.createElement('div');
+        box.className = 'zzz1cn-thread';
+        box.dataset.zzz1cnThread = rid;
+        const all = zzz1cnThreadAll.has(rid);
+        const showList = all ? passKids : passKids.slice(-3);
+        if (showList.length < passKids.length) {
+          const more = document.createElement('button');
+          more.type = 'button';
+          more.className = 'zzz1cn-thread-more';
+          more.textContent = `more\u2026 (${passKids.length - showList.length} older)`;
+          more.addEventListener('click', (e) => { e.stopPropagation(); zzz1cnThreadAll.add(rid); cnRefreshFeed(); });
+          box.appendChild(more);
+        }
+        showList.forEach(n => box.appendChild(cnMakeRow(n)));
+        cnFeed.appendChild(box);
+      });
+    }
     if (!cnShown) {
       const none = document.createElement('div');
       none.className = 'zzz1cn-empty';
@@ -16200,17 +16287,17 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     let host = null;
     if (n > 0) {
 
-      const same = Array.from(cnFeed.querySelectorAll(':scope > .zzz1cn-note[data-zzz1cn-num]'))
+      const same = Array.from(cnFeed.querySelectorAll('.zzz1cn-note[data-zzz1cn-id][data-zzz1cn-num]'))
         .filter(el => Number(el.dataset.zzz1cnNum) === n);
       host = same.length ? same[same.length - 1] : null;
 
       const anc = cnOptionsAnchor
-        ? cnFeed.querySelector(`:scope > .zzz1cn-note[data-zzz1cn-id="${String(cnOptionsAnchor).replace(/"/g, '')}"]`) : null;
+        ? cnFeed.querySelector(`.zzz1cn-note[data-zzz1cn-id="${String(cnOptionsAnchor).replace(/"/g, '')}"]`) : null;
       if (anc && Number(anc.dataset.zzz1cnNum) === n) host = anc;
     }
     const home = cnOptionsHome();
     const want = host ? host.nextSibling : home;
-    const parent = host ? cnFeed : cnRowMain;
+    const parent = host ? host.parentNode : cnRowMain;
 
     cnOptionsBar.classList.toggle('zzz1cn-nl-docked', !host);
     if (cnOptionsBar.parentElement === parent && cnOptionsBar.nextSibling === want) return;
@@ -16218,7 +16305,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     const act = document.activeElement;
     const keep = cnOptionsBar.contains(act) ? act : null;
     const selS = keep && keep.selectionStart, selE = keep && keep.selectionEnd;
-    if (host) cnFeed.insertBefore(cnOptionsBar, host.nextSibling);
+    if (host) host.parentNode.insertBefore(cnOptionsBar, host.nextSibling);
     else cnRowMain.insertBefore(cnOptionsBar, home);
     if (keep && keep.isConnected) {
       keep.focus();
@@ -16361,6 +16448,21 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     { ms: 3000, fn: () => zzz1cn_open_list(cnEntryKey, cnSave) }
   ]);
 
+  cnFeed.addEventListener('zzz1cn-reply-chip', (e) => {
+    const d = (e && e.detail) || {};
+    const id = String(d.id || '');
+    if (!id) return;
+    const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+    if (zzz1cn_threads_on(me) && !cnView.sort && !cnView.replyRoot) {
+      if (d.all) { zzz1cnThreadOpen.add(id); zzz1cnThreadAll.add(id); }
+      else if (zzz1cnThreadOpen.has(id)) { zzz1cnThreadOpen.delete(id); zzz1cnThreadAll.delete(id); }
+      else zzz1cnThreadOpen.add(id);
+      if (zzz1cnThreadOpen.has(id)) zzz1cn_thread_seen_mark(id);
+      cnRefreshFeed();
+      return;
+    }
+    e.target.dispatchEvent(new CustomEvent('zzz1cn-num-hold', { bubbles: true, detail: d }));
+  });
   cnFeed.addEventListener('zzz1cn-name-tap', (e) => {
     const d = (e && e.detail) || {};
     if (!(parseInt(d.num, 10) > 0)) return;
@@ -34019,6 +34121,19 @@ let zzz1cnReadingNote = null;
 const zzz1cnExpanded = new Set();
 
 const zzz1cnNoteMap = new Map();
+
+const ZZZ1CN_THREADS_TEST_USERS = ['verso1'];
+function zzz1cn_threads_on(meN) { return ZZZ1CN_THREADS_TEST_USERS.indexOf(String(meN || '')) >= 0; }
+const zzz1cnThreadOpen = new Set();
+const zzz1cnThreadAll = new Set();
+
+function zzz1cn_thread_seen_map() { try { return JSON.parse(localStorage.getItem('verso_thread_seen_v1') || '{}') || {}; } catch (e) { return {}; } }
+function zzz1cn_thread_seen_set(id, ts) {
+  try { const m = zzz1cn_thread_seen_map(); m[String(id)] = ts; localStorage.setItem('verso_thread_seen_v1', JSON.stringify(m)); } catch (e) {}
+}
+function zzz1cn_thread_seen_mark(id) {
+  try { const m = zzz1cn_thread_seen_map(); m[String(id)] = Date.now(); localStorage.setItem('verso_thread_seen_v1', JSON.stringify(m)); } catch (e) {}
+}
 const zzz1cnNoteFetching = new Map();
 function zzz1cn_note_by_id(id) {
   const k = String(id || '');
@@ -34063,8 +34178,8 @@ function zzz1cn_reply_link_attach(wrap, note) {
   if (known) paint(known); else zzz1cn_note_by_id(note.reply_to_id).then(paint);
   q.addEventListener('click', (e) => {
     e.stopPropagation();
-    const feed = wrap.parentElement;
-    const target = feed && feed.querySelector(`:scope > .zzz1cn-note[data-zzz1cn-id="${String(note.reply_to_id).replace(/"/g, '')}"]`);
+    const feed = wrap.closest('.zzz1cn-feed') || wrap.parentElement;
+    const target = feed && feed.querySelector(`.zzz1cn-note[data-zzz1cn-id="${String(note.reply_to_id).replace(/"/g, '')}"]`);
     if (!target) { zzz6f2_show_toast('The original message is not in this chat view (filter or older messages).', 'warn'); return; }
     target.classList.add('zzz1cn-row-full'); zzz1cnExpanded.add(String(note.reply_to_id));
     try { target.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) { target.scrollIntoView(); }
@@ -34240,11 +34355,13 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
     rc.className = 'zzz1cn-reply-count';
     rc.textContent = `${note.__replyCount} ${note.__replyCount === 1 ? 'reply' : 'replies'}`;
     rc.title = 'Tap = show only this message with all its replies (tap again = whole chat)';
+    const rcDetail = () => ({ num: String(Number(note.note_number) || 0), id: String(note.id || ''), label: zzz5w7_label_of(note) });
     rc.addEventListener('click', (e) => {
       e.stopPropagation();
-      rc.dispatchEvent(new CustomEvent('zzz1cn-num-hold', { bubbles: true, detail: {
-        num: String(Number(note.note_number) || 0), id: String(note.id || ''), label: zzz5w7_label_of(note) } }));
+      rc.dispatchEvent(new CustomEvent('zzz1cn-reply-chip', { bubbles: true, detail: rcDetail() }));
     });
+
+    zzz5w7_bind_tiered_hold(rc, [{ ms: 900, fn: () => rc.dispatchEvent(new CustomEvent('zzz1cn-reply-chip', { bubbles: true, detail: Object.assign(rcDetail(), { all: true }) })) }]);
     headId.appendChild(rc);
   }
 
@@ -42154,7 +42271,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'CHAIN-CLOCK-6 2026-10-25';
+const VERSO_BUILD = 'CHAT-THREADS-TEST 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
