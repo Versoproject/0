@@ -75,7 +75,11 @@
 })();
 
 var ZZZ_CI_PLACE = { name: 'Bratislava', lat: 48.1486, lon: 17.1077 };
+
+var ZZZ_CI_PLACE_DEFAULT = ZZZ_CI_PLACE;
+try { var _zp = JSON.parse(localStorage.getItem('zzz_ci_place') || 'null'); if (_zp && _zp.name && typeof _zp.lat === 'number' && typeof _zp.lon === 'number') ZZZ_CI_PLACE = { name: String(_zp.name), lat: _zp.lat, lon: _zp.lon, area: _zp.area ? String(_zp.area) : '' }; } catch (e) {}
 var zzzCiWx = null;
+var zzzCiWxErr = null;
 function zzz_ci_icon(code, isDay) {
   var sun = '<circle cx="22" cy="16" r="8" fill="#f0b429"/>' + (isDay === 0 ? '' : '<g stroke="#f0b429" stroke-width="2.2" stroke-linecap="round"><path d="M22 3v3M22 26v3M9 16h3M32 16h3M13 7l2 2M29 23l2 2M31 7l-2 2M13 25l2-2"/></g>');
   var moon = '<path d="M26 8a9 9 0 1 0 6 13 7 7 0 0 1-6-13z" fill="#cfd6e0"/>';
@@ -170,19 +174,29 @@ function zzz_ci_paint() {
     if (w && w._zzzWx !== wx) { w.innerHTML = wx; w._zzzWx = wx; }
     if (w && w.title !== title) w.title = title;
   }
+  try { if (typeof zzz22_live_paint === 'function') zzz22_live_paint(); } catch (e) {}
 }
+
 function zzz_ci_weather() {
   try {
-    var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + ZZZ_CI_PLACE.lat + '&longitude=' + ZZZ_CI_PLACE.lon + '&current=temperature_2m,weather_code,is_day&timezone=auto';
-    fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
-      if (!j || !j.current || zzzCiExt.wx) return;
-      zzzCiWx = { code: j.current.weather_code, day: j.current.is_day, temp: j.current.temperature_2m, at: Date.now() };
+    var pl = ZZZ_CI_PLACE;
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + pl.lat + '&longitude=' + pl.lon + '&current=temperature_2m,weather_code,is_day&timezone=auto';
+    fetch(url, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (j) {
+      if (pl !== ZZZ_CI_PLACE) return;
+      if (!j || !j.current) throw new Error('no current data in the answer');
+      zzzCiWxErr = null;
+      if (zzzCiExt.wx) { zzz_ci_paint(); return; }
+      zzzCiWx = { code: j.current.weather_code, day: j.current.is_day, temp: j.current.temperature_2m, at: Date.now(), place: pl.name };
       try { localStorage.setItem('zzz_ci_wx', JSON.stringify(zzzCiWx)); } catch (e) {}
       zzz_ci_paint();
-    }).catch(function () {});
+    }).catch(function (e) {
+      if (pl !== ZZZ_CI_PLACE) return;
+      zzzCiWxErr = { detail: String((e && e.message) || e || 'unknown'), at: Date.now() };
+      zzz_ci_paint();
+    });
   } catch (e) {}
 }
-try { var _w = JSON.parse(localStorage.getItem('zzz_ci_wx') || 'null'); if (_w && Date.now() - _w.at < 6 * 3600 * 1000) zzzCiWx = _w; } catch (e) {}
+try { var _w = JSON.parse(localStorage.getItem('zzz_ci_wx') || 'null'); if (_w && Date.now() - _w.at < 6 * 3600 * 1000 && (_w.place || ZZZ_CI_PLACE_DEFAULT.name) === ZZZ_CI_PLACE.name) zzzCiWx = _w; } catch (e) {}
 document.addEventListener('DOMContentLoaded', function () { zzz_ci_paint(); });
 setInterval(zzz_ci_paint, 15000);
 zzz_ci_paint();
@@ -36157,6 +36171,170 @@ function zzz14b2_render_language_settings(host) {
   host.appendChild(box);
 }
 
+const ZZZ22_GEO_URL = 'https://geocoding-api.open-meteo.com/v1/search';
+let zzz22Live = null;
+function zzz22_wx_text(code) {
+  const c = Number(code);
+  if (c === 0) return 'Clear';
+  if (c === 1 || c === 2) return 'Partly cloudy';
+  if (c === 3) return 'Overcast';
+  if (c === 45 || c === 48) return 'Fog';
+  if (c >= 51 && c <= 57) return 'Drizzle';
+  if ((c >= 61 && c <= 67) || (c >= 80 && c <= 82)) return 'Rain';
+  if ((c >= 71 && c <= 77) || c === 85 || c === 86) return 'Snow';
+  if (c >= 95) return 'Thunderstorm';
+  return 'Weather code ' + c;
+}
+function zzz22_hm(t) { const d = new Date(t); return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); }
+function zzz22_tz_line(d) {
+  let tz = '';
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+  const off = -d.getTimezoneOffset(), sign = off >= 0 ? '+' : '-', a = Math.abs(off);
+  const utc = 'UTC' + sign + Math.floor(a / 60) + (a % 60 ? ':' + String(a % 60).padStart(2, '0') : '');
+  return (tz ? tz + ' (' + utc + ')' : utc);
+}
+function zzz22_set_place(p) {
+  const foreign = zzz16_mode() === 'foreign';
+  if (foreign) return false;
+  ZZZ_CI_PLACE = { name: p.name, lat: p.lat, lon: p.lon, area: p.area || '' };
+  zzzCiWx = null; zzzCiWxErr = null;
+  try { localStorage.setItem('zzz_ci_place', JSON.stringify(ZZZ_CI_PLACE)); } catch (e) {}
+  try { localStorage.removeItem('zzz_ci_wx'); } catch (e) {}
+  zzz_ci_weather();
+  zzz_ci_paint();
+  return true;
+}
+function zzz22_live_paint() {
+  const L = zzz22Live;
+  if (!L) return;
+  if (!L.box.isConnected) { if (L.tick) clearInterval(L.tick); zzz22Live = null; return; }
+  const d = new Date();
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  L.timeEl.textContent = d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
+  L.timeSub.textContent = days[d.getDay()] + ' ' + d.getDate() + '. ' + (d.getMonth() + 1) + '. ' + d.getFullYear() + ' · ' + zzz22_tz_line(d) + ' · device clock';
+  const P = ZZZ_CI_PLACE;
+  L.wxName.textContent = 'Weather · ' + P.name;
+  const W = zzzCiExt.wx || zzzCiWx;
+  const icon = W ? zzz_ci_icon(W.code, W.day) : '';
+  if (L.wxIcon._zzzWx !== icon) { L.wxIcon.innerHTML = icon; L.wxIcon._zzzWx = icon; }
+  let sub;
+  if (W) {
+    sub = (typeof W.temp === 'number' ? Math.round(W.temp) + ' °C · ' : '') + zzz22_wx_text(W.code) + (W.at ? ' · updated ' + zzz22_hm(W.at) : '');
+  } else if (zzzCiWxErr) {
+    sub = 'No weather yet.';
+  } else sub = 'Loading…';
+  if (L.wxSub.textContent !== sub) L.wxSub.textContent = sub;
+  const err = zzzCiWxErr
+    ? 'The weather could not be loaded - check the internet connection and tap REFRESH.' + (W && W.at ? ' Showing the last value from ' + zzz22_hm(W.at) + '.' : '') + ' (Open-Meteo: ' + zzzCiWxErr.detail + ', ' + zzz22_hm(zzzCiWxErr.at) + ')'
+    : '';
+  if (L.wxErr.textContent !== err) { L.wxErr.textContent = err; L.wxErr.style.display = err ? '' : 'none'; }
+  const D = ZZZ_CI_PLACE_DEFAULT;
+  const isDefault = P.name === D.name && P.lat === D.lat && P.lon === D.lon;
+  const placeLine = P.name + (P.area ? ' · ' + P.area : '') + (isDefault ? ' (default)' : '');
+  if (L.placeNow.textContent !== 'Now: ' + placeLine) L.placeNow.textContent = 'Now: ' + placeLine;
+}
+function zzz22_render_live_data(host) {
+  const foreign = zzz16_mode() === 'foreign';
+  if (!document.getElementById('zzz22Css')) {
+    const st = document.createElement('style');
+    st.id = 'zzz22Css';
+    st.textContent = `
+      .zzz22-time{font-size:22px;font-weight:700;letter-spacing:.03em;font-variant-numeric:tabular-nums;white-space:nowrap}
+      .zzz22-wxicon{width:40px;height:40px;flex:0 0 40px}
+      .zzz22-wxicon svg{width:40px;height:40px;display:block}
+      .zzz22-right{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+      .zzz22-place{display:flex;gap:8px;padding:7px 0 2px}
+      .zzz22-place input{flex:1 1 auto;min-width:0;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.5);background:#111;color:#fff;font-size:15px}
+      .zzz22-results{display:flex;flex-direction:column;gap:6px;padding-top:6px}
+      .zzz22-res{text-align:left;padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.35);background:#1b1b1b;color:#fff;font-size:14px}
+      .zzz22-res small{display:block;opacity:.7;font-size:12px}
+      .zzz22-attr{margin-top:8px;font-size:11px;opacity:.7}
+      .zzz22-attr a{color:#c9a44f}`;
+    document.head.appendChild(st);
+  }
+  if (zzz22Live && zzz22Live.tick) clearInterval(zzz22Live.tick);
+  const box = document.createElement('div');
+  box.className = 'zzz16-box zzz22-box';
+  const h = document.createElement('h3'); h.textContent = 'LIVE DATA'; box.appendChild(h);
+
+  const tr = document.createElement('div'); tr.className = 'zzz16-row';
+  const tl = document.createElement('div'); tl.textContent = 'Time';
+  const timeSub = document.createElement('small'); tl.appendChild(timeSub);
+  const timeEl = document.createElement('div'); timeEl.className = 'zzz22-time';
+  tr.appendChild(tl); tr.appendChild(timeEl); box.appendChild(tr);
+
+  const wr = document.createElement('div'); wr.className = 'zzz16-row';
+  const wl = document.createElement('div');
+  const wxName = document.createElement('span'); wl.appendChild(wxName);
+  const wxSub = document.createElement('small'); wl.appendChild(wxSub);
+  const right = document.createElement('div'); right.className = 'zzz22-right';
+  const wxIcon = document.createElement('div'); wxIcon.className = 'zzz22-wxicon';
+  const rb = document.createElement('button'); rb.type = 'button'; rb.className = 'zzz16-btn'; rb.textContent = 'REFRESH';
+  rb.addEventListener('click', () => { zzzCiWxErr = null; zzz22_live_paint(); zzz_ci_weather(); });
+  right.appendChild(wxIcon); right.appendChild(rb);
+  wr.appendChild(wl); wr.appendChild(right); box.appendChild(wr);
+  const wxErr = document.createElement('div'); wxErr.className = 'zzz16-msg warn'; wxErr.style.display = 'none'; box.appendChild(wxErr);
+
+  const pr = document.createElement('div'); pr.className = 'zzz16-row'; pr.style.display = 'block';
+  const pl = document.createElement('div'); pl.textContent = 'Place';
+  const placeNow = document.createElement('small'); pl.appendChild(placeNow);
+  pr.appendChild(pl);
+  const form = document.createElement('div'); form.className = 'zzz22-place';
+  const inp = document.createElement('input'); inp.type = 'text'; inp.placeholder = 'City, e.g. Košice'; inp.maxLength = 80;
+  inp.autocomplete = 'off'; inp.setAttribute('aria-label', 'City for the weather');
+  const sb = document.createElement('button'); sb.type = 'button'; sb.className = 'zzz16-btn'; sb.textContent = 'SEARCH';
+  form.appendChild(inp); form.appendChild(sb); pr.appendChild(form);
+  const results = document.createElement('div'); results.className = 'zzz22-results'; pr.appendChild(results);
+  const pmsg = document.createElement('div'); pmsg.className = 'zzz16-msg'; pmsg.style.display = 'none'; pr.appendChild(pmsg);
+  box.appendChild(pr);
+  const say = (txt, warn) => { pmsg.textContent = txt || ''; pmsg.className = 'zzz16-msg' + (warn ? ' warn' : ''); pmsg.style.display = txt ? '' : 'none'; };
+  if (foreign) {
+    inp.disabled = true; sb.disabled = true;
+    say('FOREIGN device: the place cannot be changed or saved here, so nothing about you stays on this device. The weather shows ' + ZZZ_CI_PLACE.name + '.', true);
+  }
+  let searching = false;
+  const search = () => {
+    if (foreign || searching) return;
+    const q = (inp.value || '').trim();
+    results.innerHTML = '';
+    if (q.length < 2) { say('Type at least 2 letters of the city.', true); return; }
+    searching = true; sb.disabled = true; say('Searching…');
+    const url = ZZZ22_GEO_URL + '?name=' + encodeURIComponent(q) + '&count=6&language=sk&format=json';
+    fetch(url, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(j => {
+      const list = (j && Array.isArray(j.results)) ? j.results.filter(x => typeof x.latitude === 'number' && typeof x.longitude === 'number') : [];
+      if (!list.length) { say('No place found for "' + q + '". Check the spelling or try a bigger town nearby.', true); return; }
+      say('Tap the right place:');
+      list.forEach(x => {
+        const area = [x.admin1, x.country].filter(Boolean).join(', ');
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz22-res';
+        b.textContent = x.name;
+        const s = document.createElement('small'); s.textContent = area || (x.latitude.toFixed(2) + ', ' + x.longitude.toFixed(2)); b.appendChild(s);
+        b.addEventListener('click', () => {
+          if (zzz22_set_place({ name: String(x.name), lat: x.latitude, lon: x.longitude, area: area })) {
+            results.innerHTML = ''; inp.value = '';
+            say('Saved on this device: ' + x.name + '.');
+          }
+        });
+        results.appendChild(b);
+      });
+    }).catch(e => {
+      say('The city search failed - check the internet connection and try again. (Open-Meteo geocoding: ' + String((e && e.message) || e) + ')', true);
+    }).finally(() => { searching = false; sb.disabled = false; });
+  };
+  sb.addEventListener('click', search);
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } });
+
+  const attr = document.createElement('div'); attr.className = 'zzz22-attr';
+  attr.appendChild(document.createTextNode('Weather data by '));
+  const a = document.createElement('a'); a.href = 'https://open-meteo.com/'; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = 'Open-Meteo.com';
+  attr.appendChild(a); box.appendChild(attr);
+
+  host.insertBefore(box, host.firstChild);
+  zzz22Live = { box, timeEl, timeSub, wxName, wxSub, wxIcon, wxErr, placeNow, tick: setInterval(() => zzz22_live_paint(), 1000) };
+  zzz22_live_paint();
+  if (!zzzCiWx && !zzzCiExt.wx) zzz_ci_weather();
+}
+
 function zzz16_render_settings(host) {
   if (!document.getElementById('zzz16Css')) {
     const st = document.createElement('style');
@@ -41778,6 +41956,7 @@ function open_settings_workspace() {
   } else if (zzz10_0ActiveTab === 'settings' && typeof zzz16_render_settings === 'function') {
     zzz16_render_settings(tabContent);
     if (typeof zzz14b2_render_language_settings === 'function') zzz14b2_render_language_settings(tabContent);
+    if (typeof zzz22_render_live_data === 'function') zzz22_render_live_data(tabContent);
 
     try {
       const inApp2 = zzz14b17_in_app();
@@ -42406,7 +42585,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'W8-CHECKED 2026-10-25';
+const VERSO_BUILD = 'B22-LIVE-DATA 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
