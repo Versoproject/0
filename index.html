@@ -15934,6 +15934,9 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
 
     const cnMe = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
     const cnThreadMode = zzz1cn_threads_on(cnMe) && !cnView.sort && !cnView.replyRoot;
+
+    const cnFocus = String(cnView.threadFocus || '');
+    const cnNameMode = !!String(cnView.name || '').trim();
     if (!cnThreadMode) {
       (cnView.sort ? zzz5w7_sort_time(notes, cnView) : notes).forEach((n) => {
         const i = (cnOrdOf.get(n) || 1) - 1;
@@ -15965,13 +15968,15 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
       roots.forEach((r) => {
         const i = (cnOrdOf.get(r) || 1) - 1;
         const list = kids.get(String(r.id)) || [];
-        const passRoot = cnPasses(r, i + 1);
-        const passKids = list.filter(n => cnPasses(n, (cnOrdOf.get(n) || 1)));
+        const rid = String(r.id);
+        if (cnFocus && rid !== cnFocus) return;
+        const passRoot = cnFocus ? true : cnPasses(r, i + 1);
+        let passKids = cnFocus ? list : list.filter(n => cnPasses(n, (cnOrdOf.get(n) || 1)));
         if (!passRoot && !passKids.length) return;
+        if (cnNameMode && !cnFocus) passKids = list;
         cnShown++;
         const el = cnMakeRow(r);
-        const rid = String(r.id);
-        const open = zzz1cnThreadOpen.has(rid);
+        const open = !!cnFocus || (cnNameMode && passKids.length > 0) || zzz1cnThreadOpen.has(rid);
 
         if (seen[rid] == null && list.length) { seen[rid] = lastAct(r); zzz1cn_thread_seen_set(rid, seen[rid]); }
         const fresh = list.filter(n => tms(n) > (seen[rid] || 0) && zzz10v1_normalize(n.username || '') !== cnMe).length;
@@ -15979,14 +15984,14 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
         if (chip && list.length) {
           chip.textContent = `${open ? '\u25be' : '\u25b8'} ${list.length} ${list.length === 1 ? 'reply' : 'replies'}${fresh && !open ? ` \u00b7 ${fresh} new` : ''}`;
           chip.classList.toggle('zzz1cn-reply-new', !!fresh && !open);
-          chip.title = open ? 'Tap = fold the replies' : 'Tap = show the replies (newest 3) - hold = all';
+          chip.title = cnFocus ? 'Tap = fold the thread and go back to the previous view' : 'Tap = open this thread with all its replies (only this thread is shown)';
         }
         cnFeed.appendChild(el);
         if (!open || !passKids.length) return;
         const box = document.createElement('div');
         box.className = 'zzz1cn-thread';
         box.dataset.zzz1cnThread = rid;
-        const all = zzz1cnThreadAll.has(rid);
+        const all = !!cnFocus || cnNameMode || zzz1cnThreadAll.has(rid);
         const showList = all ? passKids : passKids.slice(-3);
         if (showList.length < passKids.length) {
           const more = document.createElement('button');
@@ -16076,6 +16081,9 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
   cnTarget.title = 'Reply to - click a number in the chat to copy it here / × = new chat #';
 
   const cnTargetName = document.createElement('input');
+
+  cnTarget.setAttribute('data-zzz-nodraft', '1');
+  cnTargetName.setAttribute('data-zzz-nodraft', '1');
   cnTargetName.type = 'text';
   cnTargetName.className = 'zzz1cn-target-name';
   cnTargetName.maxLength = 60;
@@ -16551,14 +16559,33 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     if (!id) return;
     const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
     if (zzz1cn_threads_on(me) && !cnView.sort && !cnView.replyRoot) {
-      if (d.all) { zzz1cnThreadOpen.add(id); zzz1cnThreadAll.add(id); }
-      else if (zzz1cnThreadOpen.has(id)) { zzz1cnThreadOpen.delete(id); zzz1cnThreadAll.delete(id); }
-      else zzz1cnThreadOpen.add(id);
-      if (zzz1cnThreadOpen.has(id)) zzz1cn_thread_seen_mark(id);
+
+      if (String(cnView.threadFocus || '') === id) {
+        cnView.threadFocus = '';
+        zzz1cnThreadOpen.delete(id); zzz1cnThreadAll.delete(id);
+        zzz6f2_show_toast(cnView.name ? `Back to the chat filtered by "${cnView.name}".` : 'Back to the whole chat.');
+      } else {
+        cnView.threadFocus = id;
+        zzz1cn_thread_seen_mark(id);
+        zzz6f2_show_toast(`Thread #${d.label || d.num} with all its replies - tap its chip again to go back.`);
+      }
       cnRefreshFeed();
       return;
     }
     e.target.dispatchEvent(new CustomEvent('zzz1cn-num-hold', { bubbles: true, detail: d }));
+  });
+
+  cnFeed.addEventListener('zzz1cn-focus-note', (e) => {
+    const id = String((e && e.detail && e.detail.id) || '');
+    const n = id && (cnFeedNotes || []).find(x => String(x.id) === id);
+    if (!n || n.reply_to_id == null || cnView.sort || cnView.replyRoot) return;
+    const inList = new Set((cnFeedNotes || []).map(x => String(x.id)));
+    let cur = n, guard = 0;
+    while (cur && cur.reply_to_id != null && inList.has(String(cur.reply_to_id)) && guard++ < 200) cur = zzz1cnNoteMap.get(String(cur.reply_to_id)) || null;
+    if (!cur || cur === n || String(cnView.threadFocus || '') === String(cur.id)) return;
+    cnView.threadFocus = String(cur.id);
+    zzz1cn_thread_seen_mark(String(cur.id));
+    cnRefreshFeed();
   });
   cnFeed.addEventListener('zzz1cn-name-tap', (e) => {
     const d = (e && e.detail) || {};
@@ -16575,6 +16602,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     const d = (e && e.detail) || {};
     const id = String(d.id || '');
     if (!id) return;
+    cnView.threadFocus = '';
     if (String(cnView.replyRoot || '') === id) {
       cnView.replyRoot = '';
       zzz6f2_show_toast('Reply filter off - the whole chat again.');
@@ -26494,6 +26522,8 @@ function zzz3d_focus_chat_msg(noteId, chatKey) {
       if (zzz3d_miss_has(noteId)) { zzz3d_miss_set(noteId, false); try { zzz5w8_render(); } catch (e) {} }
       return;
     }
+
+    document.querySelectorAll('.zzz1cn-feed').forEach(f => { try { f.dispatchEvent(new CustomEvent('zzz1cn-focus-note', { detail: { id: String(noteId) } })); } catch (e) {} });
     if (Date.now() - t0 < ZZZ3D_FOCUS_WAIT_MS) { setTimeout(look, 200); return; }
     zzz3d_focus_missed(noteId, chatKey, Date.now() - t0);
   };
@@ -34388,8 +34418,7 @@ const zzz1cnExpanded = new Set();
 
 const zzz1cnNoteMap = new Map();
 
-const ZZZ1CN_THREADS_TEST_USERS = ['verso1'];
-function zzz1cn_threads_on(meN) { return ZZZ1CN_THREADS_TEST_USERS.indexOf(String(meN || '')) >= 0; }
+function zzz1cn_threads_on() { return true; }
 const zzz1cnThreadOpen = new Set();
 const zzz1cnThreadAll = new Set();
 
@@ -42728,7 +42757,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'CHAT-SAVE-PRIV-ONE 2026-10-25';
+const VERSO_BUILD = 'CHAT-THREADS-ALL 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
