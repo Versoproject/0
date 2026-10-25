@@ -3519,7 +3519,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz14pt-tab { flex: 1 1 0; background: #1c1c1c; color: #aaa; border: 1px solid #555; border-radius: 8px; font-size: 10px; font-weight: 800; padding: 3px 4px; }
   .zzz14pt-tab.is-on { color: #111; background: #C0C0C0; border-color: #C0C0C0; }
   .zzz1cn-setup.is-pt { width: min(360px, calc(100% - 16px)); }
-  .zzz1cn-setup.is-pt > :not(.zzz1cn-setup-head):not(.zzz14pt-tabs):not(.zzz14pt-panel) { display: none !important; }
+  
+  .zzz1cn-setup.is-noacc > :not(.zzz1cn-setup-head):not(.zzz14pt-tabs):not(.zzz14pt-panel) { display: none !important; }
+  
+  .zzz14pt-foot { position: sticky; bottom: 0; z-index: 2; background: #1b1b1b; padding: 5px 0; }
+  .zzz14pt-pick { display: inline-flex; align-items: center; gap: 3px; flex: 1 1 120px; min-width: 0; }
+  .zzz14pt-pick .zzz14pt-in { flex: 1 1 auto; }
   .zzz14pt-panel { max-height: 60vh; overflow-y: auto; font-size: 11px; color: #ddd; }
   .zzz14pt-note { color: #9aa0a6; font-size: 10px; margin: 2px 0 6px; }
   .zzz14pt-type { border: 1px solid #3a3a3a; border-radius: 8px; padding: 5px; margin-bottom: 6px; }
@@ -3538,7 +3543,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz14pt-btn { background: #1e1e1e; color: #ddd; border: 1px solid #555; border-radius: 6px; font-size: 10px; padding: 2px 6px; }
   .zzz14pt-btn.is-x { color: #e8705f; border-color: #c0564a; }
   .zzz14pt-btn.is-add { color: #D4AF37; border-color: #D4AF37; }
-  .zzz14pt-btn.is-save { margin-left: auto; background: #C0C0C0; color: #111; font-weight: 800; }
+  .zzz14pt-btn.is-save { margin-left: 6px; background: #C0C0C0; color: #111; font-weight: 800; }
   .zzz14pt-btn.is-save.is-dirty { background: #D4AF37; }
   .zzz14pt-btn:disabled { opacity: .45; }
   
@@ -3696,6 +3701,14 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   
   .zzz1cn-setup-lvl.is-inherited { opacity: 0.6; cursor: default; }
   .zzz1cn-setup-grid .zzz1cn-setup-sep { margin: 6px 0 4px 0; }
+  
+  .zzz1cn-setup-grid .zzz1cn-setup-uhead { padding-right: 20px; gap: 5px; }
+  .zzz1cn-setup-grid .zzz1cn-setup-uhead span { width: 22px; flex: 0 0 22px; }
+  .zzz1cn-setup-grid .zzz1cn-setup-lvls { gap: 5px; flex: 0 0 auto; }
+  .zzz1cn-setup-grid .zzz1cn-setup-lvl { width: 22px; flex: 0 0 22px; }
+  .zzz1cn-setup-grid .zzz1cn-setup-lvl input { width: 16px; height: 16px; }
+  .zzz1cn-setup-grid .zzz1cn-setup-grow { position: relative; padding-right: 20px; }
+  .zzz1cn-setup-grid .zzz1cn-setup-grow > .zzz1cn-setup-chipx { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 18px; }
   
   .zzz1cn-setup-radd { position: relative; flex: 1 1 auto; min-width: 0; }
   .zzz1cn-setup-rinput {
@@ -14158,13 +14171,84 @@ function zzz14pt_setup_tabs(win, api) {
   const panel = document.createElement('div');
   panel.className = 'zzz14pt-panel';
   panel.setAttribute('data-zzz-nodraft', '1');
-  const show = (pt) => {
-    win.classList.toggle('is-pt', pt);
-    tA.classList.toggle('is-on', !pt); tP.classList.toggle('is-on', pt);
-    if (pt) { if (!panel.isConnected) win.appendChild(panel); zzz14pt_render(panel, api); }
+
+  let accOn = true, ptOn = false;
+  const apply = (renderPt) => {
+    win.classList.toggle('is-noacc', !accOn);
+    win.classList.toggle('is-pt', ptOn);
+    tA.classList.toggle('is-on', accOn); tP.classList.toggle('is-on', ptOn);
+    if (!ptOn) { if (panel.isConnected) panel.remove(); return; }
+    if (!panel.isConnected) win.appendChild(panel);
+    if (renderPt) zzz14pt_render(panel, api);
   };
-  tA.addEventListener('click', (e) => { e.stopPropagation(); show(false); });
-  tP.addEventListener('click', (e) => { e.stopPropagation(); show(true); });
+  tA.addEventListener('click', (e) => { e.stopPropagation(); accOn = !accOn; apply(false); });
+  tP.addEventListener('click', (e) => { e.stopPropagation(); ptOn = !ptOn; apply(ptOn); });
+}
+
+function zzz14pt_owner_of(key) {
+  const row = (typeof zzz6f29_entry_row_of === 'function') ? zzz6f29_entry_row_of(key) : null;
+  if (!row) return '';
+  const f = zzz_parse_fields_json(row) || {};
+  return String(f.r4 || row.username || '').replace(/^[@&]/, '').trim();
+}
+function zzz14pt_delegates_of(key) {
+  const rows = (typeof zzz1cn_cu_rows === 'function' && zzz1cn_cu_rows(key)) || {};
+  return Object.keys(rows).filter(k => rows[k] && rows[k].is_delegate);
+}
+function zzz14pt_people_of(key) {
+  const out = [];
+  const add = (m) => { const nm = String(m || '').replace(/^[@&]/, '').trim(); const n = zzz10v1_normalize(nm);
+    if (n && !out.some(o => zzz10v1_normalize(o) === n)) out.push(nm); };
+  const row = (typeof zzz6f29_entry_row_of === 'function') ? zzz6f29_entry_row_of(key) : null;
+  if (row) {
+    const f = zzz_parse_fields_json(row) || {};
+    [row.username, f.r4, f.r17, f.r18].forEach(cell => zzz6f21_parse_tags(cell || '').forEach(x => {
+      String(x || '').split(/\s+/).forEach(w => {
+        const nm = w.replace(/^[@&]/, '').trim(); if (!nm) return;
+        const g = (typeof zzz5w5cm_group_expand === 'function') ? zzz5w5cm_group_expand(nm) : null;
+        (g || [nm]).forEach(add);
+      });
+    }));
+  }
+  zzz14pt_delegates_of(key).forEach(add);
+  return out;
+}
+
+function zzz14pt_people_field(key, list, onSet, canEdit, onDirty) {
+  const wrap = document.createElement('span'); wrap.className = 'zzz14pt-pick';
+  const lb = document.createElement('span'); lb.className = 'zzz14pt-lbl'; lb.textContent = '+ users:';
+  const i = document.createElement('input'); i.type = 'text'; i.className = 'zzz14pt-in is-users'; i.disabled = !canEdit;
+  i.value = (list || []).join(', ');
+  i.title = 'People of this record only (COMM SETUP) - type, then tap a name';
+  const tokens = () => String(i.value || '').split(',').map(x => x.trim().replace(/^[@&]/, '')).filter(Boolean);
+  i.addEventListener('input', (e) => {
+    onSet(tokens()); onDirty();
+    document.querySelectorAll('.zzz1r17b-userfilter').forEach(el => el.remove());
+    if (e && e.isTrusted === false) return;
+    const parts = String(i.value || '').split(',');
+    const last = zzz10v1_normalize(parts[parts.length - 1].trim().replace(/^[@&]/, ''));
+    const have = tokens().slice(0, -1).map(zzz10v1_normalize);
+    const pool = zzz14pt_people_of(key).filter(n => !have.includes(zzz10v1_normalize(n)));
+    const hits = pool.filter(n => !last || zzz10v1_normalize(n).indexOf(last) === 0);
+    if (!hits.length) return;
+    zzz1r17b_open_username_filter(i, hits, (nm) => {
+      if (!nm) return;
+      parts[parts.length - 1] = ' ' + nm;
+      i.value = parts.join(',').replace(/^\s+/, '') + ', ';
+      onSet(tokens()); onDirty();
+      i.focus();
+    });
+  });
+  i.addEventListener('change', () => {
+    const pool = zzz14pt_people_of(key).map(zzz10v1_normalize);
+    const ok = [], bad = [];
+    tokens().forEach(n => (pool.includes(zzz10v1_normalize(n)) ? ok : bad).push(n));
+    if (bad.length) zzz6f2_show_toast(`${bad.join(', ')}: not in this record - add them to the record (or as a delegate in ACCESS) first.`, 'warn');
+    i.value = ok.join(', ');
+    onSet(ok); onDirty();
+  });
+  wrap.append(lb, i);
+  return wrap;
 }
 async function zzz14pt_render(panel, api) {
   const key = String((api && api.key && api.key()) || '').replace(/\D/g, '');
@@ -14173,6 +14257,7 @@ async function zzz14pt_render(panel, api) {
   const loading = document.createElement('div'); loading.className = 'zzz14pt-note'; loading.textContent = 'Loading…';
   panel.appendChild(loading);
   const st = await zzz14pt_load(key, true);
+  try { if (typeof zzz1cn_cu_load === 'function') await zzz1cn_cu_load(key); } catch (e) {   }
   if (!panel.isConnected) return;
   panel.innerHTML = '';
   const canEdit = zzz14pt_can_edit(key) && !zzz14ptMissing;
@@ -14252,7 +14337,7 @@ async function zzz14pt_render(panel, api) {
       ot.addEventListener('change', () => { t.on_done.to = ot.value; mark(); paint(); });
       od.appendChild(ot);
       if (t.on_done.to === 'users') {
-        od.appendChild(inp((t.on_done.users || []).join(', '), 'names, comma', v => { t.on_done.users = String(v || '').split(',').map(x => x.trim().replace(/^[@&]/, '')).filter(Boolean); }, 'is-users'));
+        od.appendChild(zzz14pt_people_field(key, t.on_done.users || [], v => { t.on_done.users = v; }, canEdit, mark));
       }
       if (t.on_done.to !== 'none') {
         const op = document.createElement('select'); op.className = 'zzz14pt-prio'; op.disabled = !canEdit;
@@ -14289,9 +14374,10 @@ async function zzz14pt_render(panel, api) {
         const who = document.createElement('div'); who.className = 'zzz14pt-who';
         const wl = document.createElement('span'); wl.className = 'zzz14pt-lbl'; wl.textContent = 'confirms:';
         who.appendChild(wl);
-        who.appendChild(chk(stp.who.owner, 'owner', v => { stp.who.owner = v; }));
-        who.appendChild(chk(stp.who.delegates, 'delegates', v => { stp.who.delegates = v; }, 'The delegates of this record (COMM SETUP > ACCESS)'));
-        who.appendChild(inp(stp.who.users.join(', '), 'users (a, b)', v => { stp.who.users = v.split(',').map(x => x.trim()).filter(Boolean); }, 'is-users'));
+        const ownN = zzz14pt_owner_of(key), delN = zzz14pt_delegates_of(key);
+        who.appendChild(chk(stp.who.owner, 'owner' + (ownN ? ` (${ownN})` : ''), v => { stp.who.owner = v; }, 'The record / project owner'));
+        who.appendChild(chk(stp.who.delegates, 'delegates' + (delN.length ? ` (${delN.join(', ')})` : ' (none yet)'), v => { stp.who.delegates = v; }, 'Delegates come from ACCESS > + delegate'));
+        who.appendChild(zzz14pt_people_field(key, stp.who.users, v => { stp.who.users = v; }, canEdit, mark));
         r.appendChild(who);
         const opt = document.createElement('div'); opt.className = 'zzz14pt-who';
         opt.appendChild(chk(stp.tasksent, 'needs TASKER', v => { stp.tasksent = v; }, 'The step is finished only when one of them taps TASKER'));
@@ -15525,9 +15611,10 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
         .catch(() => {   });
 
       let findTimer = 0;
-      input.addEventListener('input', () => {
+      input.addEventListener('input', (ev) => {
         paintMirror();
         clearTimeout(findTimer);
+        if (ev && ev.isTrusted === false) return;
         findTimer = setTimeout(() => {
           const val = input.value.trim();
           document.querySelectorAll('.zzz1r17b-userfilter').forEach(el => el.remove());
@@ -43236,7 +43323,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'TASK-ON-DONE 2026-10-25';
+const VERSO_BUILD = 'DEVS-FIX 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -44175,6 +44262,8 @@ function zzz_wip_skip(el) {
   const ph = String(el.placeholder || '') + ' ' + String(el.getAttribute('aria-label') || '');
   if (/search|find|hladat|vyhlad|password|heslo|token/i.test(ph)) return true;
   if (el.closest('[data-zzz-nodraft], .zzz-vkb-panel, .zzz14cs-login-overlay, #zzzSplash')) return true;
+
+  if (el.closest('.zzz1r17b-chipfind, .zzz1r17b-chip-input, .zzz1r17b-userfilter, .zzz14pt-pick') || el.classList.contains('zzz1r17b-chip-input')) return true;
   if (el.hidden || el.closest('[hidden]')) return true;
   if (tag === 'TEXTAREA' && el.style && el.style.position === 'fixed' && el.style.opacity === '0') return true;
   return false;
@@ -44447,7 +44536,7 @@ async function zzz_ui_restore() {
           const m = String(w.textContent || '').slice(0, 400).match(/#\s?(\d{1,7})/); return m && m[1] === id; });
         if (cs && win) {
           if (cs.setup && !win.querySelector('.zzz1cn-setup')) { const g = win.querySelector('.zzz1cn-gate-btn'); if (g) { g.click(); await wait(300); } }
-          if (cs.pt) { const t = Array.from(win.querySelectorAll('.zzz14pt-tab')).find(b => /PROJECT TASKS/i.test(b.textContent)); if (t && !t.classList.contains('is-on')) { t.click(); await wait(300); } }
+          if (cs.pt) { const t = Array.from(win.querySelectorAll('.zzz14pt-tab')).find(b => /^\s*DEVS\s*$/i.test(b.textContent)); if (t && !t.classList.contains('is-on')) { t.click(); await wait(300); } }
           const feed = win.querySelector('.zzz1cn-feed');
           if (feed && !cs.feedEnd && cs.feedY) feed.scrollTop = cs.feedY;
         }
