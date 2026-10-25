@@ -3539,6 +3539,16 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz14pt-in.is-users { flex: 1 1 90px; }
   .zzz14pt-in.zzz14pt-min { width: 48px; }
   
+  .zzz14pt-ttabs { display: flex; gap: 4px; margin: 4px 0; }
+  .zzz14pt-ttab { flex: 1 1 0; background: #1c1c1c; color: #aaa; border: 1px solid #555; border-radius: 8px; font-size: 10px; font-weight: 800; padding: 2px 4px; }
+  .zzz14pt-ttab.is-on { color: #111; background: #D4AF37; border-color: #D4AF37; }
+  .zzz14pt-more { margin-left: auto; }
+  .zzz14pt-morebox { border-left: 2px solid #3a3a3a; padding-left: 6px; margin: 2px 0 2px 6px; }
+  .zzz14pt-money { border-top: 1px dashed #333; margin-top: 4px; padding-top: 4px; }
+  .zzz14pt-in.zzz14pt-mname { width: 86px; text-transform: uppercase; }
+  .zzz14pt-moneyform { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+  .zzz14pt-moneyline .zzz14pt-valtxt { color: #1f5f2a; }
+  
   .zzz14pt-valline { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 2px 4px 0; font-size: 11px; }
   .zzz14pt-valtxt { font-weight: 800; color: #4a3b10; }
   .zzz14pt-valform { display: inline-flex; gap: 3px; align-items: center; font-size: 11px; font-weight: 700; }
@@ -14297,6 +14307,12 @@ function zzz14pt_norm(cfg) {
 
     name_by: ['type', 'date', 'event'].indexOf(String(t.name_by || '')) >= 0 ? String(t.name_by) : 'type',
 
+    money: { fields: (Array.isArray(t.money && t.money.fields) ? t.money.fields : []).slice(0, 12).map((f, j) => ({
+      id: String(f.id || ('f' + (j + 1))).toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 24) || ('f' + (j + 1)),
+      name: String(f.name || '').slice(0, 24), sign: Number(f.sign) === -1 ? -1 : 1,
+      def: /^-?\d+(\.\d+)?$/.test(String(f.def == null ? '' : f.def)) ? String(f.def) : '',
+      pct_of: String(f.pct_of || '').toLowerCase().slice(0, 24), pay: !!f.pay, dir: !!f.dir })) },
+
     on_done: {
       to: ['all', 'owner', 'delegates', 'users', 'none'].indexOf(String((t.on_done && t.on_done.to) || '')) >= 0 ? String(t.on_done.to) : 'all',
       users: (t.on_done && Array.isArray(t.on_done.users) ? t.on_done.users : []).map(u => String(u).trim()).filter(Boolean).slice(0, 30),
@@ -14450,6 +14466,146 @@ function zzz14pt_people_field(key, list, onSet, canEdit, onDirty) {
   wrap.append(lb, i);
   return wrap;
 }
+const zzz14ptTypeTab = {};
+const zzz14ptMoreOpen = {};
+
+const ZZZ14PT_MONEY_DELIVERY = [
+  { id: 'order', name: 'ORDER', sign: 1, def: '', pct_of: '', pay: true, dir: false },
+  { id: 'advance', name: 'ADVANCE', sign: 1, def: '', pct_of: '', pay: false, dir: true },
+  { id: 'purchase', name: 'PURCHASE', sign: -1, def: '', pct_of: '', pay: true, dir: false },
+  { id: 'delivery', name: 'DELIVERY', sign: -1, def: '5', pct_of: '', pay: false, dir: false },
+  { id: 'topup', name: 'TOP-UP', sign: 1, def: '', pct_of: '', pay: false, dir: false }
+];
+function zzz14pt_money_editor(t, canEdit, mark, paint) {
+  if (!t.money) t.money = { fields: [] };
+  const box = document.createElement('div'); box.className = 'zzz14pt-money';
+  const h = document.createElement('div'); h.className = 'zzz14pt-lbl'; h.textContent = 'money fields (task = one row; total = sum with signs):';
+  box.appendChild(h);
+  t.money.fields.forEach((f, i) => {
+    const r = document.createElement('div'); r.className = 'zzz14pt-who zzz14pt-mrow';
+    const nm = document.createElement('input'); nm.type = 'text'; nm.className = 'zzz14pt-in zzz14pt-mname'; nm.value = f.name; nm.disabled = !canEdit; nm.title = 'Name of the field';
+    nm.addEventListener('input', () => { f.name = nm.value.toUpperCase(); if (!f.id || /^f\d+$/.test(f.id)) f.id = nm.value.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 24) || f.id; mark(); });
+    const sg = document.createElement('select'); sg.className = 'zzz14pt-prio'; sg.disabled = !canEdit; sg.title = '+ adds to the total, − subtracts';
+    [['1', '+'], ['-1', '−']].forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; if (String(f.sign) === v) o.selected = true; sg.appendChild(o); });
+    sg.addEventListener('change', () => { f.sign = Number(sg.value); mark(); });
+    const dl = document.createElement('span'); dl.textContent = 'default';
+    const df = document.createElement('input'); df.type = 'text'; df.inputMode = 'decimal'; df.className = 'zzz14pt-in zzz14pt-amt'; df.value = f.def; df.disabled = !canEdit;
+    df.title = 'Used when nothing is written (e.g. DELIVERY 5) - with "% of" it is a percentage';
+    df.addEventListener('input', () => { const v = String(df.value).replace(',', '.').trim(); f.def = /^-?\d+(\.\d+)?$/.test(v) ? v : ''; mark(); });
+    const pc = document.createElement('select'); pc.className = 'zzz14pt-prio'; pc.disabled = !canEdit; pc.title = 'Default as % of another field';
+    [['', 'fix']].concat(t.money.fields.filter(x => x !== f).map(x => [x.id, '% of ' + (x.name || x.id)])).forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; if (f.pct_of === v) o.selected = true; pc.appendChild(o); });
+    pc.addEventListener('change', () => { f.pct_of = pc.value; mark(); });
+    r.append(nm, sg, dl, df, pc);
+    r.appendChild((() => { const l = document.createElement('label'); l.className = 'zzz14pt-chk'; l.title = 'cash / online (card) switch - online or card counts 0';
+      const c = document.createElement('input'); c.type = 'checkbox'; c.checked = f.pay; c.disabled = !canEdit; c.addEventListener('change', () => { f.pay = c.checked; mark(); });
+      const sp = document.createElement('span'); sp.textContent = 'cash / online'; l.append(c, sp); return l; })());
+    r.appendChild((() => { const l = document.createElement('label'); l.className = 'zzz14pt-chk'; l.title = 'direction switch: owner → taker as set, taker → owner flips the sign (e.g. change given by the courier)';
+      const c = document.createElement('input'); c.type = 'checkbox'; c.checked = f.dir; c.disabled = !canEdit; c.addEventListener('change', () => { f.dir = c.checked; mark(); });
+      const sp = document.createElement('span'); sp.textContent = 'both directions'; l.append(c, sp); return l; })());
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz14pt-btn is-x'; x.textContent = '×'; x.disabled = !canEdit; x.title = 'Remove this field (saved values stay in older versions)';
+    x.addEventListener('click', (e) => { e.stopPropagation(); t.money.fields.splice(i, 1); mark(); paint(); });
+    r.appendChild(x);
+    box.appendChild(r);
+  });
+  const add = document.createElement('div'); add.className = 'zzz14pt-who';
+  const b1 = document.createElement('button'); b1.type = 'button'; b1.className = 'zzz14pt-btn is-add'; b1.textContent = '+ field'; b1.disabled = !canEdit;
+  b1.addEventListener('click', (e) => { e.stopPropagation(); t.money.fields.push({ id: 'f' + (t.money.fields.length + 1), name: '', sign: 1, def: '', pct_of: '', pay: false, dir: false }); mark(); paint(); });
+  const b2 = document.createElement('button'); b2.type = 'button'; b2.className = 'zzz14pt-btn is-add'; b2.textContent = 'delivery preset'; b2.disabled = !canEdit;
+  b2.title = 'ORDER (cash / online) + ADVANCE (both directions) − PURCHASE (cash / card) − DELIVERY 5 € + TOP-UP - like the sheet "Rozvozy"';
+  b2.addEventListener('click', (e) => { e.stopPropagation(); t.money.fields = JSON.parse(JSON.stringify(ZZZ14PT_MONEY_DELIVERY)); mark(); paint(); });
+  add.append(b1, b2);
+  box.appendChild(add);
+  return box;
+}
+
+function zzz14pt_money_of(entryId, taskNo, type) {
+  const rows = (zzz14ptVals[Number(entryId)] || []).filter(r => r.kind === 'value' && r.field && Number(r.task_no) === Number(taskNo)
+    && String(r.type_id).toLowerCase() === String(type.id).toLowerCase());
+  const last = {}; rows.forEach(r => { last[r.field] = r; });
+  let total = 0;
+  const parts = ((type.money && type.money.fields) || []).map(f => {
+    const v = last[f.id];
+    let raw = 0, src = 'def';
+    if (v && v.amount !== null && v.amount !== undefined) { raw = Number(v.amount); src = 'set'; }
+    else if (f.pct_of && f.def !== '') { const b = last[f.pct_of]; raw = Math.round((b && b.amount ? Number(b.amount) : 0) * Number(f.def)) / 100; }
+    else if (f.def !== '') raw = Number(f.def);
+    let sg = f.sign === -1 ? -1 : 1;
+    const opt = v ? v.opt : '';
+    let eff = raw;
+    if (f.pay && (opt === 'online' || opt === 'card')) eff = 0;
+    if (f.dir && opt === 'back') sg = -sg;
+    total += sg * eff;
+    return { f, v, raw, eff, sg, opt, src };
+  });
+  return { parts, total: Math.round(total * 100) / 100 };
+}
+function zzz14pt_money_ui(wrap, note, tc, onChanged) {
+  const c = zzz14ptCache[Number(note.entry_key)];
+  const type = c && c.cfg && c.cfg.types.find(x => String(x.id).toLowerCase() === String(tc.typeId).toLowerCase());
+  if (!type || !type.money || !type.money.fields.length || tc.stepIdx !== 0 || String(note.note_part || '').trim()) return;
+  const m = zzz14pt_money_of(note.entry_key, note.note_number, type);
+  const box = document.createElement('div'); box.className = 'zzz14pt-valline zzz14pt-moneyline';
+  const txt = document.createElement('span'); txt.className = 'zzz14pt-valtxt';
+  txt.textContent = m.parts.filter(p => p.raw).map(p => `${p.f.name} ${p.sg < 0 ? '−' : ''}${zzz14pt_fmt_amount(p.raw)}${p.opt === 'online' || p.opt === 'card' ? ' (' + p.opt + ')' : ''}${p.opt === 'back' ? ' (back)' : ''}`).join(' · ')
+    + ` = ${zzz14pt_fmt_amount(m.total)}`;
+  box.appendChild(txt);
+  if (zzz14pt_can_value(note, tc)) {
+    const ed = document.createElement('button'); ed.type = 'button'; ed.className = 'zzz14pt-valbtn'; ed.textContent = '€ edit';
+    ed.title = 'Write the money of this task (one row like in the sheet); a correction is a new row, the last one counts';
+    ed.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const f = document.createElement('div'); f.className = 'zzz14pt-moneyform'; f.setAttribute('data-zzz-nodraft', '1');
+      const ins = [];
+      m.parts.forEach(p => {
+        const r = document.createElement('span'); r.className = 'zzz14pt-valform';
+        const l = document.createElement('span'); l.textContent = p.f.name + (p.f.sign < 0 ? ' −' : ' +');
+        const i = document.createElement('input'); i.type = 'text'; i.inputMode = 'decimal'; i.className = 'zzz14pt-in zzz14pt-amt';
+        i.value = p.v && p.v.amount !== null && p.v.amount !== undefined ? String(p.v.amount) : '';
+        i.title = p.src === 'def' && p.raw ? `default ${p.raw}` : '';
+        r.append(l, i);
+        let sel = null;
+        if (p.f.pay || p.f.dir) {
+          sel = document.createElement('select'); sel.className = 'zzz14pt-prio';
+          (p.f.pay ? [['cash', 'cash'], ['online', 'online'], ['card', 'card']] : [['out', 'owner → taker'], ['back', 'taker → owner']]).forEach(([v, t2]) => {
+            const o = document.createElement('option'); o.value = v; o.textContent = t2; if ((p.opt || (p.f.pay ? 'cash' : 'out')) === v) o.selected = true; sel.appendChild(o); });
+          r.appendChild(sel);
+        }
+        ins.push({ p, i, sel });
+        f.appendChild(r);
+      });
+      const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'zzz14pt-valbtn is-ok'; ok.textContent = 'OK';
+      ok.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        const todo = [];
+        for (const x of ins) {
+          const a = zzz14pt_parse_amount(x.i.value);
+          if (Number.isNaN(a)) { zzz6f2_show_toast(`${x.p.f.name}: a number like 25,50 (empty = default).`, 'warn'); return; }
+          const opt = x.sel ? x.sel.value : null;
+          const prevA = x.p.v ? (x.p.v.amount === null || x.p.v.amount === undefined ? null : Number(x.p.v.amount)) : null;
+          const prevO = x.p.v ? (x.p.v.opt || null) : null;
+          if ((a === null && !x.p.v && (!opt || opt === 'cash' || opt === 'out')) || (a === prevA && (opt || null) === prevO)) continue;
+          todo.push({ field: x.p.f.id, amount: a, opt });
+        }
+        ok.disabled = true;
+        const me = (zzz0r1_get_current_username() || '').trim();
+        const rows = todo.map(t2 => ({ entry_id: Number(note.entry_key), task_no: Number(note.note_number), type_id: String(type.id).toLowerCase(),
+          chip: String(tc.chip).trim().toLowerCase(), note_id: Number(note.id) || null, username: me, kind: 'value', field: t2.field, amount: t2.amount, opt: t2.opt }));
+        if (rows.length) {
+          const { error } = await sb.from(ZZZ14PT_VAL_TABLE).insert(rows);
+          await zzz14pt_vals_load(note.entry_key);
+          if (error) { ok.disabled = false; zzz6f2_show_toast(`Money not saved: ${error.message || error}`, 'warn'); return; }
+          zzz6f2_show_toast(`€ #${note.note_number} saved.`);
+        }
+        if (onChanged) onChanged();
+      });
+      f.appendChild(ok);
+      ed.replaceWith(f);
+      if (ins[0]) ins[0].i.focus();
+    });
+    box.appendChild(ed);
+  }
+  Promise.resolve().then(() => wrap.appendChild(box));
+}
 async function zzz14pt_render(panel, api) {
   const key = String((api && api.key && api.key()) || '').replace(/\D/g, '');
   panel.innerHTML = '';
@@ -14507,6 +14663,17 @@ async function zzz14pt_render(panel, api) {
       th.appendChild(btn('×', 'Remove this task type (older versions stay saved)', () => { cfg.types.splice(ti, 1); mark(); paint(); }, 'is-x'));
       card.appendChild(th);
 
+      const tabsRow = document.createElement('div'); tabsRow.className = 'zzz14pt-ttabs';
+      const panes = {}; const curTab = zzz14ptTypeTab[t.id] === undefined ? 'steps' : zzz14ptTypeTab[t.id];
+      [['steps', 'STEPS'], ['notices', 'NOTICES'], ['closing', 'CLOSING']].forEach(([k, l]) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz14pt-ttab' + (curTab === k ? ' is-on' : ''); b.textContent = l;
+        b.addEventListener('click', (e) => { e.stopPropagation(); zzz14ptTypeTab[t.id] = (zzz14ptTypeTab[t.id] === undefined ? 'steps' : zzz14ptTypeTab[t.id]) === k ? '' : k; paint(); });
+        tabsRow.appendChild(b);
+        const pn = document.createElement('div'); pn.className = 'zzz14pt-tpane'; pn.style.display = curTab === k ? '' : 'none'; panes[k] = pn;
+      });
+      card.appendChild(tabsRow);
+      card.append(panes.steps, panes.notices, panes.closing);
+
       const per = document.createElement('div'); per.className = 'zzz14pt-who';
       const pl = document.createElement('span'); pl.className = 'zzz14pt-lbl'; pl.textContent = 'closing:';
       per.appendChild(pl);
@@ -14523,7 +14690,11 @@ async function zzz14pt_render(panel, api) {
         tc.addEventListener('change', () => { t.close = tc.value || '23:59'; mark(); });
         per.appendChild(tc);
       }
-      card.appendChild(per);
+      panes.closing.appendChild(per);
+      const cn = document.createElement('div'); cn.className = 'zzz14pt-note';
+      cn.textContent = 'The CLOSING message shows: tasks done / open, TASKER, amounts per step + TOTAL, consents (missing ones can be given from it), carried-over items and - with money fields - per person the period sum and the running balance.';
+      panes.closing.appendChild(cn);
+      panes.closing.appendChild(zzz14pt_money_editor(t, canEdit, mark, paint));
 
       const nmr = document.createElement('div'); nmr.className = 'zzz14pt-who zzz14pt-nameby';
       const nml = document.createElement('span'); nml.className = 'zzz14pt-lbl'; nml.textContent = 'name:';
@@ -14535,7 +14706,7 @@ async function zzz14pt_render(panel, api) {
       });
       nms.addEventListener('change', () => { t.name_by = nms.value; mark(); });
       nmr.appendChild(nms);
-      card.appendChild(nmr);
+      panes.notices.appendChild(nmr);
 
       if (!t.on_done) t.on_done = { to: 'all', users: [], prio: '' };
       const od = document.createElement('div'); od.className = 'zzz14pt-who zzz14pt-ondone';
@@ -14560,7 +14731,7 @@ async function zzz14pt_render(panel, api) {
         op.addEventListener('change', () => { t.on_done.prio = op.value; mark(); });
         od.appendChild(op);
       }
-      card.appendChild(od);
+      panes.notices.appendChild(od);
       t.steps.forEach((stp, si) => {
         const r = document.createElement('div'); r.className = 'zzz14pt-step';
         const top = document.createElement('div'); top.className = 'zzz14pt-steptop';
@@ -14583,6 +14754,15 @@ async function zzz14pt_render(panel, api) {
         top.appendChild(btn('↓', 'Move down', () => { if (si < t.steps.length - 1) { t.steps.splice(si + 1, 0, t.steps.splice(si, 1)[0]); mark(); paint(); } }));
         top.appendChild(btn('×', 'Remove this step', () => { t.steps.splice(si, 1); mark(); paint(); }, 'is-x'));
         r.appendChild(top);
+
+        const mk = t.id + ':' + si;
+        const nonDef = !stp.who.owner || !stp.who.delegates || (stp.who.users || []).length || !stp.tasksent || stp.takeover_min
+          || (stp.writes && stp.writes !== 'text') || stp.consent || stp.auto_open;
+        const moreOpen = zzz14ptMoreOpen[mk] === undefined ? !!nonDef : zzz14ptMoreOpen[mk];
+        const moreBtn = document.createElement('button'); moreBtn.type = 'button'; moreBtn.className = 'zzz14pt-btn zzz14pt-more'; moreBtn.textContent = moreOpen ? 'less' : 'more…';
+        moreBtn.addEventListener('click', (e) => { e.stopPropagation(); zzz14ptMoreOpen[mk] = !moreOpen; paint(); });
+        top.appendChild(moreBtn);
+        const moreBox = document.createElement('div'); moreBox.className = 'zzz14pt-morebox'; moreBox.style.display = moreOpen ? '' : 'none';
         const who = document.createElement('div'); who.className = 'zzz14pt-who';
         const wl = document.createElement('span'); wl.className = 'zzz14pt-lbl'; wl.textContent = 'confirms:';
         who.appendChild(wl);
@@ -14590,7 +14770,7 @@ async function zzz14pt_render(panel, api) {
         who.appendChild(chk(stp.who.owner, 'owner' + (ownN ? ` (${ownN})` : ''), v => { stp.who.owner = v; }, 'The record / project owner'));
         who.appendChild(chk(stp.who.delegates, 'delegates' + (delN.length ? ` (${delN.join(', ')})` : ' (none yet)'), v => { stp.who.delegates = v; }, 'Delegates come from ACCESS > + delegate'));
         who.appendChild(zzz14pt_people_field(key, stp.who.users, v => { stp.who.users = v; }, canEdit, mark));
-        r.appendChild(who);
+        moreBox.appendChild(who);
         const opt = document.createElement('div'); opt.className = 'zzz14pt-who';
         opt.appendChild(chk(stp.tasksent, 'tap = take / confirm (TASKER)', v => { stp.tasksent = v; }, 'The chip on the message is tapped to take / confirm this step - the first tap wins'));
 
@@ -14616,14 +14796,15 @@ async function zzz14pt_render(panel, api) {
           'What is written into this step besides the text (e.g. ORDER = number + amount, CLEARING = amount)', v => { stp.writes = v; });
         sel('consent:', stp.consent || '', [['', 'nobody'], ['owner', 'owner'], ['taker', 'who took the task'], ['both', 'both']],
           'Who has to give the consent of this step (e.g. CLEARING = owner) - it goes into the closing', v => { stp.consent = v; });
-        r.appendChild(fx);
+        moreBox.appendChild(fx);
         opt.appendChild(chk(stp.auto_open, 'opens by itself', v => { stp.auto_open = v; }, 'In COMM SPACE the window of this step opens by itself (urgent notification queue)'));
-        r.appendChild(opt);
-        card.appendChild(r);
+        moreBox.appendChild(opt);
+        r.appendChild(moreBox);
+        panes.steps.appendChild(r);
       });
-      card.appendChild(btn('+ step', 'Add the next step of this task', () => {
+      panes.steps.appendChild(btn('+ step', 'Add the next step of this task', () => {
         t.steps.push({ chip: '', color: ZZZ14PT_COLORS[t.steps.length % ZZZ14PT_COLORS.length], prio: t.steps.length ? 'attention' : 'urgent',
-          who: { owner: !t.steps.length, delegates: !t.steps.length, users: [] }, tasksent: true, auto_open: !t.steps.length });
+          who: { owner: true, delegates: true, users: [] }, tasksent: true, auto_open: false, takeover_min: 0, writes: 'text', consent: '' });
         mark(); paint();
       }, 'is-add'));
       list.appendChild(card);
@@ -14758,7 +14939,7 @@ let zzz14ptVals = {};
 async function zzz14pt_vals_load(entryId) {
   const id = Number(String(entryId || '').replace(/\D/g, ''));
   try {
-    let q = sb.from(ZZZ14PT_VAL_TABLE).select('id, entry_id, task_no, type_id, chip, note_id, username, kind, num, amount, created_at').order('id', { ascending: true }).limit(5000);
+    let q = sb.from(ZZZ14PT_VAL_TABLE).select('id, entry_id, task_no, type_id, chip, note_id, username, kind, num, amount, created_at, field, opt').order('id', { ascending: true }).limit(5000);
     if (id) q = q.eq('entry_id', id);
     const { data, error } = await q;
     if (error) throw error;
@@ -14767,7 +14948,7 @@ async function zzz14pt_vals_load(entryId) {
   } catch (e) {   }
 }
 function zzz14pt_value_of(note) {
-  const rows = (zzz14ptVals[Number(note.entry_key)] || []).filter(r => r.kind === 'value' && Number(r.note_id) === Number(note.id));
+  const rows = (zzz14ptVals[Number(note.entry_key)] || []).filter(r => r.kind === 'value' && !r.field && Number(r.note_id) === Number(note.id));
   return rows.length ? rows[rows.length - 1] : null;
 }
 function zzz14pt_consents_of(entryId, taskNo, typeId, chip) {
@@ -35683,7 +35864,7 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
 
   { const tc = zzz14pt_chip_of(note);
     if (tc) { const c = document.createElement('span'); c.className = 'zzz14pt-notechip'; c.textContent = tc.chip; c.style.borderColor = tc.color; c.style.color = tc.color; c.title = `${tc.typeName} task - step ${tc.stepIdx + 1}: ${tc.chip}`; headId.insertBefore(c, headId.firstChild); wrap.classList.add('zzz14pt-tasknote');
-      zzz14pt_note_ts_ui(wrap, note, tc, onChanged, c); zzz14pt_note_vals_ui(wrap, note, tc, onChanged); }
+      zzz14pt_note_ts_ui(wrap, note, tc, onChanged, c); zzz14pt_note_vals_ui(wrap, note, tc, onChanged); zzz14pt_money_ui(wrap, note, tc, onChanged); }
     else if (/^closing:/i.test(String(note.note_tags || ''))) zzz14pt_closing_ui(wrap, note, onChanged); }
   headLeft.appendChild(headMarks);
   headLeft.appendChild(headId);
@@ -43945,7 +44126,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'URG-BUBBLE 2026-10-25';
+const VERSO_BUILD = 'TASK-MONEY 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -46769,7 +46950,7 @@ function zzz_verso_runtime() {
   return 'web';
 }
 
-const VERSO_FOR_APP = 40;
+const VERSO_FOR_APP = 41;
 function zzz_verso_runtime_info() {
   const r = zzz_verso_runtime();
   let b = ''; try { b = String(VERSO_BUILD || ''); } catch (e) {}
