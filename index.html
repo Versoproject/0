@@ -3557,6 +3557,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz14pt-valbtn { background: transparent; border: 1px solid #b08d2c; color: #8a6a12; border-radius: 9px; font-size: 10px; font-weight: 800; padding: 1px 7px; }
   .zzz14pt-valbtn.is-ok { background: #16a34a; border-color: #16a34a; color: #fff; }
   
+  .zzz14pt-givepick { display: flex; flex-wrap: wrap; gap: 4px; flex-basis: 100%; }
+  .zzz14pt-reissued { color: #8a8a8a; font-style: italic; }
+  .zzz14pt-is-reissued .zzz14pt-notechip { opacity: .45; text-decoration: line-through; }
+  
   .zzz14pt-notechip.is-tap { cursor: pointer; box-shadow: 0 0 0 2px rgba(22,163,74,.55); animation: zzz14ptTap 1.6s ease-in-out infinite; }
   .zzz14pt-notechip.is-next::before { content: '\2192  '; }
   @keyframes zzz14ptTap { 50% { box-shadow: 0 0 0 4px rgba(22,163,74,.25); } }
@@ -14934,6 +14938,9 @@ const ZZZ14PT_TS_TABLE = 'verso_tasksents';
 let zzz14ptTs = {};
 let zzz14ptTsAt = 0;
 
+const ZZZ14PT_GR_TABLE = 'verso_task_grants';
+let zzz14ptGr = {};
+
 const ZZZ14PT_VAL_TABLE = 'verso_task_values';
 let zzz14ptVals = {};
 async function zzz14pt_vals_load(entryId) {
@@ -14974,8 +14981,31 @@ async function zzz14pt_save_value(entryId, taskNo, typeId, chip, noteId, num, am
   if (error) { zzz6f2_show_toast(`Number / amount not saved: ${error.message || error} (only the author of the step, who took the task or the owner).`, 'warn'); return false; }
   return true;
 }
+async function zzz14pt_gr_load(entryId) {
+  const id = Number(String(entryId || '').replace(/\D/g, ''));
+  try {
+    let q = sb.from(ZZZ14PT_GR_TABLE).select('id, entry_id, task_no, type_id, kind, to_user, new_task_no, username, created_at').order('id', { ascending: true }).limit(2000);
+    if (id) q = q.eq('entry_id', id);
+    const { data, error } = await q;
+    if (error) throw error;
+    if (id) zzz14ptGr[id] = []; else zzz14ptGr = {};
+    (data || []).forEach(r => { (zzz14ptGr[r.entry_id] = zzz14ptGr[r.entry_id] || []).push(r); });
+  } catch (e) {   }
+}
+function zzz14pt_gr_of(entryId, taskNo, typeId) {
+  const id = Number(String(entryId || '').replace(/\D/g, ''));
+  return (zzz14ptGr[id] || []).filter(r => Number(r.task_no) === Number(taskNo) && String(r.type_id).toLowerCase() === String(typeId).toLowerCase());
+}
+function zzz14pt_given_to(entryId, taskNo, typeId) {
+  const g = zzz14pt_gr_of(entryId, taskNo, typeId).filter(r => r.kind === 'give');
+  return g.length ? String(g[g.length - 1].to_user || '').trim() : '';
+}
+function zzz14pt_reissue_of(entryId, taskNo, typeId) {
+  return zzz14pt_gr_of(entryId, taskNo, typeId).find(r => r.kind === 'reissue') || null;
+}
 async function zzz14pt_ts_load(entryId) {
   zzz14pt_vals_load(entryId);
+  await zzz14pt_gr_load(entryId);
   const id = Number(String(entryId || '').replace(/\D/g, ''));
   try {
     let q = sb.from(ZZZ14PT_TS_TABLE).select('entry_id, task_no, type_id, chip, username, created_at, note_id').order('id', { ascending: true }).limit(2000);
@@ -15026,6 +15056,8 @@ function zzz14pt_note_task_done(n) {
 }
 
 function zzz14pt_taker_of(entryId, taskNo, typeId) {
+  const given = zzz14pt_given_to(entryId, taskNo, typeId);
+  if (given) return given;
   const id = Number(String(entryId || '').replace(/\D/g, ''));
   const r = (zzz14ptTs[id] || []).find(x => Number(x.task_no) === Number(taskNo) && String(x.type_id).toLowerCase() === String(typeId).toLowerCase());
   return r ? String(r.username || '').trim() : '';
@@ -15039,12 +15071,19 @@ function zzz14pt_can_confirm(entryId, step, ctx) {
   const f = row ? (zzz_parse_fields_json(row) || {}) : {};
   const isOwner = !!row && (zzz10v1_normalize(row.username || '') === me || zzz10v1_normalize(f.r4 || '') === me);
   if (ctx) {
+    if (zzz14pt_reissue_of(entryId, ctx.taskNo, ctx.typeId)) return false;
     const taker = zzz10v1_normalize(zzz14pt_taker_of(entryId, ctx.taskNo, ctx.typeId));
+    const given = zzz10v1_normalize(zzz14pt_given_to(entryId, ctx.taskNo, ctx.typeId));
     if (taker && taker !== me && !isOwner) return false;
+    const ownerOnly = !!step.who.owner && !step.who.delegates && !(step.who.users || []).length;
+    if (given && given === me && !ownerOnly) return true;
+    if (isOwner && given && given === me) return true;
+    if (given && given !== me && !isOwner) return false;
     if (isOwner && step.takeover_min > 0) {
       if (taker === me) return true;
       if (ctx.noteAt && Date.now() >= ctx.noteAt + step.takeover_min * 60000) return true;
     } else if (isOwner && step.who.owner) return true;
+    if (given && given !== me) return false;
   } else if (step.who.owner && isOwner) return true;
   if (step.who.delegates && typeof zzz1cn_is_delegate === 'function' && zzz1cn_is_delegate(String(entryId))) return true;
   return (step.who.users || []).some(u => zzz10v1_normalize(u) === me);
@@ -15222,6 +15261,101 @@ function zzz14pt_note_ts_ui(wrap, note, tc, onChanged, chipEl) {
     box.appendChild(w);
   }
   Promise.resolve().then(() => wrap.appendChild(box));
+}
+
+function zzz14pt_grant_ui(wrap, note, tc, onChanged) {
+  if (tc.stepIdx !== 0 || String(note.note_part || '').trim() || note.zzz0ob_pending) return;
+  const key = String(note.entry_key);
+  const no = note.note_number;
+  const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+  if (!me) return;
+  const box = document.createElement('div'); box.className = 'zzz14pt-valline zzz14pt-grantline';
+  const re = zzz14pt_reissue_of(key, no, tc.typeId);
+  const given = zzz14pt_given_to(key, no, tc.typeId);
+  if (given) { const g = document.createElement('span'); g.className = 'zzz14pt-valtxt'; g.textContent = `⇄ given to ${given}`; box.appendChild(g); }
+  if (re) {
+    const t = document.createElement('span'); t.className = 'zzz14pt-valtxt zzz14pt-reissued';
+    t.textContent = `↻ re-issued as #${re.new_task_no} by ${re.username} · ${zzz5w8_fmt_time(Date.parse(re.created_at || '') || Date.now())} - not counted`;
+    box.appendChild(t);
+    Promise.resolve().then(() => wrap.appendChild(box));
+    wrap.classList.add('zzz14pt-is-reissued');
+    return;
+  }
+  const isOwner = zzz14pt_is_owner(key);
+  const taker = zzz10v1_normalize(zzz14pt_taker_of(key, no, tc.typeId));
+  const done = zzz14pt_task_is_done(key, no, tc.typeId);
+  if (isOwner) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz14pt-valbtn'; b.textContent = '⇄ GIVE TO';
+    b.title = 'Give this task to somebody (or yourself) - also after the limit and when somebody already took it; logged in the thread';
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (box.querySelector('.zzz14pt-givepick')) { box.querySelector('.zzz14pt-givepick').remove(); return; }
+      const pick = document.createElement('div'); pick.className = 'zzz14pt-givepick';
+      const people = zzz14pt_people_of(key);
+      const own = zzz14pt_owner_of(key);
+      if (own && !people.some(x => zzz10v1_normalize(x) === zzz10v1_normalize(own))) people.unshift(own);
+      people.filter(n => zzz10v1_normalize(n) !== zzz10v1_normalize(given)).forEach(nm => {
+        const c = document.createElement('button'); c.type = 'button'; c.className = 'zzz14pt-valbtn'; c.textContent = nm;
+        c.addEventListener('click', async (ev) => { ev.stopPropagation(); c.disabled = true; await zzz14pt_give(note, tc, nm); if (onChanged) onChanged(); });
+        pick.appendChild(c);
+      });
+      if (!pick.children.length) { const t = document.createElement('span'); t.className = 'zzz14pt-valtxt'; t.textContent = 'nobody else in this record'; pick.appendChild(t); }
+      box.appendChild(pick);
+    });
+    box.appendChild(b);
+  }
+  if (!done && (isOwner || (taker && taker === me))) {
+    const r = document.createElement('button'); r.type = 'button'; r.className = 'zzz14pt-valbtn'; r.textContent = '↻ RE-ISSUE';
+    r.title = `Issue this task again as a new task (same name + text); #${no} gets no more steps and the closing does not count it`;
+    let armed = 0;
+    r.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (Date.now() - armed > 4000) { armed = Date.now(); r.textContent = '↻ RE-ISSUE? tap again'; r.classList.add('is-ok'); return; }
+      r.disabled = true;
+      await zzz14pt_reissue(note, tc);
+      if (onChanged) onChanged();
+    });
+    box.appendChild(r);
+  }
+  if (box.children.length) Promise.resolve().then(() => wrap.appendChild(box));
+}
+async function zzz14pt_give(note, tc, toUser) {
+  const key = String(note.entry_key); const no = Number(note.note_number);
+  const me = (zzz0r1_get_current_username() || '').trim();
+  const before = zzz14pt_taker_of(key, no, tc.typeId);
+  const { error } = await sb.from(ZZZ14PT_GR_TABLE).insert({ entry_id: Number(key), task_no: no, type_id: String(tc.typeId).toLowerCase(),
+    kind: 'give', to_user: String(toUser).trim(), note_id: Number(note.id) || null, username: me });
+  await zzz14pt_gr_load(key);
+  if (error) { zzz6f2_show_toast(`GIVE TO not saved: ${error.message || error} (only the owner of the record may give a task).`, 'warn'); return false; }
+  zzz_haptic_pulse(30);
+  zzz6f2_show_toast(`⇄ ${tc.typeName} #${no} given to ${toUser}.`, 'ok');
+  const meN = zzz10v1_normalize(me);
+  const to = [toUser, before].filter(n => n && zzz10v1_normalize(n) !== meN)
+    .filter((n, i, a) => a.findIndex(x => zzz10v1_normalize(x) === zzz10v1_normalize(n)) === i);
+  const txt = `⇄ ${tc.typeName} #${no} given to ${toUser} by ${me} (owner)` + (before && zzz10v1_normalize(before) !== zzz10v1_normalize(toUser) ? ` - ${before}, the task is no longer yours.` : '.');
+  try { await zzz1cn_add(key, txt, false, { base: no }, '', false, to.length ? 'urgent' : '', to, ''); } catch (e) {   }
+  zzz5_6_live_ping('tasksent');
+  return true;
+}
+async function zzz14pt_reissue(note, tc) {
+  const key = String(note.entry_key); const no = Number(note.note_number);
+  const me = (zzz0r1_get_current_username() || '').trim();
+  const to = String(note.note_to || '').split(',').map(x => x.trim()).filter(Boolean);
+  let fresh = null;
+  try { fresh = await zzz1cn_add(key, String(note.note_text || ''), false, null, String(note.note_name || ''), false, String(note.note_priority || '') || '', to, String(note.note_tags || ''), null); } catch (e) { fresh = null; }
+  if (!fresh || fresh.zzz0ob_pending || !fresh.note_number) { zzz6f2_show_toast('RE-ISSUE needs the connection - the new task was not created (nothing changed).', 'warn'); return false; }
+  const newNo = Number(fresh.note_number);
+  const { error } = await sb.from(ZZZ14PT_GR_TABLE).insert({ entry_id: Number(key), task_no: no, type_id: String(tc.typeId).toLowerCase(),
+    kind: 'reissue', new_task_no: newNo, note_id: Number(note.id) || null, username: me });
+  await zzz14pt_gr_load(key);
+  if (error) { zzz6f2_show_toast(`New task #${newNo} created, but #${no} was not marked as re-issued: ${error.message || error}`, 'warn'); return false; }
+  zzz_haptic_pulse(30);
+  zzz6f2_show_toast(`↻ ${tc.typeName} #${no} re-issued as #${newNo}.`, 'ok');
+  const taker = zzz14pt_taker_of(key, no, tc.typeId);
+  const tell = [taker].filter(n => n && zzz10v1_normalize(n) !== zzz10v1_normalize(me));
+  try { await zzz1cn_add(key, `↻ ${tc.typeName} #${no} re-issued as #${newNo} by ${me} - #${no} is closed and not counted.`, false, { base: no }, '', false, tell.length ? 'urgent' : '', tell, ''); } catch (e) {}
+  zzz5_6_live_ping('tasksent');
+  return true;
 }
 async function zzz14pt_confirm(note, tc) {
   const me = (zzz0r1_get_current_username() || '').trim();
@@ -35864,7 +35998,7 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
 
   { const tc = zzz14pt_chip_of(note);
     if (tc) { const c = document.createElement('span'); c.className = 'zzz14pt-notechip'; c.textContent = tc.chip; c.style.borderColor = tc.color; c.style.color = tc.color; c.title = `${tc.typeName} task - step ${tc.stepIdx + 1}: ${tc.chip}`; headId.insertBefore(c, headId.firstChild); wrap.classList.add('zzz14pt-tasknote');
-      zzz14pt_note_ts_ui(wrap, note, tc, onChanged, c); zzz14pt_note_vals_ui(wrap, note, tc, onChanged); zzz14pt_money_ui(wrap, note, tc, onChanged); }
+      zzz14pt_note_ts_ui(wrap, note, tc, onChanged, c); zzz14pt_note_vals_ui(wrap, note, tc, onChanged); zzz14pt_money_ui(wrap, note, tc, onChanged); zzz14pt_grant_ui(wrap, note, tc, onChanged); }
     else if (/^closing:/i.test(String(note.note_tags || ''))) zzz14pt_closing_ui(wrap, note, onChanged); }
   headLeft.appendChild(headMarks);
   headLeft.appendChild(headId);
@@ -44126,7 +44260,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'TASK-MONEY 2026-10-25';
+const VERSO_BUILD = 'TASK-GRANT 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
