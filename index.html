@@ -14097,6 +14097,12 @@ function zzz14pt_norm(cfg) {
 
     period: ['hour', 'day', 'week', 'month', 'year'].indexOf(String(t.period || '')) >= 0 ? String(t.period) : '',
     close: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(t.close || '')) ? String(t.close) : '23:59',
+
+    on_done: {
+      to: ['all', 'owner', 'delegates', 'users', 'none'].indexOf(String((t.on_done && t.on_done.to) || '')) >= 0 ? String(t.on_done.to) : 'all',
+      users: (t.on_done && Array.isArray(t.on_done.users) ? t.on_done.users : []).map(u => String(u).trim()).filter(Boolean).slice(0, 30),
+      prio: zzz1cn_prio_level(t.on_done && t.on_done.prio) || ''
+    },
     steps: (Array.isArray(t.steps) ? t.steps : []).map(st => ({
       chip: String(st.chip || '').slice(0, 24), color: /^#[0-9a-f]{6}$/i.test(st.color || '') ? st.color : '#D4AF37',
       prio: zzz1cn_prio_level(st.prio), who: {
@@ -14233,6 +14239,31 @@ async function zzz14pt_render(panel, api) {
         per.appendChild(tc);
       }
       card.appendChild(per);
+
+      if (!t.on_done) t.on_done = { to: 'all', users: [], prio: '' };
+      const od = document.createElement('div'); od.className = 'zzz14pt-who zzz14pt-ondone';
+      const odl = document.createElement('span'); odl.className = 'zzz14pt-lbl'; odl.textContent = 'on done:';
+      od.appendChild(odl);
+      const ot = document.createElement('select'); ot.className = 'zzz14pt-prio'; ot.disabled = !canEdit;
+      ot.title = 'Who gets the summary when the task is DONE';
+      [['all', 'everyone in the record'], ['owner', 'owner'], ['delegates', 'delegates'], ['users', 'chosen people'], ['none', 'nobody (only my Notes)']].forEach(([v, l]) => {
+        const o = document.createElement('option'); o.value = v; o.textContent = l; if (t.on_done.to === v) o.selected = true; ot.appendChild(o);
+      });
+      ot.addEventListener('change', () => { t.on_done.to = ot.value; mark(); paint(); });
+      od.appendChild(ot);
+      if (t.on_done.to === 'users') {
+        od.appendChild(inp((t.on_done.users || []).join(', '), 'names, comma', v => { t.on_done.users = String(v || '').split(',').map(x => x.trim().replace(/^[@&]/, '')).filter(Boolean); }, 'is-users'));
+      }
+      if (t.on_done.to !== 'none') {
+        const op = document.createElement('select'); op.className = 'zzz14pt-prio'; op.disabled = !canEdit;
+        op.title = 'How the DONE summary notifies';
+        [['', 'silent'], ['attention', 'ATTENTION'], ['urgent', 'URGENT']].forEach(([v, l]) => {
+          const o = document.createElement('option'); o.value = v; o.textContent = l; if ((t.on_done.prio || '') === v) o.selected = true; op.appendChild(o);
+        });
+        op.addEventListener('change', () => { t.on_done.prio = op.value; mark(); });
+        od.appendChild(op);
+      }
+      card.appendChild(od);
       t.steps.forEach((stp, si) => {
         const r = document.createElement('div'); r.className = 'zzz14pt-step';
         const top = document.createElement('div'); top.className = 'zzz14pt-steptop';
@@ -14499,8 +14530,26 @@ async function zzz14pt_write_done(entryId, taskNo, typeId) {
     return `${s.chip} ✓ ${r ? r.username + ' ' + zzz5w8_fmt_time(Date.parse(r.created_at || '') || Date.now()) : ''}`;
   });
   const text = `✓ TASK DONE · ${type.name} #${taskNo} · ` + parts.join(' · ');
-  try { await zzz1cn_add(String(entryId), text, false, { base: Number(taskNo) }, '', true, '', [], ''); } catch (e) {}
-  zzz6f2_show_toast(`${type.name} #${taskNo} is DONE - summary saved to Notes.`);
+
+  const od = type.on_done || { to: 'all', users: [], prio: '' };
+  const me = (zzz0r1_get_current_username() || '').trim();
+  let only = [], priv = false, whom = 'everyone in the record';
+  try {
+    if (od.to === 'none') { priv = true; whom = 'only your Notes'; }
+    else if (od.to === 'owner') {
+      const row = zzz6f29_entry_row_of(entryId); const f = row ? (zzz_parse_fields_json(row) || {}) : {};
+      only = [String(f.r4 || (row && row.username) || '').trim()].filter(Boolean); whom = 'owner';
+    } else if (od.to === 'delegates') {
+      if (typeof zzz1cn_cu_load === 'function') await zzz1cn_cu_load(String(entryId));
+      const rows = (typeof zzz1cnCommUsers !== 'undefined' && zzz1cnCommUsers[String(entryId)]) || {};
+      only = Object.keys(rows).filter(k => rows[k] && rows[k].is_delegate); whom = 'delegates';
+    } else if (od.to === 'users') { only = (od.users || []).slice(); whom = only.join(', ') || 'nobody chosen'; }
+  } catch (e) {}
+  if ((od.to === 'owner' || od.to === 'delegates' || od.to === 'users') && !only.length) { priv = true; whom = 'only your Notes (nobody to send to)'; }
+  only = only.filter(n => zzz10v1_normalize(n) !== zzz10v1_normalize(me));
+  if (!priv && (od.to === 'owner' || od.to === 'delegates' || od.to === 'users') && !only.length) { priv = true; whom = 'only your Notes (you are the only one)'; }
+  try { await zzz1cn_add(String(entryId), text, priv, { base: Number(taskNo) }, '', true, priv ? '' : (od.prio || ''), priv ? [] : only, ''); } catch (e) {}
+  zzz6f2_show_toast(`${type.name} #${taskNo} is DONE - summary to ${whom}${od.prio && !priv ? ' (' + od.prio.toUpperCase() + ')' : ''}.`);
 }
 
 function zzz14pt_is_task_chip_name(text) {
@@ -43187,7 +43236,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'TASKER 2026-10-25';
+const VERSO_BUILD = 'TASK-ON-DONE 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
