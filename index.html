@@ -5963,6 +5963,11 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz1f16-alarm input::placeholder { color: #cfcfcf !important; font-style: italic; font-weight: 400 !important; font-size: .82em; opacity: 1; }
   .zzz1f16-alarm .zzz5w8-iw-msg:not(.is-warn) { color: #b5b5b5; font-style: italic; font-size: 9px; }
   
+  .zzz16-row small.zzz14b2-now { display: block; color: #4caf50; }
+  .zzz16-row small.zzz14b2-soon { display: block; color: #8a8a8a; }
+  .zzz14b2-voice { display: flex; gap: 4px; flex: 0 0 auto; }
+  .zzz14b2-voice .zzz16-btn.is-on { background: #D4AF37; color: #171717; border-color: #D4AF37; }
+  
 
   
   
@@ -37336,10 +37341,58 @@ function zzz16_vibrate(prio) {
 let zzz16Voices = [];
 function zzz16_load_voices() { try { zzz16Voices = speechSynthesis.getVoices() || []; } catch (e) {} }
 try { if ('speechSynthesis' in window) { zzz16_load_voices(); speechSynthesis.addEventListener('voiceschanged', zzz16_load_voices); } } catch (e) {}
-function zzz16_voice() {
+
+let zzz16Words = null, zzz16WordsLoading = null;
+function zzz16_words_load() {
+  if (zzz16Words || zzz16WordsLoading) return zzz16WordsLoading;
+  zzz16WordsLoading = fetch('voice-words.json', { cache: 'force-cache' }).then(r => r.ok ? r.json() : null).then(j => {
+    if (j && j.dia) zzz16Words = { dia: j.dia, sk: new Set(j.sk || []), en: new Set(j.en || []) };
+    return zzz16Words;
+  }).catch(() => null).finally(() => { zzz16WordsLoading = null; });
+  return zzz16WordsLoading;
+}
+try { setTimeout(() => { if ('speechSynthesis' in window) zzz16_words_load(); }, 6000); } catch (e) {}
+const ZZZ16_WORD_RE = /[a-zA-Z\u00C0-\u024F']+/g;
+function zzz16_has_dia(t) { return /[\u00C0-\u024F]/.test(String(t || '')); }
+function zzz16_detect(t) {
+  if (zzz16_has_dia(t)) return 'sk';
+  const W = zzz16Words; if (!W) return '?';
+  let en = 0, sk = 0, n = 0;
+  (String(t).toLowerCase().match(ZZZ16_WORD_RE) || []).forEach(w0 => {
+    const w = w0.replace(/'/g, ''); n++;
+    const e = W.en.has(w), k = W.sk.has(w) || Object.prototype.hasOwnProperty.call(W.dia, w);
+    if (e && !k) en++; else if (k && !e) sk++;
+  });
+  if (!n) return '?';
+  if (en >= 2 && en > sk) return 'en';
+  if (n <= 2 && en === 1 && sk === 0) return 'en';
+  if (sk >= 1 && sk >= en) return 'sk';
+  return '?';
+}
+function zzz16_lang_of(t) {
+  const pick = String(zzz16_prefs().voiceLang || 'auto');
+  if (pick === 'sk' || pick === 'en') return pick;
+  let last = 'sk'; try { last = localStorage.getItem('zzz16_last_lang') || 'sk'; } catch (e) {}
+  const d = zzz16_detect(t);
+  if (d === '?') return last;
+  if (d !== last) { try { localStorage.setItem('zzz16_last_lang', d); } catch (e) {} }
+  return d;
+}
+function zzz16_add_dia(t) {
+  const W = zzz16Words; if (!W || zzz16_has_dia(t)) return t;
+  return String(t).replace(ZZZ16_WORD_RE, (w) => {
+    const rep = W.dia[w.toLowerCase()];
+    if (!rep) return w;
+    if (w.length > 1 && w === w.toUpperCase()) return rep.toUpperCase();
+    if (w[0] === w[0].toUpperCase() && w[0] !== w[0].toLowerCase()) return rep[0].toUpperCase() + rep.slice(1);
+    return rep;
+  });
+}
+function zzz16_voice(lang) {
   if (!('speechSynthesis' in window)) return null;
   if (!zzz16Voices.length) zzz16_load_voices();
   const vs = zzz16Voices;
+  if (lang === 'en') { const ve = vs.find((x) => /^en[-_]?(US|GB)?/i.test(x.lang)); if (ve) return ve; }
   const v = vs.find((x) => /^sk/i.test(x.lang)) || vs.find((x) => /^cs/i.test(x.lang)) || null;
   if (!v && vs.length && !zzz16_voice._hinted) {
     zzz16_voice._hinted = true;
@@ -37350,10 +37403,13 @@ function zzz16_voice() {
 function zzz16_speak(text) {
   if (!text || !('speechSynthesis' in window)) return false;
   try {
-    const u = new SpeechSynthesisUtterance(text);
-    const v = zzz16_voice();
+    if (!zzz16Words) zzz16_words_load();
+    const lang = zzz16_lang_of(text);
+    const said = lang === 'sk' ? zzz16_add_dia(text) : text;
+    const u = new SpeechSynthesisUtterance(said);
+    const v = zzz16_voice(lang);
     if (v) u.voice = v;
-    u.lang = v ? v.lang : 'sk-SK';
+    u.lang = v ? v.lang : (lang === 'en' ? 'en-US' : 'sk-SK');
     u.rate = 1;
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
@@ -37825,23 +37881,36 @@ function zzz16_after_logout() {
 }
 
 function zzz14b2_render_language_settings(host) {
+
   const box = document.createElement('div');
   box.className = 'zzz16-box';
   const h = document.createElement('h3'); h.textContent = 'LANGUAGE'; box.appendChild(h);
-  const row = (label, sub) => {
+  const row = (label, now, soon, ctrl) => {
     const r = document.createElement('div'); r.className = 'zzz16-row';
     const l = document.createElement('div'); l.textContent = label;
-    const s = document.createElement('small'); s.textContent = sub; l.appendChild(s);
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn'; b.textContent = 'SOON'; b.disabled = true;
-    r.appendChild(l); r.appendChild(b); box.appendChild(r);
+    if (now) { const s1 = document.createElement('small'); s1.className = 'zzz14b2-now'; s1.textContent = '✓ ' + now; l.appendChild(s1); }
+    if (soon) { const s2 = document.createElement('small'); s2.className = 'zzz14b2-soon'; s2.textContent = 'SOON: ' + soon; l.appendChild(s2); }
+    r.appendChild(l);
+    if (ctrl) r.appendChild(ctrl);
+    else { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn'; b.textContent = 'SOON'; b.disabled = true; r.appendChild(b); }
+    box.appendChild(r);
   };
-  row('App language', 'Now: English. Planned: choose the language of the whole app (always one language at a time).');
-  row('Keyboard languages', 'Now: Slovak letters by long press on the Verso Keyboard. Planned: layouts per language and a switch on the keyboard.');
-  row('Voice language', 'Now: Slovak, English when the text is clearly English, otherwise the last recognized language. Planned: your own choice.');
-  row('Translation', 'Planned: translate texts through Verso AI or a verified AI worker only.');
-  const m = document.createElement('div'); m.className = 'zzz16-msg';
-  m.textContent = 'These options are planned and cannot be changed yet.';
-  box.appendChild(m);
+  row('App language', 'English.', 'choose the language of the whole app (always one language at a time).');
+  row('Keyboard languages', 'Slovak letters by long press on the Verso Keyboard (web and app).', 'layouts per language and a switch on the keyboard.');
+
+  const sel = document.createElement('div'); sel.className = 'zzz14b2-voice';
+  const cur = String(zzz16_prefs().voiceLang || 'auto');
+  [['auto', 'AUTO'], ['sk', 'SK'], ['en', 'EN']].forEach(([k, t]) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn' + (k === cur ? ' is-on' : ''); b.textContent = t;
+    b.addEventListener('click', () => {
+      const p = zzz16_prefs(); p.voiceLang = k; zzz16_save_prefs(p);
+      sel.querySelectorAll('button').forEach(x => x.classList.toggle('is-on', x === b));
+      zzz16_speak(k === 'en' ? 'English voice.' : (k === 'sk' ? 'Slovenský hlas.' : 'Automaticky podľa textu.'));
+    });
+    sel.appendChild(b);
+  });
+  row('Voice language', 'AUTO: Slovak with added diacritics (mas → máš), English when the text is clearly English, otherwise the last recognized language; or always SK / EN. In the Verso app the VERSO READER has the same choice.', '', sel);
+  row('Translation', '', 'translate texts through Verso AI or a verified AI worker only.');
   host.appendChild(box);
 }
 
@@ -44260,7 +44329,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'TASK-GRANT 2026-10-25';
+const VERSO_BUILD = 'VOICE-DIA 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
