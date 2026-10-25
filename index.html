@@ -3537,6 +3537,11 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz14pt-in.is-name { flex: 1 1 auto; font-weight: 700; }
   .zzz14pt-in.is-chip { width: 92px; text-transform: uppercase; }
   .zzz14pt-in.is-users { flex: 1 1 90px; }
+  .zzz14pt-in.zzz14pt-min { width: 48px; }
+  
+  .zzz14pt-notechip.is-tap { cursor: pointer; box-shadow: 0 0 0 2px rgba(22,163,74,.55); animation: zzz14ptTap 1.6s ease-in-out infinite; }
+  .zzz14pt-notechip.is-next::before { content: '\2192  '; }
+  @keyframes zzz14ptTap { 50% { box-shadow: 0 0 0 4px rgba(22,163,74,.25); } }
   .zzz14pt-color { width: 26px; height: 22px; padding: 0; border: 0; background: none; }
   .zzz14pt-chip { border: 1px solid; border-radius: 10px; padding: 1px 7px; font-size: 10px; font-weight: 800; }
   .zzz14pt-prio { font-size: 10px; background: #111; color: #ddd; border: 1px solid #555; border-radius: 6px; }
@@ -14150,7 +14155,9 @@ function zzz14pt_norm(cfg) {
         owner: !!(st.who && st.who.owner), delegates: !!(st.who && st.who.delegates),
         users: (st.who && Array.isArray(st.who.users) ? st.who.users : []).map(u => String(u).trim()).filter(Boolean).slice(0, 30)
       },
-      tasksent: st.tasksent !== false, auto_open: !!st.auto_open
+      tasksent: st.tasksent !== false, auto_open: !!st.auto_open,
+
+      takeover_min: Math.max(0, Math.min(1440, parseInt(st.takeover_min, 10) || 0))
     }))
   })) };
 }
@@ -14428,7 +14435,17 @@ async function zzz14pt_render(panel, api) {
         who.appendChild(zzz14pt_people_field(key, stp.who.users, v => { stp.who.users = v; }, canEdit, mark));
         r.appendChild(who);
         const opt = document.createElement('div'); opt.className = 'zzz14pt-who';
-        opt.appendChild(chk(stp.tasksent, 'needs TASKER', v => { stp.tasksent = v; }, 'The step is finished only when one of them taps TASKER'));
+        opt.appendChild(chk(stp.tasksent, 'tap = take / confirm (TASKER)', v => { stp.tasksent = v; }, 'The chip on the message is tapped to take / confirm this step - the first tap wins'));
+
+        const tkw = document.createElement('span'); tkw.className = 'zzz14pt-chk';
+        const tkl = document.createElement('span'); tkl.textContent = 'owner may take over after';
+        const tki = document.createElement('input'); tki.type = 'number'; tki.min = '0'; tki.max = '1440'; tki.className = 'zzz14pt-in zzz14pt-min';
+        tki.value = stp.takeover_min ? String(stp.takeover_min) : ''; tki.disabled = !canEdit;
+        tki.title = 'Until then only the people ticked above take the step; after it also the owner. Empty = no waiting.';
+        tki.addEventListener('input', () => { stp.takeover_min = Math.max(0, Math.min(1440, parseInt(tki.value, 10) || 0)); mark(); });
+        const tku = document.createElement('span'); tku.textContent = 'min';
+        tkw.append(tkl, tki, tku);
+        opt.appendChild(tkw);
         opt.appendChild(chk(stp.auto_open, 'opens by itself', v => { stp.auto_open = v; }, 'In COMM SPACE the window of this step opens by itself (urgent notification queue)'));
         r.appendChild(opt);
         card.appendChild(r);
@@ -14597,41 +14614,71 @@ function zzz14pt_note_task_done(n) {
   return !!(t && zzz14pt_task_is_done(n.entry_key, n.note_number, t.typeId));
 }
 
-function zzz14pt_can_confirm(entryId, step) {
+function zzz14pt_taker_of(entryId, taskNo, typeId) {
+  const id = Number(String(entryId || '').replace(/\D/g, ''));
+  const r = (zzz14ptTs[id] || []).find(x => Number(x.task_no) === Number(taskNo) && String(x.type_id).toLowerCase() === String(typeId).toLowerCase());
+  return r ? String(r.username || '').trim() : '';
+}
+
+function zzz14pt_can_confirm(entryId, step, ctx) {
   if (!step || !step.tasksent) return false;
   const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
   if (!me) return false;
   const row = (typeof zzz6f29_entry_row_of === 'function') ? zzz6f29_entry_row_of(entryId) : null;
   const f = row ? (zzz_parse_fields_json(row) || {}) : {};
-  if (step.who.owner && row && (zzz10v1_normalize(row.username || '') === me || zzz10v1_normalize(f.r4 || '') === me)) return true;
+  const isOwner = !!row && (zzz10v1_normalize(row.username || '') === me || zzz10v1_normalize(f.r4 || '') === me);
+  if (ctx) {
+    const taker = zzz10v1_normalize(zzz14pt_taker_of(entryId, ctx.taskNo, ctx.typeId));
+    if (taker && taker !== me && !isOwner) return false;
+    if (isOwner && step.takeover_min > 0) {
+      if (taker === me) return true;
+      if (ctx.noteAt && Date.now() >= ctx.noteAt + step.takeover_min * 60000) return true;
+    } else if (isOwner && step.who.owner) return true;
+  } else if (step.who.owner && isOwner) return true;
   if (step.who.delegates && typeof zzz1cn_is_delegate === 'function' && zzz1cn_is_delegate(String(entryId))) return true;
   return (step.who.users || []).some(u => zzz10v1_normalize(u) === me);
 }
-function zzz14pt_note_ts_ui(wrap, note, tc, onChanged) {
+function zzz14pt_note_ts_ui(wrap, note, tc, onChanged, chipEl) {
   const st = zzz14pt_step_of(note.entry_key, tc.typeId, tc.chip);
   if (!st || !st.step.tasksent) return;
   const box = document.createElement('div');
   box.className = 'zzz14pt-tsline';
   const done = zzz14pt_ts_of(note.entry_key, note.note_number, tc.typeId, tc.chip);
+  const noteAt = Date.parse(note.created_at || '') || 0;
+  const ctx = { taskNo: note.note_number, typeId: tc.typeId, noteAt };
   if (done) {
     box.innerHTML = '';
     const ok = document.createElement('span'); ok.className = 'zzz14pt-tsok';
-    ok.textContent = `✓ TASKER · ${done.username} · ${zzz5w8_fmt_time(Date.parse(done.created_at || '') || Date.now())}`;
+    ok.textContent = `✓ ${tc.chip} · ${done.username} · ${zzz5w8_fmt_time(Date.parse(done.created_at || '') || Date.now())}`;
     box.appendChild(ok);
+
+    const nx = st.type.steps[tc.stepIdx + 1];
+    if (chipEl && nx) { chipEl.textContent = nx.chip; chipEl.style.borderColor = nx.color; chipEl.style.color = nx.color; chipEl.classList.add('is-next'); chipEl.title = `${tc.chip} taken by ${done.username} - next: ${nx.chip}`; }
     if (zzz14pt_task_is_done(note.entry_key, note.note_number, tc.typeId) && !String(note.note_part || '').trim()) {
       const d = document.createElement('span'); d.className = 'zzz14pt-taskdone'; d.textContent = 'TASK DONE';
       box.appendChild(d);
     }
-  } else if (zzz14pt_can_confirm(note.entry_key, st.step)) {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz14pt-tsbtn';
-    b.textContent = 'TASKER';
-    b.title = `Confirm ${tc.chip} of ${tc.typeName} #${note.note_number} - the first who taps confirms it for everyone`;
-    b.addEventListener('click', async (e) => { e.stopPropagation(); b.disabled = true; await zzz14pt_confirm(note, tc); if (onChanged) onChanged(); });
-    box.appendChild(b);
+  } else if (zzz14pt_can_confirm(note.entry_key, st.step, ctx)) {
+
+    const go = async (e) => { e.stopPropagation(); e.preventDefault(); if (chipEl) chipEl.classList.remove('is-tap'); await zzz14pt_confirm(note, tc); if (onChanged) onChanged(); };
+    if (chipEl) {
+      chipEl.classList.add('is-tap'); chipEl.setAttribute('role', 'button');
+      chipEl.title = `Tap = take / confirm ${tc.chip} of ${tc.typeName} #${note.note_number} (the first tap wins)`;
+      chipEl.addEventListener('click', go);
+    }
+    const w = document.createElement('span'); w.className = 'zzz14pt-tswait';
+    w.textContent = `tap ${tc.chip} to take it`;
+    box.appendChild(w);
   } else {
     const w = document.createElement('span'); w.className = 'zzz14pt-tswait';
-    const who = [st.step.who.owner ? 'owner' : '', st.step.who.delegates ? 'delegates' : ''].concat(st.step.who.users || []).filter(Boolean).join(', ');
-    w.textContent = `waits for TASKER (${who || '-'})`;
+    const taker = zzz14pt_taker_of(note.entry_key, note.note_number, tc.typeId);
+    const who = taker || [st.step.who.owner ? 'owner' : '', st.step.who.delegates ? 'delegates' : ''].concat(st.step.who.users || []).filter(Boolean).join(', ');
+    let txt = `waits for ${who || '-'}`;
+    if (st.step.takeover_min > 0 && noteAt && !taker) txt += ` · owner may take over at ${zzz5w8_fmt_time(noteAt + st.step.takeover_min * 60000)}`;
+
+    const left = st.step.takeover_min > 0 && noteAt && !taker ? noteAt + st.step.takeover_min * 60000 - Date.now() : 0;
+    if (left > 0 && left < 6 * 3600000 && onChanged) setTimeout(() => { if (wrap.isConnected) onChanged(); }, left + 1500);
+    w.textContent = txt;
     box.appendChild(w);
   }
   Promise.resolve().then(() => wrap.appendChild(box));
@@ -14650,10 +14697,32 @@ async function zzz14pt_confirm(note, tc) {
   } else {
     zzz_haptic_pulse(30);
     zzz6f2_show_toast(`✓ TASKER ${tc.chip} #${note.note_number}.`);
+    try { await zzz14pt_notify_taken(note, tc, me); } catch (e) {   }
     if (zzz14pt_task_is_done(note.entry_key, note.note_number, tc.typeId)) await zzz14pt_write_done(note.entry_key, note.note_number, tc.typeId);
   }
   try { zzz1cn_notif_recount(); } catch (e) {}
   zzz5_6_live_ping('tasksent');
+}
+
+async function zzz14pt_notify_taken(note, tc, me) {
+  const st = zzz14pt_step_of(note.entry_key, tc.typeId, tc.chip);
+  if (!st) return;
+  const key = String(note.entry_key);
+  const row = zzz6f29_entry_row_of(key); const f = row ? (zzz_parse_fields_json(row) || {}) : {};
+  const owner = String(f.r4 || (row && row.username) || '').trim();
+  const meN = zzz10v1_normalize(me);
+  const nx = st.type.steps[tc.stepIdx + 1];
+  const no = note.note_number;
+  if (zzz10v1_normalize(owner) === meN || (row && zzz10v1_normalize(row.username || '') === meN)) {
+    if (!(st.step.takeover_min > 0)) return;
+    if (typeof zzz1cn_cu_load === 'function') await zzz1cn_cu_load(key);
+    const others = zzz14pt_delegates_of(key).concat(st.step.who.users || []).filter(n => zzz10v1_normalize(n) !== meN);
+    const uniq = others.filter((n, i) => others.findIndex(x => zzz10v1_normalize(x) === zzz10v1_normalize(n)) === i);
+    if (!uniq.length) return;
+    await zzz1cn_add(key, `⚑ ${st.type.name} #${no} ${tc.chip} taken over by ${me} (owner) - the task is no longer yours.`, false, { base: Number(no) }, '', false, 'urgent', uniq, '');
+  } else if (owner) {
+    await zzz1cn_add(key, `✓ ${st.type.name} #${no} ${tc.chip} taken by ${me}${nx ? ' → ' + nx.chip : ''}`, false, { base: Number(no) }, '', false, (nx && nx.prio) || st.step.prio || '', [owner], '');
+  }
 }
 
 async function zzz14pt_write_done(entryId, taskNo, typeId) {
@@ -14703,7 +14772,7 @@ function zzz14pt_task_info(n) {
   const need = !!st.step.tasksent;
   const who = [st.step.who.owner ? 'owner' : '', st.step.who.delegates ? 'delegates' : ''].concat(st.step.who.users || []).filter(Boolean).join(', ');
   return Object.assign({}, tc, { prio: st.step.prio || '', need, pending: need && !ts, confirmed: !!ts, by: ts ? ts.username : '',
-    canMe: need && !ts && zzz14pt_can_confirm(n.entry_key, st.step), who });
+    canMe: need && !ts && zzz14pt_can_confirm(n.entry_key, st.step, { taskNo: n.note_number, typeId: tc.typeId, noteAt: Date.parse(n.created_at || '') || 0 }), who });
 }
 
 const ZZZ14SH_LS = 'verso.show.';
@@ -35154,8 +35223,9 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
     headId.appendChild(wait);
   }
 
-  { const tc = zzz14pt_chip_of(note); if (tc) { zzz14pt_note_ts_ui(wrap, note, tc, onChanged); }
-    if (tc) { const c = document.createElement('span'); c.className = 'zzz14pt-notechip'; c.textContent = tc.chip; c.style.borderColor = tc.color; c.style.color = tc.color; c.title = `${tc.typeName} task - step ${tc.stepIdx + 1}: ${tc.chip}`; headId.insertBefore(c, headId.firstChild); wrap.classList.add('zzz14pt-tasknote'); } }
+  { const tc = zzz14pt_chip_of(note);
+    if (tc) { const c = document.createElement('span'); c.className = 'zzz14pt-notechip'; c.textContent = tc.chip; c.style.borderColor = tc.color; c.style.color = tc.color; c.title = `${tc.typeName} task - step ${tc.stepIdx + 1}: ${tc.chip}`; headId.insertBefore(c, headId.firstChild); wrap.classList.add('zzz14pt-tasknote');
+      zzz14pt_note_ts_ui(wrap, note, tc, onChanged, c); } }
   headLeft.appendChild(headMarks);
   headLeft.appendChild(headId);
 
@@ -43416,7 +43486,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'CHAT-PACKS 2026-10-25';
+const VERSO_BUILD = 'TASK-ADVANCE 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
