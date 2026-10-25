@@ -14954,6 +14954,49 @@ function zzz14pt_note_vals_ui(wrap, note, tc, onChanged) {
   }
   Promise.resolve().then(() => wrap.appendChild(box));
 }
+
+function zzz14pt_closing_ui(wrap, note, onChanged) {
+  const m = String(note.note_tags || '').toLowerCase().match(/^closing:([^/,\s]+)/);
+  if (!m) return;
+  const typeId = m[1];
+  const txt = String(note.note_text || '');
+  const items = [];
+  [/missing consent: ([^·]+)/i, /carried over: ([^·]+)/i].forEach(re => {
+    const g = txt.match(re); if (!g) return;
+    g[1].split(',').forEach(part => {
+      const h = part.trim().match(/^#(\d+)\s+([^()]+?)(?:\s*\(.*\))?$/);
+      if (h && !items.some(x => x.no === Number(h[1]) && x.chip === h[2].trim().toLowerCase())) items.push({ no: Number(h[1]), chip: h[2].trim().toLowerCase() });
+    });
+  });
+  if (!items.length) return;
+  const box = document.createElement('div'); box.className = 'zzz14pt-valline zzz14pt-closingline';
+  const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+  let shown = 0;
+  items.forEach(it => {
+    const st = zzz14pt_step_of(note.entry_key, typeId, it.chip);
+    if (!st) return;
+    const fake = { entry_key: note.entry_key, note_number: it.no, id: null };
+    const tc = { typeId, chip: st.step.chip };
+    const cs = zzz14pt_consents_of(note.entry_key, it.no, typeId, it.chip);
+    const enough = cs.length >= (st.step.consent === 'both' ? 2 : 1);
+    if (enough) { const o = document.createElement('span'); o.className = 'zzz14pt-tsok'; o.textContent = `✓ #${it.no} ${st.step.chip} agreed`; box.appendChild(o); shown++; return; }
+    if (cs.some(c => zzz10v1_normalize(c.username) === me) || !zzz14pt_can_consent(fake, tc, st.step)) return;
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz14pt-tsbtn'; b.textContent = `CONSENT #${it.no} ${st.step.chip}`;
+    b.title = 'Give the missing consent from this summary - it counts for the task and its closing';
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation(); b.disabled = true;
+      const row = { entry_id: Number(note.entry_key), task_no: it.no, type_id: typeId, chip: it.chip, note_id: null,
+        username: (zzz0r1_get_current_username() || '').trim(), kind: 'consent' };
+      const { error } = await sb.from(ZZZ14PT_VAL_TABLE).insert(row);
+      await zzz14pt_vals_load(note.entry_key);
+      if (error) { b.disabled = false; zzz6f2_show_toast(`Consent not saved: ${error.message || error}`, 'warn'); return; }
+      zzz_haptic_pulse(30); zzz6f2_show_toast(`✓ Consent #${it.no} ${st.step.chip}.`);
+      if (onChanged) onChanged();
+    });
+    box.appendChild(b); shown++;
+  });
+  if (shown) Promise.resolve().then(() => wrap.appendChild(box));
+}
 function zzz14pt_note_ts_ui(wrap, note, tc, onChanged, chipEl) {
   const st = zzz14pt_step_of(note.entry_key, tc.typeId, tc.chip);
   if (!st || !st.step.tasksent) return;
@@ -35640,7 +35683,8 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
 
   { const tc = zzz14pt_chip_of(note);
     if (tc) { const c = document.createElement('span'); c.className = 'zzz14pt-notechip'; c.textContent = tc.chip; c.style.borderColor = tc.color; c.style.color = tc.color; c.title = `${tc.typeName} task - step ${tc.stepIdx + 1}: ${tc.chip}`; headId.insertBefore(c, headId.firstChild); wrap.classList.add('zzz14pt-tasknote');
-      zzz14pt_note_ts_ui(wrap, note, tc, onChanged, c); zzz14pt_note_vals_ui(wrap, note, tc, onChanged); } }
+      zzz14pt_note_ts_ui(wrap, note, tc, onChanged, c); zzz14pt_note_vals_ui(wrap, note, tc, onChanged); }
+    else if (/^closing:/i.test(String(note.note_tags || ''))) zzz14pt_closing_ui(wrap, note, onChanged); }
   headLeft.appendChild(headMarks);
   headLeft.appendChild(headId);
 
@@ -43901,7 +43945,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'CL-ALARM-WINDOWS 2026-10-25';
+const VERSO_BUILD = 'TASK-CLOSING 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
