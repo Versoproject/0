@@ -9059,6 +9059,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     padding: 6px; border: 2px solid #D4AF37; border-radius: 12px; background: #fff8e1; }
   .zzz5w8-iw-main .zzz5w8-iw-field { color: #7a5c00; font-size: 9px; }
   .zzz5w8-iw-main .zzz5w8-iw-field input { border-color: #D4AF37; font-size: 13px; font-weight: 700; }
+  
+  .zzz5w8-item-window input::placeholder, .zzz5w8-item-window textarea::placeholder { color: #cfcfcf !important; font-style: italic; font-weight: 400 !important; font-size: .82em; opacity: 1; }
+  .zzz5w8-item-window .zzz5w8-iw-msg:not(.is-warn) { color: #b5b5b5; font-style: italic; }
+  .zzz5w5cm-chip.zzz5w8-iw-you { flex: 0 0 auto; white-space: nowrap; cursor: default; background-color: #D4AF37; color: #171717; }
   .zzz5w8-iw-four { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 6px; align-items: end; }
   .zzz5w8-iw-addr { grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr); }
   .zzz5w8-iw-memline { display: flex; gap: 4px; align-items: center; }
@@ -25012,6 +25016,15 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
   const memLine = document.createElement('div');
   memLine.className = 'zzz5w8-iw-memline';
   memIn.parentNode.insertBefore(memLine, memIn);
+
+  const meName = (zzz0r1_get_current_username() || '').trim();
+  if (meName) {
+    const you = document.createElement('span');
+    you.className = 'zzz5w5cm-chip is-on zzz5w8-iw-you';
+    you.textContent = meName + ' (you)';
+    you.title = 'You always get your own ALARM';
+    memLine.appendChild(you);
+  }
   memLine.appendChild(memIn);
   const cBtn = document.createElement('button');
   cBtn.type = 'button';
@@ -25423,6 +25436,13 @@ function zzz5w8_build_shift_bar(it) {
 
 const ZZZ5W8_HOLD_PLAY_MS = 1200;
 function zzz5w8_play_item(it) {
+
+  if (it && (it.src === 'reminder' || it.src === 'schedule')) {
+    const r = it.raw || {};
+    const t = [String(r.title || '').trim(), r.place ? String(r.place) : ''].filter(Boolean).join('. ') || String(it.text || '');
+    if (typeof zzz16_read_text === 'function') zzz16_read_text([{ user: it.from || '', entry: it.entry || '', prio: it.prio, text: t }]);
+    return;
+  }
   if (!it || it.src !== 'chat') return;
   const text = String(it.text || '').trim();
   if (!text) { zzz6f2_show_toast('No message text to read.', 'warn'); return; }
@@ -25629,7 +25649,7 @@ function zzz5w8_build_row(it) {
   });
   line.title = `${it.type} ${v.when} - ${it.text}` + (it.src === 'chat' ? ' (tap = open + SHIFTED, hold = read aloud + SHIFTED, ✉ / swipe right = open and keep, swipe left = SHIFT)' : '');
   line.addEventListener('click', () => { if (!line._zzzSwiped) zzz5w8_open_shift(it, line); });
-  if (it.src === 'chat') zzz_bind_long_press(line, ZZZ5W8_HOLD_PLAY_MS, () => { line._zzzSwiped = true; setTimeout(() => { line._zzzSwiped = false; }, 700); zzz5w8_play_shift(it); });
+  if (it.src === 'chat' || it.src === 'reminder' || it.src === 'schedule') zzz_bind_long_press(line, ZZZ5W8_HOLD_PLAY_MS, () => { line._zzzSwiped = true; setTimeout(() => { line._zzzSwiped = false; }, 700); zzz5w8_play_shift(it); });
 
   zzz5w8_bind_swipe(line, () => zzz5w8_swipe_hide(it), () => zzz5w8_shift_prompt(it, line));
   if (it.src === 'chat' && it.prio === 'urgent') line.addEventListener('dblclick', () => zzz5w8_play_item(it));
@@ -25658,7 +25678,7 @@ function zzz5w8_build_card(it) {
   card.appendChild(tx);
   card.title = it.src === 'chat' ? 'Tap = open + SHIFTED, hold = read aloud + SHIFTED, swipe right = open and keep, swipe left = SHIFT' : 'Tap = change it, mark it done';
   card.addEventListener('click', () => { if (!card._zzzSwiped) zzz5w8_open_shift(it, card); });
-  if (it.src === 'chat') zzz_bind_long_press(card, ZZZ5W8_HOLD_PLAY_MS, () => { card._zzzSwiped = true; setTimeout(() => { card._zzzSwiped = false; }, 700); zzz5w8_play_shift(it); });
+  if (it.src === 'chat' || it.src === 'reminder' || it.src === 'schedule') zzz_bind_long_press(card, ZZZ5W8_HOLD_PLAY_MS, () => { card._zzzSwiped = true; setTimeout(() => { card._zzzSwiped = false; }, 700); zzz5w8_play_shift(it); });
   zzz5w8_bind_swipe(card, () => zzz5w8_swipe_hide(it), () => zzz5w8_shift_prompt(it, card));
   if (it.src === 'chat' && it.prio === 'urgent') card.addEventListener('dblclick', () => zzz5w8_play_item(it));
   return card;
@@ -26648,7 +26668,7 @@ async function zzz3d_shift(it) {
 }
 
 function zzz3d_hold(el, it) {
-  if (!it || it.src !== 'chat') return;
+  if (!it || (it.src !== 'chat' && it.src !== 'reminder' && it.src !== 'schedule')) return;
   let t = null, x0 = 0, y0 = 0;
   const stop = () => { if (t) { clearTimeout(t); t = null; } };
   el.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -36067,9 +36087,34 @@ function zzz16_stop_reading() {
 function zzz16_is_reading() {
   try { return 'speechSynthesis' in window && (speechSynthesis.speaking || speechSynthesis.pending); } catch (e) { return false; }
 }
+
+function zzz16_many_contacts(entry) {
+  const k = String(entry || '');
+  if (!/^\d+$/.test(k)) return false;
+  const row = (typeof zzz6f29_entry_row_of === 'function') ? zzz6f29_entry_row_of(k) : null;
+  if (!row) return true;
+  const f = (typeof zzz_parse_fields_json === 'function' ? zzz_parse_fields_json(row) : null) || {};
+  const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+  const people = new Set();
+  let group = false;
+  [row.username, f.r4, f.r17, f.r18].forEach(cell => {
+    (typeof zzz6f21_parse_tags === 'function' ? zzz6f21_parse_tags(cell || '') : String(cell || '').split(',')).forEach(x => {
+      const nm = String(x || '').replace(/^[@&]/, '').trim();
+      if (!nm) return;
+      const g = (typeof zzz5w5cm_group_expand === 'function') ? zzz5w5cm_group_expand(nm) : null;
+      if (g) { group = true; g.forEach(m => { const n = zzz10v1_normalize(m); if (n && n !== meN) people.add(n); }); return; }
+      const n = zzz10v1_normalize(nm);
+      if (n && n !== meN) people.add(n);
+    });
+  });
+  return group || people.size > 1;
+}
 function zzz16_read_text(items) {
   if (zzz16_mode() !== 'my') { zzz6f2_show_toast('Reading the message text aloud works only on MY DEVICE.', 'warn'); return false; }
-  const parts = (items || []).filter(i => i && i.text).slice(-3).map(i => `${i.user || 'Niekto'} píše: ${String(i.text).replace(/\s+/g, ' ').slice(0, 300)}`);
+  const parts = (items || []).filter(i => i && i.text).slice(-3).map(i => {
+    const t = String(i.text).replace(/\s+/g, ' ').slice(0, 300);
+    return (i.user && zzz16_many_contacts(i.entry)) ? `${i.user} píše: ${t}` : t;
+  });
   if (!parts.length) { zzz6f2_show_toast('No message text to read.', 'warn'); return false; }
   const ok = zzz16_speak(parts.join('. '));
   if (!ok) zzz6f2_show_toast('Text could not be read aloud - this browser has no speech voice.', 'warn');
@@ -42757,7 +42802,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'CHAT-THREADS-ALL 2026-10-25';
+const VERSO_BUILD = 'W8-ALARM-2 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
