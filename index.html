@@ -9794,6 +9794,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz1r17b-chip.zzz56-blocked > span:first-child { color: #ff4d4d !important; text-decoration: line-through; text-decoration-thickness: 2px; }   
   .zzz1r17b-chip.zzz56-sel::before { content: '\2713'; color: #2a9d8f; font-weight: 900; margin-right: 6px; }
   
+  
+  .zzz1cn-note-btn.zzz5-6-privbtn, .zzz1cn-save-btn, .zzz1cn-clock, .zzz5w8-alarm-btn, .zzz1r17b-chip-more {
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation;
+  }
   .zzz1cn-note-btn.zzz5-6-privbtn {
     border: 1px solid #2a9d8f !important;
     color: #40c2b0 !important;
@@ -9806,6 +9810,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     color: #04312c !important;
     font-weight: 800;
   }
+  
+  .zzz1cn-note-btn.zzz5-6-privbtn.is-on.is-open-pack { background-color: #D4AF37 !important; border-color: #b8952b !important; color: #171717 !important; }
+  .zzz5-6-privwin button.zzz56-pack.zzz5-6-privchip { border: 2px solid #D4AF37 !important; color: #D4AF37 !important; }
+  .zzz5-6-privwin button.zzz56-pack.zzz5-6-privchip.is-private { border-color: #2a9d8f !important; color: #40c2b0 !important; box-shadow: 0 0 0 1px #40c2b0; }
+  .zzz56-pack.is-active { background: #2a2a2a !important; color: #fff !important; }
+  .zzz5-6-privwin .zzz56-noreach { color: #ff6b6b !important; }
   
   .zzz5-6-modes { margin-left: auto; display: inline-flex; gap: 4px; align-items: center; align-self: center; }
   
@@ -15471,6 +15481,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     const chipsOpen = (() => { try { return localStorage.getItem(openKey) === '1'; } catch (e) { return false; } })();
     const setChipsOpen = (on) => { try { if (on) localStorage.setItem(openKey, '1'); else localStorage.removeItem(openKey); } catch (e) {} renderChips(); };
     const groupable = workingTags.length > ZZZ1R17B_CHIP_MAX;
+    if (cnGateKey) zzz56People[cnGateKey] = workingTags.slice();
     const hideable = groupable && !chipsOpen;
     const shown = [], tucked = [];
     workingTags.forEach(t => {
@@ -16804,9 +16815,10 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     nlNameHint();
     cnPlaceOptions(Number(openAt) || 0);
     zzz1cn_fit_comm_window(box);
-    textIn.focus();
+    try { textIn.focus({ preventScroll: true }); } catch (e) { textIn.focus(); }
   };
 
+  zzz_bind_hold_selection_guard(cnSave);
   zzz5w7_bind_tiered_hold(cnSave, [
     { ms: 1200, fn: () => cnOpenOptions() },
     { ms: 3000, fn: () => zzz1cn_open_list(cnEntryKey, cnSave) }
@@ -28685,7 +28697,7 @@ function zzz56_sel_toggle(entryKey, name) {
   return !has;
 }
 function zzz56_priv_active() {
-  const all = zzz56_priv_presets();
+  const all = (typeof zzz56_packs === 'function') ? zzz56_packs() : zzz56_priv_presets();
   return all.find(g => String(g.id) === String(zzz56PrivPresetId)) || null;
 }
 
@@ -28693,7 +28705,7 @@ function zzz56_priv_recipients(entryKey) {
   const sel = zzz56_sel_get(entryKey || zzz56PrivCtx);
   if (sel.length) return sel.slice();
   const g = zzz56_priv_active();
-  return g ? g.members.slice() : [];
+  return (g && g.priv) ? g.members.slice() : [];
 }
 function zzz56_priv_toggle() {
 
@@ -28703,10 +28715,10 @@ function zzz56_priv_toggle() {
   const sel = zzz56_sel_get(zzz56PrivCtx);
   const g = zzz56_priv_active();
   zzz6f2_show_toast(zzz56PrivOn
-    ? (sel.length ? `PRIVATE on - messages go only to ${sel.join(', ')} (and you).`
-      : (g ? `PRIVATE on - tap the people chips to pick who reads it (now the circle "${g.name}").`
-        : 'PRIVATE on - tap the people chips to pick who reads your messages.'))
-    : 'PRIVATE off.');
+    ? (sel.length ? `PACKS on - messages go only to ${sel.join(', ')} (and you).`
+      : (g ? (g.priv ? `PACKS · ${g.name} - only its members read your messages.` : `PACKS · ${g.name} (open) - everyone reads, its members get it as @named.`)
+        : 'PACKS on - tap the people chips to pick who reads it, or hold PACKS for your packs.'))
+    : 'PACKS off.');
   zzz56_priv_refresh();
 }
 
@@ -28715,11 +28727,14 @@ function zzz56_priv_refresh() {
   document.querySelectorAll('.zzz5-6-privbtn').forEach(btn => {
     const g = zzz56_priv_active();
     btn.classList.toggle('is-on', zzz56PrivOn);
-    btn.textContent = zzz56PrivOn ? (sel.length ? `PRIVATE \u00b7 ${sel.length}` : (g ? `PRIVATE \u00b7 ${g.name}` : 'PRIVATE \u00b7 pick')) : 'PRIVATE';
+
+    const lastTxt = sel.length ? (sel.length === 1 ? sel[0] : String(sel.length)) : (g ? g.name : '');
+    btn.classList.toggle('is-open-pack', !!(zzz56PrivOn && !sel.length && g && !g.priv));
+    btn.textContent = zzz56PrivOn ? (lastTxt ? `PACKS \u00b7 ${lastTxt}` : 'PACKS \u00b7 pick') : (lastTxt && !sel.length ? `PACKS \u00b7 ${lastTxt}` : 'PACKS');
     btn.title = zzz56PrivOn
-      ? (sel.length ? `Private - only ${sel.join(', ')} and you read it. Tap a person chip to add/remove. Tap = off, hold 1-2s = circles / contacts.`
-        : 'Private is ON - tap the person chips to pick who reads it. Tap = off, hold 1-2s = circles / contacts.')
-      : 'Private is OFF. Tap = on, then tap the person chips to pick who reads it. Hold 1-2s = circles / contacts.';
+      ? (sel.length ? `Only ${sel.join(', ')} and you read it. Tap a person chip to add/remove. Tap = off, hold 1-2 s = packs.`
+        : (g ? `Pack "${g.name}" (${g.priv ? 'private' : 'open'}). Tap = off, hold 1-2 s = packs.` : 'Tap the person chips to pick who reads it. Tap = off, hold 1-2 s = packs.'))
+      : 'PACKS off. Tap = on (last pack / people), hold 1-2 s = packs (make, edit, private / open).';
   });
 
   const selN = sel.map(x => zzz10v1_normalize(x));
@@ -28737,8 +28752,15 @@ function zzz56_priv_refresh() {
   });
 }
 
-function zzz56_priv_open_presets(anchorEl) {
+const zzz56People = {};
+function zzz56_packs() { return (zzz5w5cmMyGroups || []).filter(g => g.mine !== false); }
+function zzz56_pack_open_members(entryKey) {
 
+  if (!zzz56_priv_on(entryKey) || zzz56_sel_get(entryKey).length) return null;
+  const g = zzz56_priv_active();
+  return (g && !g.priv) ? g.members.slice() : null;
+}
+function zzz56_priv_open_presets(anchorEl) {
   document.querySelectorAll('.zzz5t0-tab-window').forEach(m => m.remove());
   const win = document.createElement('div');
   win.className = 'zzz5t0-tab-window zzz5-6-privwin';
@@ -28746,151 +28768,143 @@ function zzz56_priv_open_presets(anchorEl) {
   win.style.overflowY = 'auto';
   const head = document.createElement('div');
   head.style.cssText = 'font-size:9px;color:#999;padding:2px 4px 6px;';
-  head.textContent = 'PRIVATE CIRCLE - who may read what you write while private mode is on';
+  head.textContent = 'PACKS - tap a pack to write to it · PRIVATE pack (turquoise) = only its members read · OPEN pack = everyone reads, members are @named';
   win.appendChild(head);
   const body = document.createElement('div');
   win.appendChild(body);
-
-  const lab = (txt) => {
-    const d = document.createElement('div');
-    d.style.cssText = 'font-size:9px;color:#999;padding:6px 4px 2px;';
-    d.textContent = txt;
-    return d;
-  };
+  const lab = (txt) => { const d = document.createElement('div'); d.style.cssText = 'font-size:9px;color:#999;padding:6px 4px 2px;'; d.textContent = txt; return d; };
+  const ctx = zzz56PrivCtx;
+  let editId = null;
   const paint = () => {
     body.innerHTML = '';
-    const mine = zzz56_priv_presets();
+    const packs = zzz56_packs();
+    const act = zzz56_priv_active();
 
-    const act = zzz56_priv_active() || mine[0] || null;
-
-    body.appendChild(lab('YOUR PRIVATE CIRCLES - tap to use'));
-    if (!mine.length) {
-      const note = document.createElement('div');
-      note.style.cssText = 'font-size:10px;color:#ddd;padding:4px 6px;max-width:280px;line-height:1.35;';
-      note.textContent = (zzz5w5cmMyGroups || []).length
-        ? 'None of your groups is a private circle yet. Pick one below.'
-        : 'You have no groups yet - make one in Contacts > Groups, then mark it here.';
-      body.appendChild(note);
+    body.appendChild(lab('YOUR PACKS - tap = write to it · hold = edit'));
+    if (!packs.length) {
+      const n = document.createElement('div');
+      n.style.cssText = 'font-size:10px;color:#ddd;padding:4px 6px;max-width:300px;line-height:1.35;';
+      n.textContent = 'No pack yet - make one below (+ NEW PACK).';
+      body.appendChild(n);
     }
-    mine.forEach(g => {
+    packs.forEach(g => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'zzz5w5cm-dir-chip zzz5-6-privchip'
-        + (act && String(g.id) === String(act.id) ? ' is-active' : '');
-      b.textContent = `${g.name} (${g.members.length})`;
-      b.title = g.members.length ? g.members.join(', ') : 'This circle has nobody in it yet';
+      b.className = 'zzz5w5cm-dir-chip zzz5-6-privchip zzz56-pack' + (g.priv ? ' is-private' : '') + (act && String(g.id) === String(act.id) && zzz56PrivOn ? ' is-active' : '');
+      b.textContent = `${g.name} (${g.members.length})${g.priv ? ' · private' : ''}`;
+      b.title = (g.members.length ? g.members.join(', ') : 'Nobody in it yet') + ' - tap = write to this pack, hold = edit';
       b.addEventListener('click', () => {
-        zzz56PrivPresetId = g.id; zzz56_priv_save(); paint(); zzz56_priv_refresh();
+        zzz56PrivPresetId = g.id;
+        zzz56_sel_set(ctx, []);
+        zzz56PrivOn = true; zzz56_priv_save();
+        zzz56_priv_refresh(); paint();
+        zzz6f2_show_toast(g.priv ? `PACKS · ${g.name} - only ${g.members.join(', ') || 'nobody yet'} read your messages here.`
+          : `PACKS · ${g.name} (open) - everyone here reads, ${g.members.join(', ') || 'nobody'} get it as @named.`);
       });
+      zzz5w7_bind_tiered_hold(b, [{ ms: 900, fn: () => { editId = String(g.id); paint(); } }]);
       body.appendChild(b);
     });
 
-    if (act) {
-
-      body.appendChild(lab(`IN "${act.name}" - tap a name to take it out`));
-      if (!act.members.length) {
-        const none = document.createElement('span');
-        none.className = 'zzz5w5cm-dir-note';
-        none.textContent = 'Nobody here yet - add from your contacts below.';
-        body.appendChild(none);
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:4px;padding:6px 4px;align-items:center;flex-wrap:wrap;';
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.placeholder = 'new pack name'; inp.maxLength = 40;
+    inp.className = 'zzz5w5cm-dir-search'; inp.style.cssText = 'flex:1 1 120px;min-width:0;';
+    inp.setAttribute('data-zzz-nodraft', '1');
+    const mk = document.createElement('button');
+    mk.type = 'button'; mk.className = 'zzz5w5cm-dir-hit'; mk.textContent = '+ NEW PACK';
+    mk.title = 'Makes a pack from the people you picked here (or empty) - then add people from MEMBERS / contacts';
+    mk.addEventListener('click', async () => {
+      const nm = String(inp.value || '').trim();
+      if (!nm) { inp.focus(); zzz6f2_show_toast('Type a name for the pack first.', 'warn'); return; }
+      const start = zzz56_sel_get(ctx);
+      if (await zzz5w5cm_save_group(nm, start, null)) {
+        const g = zzz56_packs().find(x => zzz10v1_normalize(x.name) === zzz10v1_normalize(nm));
+        if (g) { editId = String(g.id); zzz56PrivPresetId = g.id; zzz56_sel_set(ctx, []); zzz56PrivOn = true; zzz56_priv_save(); }
+        zzz56_priv_refresh(); paint();
+        zzz6f2_show_toast(`Pack "${nm}" made - add people below.`);
       }
-      act.members.forEach(nm => {
+    });
+    row.appendChild(inp); row.appendChild(mk);
+    body.appendChild(row);
+
+    const ed = packs.find(g => String(g.id) === String(editId)) || (zzz56PrivOn ? act : null);
+    if (ed) {
+      body.appendChild(lab(`IN "${ed.name}" - tap a name to take it out`));
+      if (!ed.members.length) { const nn = document.createElement('span'); nn.className = 'zzz5w5cm-dir-note'; nn.textContent = 'Nobody here yet - add from MEMBERS or contacts below.'; body.appendChild(nn); }
+      ed.members.forEach(nm => {
+        const rr = zzz56_reach_of(ctx, [nm]);
+        const far = rr.blocked.length || rr.noConsent.length;
         const b = document.createElement('button');
         b.type = 'button';
-        b.className = 'zzz5w5cm-dir-chip zzz5-6-privchip is-active';
-        b.textContent = `${nm} \u00d7`;
-        b.title = `Take ${nm} out of this circle`;
+        b.className = 'zzz5w5cm-dir-chip zzz5-6-privchip is-active' + (far ? ' zzz56-noreach' : '');
+        b.textContent = `${nm}${far ? ' ⚠' : ''} ×`;
+        b.title = far ? `${nm} has no comm consent in this record - messages from this chat do not reach them (messages outside this chat come later). Tap = take out.` : `Take ${nm} out of this pack`;
         b.addEventListener('click', async () => {
-          const rest = act.members.filter(x => zzz10v1_normalize(x) !== zzz10v1_normalize(nm));
-          if (await zzz5w5cm_save_group(act.name, rest, act.id)) { paint(); zzz56_priv_refresh(); }
+          const rest = ed.members.filter(x => zzz10v1_normalize(x) !== zzz10v1_normalize(nm));
+          if (await zzz5w5cm_save_group(ed.name, rest, ed.id)) { paint(); zzz56_priv_refresh(); }
         });
         body.appendChild(b);
       });
-
-      body.appendChild(lab('YOUR CONTACTS - tap to put into this circle'));
-      const have = (zzz5w5cmMyContacts || []);
-      if (!have.length) {
-        const none = document.createElement('div');
-        none.style.cssText = 'font-size:10px;color:#ddd;padding:4px 6px;max-width:280px;line-height:1.35;';
-        none.textContent = 'You have no contacts yet. Open the contacts module below and add some first.';
-        body.appendChild(none);
-      }
-      have.forEach(c => {
-        const inside = act.members.some(x => zzz10v1_normalize(x) === zzz10v1_normalize(c.name));
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'zzz5w5cm-dir-hit' + (inside ? ' is-have' : '');
-
-        b.textContent = (inside ? '\u2713 ' : '+ ') + (c.no ? '#' + c.no + ' ' : '') + c.name
-          + (c.tags ? ' \u00b7 ' + c.tags : '');
-        b.title = inside ? `${c.name} is already in this circle` : `Put ${c.name} into "${act.name}"`;
-        b.addEventListener('click', async () => {
-          if (inside) return;
-          if (await zzz5w5cm_save_group(act.name, act.members.concat([c.name]), act.id)) {
-            paint(); zzz56_priv_refresh();
-          }
+      const add = async (nm) => {
+        if (ed.members.some(x => zzz10v1_normalize(x) === zzz10v1_normalize(nm))) return;
+        if (await zzz5w5cm_save_group(ed.name, ed.members.concat([nm]), ed.id)) { paint(); zzz56_priv_refresh(); }
+      };
+      const me = zzz10v1_normalize(zzz0r1_get_current_username() || '');
+      const people = (zzz56People[ctx] || []).filter(n => zzz10v1_normalize(n) !== me);
+      if (people.length) {
+        body.appendChild(lab('MEMBERS OF THIS RECORD - tap to add'));
+        people.forEach(nm => {
+          const inside = ed.members.some(x => zzz10v1_normalize(x) === zzz10v1_normalize(nm));
+          const b = document.createElement('button');
+          b.type = 'button'; b.className = 'zzz5w5cm-dir-hit' + (inside ? ' is-have' : '');
+          b.textContent = (inside ? '✓ ' : '+ ') + nm;
+          b.addEventListener('click', () => { if (!inside) add(nm); });
+          body.appendChild(b);
         });
-        body.appendChild(b);
-      });
-
-      body.appendChild(lab('RESET'));
-      const clr = document.createElement('button');
-      clr.type = 'button';
-      clr.className = 'zzz5w5cm-dir-hit';
-      clr.textContent = 'EMPTY THIS CIRCLE';
-      clr.title = 'Takes everybody out. The group itself stays.';
-      clr.addEventListener('click', async () => {
-        if (!act.members.length) return;
-        if (!window.confirm(`Take everybody out of "${act.name}"? The group itself stays.`)) return;
-        if (await zzz5w5cm_save_group(act.name, [], act.id)) { paint(); zzz56_priv_refresh(); }
-      });
-      body.appendChild(clr);
-      const off = document.createElement('button');
-      off.type = 'button';
-      off.className = 'zzz5w5cm-dir-hit';
-      off.textContent = 'NOT A PRIVATE CIRCLE';
-      off.title = 'The group stays in your contacts - it just stops being a private circle.';
-      off.addEventListener('click', async () => {
-        if (await zzz5w5cm_set_group_private(act.id, false)) {
-          zzz56PrivPresetId = null; zzz56PrivOn = false; zzz56_priv_save();
-          paint(); zzz56_priv_refresh();
-          zzz6f2_show_toast(`"${act.name}" is no longer a private circle. The group itself stays.`);
+      }
+      const have = (zzz5w5cmMyContacts || []).filter(c => !people.some(p => zzz10v1_normalize(p) === zzz10v1_normalize(c.name)));
+      if (have.length) {
+        body.appendChild(lab('OTHER CONTACTS - tap to add'));
+        have.forEach(c => {
+          const inside = ed.members.some(x => zzz10v1_normalize(x) === zzz10v1_normalize(c.name));
+          const b = document.createElement('button');
+          b.type = 'button'; b.className = 'zzz5w5cm-dir-hit' + (inside ? ' is-have' : '');
+          b.textContent = (inside ? '✓ ' : '+ ') + (c.no ? '#' + c.no + ' ' : '') + c.name + (c.tags ? ' · ' + c.tags : '');
+          b.addEventListener('click', () => { if (!inside) add(c.name); });
+          body.appendChild(b);
+        });
+      }
+      body.appendChild(lab('PACK'));
+      const pv = document.createElement('button');
+      pv.type = 'button'; pv.className = 'zzz5w5cm-dir-hit' + (ed.priv ? ' is-have' : '');
+      pv.textContent = ed.priv ? '✓ PRIVATE - only members read (tap = make it OPEN)' : 'OPEN - everyone reads, members @named (tap = make it PRIVATE)';
+      pv.addEventListener('click', async () => { if (await zzz5w5cm_set_group_private(ed.id, !ed.priv)) { paint(); zzz56_priv_refresh(); } });
+      body.appendChild(pv);
+      const rm = document.createElement('button');
+      rm.type = 'button'; rm.className = 'zzz5w5cm-dir-hit';
+      rm.textContent = 'REMOVE THIS PACK';
+      rm.title = 'Removes only the pack - the people stay in your contacts';
+      rm.addEventListener('click', async () => {
+        if (!window.confirm(`Remove the pack "${ed.name}"? The people stay in your contacts.`)) return;
+        if (await zzz5w5cm_remove_group(ed.id)) {
+          if (String(zzz56PrivPresetId) === String(ed.id)) { zzz56PrivPresetId = null; zzz56PrivOn = false; zzz56_priv_save(); }
+          editId = null; paint(); zzz56_priv_refresh();
         }
       });
-      body.appendChild(off);
+      body.appendChild(rm);
     }
-
-    const rest = (zzz5w5cmMyGroups || []).filter(g => g.mine && !g.priv);
-    if (rest.length) {
-      body.appendChild(lab('YOUR OTHER GROUPS - tap to make it a private circle'));
-      rest.forEach(g => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'zzz5w5cm-dir-hit';
-        b.textContent = `+ ${g.name} (${g.members.length})`;
-        b.addEventListener('click', async () => {
-          if (await zzz5w5cm_set_group_private(g.id, true)) { paint(); zzz56_priv_refresh(); }
-        });
-        body.appendChild(b);
-      });
-    }
-
     body.appendChild(lab('CONTACTS MODULE'));
     const open = document.createElement('button');
-    open.type = 'button';
-    open.className = 'zzz5w5cm-dir-hit';
-    open.textContent = 'OPEN CONTACTS';
-    open.title = 'Groups and contacts are made there - this window only picks from them';
-    open.addEventListener('click', () => {
-      win.remove();
-      if (typeof zzz1r17b_open_contacts_module === 'function') zzz1r17b_open_contacts_module(false);
-    });
+    open.type = 'button'; open.className = 'zzz5w5cm-dir-hit'; open.textContent = 'OPEN CONTACTS';
+    open.addEventListener('click', () => { win.remove(); if (typeof zzz1r17b_open_contacts_module === 'function') zzz1r17b_open_contacts_module(false); });
     body.appendChild(open);
   };
   paint();
   document.body.appendChild(win);
   if (zzz5w5cmMyGroupsOk === null) zzz5w5cm_load_my_groups().then(paint).catch(() => {});
   if (zzz5w5cmMyContactsOk === null) zzz5w5cm_load_my_contacts().then(paint).catch(() => {});
+  try { zzz56_reach_load(ctx).then(paint).catch(() => {}); } catch (e) {}
   const rect = anchorEl.getBoundingClientRect();
   const h = win.offsetHeight;
   win.style.top = (window.innerHeight - rect.bottom < h + 12) ? `${Math.max(6, rect.top - h - 6)}px` : `${rect.bottom + 6}px`;
@@ -34418,16 +34432,24 @@ async function zzz1cn_load(entryKey) {
 }
 
 async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, isPriority, noteTo, noteTags, replyToId) {
+  const username = (zzz0r1_get_current_username() || '').trim();
+
+  const packOpen = (typeof zzz56_pack_open_members === 'function') ? zzz56_pack_open_members(entryKey) : null;
+  if (packOpen && !isSaved && String(text || '').trim()) {
+    const meO = zzz10v1_normalize(username || '');
+    const pre = packOpen.filter(n => zzz10v1_normalize(n) !== meO && !new RegExp('[@&]' + String(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(text))
+      .map(n => '@' + n).join(' ');
+    if (pre) text = pre + ' ' + text;
+  }
   const clean = (text || '').trim();
   if (!clean) { zzz6f2_show_toast('Chatnote je prazdny.', 'warn'); return null; }
-  const username = (zzz0r1_get_current_username() || '').trim();
 
   if (isPrivate && !zzz1cn_private_ok(entryKey)) {
     zzz6f2_show_toast('Private notes are off in this record - everything written here is shared.', 'warn');
     return null;
   }
 
-  if (zzz56_priv_on(entryKey)) {
+  if (zzz56_priv_on(entryKey) && !packOpen) {
     const meP = zzz10v1_normalize(username || '');
     const circle = zzz56_priv_recipients(entryKey).filter(n => zzz10v1_normalize(n) !== meP);
     if (!circle.length) {
@@ -35661,6 +35683,7 @@ function zzz5w7_bind_tiered_hold(el, tiers) {
     zzz_haptic_pulse(30);
     hit.fn();
   };
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
   el.addEventListener('touchstart', start, { passive: true });
   el.addEventListener('touchmove', move, { passive: true });
   el.addEventListener('touchend', end);
@@ -43393,7 +43416,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'CHAT-HEAD-3ROWS 2026-10-25';
+const VERSO_BUILD = 'CHAT-PACKS 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -46221,7 +46244,7 @@ function zzz_verso_runtime() {
   return 'web';
 }
 
-const VERSO_FOR_APP = 39;
+const VERSO_FOR_APP = 40;
 function zzz_verso_runtime_info() {
   const r = zzz_verso_runtime();
   let b = ''; try { b = String(VERSO_BUILD || ''); } catch (e) {}
