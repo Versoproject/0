@@ -9885,6 +9885,19 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz1r17b-comm-window:not(.zzz1cn-compact) .zzz1cn-note.zzz1cn-note-mine .zzz1cn-note-savewrap,
   .zzz1r17b-comm-window.zzz1cn-compact .zzz1cn-note.zzz1cn-row-full.zzz1cn-note-mine .zzz1cn-note-savewrap { margin-left: 0; margin-right: auto; }
   
+  .zzz1r17b-comm-window .zzz1cn-note.zzz1cn-row-full .zzz1cn-note-id {
+    flex: 1 0 100% !important; display: flex !important; flex-wrap: wrap !important; align-items: baseline;
+    column-gap: 6px; row-gap: 0; order: 1 !important;
+  }
+  .zzz1r17b-comm-window .zzz1cn-note.zzz1cn-row-full .zzz1cn-note-id::after { content: ''; order: 5; flex: 0 0 100%; height: 0; }
+  .zzz1r17b-comm-window .zzz1cn-note.zzz1cn-row-full .zzz1cn-note-id > * { order: 7 !important; }
+  .zzz1r17b-comm-window .zzz1cn-note.zzz1cn-row-full .zzz1cn-note-id > .zzz1cn-note-user { order: 1 !important; }
+  .zzz1r17b-comm-window .zzz1cn-note.zzz1cn-row-full .zzz1cn-note-id > .zzz1cn-note-name { order: 2 !important; }
+  .zzz1r17b-comm-window .zzz1cn-note.zzz1cn-row-full .zzz1cn-note-id > .zzz1cn-reply-count { order: 3 !important; }
+  .zzz1r17b-comm-window .zzz1cn-note.zzz1cn-row-full .zzz1cn-note-id > .zzz5w8-note-chip { order: 4 !important; align-self: center; }
+  .zzz1r17b-comm-window .zzz1cn-note.zzz1cn-row-full .zzz1cn-note-id > .zzz1cn-note-time { order: 6 !important; }
+  .zzz1r17b-comm-window .zzz1cn-note.zzz1cn-row-full.zzz1cn-note-mine .zzz1cn-note-id { flex-direction: row-reverse; justify-content: flex-start !important; }
+  
   .zzz1cn-note.zzz1cn-has-origin { flex-wrap: wrap; }
   .zzz1cn-reply-origin {
     flex: 1 0 100%;
@@ -15453,7 +15466,12 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     };
     const ZZZ1R17B_CHIP_MAX = 4;
     const picks = readPicks().map(x => zzz10v1_normalize(x));
-    const hideable = !canEdit && workingTags.length > ZZZ1R17B_CHIP_MAX;
+
+    const openKey = 'zzz1r17b_chips_open_' + String(cnGateKey || fieldId || '');
+    const chipsOpen = (() => { try { return localStorage.getItem(openKey) === '1'; } catch (e) { return false; } })();
+    const setChipsOpen = (on) => { try { if (on) localStorage.setItem(openKey, '1'); else localStorage.removeItem(openKey); } catch (e) {} renderChips(); };
+    const groupable = workingTags.length > ZZZ1R17B_CHIP_MAX;
+    const hideable = groupable && !chipsOpen;
     const shown = [], tucked = [];
     workingTags.forEach(t => {
       const n = zzz10v1_normalize(t);
@@ -15518,10 +15536,10 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
       const more = document.createElement('button');
       more.type = 'button';
       more.className = 'zzz1r17b-chip zzz1r17b-chip-more';
-      more.textContent = `+${tucked.length} others`;
-      more.title = 'The rest of this record\u2019s people - tap to pick who you want as a chip here';
-      more.addEventListener('click', (e) => {
-        e.stopPropagation();
+      more.textContent = `+${tucked.length} others \u25b8`;
+      more.title = 'Tap = show all people of this record here · hold 1-2 s = pick your fixed chips · hold 3 s = clear your picks';
+      more.addEventListener('click', (e) => { e.stopPropagation(); setChipsOpen(true); });
+      const openPicks = () => {
         document.querySelectorAll('.zzz5t0-tab-window').forEach(w => w.remove());
         const win = document.createElement('div');
         win.className = 'zzz5t0-tab-window';
@@ -15551,15 +15569,27 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
         win.style.left = `${Math.min(Math.max(6, r.left - 40), window.innerWidth - win.offsetWidth - 6)}px`;
         const outside = (ev) => { if (!win.contains(ev.target)) { win.remove(); document.removeEventListener('click', outside, true); } };
         setTimeout(() => document.addEventListener('click', outside, true), 0);
-      });
+      };
 
       zzz_bind_hold_selection_guard(more);
-      zzz5w7_bind_tiered_hold(more, [{ ms: 1100, fn: () => {
-        writePicks([]);
-        zzz6f2_show_toast('Your chip picks were cleared for this record.');
-        renderChips();
-      } }]);
+      zzz5w7_bind_tiered_hold(more, [
+        { ms: 900, fn: openPicks },
+        { ms: 3000, fn: () => {
+          writePicks([]);
+          zzz6f2_show_toast('Your chip picks were cleared for this record.');
+          renderChips();
+        } }
+      ]);
       chipsRow.appendChild(more);
+    } else if (groupable && chipsOpen) {
+
+      const fold = document.createElement('button');
+      fold.type = 'button';
+      fold.className = 'zzz1r17b-chip zzz1r17b-chip-more';
+      fold.textContent = '\u25b4';
+      fold.title = 'Fold the people back into one chip';
+      fold.addEventListener('click', (e) => { e.stopPropagation(); setChipsOpen(false); });
+      chipsRow.appendChild(fold);
     }
     if (canEdit) {
       const input = document.createElement('input');
@@ -43363,7 +43393,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'TASK-CHIPS-ONLY 2026-10-25';
+const VERSO_BUILD = 'CHAT-HEAD-3ROWS 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
