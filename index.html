@@ -9062,7 +9062,14 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   
   .zzz5w8-item-window input::placeholder, .zzz5w8-item-window textarea::placeholder { color: #cfcfcf !important; font-style: italic; font-weight: 400 !important; font-size: .82em; opacity: 1; }
   .zzz5w8-item-window .zzz5w8-iw-msg:not(.is-warn) { color: #b5b5b5; font-style: italic; }
-  .zzz5w5cm-chip.zzz5w8-iw-you { flex: 0 0 auto; white-space: nowrap; cursor: default; background-color: #D4AF37; color: #171717; }
+  .zzz5w5cm-chip.zzz5w8-iw-you { flex: 0 0 auto; white-space: nowrap; cursor: pointer; }
+  .zzz5w5cm-chip.zzz5w8-iw-you.is-on { background-color: #D4AF37; color: #171717; }
+  .zzz5w8-iw-info { font-style: italic; font-weight: 400; color: #a9a9a9; letter-spacing: 0; text-transform: none; }
+  .zzz5w8-iw-quick { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+  .zzz5w8-iw-quick .zzz5w5cm-chip { padding: 1px 6px; font-size: 10px; min-height: 0; }
+  .zzz5w8-iw-quick .zzz5w5cm-chip.is-on { background-color: #D4AF37; color: #171717; }
+  .entry-modal-box.zzz5w8-iw-min > :not(.zzz5w8-iw-head) { display: none !important; }
+  .entry-modal-box.zzz5w8-iw-min { padding-bottom: 4px !important; }
   .zzz5w8-iw-four { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 6px; align-items: end; }
   .zzz5w8-iw-addr { grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr); }
   .zzz5w8-iw-memline { display: flex; gap: 4px; align-items: center; }
@@ -16266,6 +16273,8 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
   cnClock.textContent = '\u23f0';
   const cnPaintClock = () => {
     cnClock.classList.toggle('is-on', !!cnRemArm);
+
+    try { cnSave.innerHTML = cnRemArm ? '<span>ENTER</span><span>CHATNOTE \u23f0</span>' : '<span>ENTER</span><span>CHATNOTE</span>'; } catch (e) {}
     cnClock.title = cnRemArm
       ? `Your next message becomes ${cnRemArm.kind === 'schedule' ? 'scheds' : 'rems'}:${cnRemArm.tag || ''} on ${zzz5w8_fmt_time(Date.parse(cnRemArm.due_at))} - tap to change`
       : 'Reminder / schedule from your next message';
@@ -16277,6 +16286,8 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     zzz5w8_open_item_window(null, cnRemArm ? cnRemArm.kind : 'schedule', {
       entry: /^\d+$/.test(ek) ? ek : '',
       cfg: cnRemArm, anchor: cnClock,
+
+      members: (typeof zzz56PrivOn !== 'undefined' && zzz56PrivOn && typeof zzz56_priv_recipients === 'function') ? zzz56_priv_recipients(ek) : null,
       onArm: (cfg) => { cnRemArm = cfg; cnPaintClock(); zzz6f2_show_toast('Set - your next message in this chat becomes it.'); },
       onDisarm: () => { cnRemArm = null; cnPaintClock(); }
     });
@@ -24881,14 +24892,23 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
 
   box.dataset.zzz1cnNoSizeToggle = '1';
   let lastTap = 0;
-  const toggleMax = () => { box.classList.toggle('zzz5w8-iw-max'); };
+
+  const toggleMax = () => {
+    const on = !box.classList.contains('zzz5w8-iw-min');
+    box.classList.toggle('zzz5w8-iw-min', on);
+    if (on) {
+      title.dataset.full = title.textContent;
+      try { title.textContent = '\u23f0 ' + title.dataset.full + ' \u00b7 ' + (whenRef.v ? zzz5w8_fmt_time(Date.parse(whenRef.v.value || '')) : '') + ' \u00b7 2x tap = open'; } catch (e) {}
+    } else if (title.dataset.full) title.textContent = title.dataset.full;
+  };
+  const whenRef = { v: null };
   header.addEventListener('dblclick', (e) => { if (e.target.closest('button')) return; e.preventDefault(); toggleMax(); });
   header.addEventListener('touchend', (e) => {
     if (e.target.closest('button')) return;
     const now = Date.now();
     if (now - lastTap < 350) { e.preventDefault(); toggleMax(); lastTap = 0; } else lastTap = now;
   });
-  header.title = 'Double tap = full height / back';
+  header.title = 'Double tap = small / back';
 
   const body = document.createElement('div');
   body.className = 'zzz5w8-iw-body';
@@ -24936,13 +24956,54 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
     body.appendChild(w);
     return el;
   };
+
   const text = (value, placeholder, numeric) => {
     const i = document.createElement('input');
     i.type = 'text';
     if (numeric) i.inputMode = 'numeric';
-    i.placeholder = placeholder;
     i.value = value || '';
     return i;
+  };
+  const info = (el, t) => {
+    const lab = el && el.closest && el.closest('.zzz5w8-iw-field');
+    const cap = lab && lab.firstChild;
+    if (!cap) return;
+    const i = document.createElement('i');
+    i.className = 'zzz5w8-iw-info';
+    i.textContent = ' \u00b7 ' + t;
+    cap.appendChild(i);
+  };
+
+  const quick = (el, values, multi) => {
+    const lab = el && el.closest && el.closest('.zzz5w8-iw-field');
+    if (!lab || !values.length) return;
+    const row = document.createElement('span');
+    row.className = 'zzz5w8-iw-quick';
+    const paintQ = () => row.querySelectorAll('button').forEach(b => {
+      const cur = String(el.value || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+      b.classList.toggle('is-on', multi ? cur.indexOf(b.textContent.toLowerCase()) >= 0 : String(el.value || '').trim().toLowerCase() === b.textContent.toLowerCase());
+    });
+    values.forEach(v => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'zzz5w5cm-chip';
+      b.textContent = v;
+      b.addEventListener('click', (ev) => {
+        ev.preventDefault(); ev.stopPropagation();
+        if (multi) {
+          const cur = String(el.value || '').split(',').map(x => x.trim()).filter(Boolean);
+          const at = cur.findIndex(x => x.toLowerCase() === v.toLowerCase());
+          if (at >= 0) cur.splice(at, 1); else cur.push(v);
+          el.value = cur.join(', ');
+        } else el.value = String(el.value || '').trim().toLowerCase() === v.toLowerCase() ? '' : v;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        paintQ();
+      });
+      row.appendChild(b);
+    });
+    el.addEventListener('input', paintQ);
+    lab.appendChild(row);
+    paintQ();
   };
   const twoCol = () => {
     const r = document.createElement('div');
@@ -24980,6 +25041,7 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
   const start = raw ? (Date.parse(raw.due_at) || Date.now()) : (Math.ceil(Date.now() / 3600000) * 3600000);
   whenIn.value = toLocal((arm && arm.cfg && Date.parse(arm.cfg.due_at)) || start);
   fieldIn(mainRow, 'DATE & TIME', whenIn);
+  whenRef.v = whenIn;
 
   const r3 = document.createElement('div');
   r3.className = 'zzz5w8-iw-four';
@@ -24990,6 +25052,20 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
   const beforeIn = fieldIn(r3, 'NOTIFY BEFORE', text(zzz5w8_fmt_minutes(src3 && src3.notify_before_min).replace(' ', ''), '2d'));
   const repeatIn = fieldIn(r3, 'REPEAT EVERY', text(zzz5w8_fmt_minutes(src3 && src3.repeat_min).replace(' ', ''), '1h'));
   [durIn, beforeIn, repeatIn].forEach(el => { el.title = unitTitle; });
+
+  info(entryIn, 'empty = only for you');
+  info(tagIn, 'words, comma');
+  quick(durIn, ['15min', '30min', '1h', '2h', '1d']);
+  quick(beforeIn, ['10min', '1h', '1d', '2d', '1w']);
+  quick(repeatIn, ['1h', '1d', '1w']);
+  {
+    const seenT = [];
+    zzz5w8Items.slice().sort((a, b) => (Date.parse(b.created_at || '') || 0) - (Date.parse(a.created_at || '') || 0)).forEach(r =>
+      String(r.tag || '').split(/[,;]+/).map(x => x.trim()).filter(Boolean).forEach(x => {
+        if (seenT.length < 6 && !seenT.some(y => y.toLowerCase() === x.toLowerCase())) seenT.push(x);
+      }));
+    quick(tagIn, seenT, true);
+  }
   const prio = zzz1cn_prio_control(pre && pre.priority !== 'open' ? pre.priority : (arm && arm.cfg && arm.cfg.priority) || '', null);
   const prioWrap = document.createElement('span');
   prioWrap.className = 'zzz5w8-iw-prio';
@@ -25002,27 +25078,61 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
   prioWrap.appendChild(prioCap);
   fieldIn(r3, 'PRIORITY', prioWrap);
   const unitHint = document.createElement('div');
-  unitHint.className = 'zzz5w8-iw-msg';
-  unitHint.textContent = unitTitle;
+  unitHint.className = 'zzz5w8-iw-msg zzz5w8-iw-unit';
+  unitHint.textContent = 'time: number + min / h / d / w (90min, 3h, 2d, 1w)';
   body.appendChild(unitHint);
 
-  const memIn = text('', 'name, name - or tap CONTACTS');
+  const memIn = text('', '');
   const memWrap = field('MEMBERS', memIn).parentNode;
   memWrap.classList.add('zzz5w8-iw-members');
+  info(memIn, 'only people of this record');
   if (raw && raw.id) {
     const ts = zzz5w8_targets_of(raw.id);
-    if (ts.length) memIn.placeholder = `Already: ${ts.map(t => t.username).join(', ')} - add more`;
+    if (ts.length) info(memIn, 'already: ' + ts.map(t => t.username).join(', '));
   }
+
+  const zzz5w8_people_of = (en) => {
+    const k = String(en || '').replace(/\D/g, '');
+    if (!k) return [];
+    const row = zzz6f29_entry_row_of(k);
+    if (!row) return [];
+    const f = zzz_parse_fields_json(row) || {};
+    const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+    const out = [];
+    [row.username, f.r4, f.r17, f.r18].forEach(cell => zzz6f21_parse_tags(cell || '').forEach(x => {
+      const nm = String(x || '').replace(/^[@&]/, '').trim();
+      if (!nm) return;
+      const g = (typeof zzz5w5cm_group_expand === 'function') ? zzz5w5cm_group_expand(nm) : null;
+      (g || [nm]).forEach(m => { const n = zzz10v1_normalize(m); if (n && n !== meN && !out.some(o => zzz10v1_normalize(o) === n)) out.push(String(m).trim()); });
+    }));
+    return out;
+  };
+  const curEntry = () => (arm && arm.entry) || String(entryIn.value || '').replace(/\D/g, '');
+  const readMembers = () => {
+    let m = zzz5w8_members_from_text(memIn.value);
+    if (!m.length && String(memIn.value || '').trim()) {
+      m = zzz5w8_members_from_text(String(memIn.value).split(/[,\s]+/).filter(Boolean).map(n => '@' + n.replace(/^[@&]/, '')).join(' '));
+    }
+    return m;
+  };
   const memLine = document.createElement('div');
   memLine.className = 'zzz5w8-iw-memline';
   memIn.parentNode.insertBefore(memLine, memIn);
 
   const meName = (zzz0r1_get_current_username() || '').trim();
+  const ownSh = raw && raw.id ? zzz5w8Shifts['item:' + raw.id] : null;
+  let youOn = !(ownSh && ownSh.hidden) && !(arm && arm.cfg && arm.cfg.selfOff);
   if (meName) {
-    const you = document.createElement('span');
-    you.className = 'zzz5w5cm-chip is-on zzz5w8-iw-you';
-    you.textContent = meName + ' (you)';
-    you.title = 'You always get your own ALARM';
+    const you = document.createElement('button');
+    you.type = 'button';
+    you.className = 'zzz5w5cm-chip zzz5w8-iw-you';
+    const paintYou = () => {
+      you.classList.toggle('is-on', youOn);
+      you.textContent = (youOn ? '\u2713 ' : '+ ') + meName + ' (you)';
+      you.title = youOn ? 'You get this ALARM - tap = not for me' : 'Not for you (it stays yours, in HIDDEN) - tap = for me too';
+    };
+    you.addEventListener('click', (ev) => { ev.preventDefault(); youOn = !youOn; paintYou(); });
+    paintYou();
     memLine.appendChild(you);
   }
   memLine.appendChild(memIn);
@@ -25042,13 +25152,13 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
     const want = zzz10v1_normalize(memLast());
     const have = zzz5w8_members_from_text(memIn.value).concat(String(memIn.value || '').split(/[,\s]+/))
       .map(n => zzz10v1_normalize(String(n).replace(/^[@&]/, '')));
-    const people = (typeof zzz5w5cmMyContacts !== 'undefined' ? zzz5w5cmMyContacts : []).map(c => ({ name: c.name, grp: false }));
-    const groups = (typeof zzz5w5cmMyGroups !== 'undefined' ? zzz5w5cmMyGroups : []).map(g => ({ name: g.name, grp: true }));
-    const list = groups.concat(people).filter(c => c.name && (!want || zzz10v1_normalize(c.name).includes(want)));
+    const pool = zzz5w8_people_of(curEntry());
+    const list = pool.map(n => ({ name: n, grp: false })).filter(c => c.name && (!want || zzz10v1_normalize(c.name).includes(want)));
     if (!list.length) {
       const n = document.createElement('span');
       n.className = 'zzz5w8-iw-msg';
-      n.textContent = want ? 'No contact matches - the name you write is used as it is.' : 'No contacts yet - write the name.';
+      n.textContent = !curEntry() ? 'No record number - this ALARM is only for you. Give it a record number to add people of that record.'
+        : (pool.length ? 'Nobody of this record matches.' : 'Nobody else is in this record.');
       cBox.appendChild(n);
       return;
     }
@@ -25059,7 +25169,8 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
       b.className = 'zzz5w5cm-chip zzz5w8-iw-contact' + (c.grp ? ' is-group' : '') + (on ? ' is-on' : '');
       b.textContent = (c.grp ? '▣ ' : '') + c.name;
       b.title = c.grp ? 'Group - everyone in it gets it' : 'Contact';
-      b.addEventListener('click', () => {
+      b.addEventListener('click', (ev) => {
+        ev.preventDefault();
         if (on) return;
         const ctx = (typeof zzz5w5cm_mention_ctx === 'function') ? zzz5w5cm_mention_ctx() : null;
         if (ctx && ctx.el === memIn && zzz5w5cm_mention_insert(c.name)) { paintContacts(); return; }
@@ -25073,7 +25184,8 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
       cBox.appendChild(b);
     });
   };
-  cBtn.addEventListener('click', async () => {
+  cBtn.addEventListener('click', async (ev) => {
+    if (ev) ev.preventDefault();
     cBox.hidden = !cBox.hidden;
     cBtn.classList.toggle('is-on', !cBox.hidden);
     cBtn.textContent = cBox.hidden ? 'CONTACTS ▾' : 'CONTACTS ▴';
@@ -25086,11 +25198,14 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
       paintContacts();
     }
   });
-  memIn.addEventListener('input', paintContacts);
+
+  memIn.addEventListener('input', () => {
+    if (cBox.hidden && memLast()) { cBox.hidden = false; cBtn.classList.add('is-on'); cBtn.textContent = 'CONTACTS \u25b4'; }
+    paintContacts();
+  });
 
   const textIn = document.createElement('textarea');
   textIn.rows = 2;
-  textIn.placeholder = 'What should remind you (e.g. birthday party, call back, meeting)';
   textIn.value = pre ? String(pre.title || '') : '';
   field('TEXT', textIn);
 
@@ -25104,7 +25219,10 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
 
   if (arm) {
     textIn.parentNode.style.display = 'none';
-    memWrap.style.display = 'none';
+
+    const preM = (arm.cfg && Array.isArray(arm.cfg.members)) ? arm.cfg.members
+      : (Array.isArray(arm.members) ? arm.members : zzz5w8_people_of(arm.entry));
+    memIn.value = preM.join(', ');
     entryIn.value = arm.entry || '';
     entryIn.disabled = true;
     entryIn.title = arm.entry ? `The chat of #${arm.entry}` : 'This chat has no record number yet - it becomes a one-off reminder';
@@ -25141,6 +25259,13 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
     const me = (zzz0r1_get_current_username() || '').trim();
     if (!me) { say('Log in first - reminders belong to your username.', true); return; }
 
+    const pool = zzz5w8_people_of(curEntry()).map(n => zzz10v1_normalize(n));
+    const wanted = readMembers();
+    const bad = wanted.filter(n => pool.indexOf(zzz10v1_normalize(n)) < 0);
+    if (bad.length) { say(curEntry() ? `Not in record #${curEntry()}: ${bad.join(', ')} - only people of the record can get its ALARM.` : `Without a record number this ALARM is only for you - remove ${bad.join(', ')} or add a record number.`, true); return; }
+    const already = raw && raw.id ? zzz5w8_targets_of(raw.id).length : 0;
+    if (!youOn && !wanted.length && !already) { say('Nobody would get this ALARM - add yourself or someone of the record.', true); return; }
+
     const num = String(entryIn.value || '').replace(/\D/g, '');
     const due = Date.parse(whenIn.value || '');
     if (!due) { say('Pick a DATE & TIME.', true); return; }
@@ -25152,7 +25277,9 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
     }
 
     if (arm) {
+      clearDrafts();
       arm.onArm(Object.assign({
+        members: wanted, selfOff: !youOn,
         kind: k, tag: zzz5w8_clean_tags(tagIn.value),
         place: String(placeIn.value || '').trim() || null,
         place_url: String(linkIn.value || '').trim() || null,
@@ -25207,14 +25334,14 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
       if (row.entry_id !== null && row.entry_id !== undefined) await zzz5w8_load_entries([row.entry_id]);
       if (isNew && zzz5w8Tab !== 'all') zzz5w8Tab = k === 'schedule' ? 'schedule' : 'reminders';
 
-      let memNames = zzz5w8_members_from_text(memIn.value);
-      if (!memNames.length && String(memIn.value || '').trim()) {
-        memNames = zzz5w8_members_from_text(String(memIn.value).split(/[,\s]+/).filter(Boolean).map(n => '@' + n.replace(/^[@&]/, '')).join(' '));
-      }
+      let memNames = readMembers();
+
+      try { if (!youOn) await zzz5w8_put_state({ src: k, raw: row }, { hidden: true, until: null }); else if (ownSh && ownSh.hidden) await zzz5w8_put_state({ src: k, raw: row }, { hidden: false }); } catch (e) {}
       if (memNames.length) {
         const r2 = await zzz5w8_add_targets(row.id, memNames);
         if (!r2.ok) zzz6f2_show_toast(r2.missing ? `Members not notified - run SQL "${ZZZ5W8_TARGETS_SQL}" in Supabase.` : `Members not notified: ${r2.error}`, 'warn');
       }
+      clearDrafts();
       close();
       zzz6f2_show_toast(v3Missing
         ? `Added without TAG / DURATION / NOTIFY BEFORE / REPEAT - run SQL "${ZZZ5W8_V3_SQL}" in Supabase for those.`
@@ -25276,6 +25403,18 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
     acts.appendChild(off);
   }
   body.appendChild(acts);
+
+  const fid = 'zzz5w8:' + (raw && raw.id ? 'item' + raw.id : (arm ? 'chat' + (arm.entry || 'x') : (tpl && tpl.note_id ? 'note' + tpl.note_id : 'new')));
+  [[entryIn, 'entry'], [tagIn, 'tags'], [durIn, 'dur'], [beforeIn, 'before'], [repeatIn, 'repeat'], [memIn, 'members'],
+    [textIn, 'text'], [placeIn, 'place'], [linkIn, 'link']].forEach(([el, nm]) => { if (el) el.name = fid + ':' + nm; });
+  function clearDrafts() {
+    body.querySelectorAll('input, textarea').forEach(el => {
+      if (!el.name || el.name.indexOf('zzz5w8:') !== 0) return;
+      const v = el.value; el.value = '';
+      try { if (typeof zzz_wip_note === 'function') zzz_wip_note(el); } catch (e) {}
+      el.value = v;
+    });
+  }
   paint();
 
   body.querySelectorAll('input[type=text], textarea, input[type=datetime-local]').forEach(el => {
@@ -25323,6 +25462,8 @@ async function zzz5w8_insert_from_chat(cfg, entryKey, text, msgPrio, saved) {
         } catch (e) {}
       }
       const names = zzz5w8_members_from_text(text);
+      (Array.isArray(cfg.members) ? cfg.members : []).forEach(n => { if (!names.some(x => zzz10v1_normalize(x) === zzz10v1_normalize(n))) names.push(n); });
+      if (cfg.selfOff) { try { await zzz5w8_put_state({ src: base.kind, raw: row }, { hidden: true, until: null }); } catch (e) {} }
       if (names.length) {
         const r2 = await zzz5w8_add_targets(row.id, names);
         memMsg = r2.ok ? ` Members: ${names.join(', ')}.`
@@ -25330,7 +25471,7 @@ async function zzz5w8_insert_from_chat(cfg, entryKey, text, msgPrio, saved) {
       }
       zzz5w8_paint_note_chips();
     }
-    zzz6f2_show_toast((base.kind === 'schedule' ? 'Schedule' : 'Reminder') + ' created from your message' + memMsg
+    zzz6f2_show_toast('Message sent + \u23f0 ALARM ' + zzz5w8_fmt_time(Date.parse(base.due_at)) + ' (' + (base.kind === 'schedule' ? 'schedule' : 'reminder') + ')' + memMsg
       + (num ? ` (#${num})` : ' (one-off)') + (v3Missing ? ` - without TAG / DURATION / NOTIFY / REPEAT, SQL "${ZZZ5W8_V3_SQL}" missing.` : '.'),
       v3Missing ? 'warn' : undefined);
     if (zzz5w8_is_open()) zzz5w8_render();
@@ -42802,7 +42943,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'W8-ALARM-2 2026-10-25';
+const VERSO_BUILD = 'W8-ALARM-3 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
