@@ -3509,6 +3509,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz14pt-taskdone { background: #16a34a; color: #fff; border-radius: 8px; font-size: 10px; font-weight: 800; padding: 1px 8px; }
   .zzz1-quickchip.is-taskname { opacity: .45; text-decoration: line-through; }
   
+  
+  .zzz1-quickchips-row.zzz14pt-has-tasks > .zzz1-quickchip { display: none !important; }
+  .zzz1-quickchips-row > .zzz14pt-chiprow { border-top: 0; padding: 0; flex: 1 1 auto; min-width: 0; }
   .zzz14pt-chiprow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 3px 6px; border-top: 1px dashed #c9b37a; }
   .zzz14pt-rowlab { font-size: 9px; font-weight: 800; color: #8a6d1f; letter-spacing: .05em; }
   .zzz14pt-taskchip { border: 1.5px solid; border-radius: 12px; background: transparent; font-size: 11px; font-weight: 800; padding: 2px 9px; }
@@ -13217,7 +13220,7 @@ function zzz1_build_quickchips_row(getVal, setVal, fixedValues = []) {
   function renderChips() {
 
     Array.from(row.children).forEach(el => {
-      if (el !== addBtn && !el.classList.contains('zzz1-quickchip-fixed') && !el.classList.contains('zzz5-6-privbtn') && !el.classList.contains('zzz5-6-modes')) el.remove();
+      if (el !== addBtn && !el.classList.contains('zzz1-quickchip-fixed') && !el.classList.contains('zzz5-6-privbtn') && !el.classList.contains('zzz5-6-modes') && !el.classList.contains('zzz14pt-chiprow')) el.remove();
     });
     if (addBtn.parentNode !== row) row.appendChild(addBtn);
     myChips.forEach((text, idx) => {
@@ -14111,6 +14114,8 @@ function zzz14pt_norm(cfg) {
     period: ['hour', 'day', 'week', 'month', 'year'].indexOf(String(t.period || '')) >= 0 ? String(t.period) : '',
     close: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(t.close || '')) ? String(t.close) : '23:59',
 
+    name_by: ['type', 'date', 'event'].indexOf(String(t.name_by || '')) >= 0 ? String(t.name_by) : 'type',
+
     on_done: {
       to: ['all', 'owner', 'delegates', 'users', 'none'].indexOf(String((t.on_done && t.on_done.to) || '')) >= 0 ? String(t.on_done.to) : 'all',
       users: (t.on_done && Array.isArray(t.on_done.users) ? t.on_done.users : []).map(u => String(u).trim()).filter(Boolean).slice(0, 30),
@@ -14125,6 +14130,14 @@ function zzz14pt_norm(cfg) {
       tasksent: st.tasksent !== false, auto_open: !!st.auto_open
     }))
   })) };
+}
+
+function zzz14pt_task_title(type, when) {
+  if (!type) return '';
+  const nb = type.name_by || 'type';
+  if (nb === 'event') return '';
+  if (nb === 'date') { const d = when || new Date(); return `${type.name} ${d.getDate()}. ${d.getMonth() + 1}.`.trim(); }
+  return String(type.name || '');
 }
 async function zzz14pt_load(entryId, force) {
   const id = Number(String(entryId || '').replace(/\D/g, ''));
@@ -14325,6 +14338,18 @@ async function zzz14pt_render(panel, api) {
       }
       card.appendChild(per);
 
+      const nmr = document.createElement('div'); nmr.className = 'zzz14pt-who zzz14pt-nameby';
+      const nml = document.createElement('span'); nml.className = 'zzz14pt-lbl'; nml.textContent = 'name:';
+      nmr.appendChild(nml);
+      const nms = document.createElement('select'); nms.className = 'zzz14pt-prio'; nms.disabled = !canEdit;
+      nms.title = 'How a new task thread (#chat) of this type is named - it is filled into NAME and can be changed';
+      [['type', 'type name (e.g. ' + (t.name || 'Rozvoz') + ')'], ['date', 'name + date (e.g. ' + ((t.name || 'Rozvoz') + ' ' + new Date().getDate() + '. ' + (new Date().getMonth() + 1) + '.') + ')'], ['event', 'event name (written at the start)']].forEach(([v, l]) => {
+        const o = document.createElement('option'); o.value = v; o.textContent = l; if ((t.name_by || 'type') === v) o.selected = true; nms.appendChild(o);
+      });
+      nms.addEventListener('change', () => { t.name_by = nms.value; mark(); });
+      nmr.appendChild(nms);
+      card.appendChild(nmr);
+
       if (!t.on_done) t.on_done = { to: 'all', users: [], prio: '' };
       const od = document.createElement('div'); od.className = 'zzz14pt-who zzz14pt-ondone';
       const odl = document.createElement('span'); odl.className = 'zzz14pt-lbl'; odl.textContent = 'on done:';
@@ -14466,6 +14491,7 @@ function zzz14pt_paint_chiprow(row, entryKey, arm, onArm) {
   const c = key ? zzz14ptCache[key] : null;
   const types = (c && c.cfg && c.cfg.types) || [];
   row.innerHTML = '';
+  if (row.parentElement) row.parentElement.classList.toggle('zzz14pt-has-tasks', !!types.length);
   if (!types.length) { row.style.display = 'none'; return; }
   row.style.display = '';
   const lab = document.createElement('span'); lab.className = 'zzz14pt-rowlab'; lab.textContent = 'TASKS';
@@ -16222,13 +16248,26 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
   cnTaskRow.className = 'zzz14pt-chiprow';
   cnTaskRow.style.display = 'none';
   box.appendChild(cnTaskRow);
-  cnTaskPaint = () => zzz14pt_paint_chiprow(cnTaskRow, cnGateKey, cnTaskArm, (arm) => { cnTaskArm = arm; cnTaskPaint(); });
+  cnTaskPaint = () => zzz14pt_paint_chiprow(cnTaskRow, cnGateKey, cnTaskArm, (arm) => {
+    cnTaskArm = arm; cnTaskPaint();
+
+    if (arm && arm.stepIdx === 0) {
+      try {
+        if (String(cnTarget.value || '').trim()) { cnTarget.value = ''; cnTarget.dispatchEvent(new Event('input', { bubbles: true })); }
+        cnTargetNameVal = zzz14pt_task_title(arm.type);
+        cnPaintTargetName();
+        if (arm.type.name_by === 'event') setTimeout(() => { try { cnTargetName.focus(); } catch (e) {} }, 50);
+      } catch (e) {   }
+    }
+  });
   if (cnGateKey) Promise.all([zzz14pt_load(cnGateKey), zzz14pt_ts_load(cnGateKey)]).then(() => { cnTaskPaint(); cnRefreshFeed(); }).catch(() => {});
   if (cnQuickChips) {
     box.appendChild(cnQuickChips);
 
     cnPrivBtn._zzzInQuick = true;
     cnQuickChips.appendChild(cnPrivBtn);
+
+    cnQuickChips.insertBefore(cnTaskRow, cnQuickChips.firstChild);
   }
 
   const cnRow = document.createElement('div');
@@ -16511,7 +16550,8 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
       const a = cnTaskArm;
       if (a.stepIdx === 0) {
         target = 0;
-        if (!String(name || '').trim()) name = a.type.name;
+        if (!String(name || '').trim()) name = zzz14pt_task_title(a.type);
+        if (!String(name || '').trim()) { zzz6f2_show_toast(`${a.type.name}: write the event name into NAME first (it names the new task).`, 'warn'); try { cnTargetName.focus(); } catch (e) {} return null; }
       } else {
         if (!target) { zzz6f2_show_toast(`${a.step.chip}: pick the task first - tap its # number in the chat (the step goes into that task).`, 'warn'); return null; }
         const t0 = zzz14pt_task_of(cnFeedNotes, target);
@@ -43323,7 +43363,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'DEVS-FIX 2026-10-25';
+const VERSO_BUILD = 'TASK-CHIPS-ONLY 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
