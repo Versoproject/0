@@ -8799,6 +8799,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz5w8-modes { display: flex; margin: 2px 0 8px; border: 1px solid #8a8f98; border-radius: 8px; overflow: hidden; }
   
   .zzz1cn-note[data-zzz1cn-id] { touch-action: pan-y; }
+  
+  .zzz1cn-note:not(.zzz1cn-row-full) .zzz5w8-alarm-btn { display: none !important; }
+  .zzz1cn-note .zzz5w8-alarm-btn { padding: 0 6px !important; min-height: 20px !important; font-size: 13px !important; }
   .zzz1cn-note.is-sw-keep { box-shadow: inset 0 0 0 2px #8a8f98; opacity: .6; }
   .zzz1cn-note.is-sw-shift { box-shadow: inset 0 0 0 2px #4a7fd0; }
   .zzz1cn-note.zzz5w8-msg-hidden:not(.zzz1cn-row-full) { max-height: 26px; overflow: hidden; opacity: .4; padding-top: 2px !important; padding-bottom: 2px !important; }
@@ -10501,6 +10504,8 @@ function zzz6f41_bind_outside_click(box, closeFn) {
     if (e.target.closest && e.target.closest('.zzz1cn-list-window')) return;
 
     if (e.target.closest && e.target.closest('.zzz5t0-tab-window')) return;
+
+    if (e.target.closest && e.target.closest('.zzz5w8-item-window')) return;
 
     if (e.target.closest && e.target.closest('.zzz-vkb-panel, .zzz1r17b-userfilter')) return;
 
@@ -16245,7 +16250,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     const ek = String(cnEntryKey || '');
     zzz5w8_open_item_window(null, cnRemArm ? cnRemArm.kind : 'schedule', {
       entry: /^\d+$/.test(ek) ? ek : '',
-      cfg: cnRemArm,
+      cfg: cnRemArm, anchor: cnClock,
       onArm: (cfg) => { cnRemArm = cfg; cnPaintClock(); zzz6f2_show_toast('Set - your next message in this chat becomes it.'); },
       onDisarm: () => { cnRemArm = null; cnPaintClock(); }
     });
@@ -24618,7 +24623,10 @@ function zzz5w8_row_values(it) {
   const ownerRow = it.entry ? zzz6f29_entry_row_of(it.entry) : null;
   return {
     entry: it.entry ? '#' + it.entry : '', project: it.project, type: it.type,
-    subs: [it.entry ? '' : (it.place || ''), (it.src === 'chat' && it.raw && it.raw.note_number) ? '#' + (typeof zzz5w7_label_of === 'function' ? zzz5w7_label_of(it.raw) : it.raw.note_number) : ''].filter(Boolean).join(' '),
+    subs: (() => {
+      const ln = zzz5w8_linked_note(it);
+      return [it.entry ? '' : (it.place || ''), (ln && ln.note_number) ? '#' + (typeof zzz5w7_label_of === 'function' ? zzz5w7_label_of(ln) : ln.note_number) : (it.raw && it.raw.note_id && it.src !== 'chat' ? '\u2709' : '')].filter(Boolean).join(' ');
+    })(),
     pnum: String(f.r2 || '').trim(),
     owner: String(f.r4 || (ownerRow && ownerRow.username) || (it.entry ? '' : it.from) || '').trim(),
     status: zzz5w8_status_of(it),
@@ -24790,10 +24798,15 @@ function zzz5w8_parse_minutes(txt) {
   return Math.round(n * k);
 }
 
-function zzz5w8_open_item_window(raw, kind, arm, tpl) {
+function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
   document.querySelectorAll('.zzz5w8-item-window').forEach(w => { if (w._zzz5w8Close) w._zzz5w8Close(); });
   const { box, removeBox } = zzz6f41_create_context_window();
   box.classList.add('zzz5w8-item-window');
+
+  const anc = anchor || (arm && arm.anchor) || null;
+  const ancWin = anc && anc.closest ? anc.closest('.zzz1r17b-comm-window, .entry-modal-box') : null;
+  if (ancWin && ancWin !== box && ancWin.parentNode) { try { ancWin.parentNode.insertBefore(box, ancWin); } catch (e) {} }
+  if (anc) setTimeout(() => { try { box.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) { try { box.scrollIntoView(); } catch (_) {} } }, 30);
   box.dataset.zzzUiNotif = raw && raw.id ? 'item:' + raw.id : '';
   let unbind = () => {};
   const close = () => { unbind(); removeBox(); };
@@ -25100,7 +25113,8 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl) {
     const write = async (withV3) => {
       const p = Object.assign({}, payload, withV3 ? v3 : {});
       return isNew
-        ? sb.from(ZZZ5W8_TABLE).insert(Object.assign({ entry_id: num ? Number(num) : null, username: me }, p)).select('*')
+        ? sb.from(ZZZ5W8_TABLE).insert(Object.assign({ entry_id: num ? Number(num) : null, username: me },
+            (tpl && tpl.note_id) ? { note_id: tpl.note_id } : {}, p)).select('*')
         : sb.from(ZZZ5W8_TABLE).update(p).eq('id', raw.id).select('*');
     };
     try {
@@ -25279,6 +25293,34 @@ async function zzz5w8_mark_seen(raw) {
   if (zzz5w8_is_open()) zzz5w8_render();
 }
 
+function zzz5w8_linked_note(it) {
+  if (!it) return null;
+  if (it.src === 'chat') return it.raw || null;
+  const nid = it.raw && it.raw.note_id;
+  if (!nid) return null;
+  return (zzz1cnNotifNotes || []).find(n => String(n.id) === String(nid)) || null;
+}
+function zzz5w8_alarm_from_note(n, anchor) {
+  if (!n) { zzz5w8_open_item_window(null, 'reminder', null, null, anchor); return; }
+  const key = String(n.entry_key || '');
+  const prio = (typeof zzz1cn_prio_of === 'function' && zzz1cn_prio_of(n)) || '';
+  const tpl = {
+    kind: 'reminder', entry_id: /^\d+$/.test(key) ? Number(key) : null,
+    title: String(n.note_text || '').replace(/\s+/g, ' ').trim().slice(0, 500),
+    priority: prio || 'open', note_id: /^\d+$/.test(String(n.id || '')) ? Number(n.id) : null
+  };
+  zzz5w8_open_item_window(null, 'reminder', null, tpl, anchor);
+}
+function zzz5w8_alarm_from_item(it, anchor) {
+  if (!it) return;
+  if (it.src === 'chat') { zzz5w8_alarm_from_note(it.raw, anchor); return; }
+  if (it.src === 'reminder' || it.src === 'schedule') {
+    const tpl = Object.assign({}, it.raw || {}, { id: null, done_at: null, seen_at: null });
+    zzz5w8_open_item_window(null, tpl.kind, null, tpl, anchor);
+    return;
+  }
+  zzz5w8_open_item_window(null, 'reminder', null, { kind: 'reminder', entry_id: it.entry ? Number(it.entry) : null, title: String(it.text || '').slice(0, 500), priority: it.prio || 'open' }, anchor);
+}
 function zzz5w8_build_shift_bar(it) {
   const bar = document.createElement('div');
   bar.className = 'zzz5w8-shift-bar';
@@ -25305,6 +25347,7 @@ function zzz5w8_build_shift_bar(it) {
   if (it.done) {
     chip('UNDO DONE', 'Not done yet - back among the active ones', () => doDone(false));
     chip('HIDE', 'Hide it - it stays in HIDDEN', () => zzz5w8_swipe_hide(it));
+    if (it.src !== 'invite' && it.src !== 'op') chip('\u23f0 ALARM', 'Reminder or schedule for exactly this', () => zzz5w8_alarm_from_item(it));
     return bar;
   }
   const lab = document.createElement('b');
@@ -25328,6 +25371,7 @@ function zzz5w8_build_shift_bar(it) {
   if (it.shifted) chip('BACK NOW', 'Bring it back to NOTIFICATIONS now', () => zzz5w8_unshift(it));
   chip('DONE', it.src === 'chat' && it.raw && it.raw.is_saved ? 'Done - set in Notes too' : 'Mark as done', () => doDone(true));
   chip('HIDE', 'Hide it - it stays in HIDDEN (swipe right does the same)', () => zzz5w8_swipe_hide(it));
+  if (it.src !== 'invite' && it.src !== 'op') chip('\u23f0 ALARM', 'Reminder or schedule for exactly this - it brings you back here', () => zzz5w8_alarm_from_item(it));
   return bar;
 }
 
@@ -25512,9 +25556,12 @@ function zzz5w8_build_row(it) {
       cell.title = `${v.subs} - tap = open the notes on this message`;
       cell.addEventListener('click', (ev) => {
         ev.stopPropagation();
-        const r = it.raw || {};
+        const r = zzz5w8_linked_note(it) || {};
+        const k = String(r.entry_key || (it.src === 'chat' ? it.key : '') || '');
+        if (it.src !== 'chat' && /^\d+$/.test(k) && r.id && typeof zzz_open_chat_entry === 'function') { zzz_open_chat_entry(k, r.id); return; }
+        if (!k) { zzz6f2_show_toast('The message of this alarm is not available to you right now.', 'warn'); return; }
         if (typeof zzz1cn_open_list === 'function') {
-          zzz1cn_open_list(String(r.entry_key || it.key || ''), cell, { num: r.note_number, part: r.note_part || '' });
+          zzz1cn_open_list(k, cell, { num: r.note_number, part: r.note_part || '' });
         }
       });
     }
@@ -25736,14 +25783,15 @@ function zzz5w8_render_inner() {
   const acts = document.createElement('span');
   acts.className = 'zzz5w8-acts';
 
-  (zzz5w8Mode === 'main' ? [['reminder', '+ REMINDER'], ['schedule', '+ SCHEDULE']] : []).forEach(([k, txt]) => {
+  {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'zzz5w5cm-chip';
-    b.textContent = txt;
-    b.addEventListener('click', () => zzz5w8_open_item_window(null, k));
+    b.className = 'zzz5w5cm-chip zzz5w8-alarm-head';
+    b.textContent = '\u23f0 ALARM';
+    b.title = 'New reminder or schedule item (choose the type in the form)';
+    b.addEventListener('click', () => zzz5w8_open_item_window(null, zzz5w8Tab === 'schedule' ? 'schedule' : 'reminder'));
     acts.appendChild(b);
-  });
+  }
 
   const x = document.createElement('button');
   x.type = 'button';
@@ -34709,6 +34757,15 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
     head.appendChild(delBtn);
   }
 
+  if (note && /^\d+$/.test(String(note.id || '')) && typeof zzz5w8_alarm_from_note === 'function') {
+    const alarmBtn = document.createElement('button');
+    alarmBtn.type = 'button';
+    alarmBtn.className = 'zzz1cn-note-btn zzz5w8-alarm-btn';
+    alarmBtn.textContent = '\u23f0';
+    alarmBtn.title = 'ALARM - reminder or schedule for exactly this message';
+    alarmBtn.addEventListener('click', (e) => { e.stopPropagation(); zzz5w8_alarm_from_note(note, wrap); });
+    head.appendChild(alarmBtn);
+  }
   wrap.appendChild(head);
   const body = document.createElement('div');
   body.className = 'zzz1cn-note-text';
@@ -42638,7 +42695,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'CLOCK-HUB-4 2026-10-25';
+const VERSO_BUILD = 'W8-ALARM 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
