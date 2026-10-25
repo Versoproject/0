@@ -8730,11 +8730,20 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   #versoNotificationsButton.zzz5w8-active { border: 2px solid #D4AF37 !important; color: #D4AF37 !important; }
   
   .zzz5w8-modes { display: flex; margin: 2px 0 8px; border: 1px solid #8a8f98; border-radius: 8px; overflow: hidden; }
+  
+  .zzz1cn-note[data-zzz1cn-id] { touch-action: pan-y; }
+  .zzz1cn-note.is-sw-keep { box-shadow: inset 0 0 0 2px #8a8f98; opacity: .6; }
+  .zzz1cn-note.is-sw-shift { box-shadow: inset 0 0 0 2px #4a7fd0; }
+  .zzz1cn-note.zzz5w8-msg-hidden:not(.zzz1cn-row-full) { max-height: 26px; overflow: hidden; opacity: .4; padding-top: 2px !important; padding-bottom: 2px !important; }
+  .zzz1cn-note.zzz5w8-msg-hidden:not(.zzz1cn-row-full) > :not(.zzz1cn-note-head) { display: none !important; }
+  .zzz1cn-note.zzz5w8-msg-hidden::before { content: '\2298 hidden'; font-size: 10px; font-weight: 700; color: #6b6f76; margin-right: 6px; }
   .zzz5w8-modes button { flex: 1 1 0; min-width: 0; background: transparent; color: #c0c4cc; border: none;
     border-left: 1px solid #8a8f98; padding: 6px 4px; font-size: 11px; font-weight: 700; letter-spacing: .06em;
     cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .zzz5w8-modes button:first-child { border-left: none; }
   .zzz5w8-modes button.is-on { background: #c0c4cc; color: #111; }
+  .zzz5w8-modes button:first-child { flex: 1.45 1 0; }   
+  @media (max-width: 480px) { .zzz5w8-modes button { font-size: 9px; letter-spacing: 0; padding: 6px 2px; } }
   .zzz5w8-shift-bar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; width: 100%; margin-top: 4px; }
   .zzz5w8-shift-bar b { color: #c0c4cc; font-size: 10px; }
   .zzz5w8-shift-bar input { width: 70px; font-size: 11px; padding: 2px 4px; border: 1px solid #D4AF37; border-radius: 4px; }
@@ -15759,7 +15768,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
     if (zzz10v1_normalize(n.username || '') === meN || zzz1cn_urg_handled(n)) return;
     zzz1cn_read_flash(el);
-    zzz5w8_to_shifted({ src: 'chat', raw: n });
+    zzz5w8_to_checked({ src: 'chat', raw: n });
   });
 
   let cnPrioIO = null;
@@ -23772,14 +23781,17 @@ function zzz5w8_status_of(it) {
   if (it.src === 'op' && !it.shifted) return it.done ? 'DONE' : 'NEW';
 
   if (it.src === 'invite') return 'INVITE';
+  if (it.hidden) return 'HIDDEN';
   if (!it.done && it.shifted) return 'SHIFTED';
   if (!it.done && it.back) return 'BACK';
+  if (!it.done && it.checked && it.src !== 'chat') return 'SEEN';
   if (it.src === 'chat') {
     if (it.done) return 'DONE';
     const r = it.raw || {};
     if (r.id && zzz5w8DoneNotes[String(r.id)]) return 'DONE';
 
     if (r.is_saved && r.note_status) return String(r.note_status).toUpperCase();
+    if (it.checked) return 'SEEN';
     if (!/^\d+$/.test(String(r.entry_key || ''))) return 'OPEN';
     return 'NEW';
   }
@@ -23808,7 +23820,7 @@ function zzz5w8_is_open(mode) {
   return mode ? (w.dataset.mode || 'main') === mode : true;
 }
 
-const ZZZ5W8_MODE_TITLES = { main: 'NOTIFICATIONS', shifted: 'SHIFTED', done: 'DONE' };
+const ZZZ5W8_MODE_TITLES = { main: 'NOTIFICATIONS', shifted: 'SHIFTED', done: 'CHECKED', hidden: 'HIDDEN' };
 function zzz5w8_sync_button_gold() {
   const btn = document.getElementById('versoNotificationsButton');
   if (btn) btn.classList.toggle('zzz5w8-active', zzz5w8_is_open());
@@ -23865,6 +23877,24 @@ async function zzz5w8_chat_done(it) {
 const ZZZ5W8_SHIFT_TABLE = 'verso_notif_shifts';
 const ZZZ5W8_SHIFT_SQL = 'verso_notif_shifts_v1';
 const ZZZ5W8_SHIFT_AUTO = { urgent: 60, attention: 1440, open: 0 };
+
+const ZZZ5W8_MORNING_HOUR = 8;
+function zzz5w8_next_morning(from) {
+  const d = new Date(from || Date.now());
+  const m = new Date(d.getFullYear(), d.getMonth(), d.getDate(), ZZZ5W8_MORNING_HOUR, 0, 0, 0);
+  if (m.getTime() <= d.getTime()) m.setDate(m.getDate() + 1);
+  return m.getTime();
+}
+
+let zzz5w8HiddenMissing = false;
+const ZZZ5W8_HIDDEN_SQL = 'verso_notif_shifts_v2_hidden';
+function zzz5w8_shift_state(sh, now) {
+  if (!sh) return { hidden: false, checked: false, shifted: false, back: false };
+  if (sh.hidden) return { hidden: true, checked: false, shifted: false, back: false };
+  const u = Date.parse(sh.until || '') || 0;
+  if (!u) return { hidden: false, checked: true, shifted: false, back: false };
+  return { hidden: false, checked: false, shifted: u > now, back: u <= now };
+}
 let zzz5w8Shifts = {};
 let zzz5w8ShiftMissing = false;
 function zzz5w8_skey(it) {
@@ -23886,6 +23916,7 @@ async function zzz5w8_load_shifts() {
     });
     zzz5w8Shifts = map;
     zzz5w8ShiftMissing = false;
+    if ((data || []).length) zzz5w8HiddenMissing = !Object.prototype.hasOwnProperty.call(data[0], 'hidden');
   } catch (e) {
     zzz5w8ShiftMissing = true;
     zzz5w8Shifts = {};
@@ -23898,28 +23929,122 @@ async function zzz5w8_shift(it, minutes, quiet) {
   if (!key) { zzz6f2_show_toast('This message is not sent yet - it cannot be shifted.', 'warn'); return; }
   if (zzz5w8ShiftMissing) { zzz6f2_show_toast(`Shifting needs SQL "${ZZZ5W8_SHIFT_SQL}" in Supabase - it is not deployed yet.`, 'warn'); return; }
   const me = (zzz0r1_get_current_username() || '').trim();
-  const until = minutes > 0 ? new Date(Date.now() + minutes * 60000).toISOString() : null;
+  const until = new Date(minutes > 0 ? Date.now() + minutes * 60000 : zzz5w8_next_morning()).toISOString();
   const row = { username: me, until };
   const id = Number(key.split(':')[1]);
   if (key.indexOf('item:') === 0) row.item_id = id; else row.note_id = id;
   try {
     const old = zzz5w8Shifts[key];
     if (old && old.id) {
-      const { error } = await sb.from(ZZZ5W8_SHIFT_TABLE).update({ until, created_at: new Date().toISOString() }).eq('id', old.id);
+      const patch = { until, created_at: new Date().toISOString() };
+      if (old.hidden) patch.hidden = false;
+      const { error } = await sb.from(ZZZ5W8_SHIFT_TABLE).update(patch).eq('id', old.id);
       if (error) throw error;
-      old.until = until;
+      old.until = until; old.hidden = false;
     } else {
       const { data, error } = await sb.from(ZZZ5W8_SHIFT_TABLE).insert(row).select('*');
       if (error) throw error;
       zzz5w8Shifts[key] = (Array.isArray(data) ? data[0] : data) || row;
     }
-    if (!quiet) zzz6f2_show_toast(until ? `Shifted - back in NOTIFICATIONS at ${zzz5w8_fmt_time(Date.parse(until))}.` : 'Shifted - it waits in SHIFTED until you bring it back.');
+    if (!quiet) zzz6f2_show_toast(`Shifted - back in NOTIFICATIONS at ${zzz5w8_fmt_time(Date.parse(until))}.`);
     try { zzz1cn_notif_recount(); } catch (e) {}
   } catch (e) {
     if (zzz5w8_is_missing_table(e)) zzz5w8ShiftMissing = true;
     zzz6f2_show_toast(`Could not shift it: ${(e && (e.message || e.details)) || e}`, 'warn');
   }
   zzz5w8_render();
+}
+
+async function zzz5w8_put_state(it, patch) {
+  const key = zzz5w8_skey(it);
+  if (!key || key.indexOf('op:') === 0) return false;
+  const me = (zzz0r1_get_current_username() || '').trim();
+  const id = Number(key.split(':')[1]);
+  const old = zzz5w8Shifts[key];
+  if (old && old.id) {
+    const { error } = await sb.from(ZZZ5W8_SHIFT_TABLE).update(patch).eq('id', old.id);
+    if (error) throw error;
+    Object.assign(old, patch);
+  } else {
+    const row = Object.assign({ username: me }, key.indexOf('item:') === 0 ? { item_id: id } : { note_id: id }, patch);
+    const { data, error } = await sb.from(ZZZ5W8_SHIFT_TABLE).insert(row).select('*');
+    if (error) throw error;
+    zzz5w8Shifts[key] = (Array.isArray(data) ? data[0] : data) || row;
+  }
+  try { zzz1cn_notif_recount(); } catch (e) {}
+  return true;
+}
+
+function zzz5w8_to_checked(it) {
+  if (!it) return;
+  if (it.src === 'reminder' || it.src === 'schedule') { if (!it.member && it.raw) zzz5w8_mark_seen(it.raw); return; }
+  if (it.src !== 'chat' || it.done || it.hidden || it.checked) return;
+  if (it.task && it.task.pending && it.task.canMe) return;
+  if (zzz5w8ShiftMissing) return;
+  zzz5w8_put_state(it, { until: null }).then(() => { try { zzz5w8_render(); } catch (e) {} }).catch(() => {});
+}
+
+async function zzz5w8_hide(it, on, quiet) {
+  if (!it) return;
+  if (it.src === 'invite') { if (on) { zzz5w8_invite_hide(it.raw || {}); zzz5w8_render(); } return; }
+  if (it.src === 'op') { zzz6f2_show_toast('System messages cannot be hidden - SHIFT them.', 'warn'); return; }
+  if (!zzz5w8_skey(it)) { zzz6f2_show_toast('This message is not sent yet - it cannot be hidden.', 'warn'); return; }
+  if (zzz5w8HiddenMissing) { zzz6f2_show_toast(`HIDE needs SQL "${ZZZ5W8_HIDDEN_SQL}" in Supabase - it is not deployed yet.`, 'warn'); return; }
+  try {
+    await zzz5w8_put_state(it, on ? { hidden: true, until: null } : { hidden: false });
+    if (!quiet) zzz6f2_show_toast(on ? 'Hidden - it is in HIDDEN, swipe right there to bring it back.' : 'Back from HIDDEN (as CHECKED).');
+  } catch (e) {
+    const m = String((e && (e.message || e.details)) || e);
+    if (String(e && e.code) === 'PGRST204' || String(e && e.code) === '42703' || /hidden/i.test(m)) {
+      zzz5w8HiddenMissing = true;
+      zzz6f2_show_toast(`HIDE needs SQL "${ZZZ5W8_HIDDEN_SQL}" in Supabase - it is not deployed yet.`, 'warn');
+    } else zzz6f2_show_toast(`Could not hide it: ${m}`, 'warn');
+  }
+  zzz5w8_render();
+  try { zzz3dSig = ''; zzz3d_render(); } catch (e) {}
+  try { document.querySelectorAll('.zzz1cn-note[data-zzz1cn-id]').forEach(zzz5w8_paint_chat_hidden); } catch (e) {}
+}
+
+function zzz5w8_swipe_hide(it) {
+  if (!it) return;
+  if (it.hidden) { zzz5w8_hide(it, false); return; }
+  zzz5w8_hide(it, true).then(() => {
+    if (typeof zzz3d_offer_undo === 'function' && zzz5w8Shifts[zzz5w8_skey(it)] && zzz5w8Shifts[zzz5w8_skey(it)].hidden) {
+      const lab = (it.entry ? '#' + it.entry + ' ' : '') + (it.text || '').slice(0, 40);
+      zzz3d_offer_undo('\u2298 HIDDEN \u00b7 ' + lab, () => zzz5w8_hide(it, false, true));
+    }
+  });
+}
+
+function zzz5w8_item_of_note(n) {
+  if (!n) return null;
+  try {
+    const hit = zzz5w8_collect().find(i => i.src === 'chat' && i.raw && String(i.raw.id) === String(n.id));
+    if (hit) return hit;
+  } catch (e) {}
+  const key = String(n.entry_key || '');
+  const sh = n.id != null ? zzz5w8Shifts['note:' + n.id] : null;
+  const st = zzz5w8_shift_state(sh, Date.now());
+  return {
+    src: 'chat', id: 'chat:' + key + ':' + n.id, entry: /^\d+$/.test(key) ? key : '', key, place: '',
+    t: Date.parse(n.created_at || '') || 0, due: true, done: false, fresh: false,
+    shifted: st.shifted, back: st.back, checked: st.checked, hidden: st.hidden, shift: sh,
+    prio: (typeof zzz1cn_prio_of === 'function' && zzz1cn_prio_of(n)) || 'open', type: 'CHAT', from: String(n.username || ''),
+    text: String(n.note_text || '').replace(/\s+/g, ' ').trim(), project: '', raw: n
+  };
+}
+function zzz5w8_paint_chat_hidden(wrap) {
+  if (!wrap || !wrap.dataset) return;
+  const id = wrap.dataset.zzz1cnId;
+  const sh = id ? zzz5w8Shifts['note:' + id] : null;
+  wrap.classList.toggle('zzz5w8-msg-hidden', !!(sh && sh.hidden));
+}
+function zzz5w8_bind_chat_swipe(wrap, note) {
+  if (!wrap || !note || note.id == null || !/^\d+$/.test(String(note.id))) return;
+  wrap.dataset.zzz1cnId = wrap.dataset.zzz1cnId || String(note.id);
+  zzz5w8_paint_chat_hidden(wrap);
+  zzz5w8_bind_swipe(wrap, () => zzz5w8_swipe_hide(zzz5w8_item_of_note(note)),
+    () => zzz5w8_shift_prompt(zzz5w8_item_of_note(note), wrap));
 }
 async function zzz5w8_unshift(it, quiet) {
   const key = zzz5w8_skey(it);
@@ -24322,7 +24447,8 @@ function zzz5w8_collect() {
     const done = !!(r.id && (zzz5w8DoneNotes[String(r.id)] || zzz5w8_note_is_done(r) || (typeof zzz14pt_note_task_done === 'function' && zzz14pt_note_task_done(r))));
     let sh = r.id ? zzz5w8Shifts['note:' + r.id] : null;
 
-    if (!sh && !done && kind === null && zzz1cn_self_shifted(meN) && zzz10v1_normalize(r.username || '') === meN) sh = { until: null, self: true };
+    if (!sh && !done && kind === null && zzz1cn_self_shifted(meN) && zzz10v1_normalize(r.username || '') === meN
+        && now - (Date.parse(r.created_at || '') || 0) < 3 * 86400000) sh = { until: null, self: true };
 
     if (!sh && !done && kind === '' && r.id) {
       const tt = Date.parse(r.created_at || '') || 0;
@@ -24337,16 +24463,15 @@ function zzz5w8_collect() {
     if (kind === null && !done && !sh) return;
     if (!kind && !done && !sh) return;
     const t = Date.parse(r.created_at || '') || 0;
-    const until = sh ? (Date.parse(sh.until || '') || 0) : 0;
-    const shifted = !!sh && (!until || until > now);
-    const back = !!sh && !shifted;
+    const sst = zzz5w8_shift_state(sh, now);
+    const shifted = sst.shifted, back = sst.back;
     const lvl = kind === 'urg' ? 'urgent' : (kind === 'att' ? 'attention' : (kind === 'green' ? 'open' : (zzz1cn_prio_of(r) || 'open')));
     const entry = isRecord ? rawKey : '';
     const place = isRecord ? '' : (rawKey.indexOf('tab:') === 0 ? rawKey.slice(4).toUpperCase() : (rawKey.indexOf('draft') === 0 ? 'DRAFT' : rawKey));
     out.push({
       src: 'chat', id: 'chat:' + rawKey + ':' + t + ':' + (r.username || ''),
       entry, key: rawKey, place, t, due: true, done, fresh: !!kind || back,
-      shifted, back, shift: sh || null,
+      shifted, back, checked: sst.checked, hidden: sst.hidden, shift: sh || null,
       prio: ['urgent', 'attention'].indexOf(lvl) >= 0 ? lvl : 'open',
       type: task ? 'TASK' : 'CHAT', from: String(r.username || ''), task,
       text: (task ? `[${task.chip}] ` : '') + (zzz3d_miss_has(r.id) ? '\u26a0 chat did not load \u00b7 ' : '') + String(r.note_text || '').replace(/\s+/g, ' ').trim(),
@@ -24382,13 +24507,15 @@ function zzz5w8_collect() {
     const seen = Date.parse(st.seen_at || '') || 0;
     const rep = (Number(r.repeat_min) || 0) * 60000;
     const sh = zzz5w8Shifts['item:' + r.id] || null;
-    const until = sh ? (Date.parse(sh.until || '') || 0) : 0;
-    const shifted = !!sh && (!until || until > now);
-    const back = !!sh && !shifted;
+    const sst = zzz5w8_shift_state(sh, now);
+    const shifted = sst.shifted, back = sst.back;
     const fresh = !seen || (rep > 0 && now >= seen + rep) || back;
+    const dueNow = now >= from || back;
+
+    const checkedIt = sst.checked || (dueNow && !fresh && !st.done_at && !shifted);
     out.push({
       src: r.kind === 'schedule' ? 'schedule' : 'reminder', id: 'item:' + r.id,
-      entry, t, due: now >= from || back, done: !!st.done_at, fresh, shifted, back, shift: sh,
+      entry, t, due: dueNow, done: !!st.done_at, fresh, shifted, back, checked: checkedIt, hidden: sst.hidden, shift: sh,
       dur: Number(r.duration_min) || 0, member: !mine, target: tgt,
       prio: ['urgent', 'attention'].indexOf(r.priority) >= 0 ? r.priority : 'open',
       type: r.kind === 'schedule' ? 'SCHEDULE' : 'REMINDER',
@@ -24449,9 +24576,12 @@ function zzz5w8_match(it, q) {
 
 function zzz5w8_in_mode(it, mode) {
   const m = mode || zzz5w8Mode;
-  if (m === 'done') return !!it.done;
+
+  if (m === 'hidden') return !!it.hidden;
+  if (it.hidden) return false;
+  if (m === 'done') return !!it.done || (!!it.checked && !it.shifted && !it.back);
   if (m === 'shifted') return !it.done && !!it.shifted;
-  return !it.done && !it.shifted && (it.src !== 'chat' || it.fresh);
+  return !it.done && !it.shifted && !it.checked && (it.src !== 'chat' || it.fresh);
 }
 function zzz5w8_visible(all) {
   const q = zzz5w8Q[zzz5w8Mode + ':' + zzz5w8Tab] || {};
@@ -24537,7 +24667,7 @@ function zzz5w8_open_invite(it) {
 function zzz5w8_open_item(it, anchorEl) {
   if (it && it.src === 'op') { try { it.run(); } catch (e) {} return; }
   if (it && it.src === 'invite') { zzz5w8_open_invite(it); return; }
-  if (it.back) zzz5w8_unshift(it, true);
+  if (it.back) zzz5w8_put_state(it, { until: null }).catch(() => {});
 
   if (it.src === 'chat' && !it.entry && it.key) {
     if (typeof zzz1cn_open_list === 'function') zzz1cn_open_list(it.key, anchorEl);
@@ -25101,18 +25231,23 @@ function zzz5w8_build_shift_bar(it) {
     else if (it.member) zzz5w8_open_member_window(it);
     else zzz5w8_mark_done(it.raw, on);
   };
+  if (it.hidden) {
+    chip('UNHIDE', 'Back from HIDDEN', () => zzz5w8_hide(it, false));
+    return bar;
+  }
   if (it.done) {
     chip('UNDO DONE', 'Not done yet - back among the active ones', () => doDone(false));
+    chip('HIDE', 'Hide it - it stays in HIDDEN', () => zzz5w8_swipe_hide(it));
     return bar;
   }
   const lab = document.createElement('b');
   lab.textContent = it.shifted ? 'SHIFT AGAIN' : 'SHIFT';
   bar.appendChild(lab);
   const auto = ZZZ5W8_SHIFT_AUTO[it.prio] || 0;
-  chip('AUTO' + (auto ? ' ' + zzz5w8_fmt_minutes(auto) : ''), 'Urgent comes back in 1 hour, attention in 24 hours, open waits until you bring it back', () => zzz5w8_shift(it, auto));
+  chip('AUTO' + (auto ? ' ' + zzz5w8_fmt_minutes(auto) : ' 8:00'), 'Urgent comes back in 1 hour, attention in 24 hours, open the next morning at 8:00', () => zzz5w8_shift(it, auto));
   chip('1h', 'Back in 1 hour', () => zzz5w8_shift(it, 60));
   chip('24h', 'Back in 24 hours', () => zzz5w8_shift(it, 1440));
-  chip('WAIT', 'No time - it waits in SHIFTED until you bring it back', () => zzz5w8_shift(it, 0));
+  chip('MORNING', 'Back the next morning at 8:00 - nothing waits forever', () => zzz5w8_shift(it, 0));
   const inp = document.createElement('input');
   inp.type = 'text';
   inp.placeholder = '3h, 2d';
@@ -25125,6 +25260,7 @@ function zzz5w8_build_shift_bar(it) {
   });
   if (it.shifted) chip('BACK NOW', 'Bring it back to NOTIFICATIONS now', () => zzz5w8_unshift(it));
   chip('DONE', it.src === 'chat' && it.raw && it.raw.is_saved ? 'Done - set in Notes too' : 'Mark as done', () => doDone(true));
+  chip('HIDE', 'Hide it - it stays in HIDDEN (swipe right does the same)', () => zzz5w8_swipe_hide(it));
   return bar;
 }
 
@@ -25172,18 +25308,13 @@ function zzz5w8_open_keep(it, anchor) {
   }
   zzz5w8_open_item(it, anchor);
 }
-function zzz5w8_to_shifted(it) {
-  if (!it || it.src !== 'chat' || it.done || it.shifted) return;
-  if (it.task && it.task.pending && it.task.canMe) return;
-  try { zzz5w8_shift(it, 0, true); } catch (e) {}
-}
 function zzz5w8_open_shift(it, anchor) {
   zzz5w8_open_item(it, anchor);
-  zzz5w8_to_shifted(it);
+  zzz5w8_to_checked(it);
 }
 function zzz5w8_play_shift(it) {
   zzz5w8_play_item(it);
-  zzz5w8_to_shifted(it);
+  zzz5w8_to_checked(it);
 }
 
 function zzz5w8_shift_prompt(it, anchor) {
@@ -25340,7 +25471,7 @@ function zzz5w8_build_row(it) {
   line.addEventListener('click', () => { if (!line._zzzSwiped) zzz5w8_open_shift(it, line); });
   if (it.src === 'chat') zzz_bind_long_press(line, ZZZ5W8_HOLD_PLAY_MS, () => { line._zzzSwiped = true; setTimeout(() => { line._zzzSwiped = false; }, 700); zzz5w8_play_shift(it); });
 
-  zzz5w8_bind_swipe(line, () => zzz5w8_open_keep(it, line), () => mini.dispatchEvent(new CustomEvent('zzz-details')));
+  zzz5w8_bind_swipe(line, () => zzz5w8_swipe_hide(it), () => zzz5w8_shift_prompt(it, line));
   if (it.src === 'chat' && it.prio === 'urgent') line.addEventListener('dblclick', () => zzz5w8_play_item(it));
 
   return line;
@@ -25368,7 +25499,7 @@ function zzz5w8_build_card(it) {
   card.title = it.src === 'chat' ? 'Tap = open + SHIFTED, hold = read aloud + SHIFTED, swipe right = open and keep, swipe left = SHIFT' : 'Tap = change it, mark it done';
   card.addEventListener('click', () => { if (!card._zzzSwiped) zzz5w8_open_shift(it, card); });
   if (it.src === 'chat') zzz_bind_long_press(card, ZZZ5W8_HOLD_PLAY_MS, () => { card._zzzSwiped = true; setTimeout(() => { card._zzzSwiped = false; }, 700); zzz5w8_play_shift(it); });
-  zzz5w8_bind_swipe(card, () => zzz5w8_open_keep(it, card), () => zzz5w8_shift_prompt(it, card));
+  zzz5w8_bind_swipe(card, () => zzz5w8_swipe_hide(it), () => zzz5w8_shift_prompt(it, card));
   if (it.src === 'chat' && it.prio === 'urgent') card.addEventListener('dblclick', () => zzz5w8_play_item(it));
   return card;
 }
@@ -25577,9 +25708,11 @@ function zzz5w8_render_inner() {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = zzz5w8Mode === m ? 'is-on' : '';
-    const n = m === 'main' ? 0 : all.filter(i => zzz5w8_in_mode(i, m)).length;
-    b.textContent = ZZZ5W8_MODE_TITLES[m] + (m === 'main' ? '' : ` (${n})`);
-    b.title = m === 'main' ? 'What needs you now' : (m === 'shifted' ? 'Shifted for later - comes back by itself or when you bring it back' : 'Done - also what is DONE in Notes');
+
+    const n = all.filter(i => zzz5w8_in_mode(i, m) && zzz5w8_in_tab(i, zzz5w8Tab)).length;
+    b.textContent = ZZZ5W8_MODE_TITLES[m] + ` (${n})`;
+    b.title = ({ main: 'What needs you now', shifted: 'Only what you shifted - each comes back by itself (latest the next morning 8:00)',
+      done: 'Checked - opened, read or done (DONE of notes is the same as in Notes)', hidden: 'Hidden by swipe right - nothing is deleted, swipe right here to bring it back' })[m];
     b.addEventListener('click', () => {
       if (zzz5w8Mode === m) return;
       zzz5w8Mode = m;
@@ -25589,7 +25722,6 @@ function zzz5w8_render_inner() {
     });
     modes.appendChild(b);
   });
-  mod.appendChild(modes);
 
   const row = document.createElement('div');
   row.className = 'zzz5t0-tabs-row';
@@ -25597,8 +25729,7 @@ function zzz5w8_render_inner() {
   inner.className = 'zzz5t0-tabs-row-inner';
   ZZZ5W8_TABS.forEach(t => {
 
-    const items = all.filter(i => zzz5w8_in_mode(i) && zzz5w8_in_tab(i, t.key)
-      && (zzz5w8Mode !== 'main' || (i.due && i.fresh)));
+    const items = all.filter(i => zzz5w8_in_mode(i, 'main') && zzz5w8_in_tab(i, t.key) && i.due && i.fresh);
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'zzz5t0-tab zzz5w5cm-tab-big' + (zzz5w8Tab === t.key ? ' zzz5t0-tab-active zzz5t0-tab-current' : '');
@@ -25620,6 +25751,7 @@ function zzz5w8_render_inner() {
   });
   row.appendChild(inner);
   mod.appendChild(row);
+  mod.appendChild(modes);
 
   const bar = document.createElement('div');
   bar.className = 'zzz5w5cm-toggles zzz5w8-bar';
@@ -25692,8 +25824,9 @@ function zzz5w8_render_inner() {
     const anyInTab = all.some(i => zzz5w8_in_tab(i, zzz5w8Tab) && zzz5w8_in_mode(i) && (!isKindTab || i.due));
     const emptyText = zzz5w8State.loading && !zzz5w8Loaded ? 'Loading...'
       : (anyInTab ? 'Nothing matches the priorities or the search above.'
-        : zzz5w8Mode === 'shifted' ? (zzz5w8ShiftMissing ? `Shifting needs SQL "${ZZZ5W8_SHIFT_SQL}" in Supabase - it is not deployed yet.` : 'Nothing shifted. Tap the icon of a line in NOTIFICATIONS and choose SHIFT.')
-        : zzz5w8Mode === 'done' ? 'Nothing done yet here.'
+        : zzz5w8Mode === 'shifted' ? (zzz5w8ShiftMissing ? `Shifting needs SQL "${ZZZ5W8_SHIFT_SQL}" in Supabase - it is not deployed yet.` : 'Nothing shifted. Swipe a line to the left and choose when it comes back.')
+        : zzz5w8Mode === 'done' ? 'Nothing checked yet here.'
+        : zzz5w8Mode === 'hidden' ? (zzz5w8HiddenMissing ? `HIDE needs SQL "${ZZZ5W8_HIDDEN_SQL}" in Supabase - it is not deployed yet.` : 'Nothing hidden. Swipe a line to the right to hide it.')
         : (isKindTab
           ? `Nothing due right now - everything you planned is in the ${zzz5w8Tab === 'schedule' ? 'SCHEDS' : 'REMS'} DATABASE below.`
           : 'Nothing new - no unread chat messages, nothing due.'));
@@ -26124,7 +26257,7 @@ function zzz3d_render_now() {
   ban.appendChild(prev);
   ban.appendChild(body);
   ban.appendChild(next);
-  ban.addEventListener('click', () => { if (!ban._zzz3dSwiped) { zzz3d_open(cur, ban); zzz5w8_to_shifted(cur); } });
+  ban.addEventListener('click', () => { if (!ban._zzz3dSwiped) { zzz3d_open(cur, ban); zzz5w8_to_checked(cur); } });
   zzz3d_swipe(ban, cur);
   zzz3d_hold(ban, cur);
   box.appendChild(ban);
@@ -26159,7 +26292,7 @@ function zzz3d_render_now() {
       if (r._zzz3dSwiped) return;
       zzz3dCurId = it.id;
       zzz3d_open(it, r);
-      zzz5w8_to_shifted(it);
+      zzz5w8_to_checked(it);
     });
     zzz3d_swipe(r, it);
     zzz3d_hold(r, it);
@@ -26290,7 +26423,7 @@ function zzz3d_open(it, el) {
   try {
     const r = (it && it.raw) || {};
     if (it.src !== 'chat') { zzz5w8_open_item(it, el); zzz3d_render(); return; }
-    if (it.back) zzz5w8_unshift(it, true);
+    if (it.back) zzz5w8_put_state(it, { until: null }).catch(() => {});
     const key = String(r.entry_key || it.key || '');
     const focus = r.note_number ? { num: r.note_number, part: r.note_part || '' } : null;
     const readIt = () => {
@@ -26406,7 +26539,7 @@ function zzz3d_swipe(el, it) {
     zzz3dSwiping = false;
     if (zzz3dPending) { zzz3dPending = false; zzz3dSig = ''; zzz3d_render(); }
 
-    if (d > ZZZ3D_SWIPE_PX) zzz3d_open_keep(it, el);
+    if (d > ZZZ3D_SWIPE_PX) zzz5w8_swipe_hide(it);
     else if (d < -ZZZ3D_SWIPE_PX) zzz5w8_shift_prompt(it, el);
   };
   el.addEventListener('pointerup', end);
@@ -32445,7 +32578,7 @@ function zzz14cs_feed_row(it, wrap) {
     const ta = wrap.querySelector('.zzz14cs-feed-comp textarea');
     if (ta) { try { ta.focus({ preventScroll: true }); } catch (e) {} }
   });
-  zzz5w8_bind_swipe(r, () => { r._zzz3dSwiped = true; setTimeout(() => { r._zzz3dSwiped = false; }, 400); zzz14cs_feed_open(it, true); },
+  zzz5w8_bind_swipe(r, () => { r._zzz3dSwiped = true; setTimeout(() => { r._zzz3dSwiped = false; }, 400); zzz5w8_swipe_hide(it); },
     () => { r._zzz3dSwiped = true; setTimeout(() => { r._zzz3dSwiped = false; }, 400); zzz5w8_shift_prompt(it, r); });
   zzz3d_hold(r, it);
   return r;
@@ -32459,7 +32592,7 @@ function zzz14cs_feed_read(it, el) {
     else if (it.prio === 'attention') zzz1cn_seen_mark(String(r.entry_key || it.entry), 'prio', t);
   } catch (e) {}
   if (typeof zzz1cn_read_flash === 'function') zzz1cn_read_flash(el);
-  zzz5w8_to_shifted(it);
+  zzz5w8_to_checked(it);
 }
 function zzz14cs_feed_open(it, keep) {
   if (!it || !it.entry) return;
@@ -34204,6 +34337,7 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   }
 
   wrap.addEventListener('click', (e) => {
+    if (wrap._zzzSwiped) return;
     const t = e.target;
 
     if (zzz1cnReadingNote === wrap && zzz16_is_reading()) { zzz16_stop_reading(); zzz1cnReadingNote = null; return; }
@@ -34517,6 +34651,7 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   if (note && /^\d+$/.test(String(note.id || '')) && typeof zzz5w8_note_chip === 'function') wrap.appendChild(zzz5w8_note_chip(note));
 
   if (!zzz1cn_reply_link_attach(wrap, note)) zzz1cn_reply_origin_attach(wrap, note);
+  if (typeof zzz5w8_bind_chat_swipe === 'function') zzz5w8_bind_chat_swipe(wrap, note);
   return wrap;
 }
 
@@ -35633,7 +35768,7 @@ function zzz16_urgent_banner(items, anyPrio) {
   const hint = document.createElement('div');
   hint.style.cssText = 'font-size:15px;margin-top:4px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word';
   hint.textContent = String(last.text || '').replace(/\s+/g, ' ').trim();
-  b.title = 'Tap = open · hold 1-2 s = read aloud · swipe right = DONE · swipe left = SHIFT';
+  b.title = 'Tap = open · hold 1-2 s = read aloud · swipe right = HIDE · swipe left = SHIFT';
   const bar = document.createElement('div'); bar.style.cssText = 'position:absolute;left:0;bottom:0;height:4px;width:0;background:#fff;opacity:.8';
   const x = document.createElement('button'); x.type = 'button'; x.textContent = '✕'; x.setAttribute('aria-label', 'Close');
   x.style.cssText = 'position:absolute;right:6px;top:50%;transform:translateY(-50%);width:34px;height:34px;border:0;border-radius:17px;background:rgba(0,0,0,.25);color:#fff;font-size:16px';
@@ -35687,13 +35822,13 @@ function zzz16_urgent_banner(items, anyPrio) {
       const it = dashItem();
       if (!it) { zzz6f2_show_toast('This message is not in the dashboard yet - try again in a moment.', 'warn'); return; }
       close();
-      if (dx > 0) zzz3d_done(it); else zzz3d_shift(it);
+      if (dx > 0) zzz5w8_swipe_hide(it); else zzz3d_shift(it);
       return;
     }
     zzz16_stop_reading();
     close();
 
-    try { const it = dashItem(); if (it) zzz5w8_to_shifted(it); } catch (e) {}
+    try { const it = dashItem(); if (it) zzz5w8_to_checked(it); } catch (e) {}
     zzz_open_chat_entry(last.entry, last.id);
   });
   clearTimeout(zzz16State.urgentTimer);
@@ -42271,7 +42406,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'CHAT-THREADS-TEST 2026-10-25';
+const VERSO_BUILD = 'W8-CHECKED 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
