@@ -8961,6 +8961,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     display: inline-block; margin: 3px 0 1px; padding: 2px 8px; font-size: 9px; font-weight: 700;
     border: 1px solid #D4AF37; border-radius: 999px; color: #8a6d1a; background: #fffbea; cursor: pointer;
   }
+  
+  .zzz1cn-note .zzz5w8-note-chip { padding: 0 5px; margin: 2px 0 0; font-size: 0.85em; line-height: 1.5; align-self: flex-start; }
+  .zzz1cn-note-mine .zzz5w8-note-chip { align-self: flex-end; }
+  .zzz1cn-note-id .zzz5w8-note-chip { order: 9; }   
+  .zzz1cn-note.zzz5w8-has-alarm { box-shadow: inset 4px 0 0 #D4AF37; }
+  .zzz1cn-note.zzz1cn-note-mine.zzz5w8-has-alarm { box-shadow: inset -4px 0 0 #D4AF37; }
   .zzz5w8-st-new, .zzz5w8-st-due { color: #f0a640; }
   .zzz5w8-st-seen { color: #9a9a9a; }
   .zzz5w8-st-planned { color: #9aa6ff; }
@@ -9812,6 +9818,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     margin-right: auto;
     align-self: flex-start;
   }
+  
+  @media (max-width: 760px) {
+    .zzz1r17b-comm-window .zzz1cn-note:not(.zzz1cn-note-mine),
+    .zzz1r17b-comm-window .zzz1cn-note.zzz1cn-note-mine { max-width: calc(100% - 22px); }
+  }
+  .zzz1r17b-comm-window.zzz1cn-contacts-hidden > .zzz1r17b-chips-row:not(:has(> .zzz5-6-privbtn, > .zzz5-6-modes)) { display: none; }
   .zzz1r17b-comm-window.zzz1cn-compact .zzz1cn-note:not(.zzz1cn-row-full) .zzz1cn-note-id {
     flex-direction: column;
     align-items: flex-start;
@@ -15589,6 +15601,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
       if (!((o.attention && lvl === 'attention') || (o.urgent && lvl === 'urgent'))) return false;
     }
     if (o.private && !zzz56_is_private_note(n)) return false;
+    if (o.alarm && !zzz5w8_note_has_alarm(n)) return false;
     if (o.mine && zzz10v1_normalize(n.username || '') !== zzz10v1_normalize(zzz0r1_get_current_username() || '')) return false;
     if (cnView.at && Number(ord) !== Number(cnView.at)) return false;
 
@@ -24496,10 +24509,18 @@ function zzz5w8_paint_note_chips() {
     const sum = zzz5w8_answers_summary(item.id);
     const mine = zzz5w8_my_target(item.id);
     el.style.display = '';
-    el.textContent = '\u23f0 ' + zzz5w8_tag_label(item)
+
+    const full = '\u23f0 ' + zzz5w8_tag_label(item)
       + ' ' + zzz5w8_fmt_time(Date.parse(item.due_at))
       + (sum ? ' \u00b7 ' + sum : '') + (mine && mine.answer ? ' \u00b7 you: ' + mine.answer.toUpperCase() : '');
-    el.title = mine ? 'Tap = answer / mark done' : 'Participation of the members you named';
+    el.textContent = '\u23f0';
+    const wrapN = el.closest('.zzz1cn-note');
+    if (wrapN) {
+      wrapN.classList.add('zzz5w8-has-alarm');
+      const idCol = wrapN.querySelector('.zzz1cn-note-id');
+      if (idCol && el.parentNode !== idCol) idCol.appendChild(el);
+    }
+    el.title = full + (mine ? ' - tap = answer / mark done' : ' - tap = open the alarm');
     el.onclick = (e) => {
       e.stopPropagation();
       const it = { raw: item };
@@ -35469,8 +35490,13 @@ const ZZZ5W7_FILTERS = [
   ['final',    'FINAL',    'confirmed by the project owner'],
 
   ['private',  'PRIVATE',  'private: only you, or only the people it is addressed to'],
-  ['mine',     'MY',       'notes by the signed-in user']
+  ['mine',     'MY',       'notes by the signed-in user'],
+
+  ['alarm',    '\u23f0 ALARM', 'only messages with a reminder / schedule (ALARM)']
 ];
+function zzz5w8_note_has_alarm(n) {
+  try { return !!(n && n.id != null && (zzz5w8Items || []).some(i => String(i.note_id || '') === String(n.id))); } catch (e) { return false; }
+}
 
 const ZZZ1CN_NOTIF_PRIO_NEEDS_MENTION = true;
 
@@ -38301,6 +38327,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
       if (!((o.attention && lvl === 'attention') || (o.urgent && lvl === 'urgent'))) return false;
     }
     if (o.private && !zzz56_is_private_note(n)) return false;
+    if (o.alarm && !zzz5w8_note_has_alarm(n)) return false;
     const me = zzz10v1_normalize(zzz0r1_get_current_username() || '');
     if (o.mine && zzz10v1_normalize(n.username || '') !== me) return false;
 
@@ -42943,7 +42970,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'W8-ALARM-3 2026-10-25';
+const VERSO_BUILD = 'CHAT-ALARM-MARK 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
