@@ -9816,7 +9816,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     font-weight: 800;
   }
   
-  .zzz1cn-note-btn.zzz5-6-privbtn.is-on.is-open-pack { background-color: #D4AF37 !important; border-color: #b8952b !important; color: #171717 !important; }
+  .zzz1cn-note-btn.zzz5-6-privbtn.is-ready { border-width: 2px !important; }   
   .zzz5-6-privwin button.zzz56-pack.zzz5-6-privchip { border: 2px solid #D4AF37 !important; color: #D4AF37 !important; }
   .zzz5-6-privwin button.zzz56-pack.zzz5-6-privchip.is-private { border-color: #2a9d8f !important; color: #40c2b0 !important; box-shadow: 0 0 0 1px #40c2b0; }
   .zzz56-pack.is-active { background: #2a2a2a !important; color: #fff !important; }
@@ -28766,7 +28766,7 @@ function zzz56_sel_toggle(entryKey, name) {
   return !has;
 }
 function zzz56_priv_active() {
-  const all = (typeof zzz56_packs === 'function') ? zzz56_packs() : zzz56_priv_presets();
+  const all = zzz56_priv_presets();
   return all.find(g => String(g.id) === String(zzz56PrivPresetId)) || null;
 }
 
@@ -28784,7 +28784,7 @@ function zzz56_priv_toggle() {
   const sel = zzz56_sel_get(zzz56PrivCtx);
   const g = zzz56_priv_active();
   zzz6f2_show_toast(zzz56PrivOn
-    ? (sel.length ? `PACKS on - messages go only to ${sel.join(', ')} (and you).`
+    ? (sel.length ? `PACKS${zzz56_pack_name(zzz56PrivCtx) ? ' · ' + zzz56_pack_name(zzz56PrivCtx) : ''} on - messages go only to ${sel.join(', ')} (and you).`
       : (g ? (g.priv ? `PACKS · ${g.name} - only its members read your messages.` : `PACKS · ${g.name} (open) - everyone reads, its members get it as @named.`)
         : 'PACKS on - tap the people chips to pick who reads it, or hold PACKS for your packs.'))
     : 'PACKS off.');
@@ -28797,13 +28797,15 @@ function zzz56_priv_refresh() {
     const g = zzz56_priv_active();
     btn.classList.toggle('is-on', zzz56PrivOn);
 
-    const lastTxt = sel.length ? (sel.length === 1 ? sel[0] : String(sel.length)) : (g ? g.name : '');
-    btn.classList.toggle('is-open-pack', !!(zzz56PrivOn && !sel.length && g && !g.priv));
-    btn.textContent = zzz56PrivOn ? (lastTxt ? `PACKS \u00b7 ${lastTxt}` : 'PACKS \u00b7 pick') : (lastTxt && !sel.length ? `PACKS \u00b7 ${lastTxt}` : 'PACKS');
+    const pn = zzz56_pack_name(zzz56PrivCtx);
+    const lastTxt = sel.length ? (pn || (sel.length === 1 ? sel[0] : String(sel.length))) : (g ? g.name : '');
+    btn.classList.remove('is-open-pack');
+    btn.classList.toggle('is-ready', !zzz56PrivOn && !!sel.length);
+    btn.textContent = lastTxt ? `PACKS \u00b7 ${lastTxt}` : (zzz56PrivOn ? 'PACKS \u00b7 pick' : 'PACKS');
     btn.title = zzz56PrivOn
       ? (sel.length ? `Only ${sel.join(', ')} and you read it. Tap a person chip to add/remove. Tap = off, hold 1-2 s = packs.`
         : (g ? `Pack "${g.name}" (${g.priv ? 'private' : 'open'}). Tap = off, hold 1-2 s = packs.` : 'Tap the person chips to pick who reads it. Tap = off, hold 1-2 s = packs.'))
-      : 'PACKS off. Tap = on (last pack / people), hold 1-2 s = packs (make, edit, private / open).';
+      : (sel.length ? `PACKS off - tap = on again for ${sel.join(', ')}. Hold 1-2 s = choose another pack / people.` : 'PACKS off. Hold 1-2 s = choose a pack from MEMBERS or people of this chat.');
   });
 
   const selN = sel.map(x => zzz10v1_normalize(x));
@@ -28824,11 +28826,12 @@ function zzz56_priv_refresh() {
 const zzz56People = {};
 function zzz56_packs() { return (zzz5w5cmMyGroups || []).filter(g => g.mine !== false); }
 function zzz56_pack_open_members(entryKey) {
-
-  if (!zzz56_priv_on(entryKey) || zzz56_sel_get(entryKey).length) return null;
-  const g = zzz56_priv_active();
-  return (g && !g.priv) ? g.members.slice() : null;
+  return null;
 }
+
+function zzz56_pack_name_key(k) { return 'zzz56_pack_name_' + String(k || ''); }
+function zzz56_pack_name(k) { try { return localStorage.getItem(zzz56_pack_name_key(k)) || ''; } catch (e) { return ''; } }
+function zzz56_pack_name_set(k, v) { try { if (v) localStorage.setItem(zzz56_pack_name_key(k), v); else localStorage.removeItem(zzz56_pack_name_key(k)); } catch (e) {} }
 function zzz56_priv_open_presets(anchorEl) {
   document.querySelectorAll('.zzz5t0-tab-window').forEach(m => m.remove());
   const win = document.createElement('div');
@@ -28837,141 +28840,73 @@ function zzz56_priv_open_presets(anchorEl) {
   win.style.overflowY = 'auto';
   const head = document.createElement('div');
   head.style.cssText = 'font-size:9px;color:#999;padding:2px 4px 6px;';
-  head.textContent = 'PACKS - tap a pack to write to it · PRIVATE pack (turquoise) = only its members read · OPEN pack = everyone reads, members are @named';
+  head.textContent = 'PACKS - who reads your messages here. Tap PACKS = on / off with this choice.';
   win.appendChild(head);
   const body = document.createElement('div');
   win.appendChild(body);
   const lab = (txt) => { const d = document.createElement('div'); d.style.cssText = 'font-size:9px;color:#999;padding:6px 4px 2px;'; d.textContent = txt; return d; };
   const ctx = zzz56PrivCtx;
-  let editId = null;
+  const me = zzz10v1_normalize(zzz0r1_get_current_username() || '');
   const paint = () => {
     body.innerHTML = '';
-    const packs = zzz56_packs();
-    const act = zzz56_priv_active();
+    const people = (zzz56People[ctx] || []).filter(n => zzz10v1_normalize(n) !== me);
+    const inRec = new Set(people.map(n => zzz10v1_normalize(n)));
+    const sel = zzz56_sel_get(ctx);
+    const selN = sel.map(x => zzz10v1_normalize(x)).sort().join(',');
+    const curName = zzz56_pack_name(ctx);
 
-    body.appendChild(lab('YOUR PACKS - tap = write to it · hold = edit'));
+    const packs = ((typeof zzz5w5cm_tag_packs === 'function') ? zzz5w5cm_tag_packs() : [])
+      .map(p => ({ tag: p.tag, names: p.names.filter(n => inRec.has(zzz10v1_normalize(n)) && zzz10v1_normalize(n) !== me) }))
+      .filter(p => p.names.length);
+    body.appendChild(lab('PACKS FROM MEMBERS - tap = only them read it'));
     if (!packs.length) {
       const n = document.createElement('div');
       n.style.cssText = 'font-size:10px;color:#ddd;padding:4px 6px;max-width:300px;line-height:1.35;';
-      n.textContent = 'No pack yet - make one below (+ NEW PACK).';
+      n.textContent = 'No pack in this chat yet - make one in MEMBERS (the same COMM OWN TAG on several people is a pack).';
       body.appendChild(n);
     }
-    packs.forEach(g => {
+    packs.forEach(p => {
+      const on = zzz56PrivOn && curName === p.tag && p.names.map(x => zzz10v1_normalize(x)).sort().join(',') === selN;
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'zzz5w5cm-dir-chip zzz5-6-privchip zzz56-pack' + (g.priv ? ' is-private' : '') + (act && String(g.id) === String(act.id) && zzz56PrivOn ? ' is-active' : '');
-      b.textContent = `${g.name} (${g.members.length})${g.priv ? ' · private' : ''}`;
-      b.title = (g.members.length ? g.members.join(', ') : 'Nobody in it yet') + ' - tap = write to this pack, hold = edit';
+      b.className = 'zzz5w5cm-dir-chip zzz5-6-privchip zzz56-pack' + (on ? ' is-active' : '');
+      b.textContent = `${p.tag} (${p.names.length})`;
+      b.title = p.names.join(', ');
       b.addEventListener('click', () => {
-        zzz56PrivPresetId = g.id;
-        zzz56_sel_set(ctx, []);
-        zzz56PrivOn = true; zzz56_priv_save();
-        zzz56_priv_refresh(); paint();
-        zzz6f2_show_toast(g.priv ? `PACKS · ${g.name} - only ${g.members.join(', ') || 'nobody yet'} read your messages here.`
-          : `PACKS · ${g.name} (open) - everyone here reads, ${g.members.join(', ') || 'nobody'} get it as @named.`);
+        zzz56_sel_set(ctx, p.names.slice()); zzz56_pack_name_set(ctx, p.tag);
+        zzz56PrivOn = true; zzz56_priv_save(); zzz56_priv_refresh(); paint();
+        zzz6f2_show_toast(`PACKS · ${p.tag} - only ${p.names.join(', ')} read your messages here.`);
       });
-      zzz5w7_bind_tiered_hold(b, [{ ms: 900, fn: () => { editId = String(g.id); paint(); } }]);
       body.appendChild(b);
     });
 
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:4px;padding:6px 4px;align-items:center;flex-wrap:wrap;';
-    const inp = document.createElement('input');
-    inp.type = 'text'; inp.placeholder = 'new pack name'; inp.maxLength = 40;
-    inp.className = 'zzz5w5cm-dir-search'; inp.style.cssText = 'flex:1 1 120px;min-width:0;';
-    inp.setAttribute('data-zzz-nodraft', '1');
-    const mk = document.createElement('button');
-    mk.type = 'button'; mk.className = 'zzz5w5cm-dir-hit'; mk.textContent = '+ NEW PACK';
-    mk.title = 'Makes a pack from the people you picked here (or empty) - then add people from MEMBERS / contacts';
-    mk.addEventListener('click', async () => {
-      const nm = String(inp.value || '').trim();
-      if (!nm) { inp.focus(); zzz6f2_show_toast('Type a name for the pack first.', 'warn'); return; }
-      const start = zzz56_sel_get(ctx);
-      if (await zzz5w5cm_save_group(nm, start, null)) {
-        const g = zzz56_packs().find(x => zzz10v1_normalize(x.name) === zzz10v1_normalize(nm));
-        if (g) { editId = String(g.id); zzz56PrivPresetId = g.id; zzz56_sel_set(ctx, []); zzz56PrivOn = true; zzz56_priv_save(); }
+    body.appendChild(lab('PEOPLE IN THIS CHAT - tap to add / remove'));
+    people.forEach(nm => {
+      const inside = sel.some(x => zzz10v1_normalize(x) === zzz10v1_normalize(nm));
+      const rr = zzz56_reach_of(ctx, [nm]);
+      const far = rr.blocked.length || rr.noConsent.length;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'zzz5w5cm-dir-hit' + (inside ? ' is-have' : '') + (far ? ' zzz56-noreach' : '');
+      b.textContent = (inside ? '✓ ' : '+ ') + nm + (far ? ' - no consent here' : '');
+      b.title = far ? `${nm} has not given comm consent in this record - messages from this chat do not reach them` : (inside ? `Take ${nm} out` : `Add ${nm}`);
+      b.addEventListener('click', () => {
+        zzz56_sel_toggle(ctx, nm); zzz56_pack_name_set(ctx, '');
+        if (!zzz56PrivOn) { zzz56PrivOn = true; zzz56_priv_save(); }
         zzz56_priv_refresh(); paint();
-        zzz6f2_show_toast(`Pack "${nm}" made - add people below.`);
-      }
+      });
+      body.appendChild(b);
     });
-    row.appendChild(inp); row.appendChild(mk);
-    body.appendChild(row);
-
-    const ed = packs.find(g => String(g.id) === String(editId)) || (zzz56PrivOn ? act : null);
-    if (ed) {
-      body.appendChild(lab(`IN "${ed.name}" - tap a name to take it out`));
-      if (!ed.members.length) { const nn = document.createElement('span'); nn.className = 'zzz5w5cm-dir-note'; nn.textContent = 'Nobody here yet - add from MEMBERS or contacts below.'; body.appendChild(nn); }
-      ed.members.forEach(nm => {
-        const rr = zzz56_reach_of(ctx, [nm]);
-        const far = rr.blocked.length || rr.noConsent.length;
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'zzz5w5cm-dir-chip zzz5-6-privchip is-active' + (far ? ' zzz56-noreach' : '');
-        b.textContent = `${nm}${far ? ' ⚠' : ''} ×`;
-        b.title = far ? `${nm} has no comm consent in this record - messages from this chat do not reach them (messages outside this chat come later). Tap = take out.` : `Take ${nm} out of this pack`;
-        b.addEventListener('click', async () => {
-          const rest = ed.members.filter(x => zzz10v1_normalize(x) !== zzz10v1_normalize(nm));
-          if (await zzz5w5cm_save_group(ed.name, rest, ed.id)) { paint(); zzz56_priv_refresh(); }
-        });
-        body.appendChild(b);
-      });
-      const add = async (nm) => {
-        if (ed.members.some(x => zzz10v1_normalize(x) === zzz10v1_normalize(nm))) return;
-        if (await zzz5w5cm_save_group(ed.name, ed.members.concat([nm]), ed.id)) { paint(); zzz56_priv_refresh(); }
-      };
-      const me = zzz10v1_normalize(zzz0r1_get_current_username() || '');
-      const people = (zzz56People[ctx] || []).filter(n => zzz10v1_normalize(n) !== me);
-      if (people.length) {
-        body.appendChild(lab('MEMBERS OF THIS RECORD - tap to add'));
-        people.forEach(nm => {
-          const inside = ed.members.some(x => zzz10v1_normalize(x) === zzz10v1_normalize(nm));
-          const b = document.createElement('button');
-          b.type = 'button'; b.className = 'zzz5w5cm-dir-hit' + (inside ? ' is-have' : '');
-          b.textContent = (inside ? '✓ ' : '+ ') + nm;
-          b.addEventListener('click', () => { if (!inside) add(nm); });
-          body.appendChild(b);
-        });
-      }
-      const have = (zzz5w5cmMyContacts || []).filter(c => !people.some(p => zzz10v1_normalize(p) === zzz10v1_normalize(c.name)));
-      if (have.length) {
-        body.appendChild(lab('OTHER CONTACTS - tap to add'));
-        have.forEach(c => {
-          const inside = ed.members.some(x => zzz10v1_normalize(x) === zzz10v1_normalize(c.name));
-          const b = document.createElement('button');
-          b.type = 'button'; b.className = 'zzz5w5cm-dir-hit' + (inside ? ' is-have' : '');
-          b.textContent = (inside ? '✓ ' : '+ ') + (c.no ? '#' + c.no + ' ' : '') + c.name + (c.tags ? ' · ' + c.tags : '');
-          b.addEventListener('click', () => { if (!inside) add(c.name); });
-          body.appendChild(b);
-        });
-      }
-      body.appendChild(lab('PACK'));
-      const pv = document.createElement('button');
-      pv.type = 'button'; pv.className = 'zzz5w5cm-dir-hit' + (ed.priv ? ' is-have' : '');
-      pv.textContent = ed.priv ? '✓ PRIVATE - only members read (tap = make it OPEN)' : 'OPEN - everyone reads, members @named (tap = make it PRIVATE)';
-      pv.addEventListener('click', async () => { if (await zzz5w5cm_set_group_private(ed.id, !ed.priv)) { paint(); zzz56_priv_refresh(); } });
-      body.appendChild(pv);
-      const rm = document.createElement('button');
-      rm.type = 'button'; rm.className = 'zzz5w5cm-dir-hit';
-      rm.textContent = 'REMOVE THIS PACK';
-      rm.title = 'Removes only the pack - the people stay in your contacts';
-      rm.addEventListener('click', async () => {
-        if (!window.confirm(`Remove the pack "${ed.name}"? The people stay in your contacts.`)) return;
-        if (await zzz5w5cm_remove_group(ed.id)) {
-          if (String(zzz56PrivPresetId) === String(ed.id)) { zzz56PrivPresetId = null; zzz56PrivOn = false; zzz56_priv_save(); }
-          editId = null; paint(); zzz56_priv_refresh();
-        }
-      });
-      body.appendChild(rm);
+    if (sel.length) {
+      body.appendChild(lab('CLEAR'));
+      const clr = document.createElement('button');
+      clr.type = 'button'; clr.className = 'zzz5w5cm-dir-hit'; clr.textContent = 'CLEAR - everyone in the chat reads again';
+      clr.addEventListener('click', () => { zzz56_sel_set(ctx, []); zzz56_pack_name_set(ctx, ''); zzz56PrivOn = false; zzz56_priv_save(); zzz56_priv_refresh(); paint(); });
+      body.appendChild(clr);
     }
-    body.appendChild(lab('CONTACTS MODULE'));
-    const open = document.createElement('button');
-    open.type = 'button'; open.className = 'zzz5w5cm-dir-hit'; open.textContent = 'OPEN CONTACTS';
-    open.addEventListener('click', () => { win.remove(); if (typeof zzz1r17b_open_contacts_module === 'function') zzz1r17b_open_contacts_module(false); });
-    body.appendChild(open);
   };
   paint();
   document.body.appendChild(win);
-  if (zzz5w5cmMyGroupsOk === null) zzz5w5cm_load_my_groups().then(paint).catch(() => {});
   if (zzz5w5cmMyContactsOk === null) zzz5w5cm_load_my_contacts().then(paint).catch(() => {});
   try { zzz56_reach_load(ctx).then(paint).catch(() => {}); } catch (e) {}
   const rect = anchorEl.getBoundingClientRect();
@@ -43486,7 +43421,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'AI-DBL-WEB 2026-10-25';
+const VERSO_BUILD = 'CHAT-PACKS-2 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
