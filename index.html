@@ -9780,6 +9780,20 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz1r17b-comm-window .zzz1cn-note-savedmark { font-size: calc(var(--zzz1cn-fs) * 0.72); }
   .zzz1r17b-comm-window .zzz1cn-reply-origin { font-size: calc(var(--zzz1cn-fs) * 0.85); }
   
+  .zzz1r17b-comm-window .zzz1cn-reply-count {
+    order: 40 !important;
+    display: inline-block;
+    padding: 1px 7px;
+    border: 1.5px solid #D4AF37;
+    border-radius: 10px;
+    color: #8a6d1f;
+    font-weight: 800;
+    font-size: calc(var(--zzz1cn-fs) * 0.72);
+    white-space: nowrap;
+    cursor: pointer;
+    background: rgba(212, 175, 55, 0.12);
+  }
+  
   .zzz1r17b-comm-window .zzz1cn-note:not(.zzz1cn-note-mine) .zzz1cn-note-id > * { order: 4; }
   .zzz1r17b-comm-window .zzz1cn-note:not(.zzz1cn-note-mine) .zzz1cn-note-id > .zzz1cn-note-user { order: 1; }
   .zzz1r17b-comm-window .zzz1cn-note:not(.zzz1cn-note-mine) .zzz1cn-note-id > .zzz1cn-note-name { order: 2; }
@@ -15781,6 +15795,12 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     let cnShown = 0;
 
     notes.forEach(n => { if (n && n.id != null) zzz1cnNoteMap.set(String(n.id), n); });
+
+    notes.forEach(n => { if (n) n.__replyCount = 0; });
+    notes.forEach(n => {
+      let up = n && n.reply_to_id != null ? zzz1cnNoteMap.get(String(n.reply_to_id)) : null, guard = 0;
+      while (up && guard++ < 200) { up.__replyCount = (up.__replyCount || 0) + 1; up = up.reply_to_id != null ? zzz1cnNoteMap.get(String(up.reply_to_id)) : null; }
+    });
     const cnRows = notes.map((n, i) => ({ n, ord: i + 1 }));
     const cnOrdOf = new Map(cnRows.map(r => [r.n, r.ord]));
     (cnView.sort ? zzz5w7_sort_time(notes, cnView) : notes).forEach((n) => {
@@ -34215,6 +34235,19 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
     headId.appendChild(nm);
   }
 
+  if (note && note.__replyCount > 0) {
+    const rc = document.createElement('span');
+    rc.className = 'zzz1cn-reply-count';
+    rc.textContent = `${note.__replyCount} ${note.__replyCount === 1 ? 'reply' : 'replies'}`;
+    rc.title = 'Tap = show only this message with all its replies (tap again = whole chat)';
+    rc.addEventListener('click', (e) => {
+      e.stopPropagation();
+      rc.dispatchEvent(new CustomEvent('zzz1cn-num-hold', { bubbles: true, detail: {
+        num: String(Number(note.note_number) || 0), id: String(note.id || ''), label: zzz5w7_label_of(note) } }));
+    });
+    headId.appendChild(rc);
+  }
+
   const toLab = String(note.note_to || '').trim();
   if (toLab) {
     const onlyEl = document.createElement('span');
@@ -42121,7 +42154,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'CHAT-REPLY-TO 2026-10-25';
+const VERSO_BUILD = 'CHAT-REPLY-COUNT 2026-10-25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
