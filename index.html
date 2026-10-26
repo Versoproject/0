@@ -6975,6 +6975,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     text-align: center;
     letter-spacing: 6px;
   }
+  .zzz14b17-app-dl-btn:has(.zzz-ver-tag) { flex-wrap: wrap; text-align: center; }
+  .zzz14b17-app-dl-btn .zzz-ver-tag { flex-basis: 100%; }
   .zzz-ver-tag { display: block; margin-top: 4px; font-size: 10px; font-weight: 400; letter-spacing: 0; opacity: .75; font-family: monospace; }
   .zzz-build-tag { margin-top: 6px; font-size: 10px; color: #9ca3af; text-align: center; font-family: monospace; }
   .zzz10v1-status {
@@ -44413,7 +44415,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'VER-TAG 2026-10-26';
+const VERSO_BUILD = 'VKB-DOCK 2026-10-26';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -45890,46 +45892,60 @@ function zzz_vkb_fit(panel, avail) {
   panel.style.setProperty('--zzz-vkb-key-h', k + 'px');
   return panel.offsetHeight <= avail;
 }
+// Zzz14-VKB:DOCK-BOTTOM (Vrso 2026-10-26) - RULE: the web Verso Keyboard is docked at the bottom of the screen
+// and the line being written is ALWAYS kept visible above it (never covered). Only a keyboard the user dragged
+// away (panel._moved) stays where it was put.
+const ZZZ_VKB_DOCK_MAX = 0.5;
+let zzz_vkbCaretProbe = null;
+function zzz_vkb_caret_bottom(t, r) {
+  try {
+    if (t.tagName !== 'TEXTAREA') return r.bottom;
+    const cs = getComputedStyle(t);
+    if (!zzz_vkbCaretProbe) {
+      zzz_vkbCaretProbe = document.createElement('div');
+      zzz_vkbCaretProbe.setAttribute('aria-hidden', 'true');
+      zzz_vkbCaretProbe.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;';
+      document.body.appendChild(zzz_vkbCaretProbe);
+    }
+    const pr = zzz_vkbCaretProbe.style;
+    ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+      'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'boxSizing', 'textTransform', 'wordSpacing', 'tabSize']
+      .forEach(k => { pr[k] = cs[k]; });
+    pr.borderStyle = 'solid';
+    pr.width = t.offsetWidth + 'px';
+    const end = (typeof t.selectionEnd === 'number') ? t.selectionEnd : t.value.length;
+    zzz_vkbCaretProbe.textContent = t.value.slice(0, end) + '\u200b';
+    const lh = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 16) * 1.25;
+    const y = r.top + zzz_vkbCaretProbe.offsetHeight - (parseFloat(cs.paddingBottom) || 0) - (parseFloat(cs.borderBottomWidth) || 0) - t.scrollTop;
+    return Math.min(r.bottom, Math.max(r.top + lh, y + 2));
+  } catch (e) { return r.bottom; }
+}
 function zzz_vkb_place(panel) {
   if (!panel || !panel.isConnected) return;
   const t = panel._target;
   if (panel._text && !(t && t.isConnected)) { zzz_vkb_hide(); return; }
   if (panel._moved) { zzz_vkb_move_to(panel, parseFloat(panel.style.left) || 0, parseFloat(panel.style.top) || 0); return; }
   const b = zzz_vkb_bounds();
+  const maxH = Math.floor((b.bottom - b.top) * ZZZ_VKB_DOCK_MAX);
+  const base = panel._small ? (panel._customKeyH || ZZZ_VKB_KEY_SMALL) : ZZZ_VKB_KEY_H;
+  panel.style.setProperty('--zzz-vkb-key-h', base + 'px');
+  if (panel.offsetHeight > maxH) zzz_vkb_fit(panel, maxH);
+  const y = b.bottom - panel.offsetHeight;
+  zzz_vkb_move_to(panel, (b.left + b.right - panel.offsetWidth) / 2, y);
+  panel._side = 'below';
   const r = (t && t.isConnected) ? t.getBoundingClientRect() : null;
-  if (!r || (r.width === 0 && r.height === 0)) {
-    zzz_vkb_fit(panel, b.bottom - b.top);
-    zzz_vkb_move_to(panel, (b.left + b.right - panel.offsetWidth) / 2, b.bottom - panel.offsetHeight);
-    return;
+  if (!r || (r.width === 0 && r.height === 0)) return;
+  const line = zzz_vkb_caret_bottom(t, r);
+  const need = Math.ceil(line + ZZZ_VKB_GAP + 2 - y);
+  if (need <= 0) return;
+  if (zzz_vkb_scroll_by(t, need)) {
+    const r2 = t.getBoundingClientRect();
+    if (zzz_vkb_caret_bottom(t, r2) + ZZZ_VKB_GAP + 2 <= y) return;
   }
-  let below = b.bottom - (r.bottom + ZZZ_VKB_GAP);
-
-  if (panel._autoScroll) {
-    panel._autoScroll = false;
-    if (!zzz_vkb_fit(panel, below) && zzz_vkb_scroll_by(t, panel.offsetHeight - below + 2)) { panel._roomCheck = true; zzz_vkb_place(panel); return; }
-    panel._roomCheck = true;
+  if (!panel._roomMade) {
+    const more = Math.ceil(zzz_vkb_caret_bottom(t, t.getBoundingClientRect()) + ZZZ_VKB_GAP + 2 - y);
+    if (more > 0 && zzz_vkb_make_room(panel, t, more + 8)) { panel._roomMade = true; requestAnimationFrame(() => zzz_vkb_place(panel)); }
   }
-  if (panel._roomCheck) {
-    panel._roomCheck = false;
-
-    panel.style.setProperty('--zzz-vkb-key-h', ZZZ_VKB_KEY_H + 'px');
-    const need = panel.offsetHeight + ZZZ_VKB_GAP + 2 - below;
-    if (need > 0 && !panel._roomMade && zzz_vkb_make_room(panel, t, need)) {
-      panel._roomMade = true;
-      requestAnimationFrame(() => zzz_vkb_place(panel));
-      return;
-    }
-  }
-  const above = (r.top - ZZZ_VKB_GAP) - b.top;
-  let y;
-
-  const prefer = panel._side;
-  if (prefer === 'above' && zzz_vkb_fit(panel, above)) y = r.top - ZZZ_VKB_GAP - panel.offsetHeight;
-  else if (zzz_vkb_fit(panel, below)) { panel._side = 'below'; y = r.bottom + ZZZ_VKB_GAP; }
-  else if (zzz_vkb_fit(panel, above)) { panel._side = 'above'; y = r.top - ZZZ_VKB_GAP - panel.offsetHeight; }
-  else if (below >= above) { zzz_vkb_fit(panel, below); panel._side = 'below'; y = r.bottom + ZZZ_VKB_GAP; }
-  else { zzz_vkb_fit(panel, above); panel._side = 'above'; y = r.top - ZZZ_VKB_GAP - panel.offsetHeight; }
-  zzz_vkb_move_to(panel, r.left + r.width / 2 - panel.offsetWidth / 2, y);
 }
 function zzz_vkb_make_room(panel, t, need) {
   const undo = [];
