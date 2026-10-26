@@ -337,6 +337,7 @@ function zzz_ai_paint() {
   var tt = zzz_layer_title(L); if (root.title !== tt) root.title = tt;
   try { if (L.mode === 'foreign' && typeof zzz_clip_clear === 'function') zzz_clip_clear(); } catch (e) {}
   if (nm && nm.textContent !== name) nm.textContent = name;
+  try { root.classList.toggle('zzz-ai-quiet', typeof zzz16_quiet === 'function' && zzz16_quiet()); } catch (e) {}
 }
 try {
   var _c = navigator.connection; if (_c && _c.addEventListener) _c.addEventListener('change', function () { zzz_ai_paint(); });
@@ -508,6 +509,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
 .circle#versoAIButton > .zzz-chain-logo { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; pointer-events: none; z-index: 0; }
 .circle#versoAIButton > .zzz-chain-logo > img { position: absolute; inset: 0; width: 100%; height: 100%; }
 .circle#versoAIButton { --zzz-chain-fill: #ffffff; --zzz-chain-ink: #5a5a5a; }
+
+.circle#versoAIButton.zzz-ai-quiet { --zzz-chain-fill: #e3c463; --zzz-chain-ink: #8a6a12; }
+.circle#versoAIButton { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   
 .circle#versoAIButton.zzz-chain-busy { --zzz-chain-fill: #9fd4b0; --zzz-chain-ink: #4f8a63; --zzz-chain-dur: 1.2s; }
 .circle#versoAIButton.zzz-logo-orange { --zzz-chain-fill: #f6c89a; --zzz-chain-ink: #a8763f; --zzz-chain-dur: 3.2s; }
 .circle#versoAIButton.zzz-logo-red { --zzz-chain-fill: #eeaaaa; --zzz-chain-ink: #a14a4a; }
@@ -37627,13 +37631,37 @@ function zzz16_alert(d) {
   if (d.prio === 'urgent') {
     if (p.sound) did = zzz16_sound('urgent') || did;
     if (p.vibrate) did = zzz16_vibrate('urgent') || did;
-    if (p.speak && !d.noSpeak && !zzz14b17_in_app()) did = zzz16_speak(d.speech || d.body || '') || did;
+    if (p.speak && !p.quiet && !d.noSpeak && !zzz14b17_in_app()) did = zzz16_speak(d.speech || d.body || '') || did;
     return did;
   }
   if (!p.sound) return false;
   if (d.prio === 'attention') return zzz16_sound('attention');
   return false;
 }
+
+function zzz16_quiet() { try { return !!zzz16_prefs().quiet; } catch (e) { return false; } }
+function zzz16_set_quiet(on) {
+  const p = zzz16_prefs(); p.quiet = !!on; zzz16_save_prefs(p);
+  if (on) zzz16_stop_reading();
+  try { zzz_haptic_pulse(on ? 60 : 30); } catch (e) {}
+  if (zzz14b17_in_app() || (zzz14b17_is_android() && zzz14b17_app_code() > 0)) {
+    try { location.href = 'intent://quick/quiet?on=' + (on ? 1 : 0) + '#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end'; } catch (e) {}
+  }
+  try { zzz6f2_show_toast(on ? 'VERSO READER silent (quiet regime) - notifications still come. Hold +AI+ again to switch the voice back on.' : 'VERSO READER voice back on.', 'info'); } catch (e) {}
+  try { zzz_ai_paint(); } catch (e) {}
+}
+(function zzz16_quiet_hold() {
+  let t = null, x0 = 0, y0 = 0;
+  const cancel = () => { if (t) { clearTimeout(t); t = null; } };
+  document.addEventListener('pointerdown', (e) => {
+    const ai = e.target && e.target.closest && e.target.closest('#versoAIButton');
+    if (!ai) return;
+    x0 = e.clientX; y0 = e.clientY; cancel();
+    t = setTimeout(() => { t = null; window.zzzAiHoldAt = Date.now(); zzz16_set_quiet(!zzz16_quiet()); }, 1200);
+  }, true);
+  document.addEventListener('pointermove', (e) => { if (t && (Math.abs(e.clientX - x0) > 12 || Math.abs(e.clientY - y0) > 12)) cancel(); }, true);
+  ['pointerup', 'pointercancel'].forEach(ev => document.addEventListener(ev, cancel, true));
+})();
 
 function zzz16_level(tier) {
   const p = zzz16_prefs();
@@ -37783,7 +37811,7 @@ function zzz16_on_recount(meN, seen) {
   if (!document.hidden) {
     zzz16_alert(Object.assign({}, d, { noSpeak: true }));
     if (d.prio === 'urgent') { zzz16_urgent_banner(fresh); zzz16_system_notify(d); }
-    if (zzz16_prefs().speak && !(zzz14b17_in_app() && d.prio === 'urgent')) {
+    if (zzz16_prefs().speak && !zzz16_quiet() && !(zzz14b17_in_app() && d.prio === 'urgent')) {
       const sp = zzz16_notify_speech(fresh);
       if (sp) zzz16_speak(sp);
     }
@@ -38389,6 +38417,7 @@ function zzz16_render_settings(host) {
       });
       r.appendChild(l); r.appendChild(g); box.appendChild(r);
     };
+    if (p.quiet) row('QUIET REGIME (VERSO READER silent)', 'On: nothing is read aloud, notifications still come. Hold the +AI+ circle 1-2 s to switch it, or tap here.', 'OFF', false, false, () => { zzz16_set_quiet(false); draw(); });
     lvlRow('U', '⚠ URGENT', 'Default: who + the message text (text only on MY DEVICE)');
     lvlRow('A', 'ATTENTION', 'Default: only who');
     lvlRow('O', 'OPEN', 'Default: nothing - only the marks and the dashboard');
@@ -44585,7 +44614,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'B23-CALL-PAUSE 2026-10-26';
+const VERSO_BUILD = 'B23-QUIET 2026-10-26';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -44772,6 +44801,7 @@ if (ZZZ_DEV_AUTO_UPDATE) {
       const ai = e.target && e.target.closest && e.target.closest('#versoAIButton');
       if (!ai) return;
       const now = Date.now();
+      if (window.zzzAiHoldAt && now - window.zzzAiHoldAt < 800) { lastAt = 0; return; }
       if (now - lastAt <= 350) { lastAt = 0; zzz_dev_double_tap_update(); } else lastAt = now;
     }, true);
   }
@@ -47544,7 +47574,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 47;
+const ZZZ14B17_APP_LATEST = 48;
 function zzz14b17_app_code() {
 
   try {
