@@ -35427,6 +35427,25 @@ async function zzz1cn_delete(entryKey, note) {
   return true;
 }
 
+function zzz1cn_fit_fullpage(el, feed) {
+  if (zzz1cn_keyboard_open()) return;
+  const H = el.clientHeight;
+  if (!(H > 0)) return;
+  const old = { b: el.style.getPropertyValue('bottom'), bp: el.style.getPropertyPriority('bottom'), h: el.style.getPropertyValue('height'), hp: el.style.getPropertyPriority('height') };
+  const probe = 90;
+  feed.style.setProperty('height', probe + 'px', 'important');
+  feed.style.setProperty('max-height', probe + 'px', 'important');
+  feed.style.setProperty('min-height', probe + 'px', 'important');
+  el.style.setProperty('bottom', 'auto', 'important');
+  el.style.setProperty('height', 'auto', 'important');
+  const others = el.scrollHeight - probe;
+  if (old.b) el.style.setProperty('bottom', old.b, old.bp); else el.style.removeProperty('bottom');
+  if (old.h) el.style.setProperty('height', old.h, old.hp); else el.style.removeProperty('height');
+  const target = Math.max(probe, Math.floor(H - others));
+  feed.style.setProperty('height', target + 'px', 'important');
+  feed.style.setProperty('max-height', target + 'px', 'important');
+  feed.style.setProperty('min-height', target + 'px', 'important');
+}
 function zzz1cn_fit_comm_window(box) {
   zzz1cn_sync_anchor_mode();
   const el = box || document.querySelector('.zzz1r17b-comm-window');
@@ -35434,7 +35453,8 @@ function zzz1cn_fit_comm_window(box) {
   const feed = el.querySelector('.zzz1cn-feed');
   if (!feed) return;
 
-  if (el.classList.contains('zzz1cn-fullpage')) return;
+  if (el.classList.contains('zzz1cn-fullpage')) { zzz1cn_fit_fullpage(el, feed); return; }
+  ['height', 'max-height', 'min-height'].forEach(k => feed.style.removeProperty(k));
 
   if (zzz1cn_keyboard_open()) return;
   const vh = zzz1cn_stable_vh();
@@ -37504,8 +37524,11 @@ function zzz16_detect(t) {
   if (sk >= 1 && sk >= en) return 'sk';
   return '?';
 }
-function zzz16_lang_of(t) {
-  const pick = String(zzz16_prefs().voiceLang || 'auto');
+
+function zzz16_vlang(prof) { const p = zzz16_prefs(); return String((prof === 'n' ? (p.nVoiceLang || p.voiceLang) : p.voiceLang) || 'auto'); }
+function zzz16_rate(prof) { const p = zzz16_prefs(); const r = Number(prof === 'n' ? p.nRate : p.cRate); return r >= 0.5 && r <= 2 ? r : 1; }
+function zzz16_lang_of(t, prof) {
+  const pick = zzz16_vlang(prof || 'c');
   if (pick === 'sk' || pick === 'en' || pick === 'uk') return pick;
   let last = 'sk', lastLat = 'sk';
   try { last = localStorage.getItem('zzz16_last_lang') || 'sk'; lastLat = localStorage.getItem('zzz16_last_latin') || 'sk'; } catch (e) {}
@@ -37524,9 +37547,9 @@ function zzz16_safe_text(t) {
   return s.replace(/\s+/g, ' ').trim().slice(0, 600);
 }
 
-function zzz16_parts(text) {
-  const whole = zzz16_lang_of(text);
-  const auto = String(zzz16_prefs().voiceLang || 'auto') === 'auto';
+function zzz16_parts(text, prof) {
+  const whole = zzz16_lang_of(text, prof);
+  const auto = zzz16_vlang(prof || 'c') === 'auto';
   const out = [];
   (String(text).match(/[^.?!\n]+[.?!]*/g) || [String(text)]).forEach(part0 => {
     const part = part0.trim(); if (!part) return;
@@ -37574,18 +37597,20 @@ function zzz16_voice(lang) {
   }
   return v;
 }
-function zzz16_speak(text) {
+function zzz16_speak(text, prof) {
+  prof = prof === 'n' ? 'n' : 'c';
+  if (prof === 'c' && zzz16_prefs().contentOn === false) { try { zzz6f2_show_toast('CONTENT READER is off (Settings › LANGUAGE).', 'warn'); } catch (e) {} return true; }
   text = zzz16_safe_text(text);
   if (!text || !('speechSynthesis' in window)) return false;
   try {
     if (!zzz16Words) zzz16_words_load();
     speechSynthesis.cancel();
-    zzz16_parts(text).forEach(pt => {
+    zzz16_parts(text, prof).forEach(pt => {
       const u = new SpeechSynthesisUtterance(pt.text);
       const v = zzz16_voice(pt.lang);
       if (v) u.voice = v;
       u.lang = v ? v.lang : (pt.lang === 'en' ? 'en-US' : (pt.lang === 'uk' ? 'uk-UA' : 'sk-SK'));
-      u.rate = 1;
+      u.rate = zzz16_rate(prof);
       speechSynthesis.speak(u);
     });
     return true;
@@ -37631,7 +37656,7 @@ function zzz16_alert(d) {
   if (d.prio === 'urgent') {
     if (p.sound) did = zzz16_sound('urgent') || did;
     if (p.vibrate) did = zzz16_vibrate('urgent') || did;
-    if (p.speak && !p.quiet && !d.noSpeak && !zzz14b17_in_app()) did = zzz16_speak(d.speech || d.body || '') || did;
+    if (p.speak && !p.quiet && !d.noSpeak && !zzz14b17_in_app()) did = zzz16_speak(d.speech || d.body || '', 'n') || did;
     return did;
   }
   if (!p.sound) return false;
@@ -37813,7 +37838,7 @@ function zzz16_on_recount(meN, seen) {
     if (d.prio === 'urgent') { zzz16_urgent_banner(fresh); zzz16_system_notify(d); }
     if (zzz16_prefs().speak && !zzz16_quiet() && !(zzz14b17_in_app() && d.prio === 'urgent')) {
       const sp = zzz16_notify_speech(fresh);
-      if (sp) zzz16_speak(sp);
+      if (sp) zzz16_speak(sp, 'n');
     }
     return;
   }
@@ -38151,6 +38176,19 @@ function zzz14b2_render_language_settings(host) {
     sel.appendChild(b);
   });
 
+  const con = document.createElement('div'); con.className = 'zzz14b2-voice';
+  const conOn = zzz16_prefs().contentOn !== false;
+  const conB = document.createElement('button'); conB.type = 'button'; conB.className = 'zzz16-btn' + (conOn ? ' is-on' : ''); conB.textContent = conOn ? 'ON' : 'OFF';
+  conB.addEventListener('click', () => { const p = zzz16_prefs(); p.contentOn = p.contentOn === false; zzz16_save_prefs(p); conB.classList.toggle('is-on', p.contentOn); conB.textContent = p.contentOn ? 'ON' : 'OFF'; });
+  con.appendChild(conB);
+  row('CONTENT READER', 'Reads texts in Verso when you ask (hold a chat message, „Prečítaj text“). Own voice language and speed - NOTIFY READER (notifications) is set in NOTIFICATIONS.', '', con);
+  const spd = document.createElement('div'); spd.className = 'zzz14b2-voice';
+  [[0.8, '80 %'], [1, '100 %'], [1.2, '120 %'], [1.5, '150 %']].forEach(([k, t]) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn' + (zzz16_rate('c') === k ? ' is-on' : ''); b.textContent = t;
+    b.addEventListener('click', () => { const p = zzz16_prefs(); p.cRate = k; zzz16_save_prefs(p); spd.querySelectorAll('button').forEach(x => x.classList.toggle('is-on', x === b)); zzz16_speak('Rýchlosť čítania.'); });
+    spd.appendChild(b);
+  });
+  row('CONTENT READER · speed', '', '', spd);
   row('CONTENT READER · voice language', 'AUTO: by the language of the text, sentence by sentence - Slovak with added diacritics (mas → máš), English, Ukrainian (Cyrillic); unclear = the last recognized language. Or always SK / EN / UK. In the Verso app VERSO READER has the same choice and its own offline voices SK / EN / UK.', '', sel);
   row('Translation', '', 'translate texts through Verso AI or a verified AI worker only.');
   host.appendChild(box);
@@ -38421,6 +38459,25 @@ function zzz16_render_settings(host) {
     lvlRow('U', '⚠ URGENT', 'Default: who + the message text (text only on MY DEVICE)');
     lvlRow('A', 'ATTENTION', 'Default: only who');
     lvlRow('O', 'OPEN', 'Default: nothing - only the marks and the dashboard');
+
+    const segRow = (label, sub, opts, cur, fn) => {
+      const r = document.createElement('div'); r.className = 'zzz16-row';
+      const l = document.createElement('div'); l.textContent = label;
+      const sm = document.createElement('small'); sm.textContent = sub; l.appendChild(sm);
+      const g = document.createElement('div'); g.className = 'zzz16-seg';
+      opts.forEach(([k, t]) => {
+        const b = document.createElement('button'); b.type = 'button';
+        b.className = 'zzz16-btn' + (String(k) === String(cur) ? ' on' : ''); b.textContent = t;
+        b.disabled = !p.on || !p.speak;
+        b.addEventListener('click', () => { fn(k); draw(); });
+        g.appendChild(b);
+      });
+      r.appendChild(l); r.appendChild(g); box.appendChild(r);
+    };
+    segRow('NOTIFY READER · voice language', 'Own choice for notifications (CONTENT READER has its own in LANGUAGE)', [['auto', 'AUTO'], ['sk', 'SK'], ['en', 'EN'], ['uk', 'UK']], zzz16_vlang('n'),
+      (k) => { const n = zzz16_prefs(); n.nVoiceLang = k; zzz16_save_prefs(n); });
+    segRow('NOTIFY READER · speed', '', [[0.8, '80 %'], [1, '100 %'], [1.2, '120 %'], [1.5, '150 %']], zzz16_rate('n'),
+      (k) => { const n = zzz16_prefs(); n.nRate = k; zzz16_save_prefs(n); zzz16_speak('Rýchlosť čítania.', 'n'); });
     toggle('preview', 'Message preview', mode === 'my' ? 'Show the message text in the notification' : 'Only on MY DEVICE', mode !== 'my');
     row('Test', 'Sound + vibration + read-out + a system notification', 'TEST', false, !p.on, () => {
       const tsp = zzz16_notify_speech([{ prio: 'urgent', user: 'Verso', text: 'Toto je test.' }]);
@@ -44614,7 +44671,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'VKB-FIELD 2026-10-26';
+const VERSO_BUILD = 'CHAT-FULL-FIT 2026-10-26';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -46190,7 +46247,7 @@ function zzz_vkb_make_room(panel, t, need) {
   if (comm && comm.classList.contains('zzz1cn-fullpage')) {
     const old = comm.style.paddingBottom;
     comm.style.paddingBottom = (parseFloat(getComputedStyle(comm).paddingBottom) || 0) + need + 'px';
-    undo.push(() => { comm.style.paddingBottom = old; });
+    undo.push(() => { comm.style.paddingBottom = old; if (typeof zzz1cn_fit_comm_window === 'function') zzz1cn_fit_comm_window(comm); });
   } else if (comm) {
 
     const old = comm.style.marginBottom;
