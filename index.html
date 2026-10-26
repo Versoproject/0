@@ -37533,13 +37533,24 @@ function zzz16_detect(t) {
   return '?';
 }
 
+function zzz16_home() { try { const h = String(zzz16_prefs().homeLang || 'sk'); return (h === 'en' || h === 'uk') ? h : 'sk'; } catch (e) { return 'sk'; } }
+function zzz16_set_home(l) {
+  const p = zzz16_prefs(); p.homeLang = l; zzz16_save_prefs(p);
+  try { localStorage.removeItem('zzz16_last_lang'); localStorage.removeItem('zzz16_last_latin'); } catch (e) {}
+  try { const k = zzz23_kb_prefs(); if (l === 'uk') { k.uk = true; k.lang = 'uk'; } else k.lang = 'sk'; zzz23_kb_save(k); } catch (e) {}
+  if (zzz14b17_in_app() || (zzz14b17_is_android() && zzz14b17_app_code() > 0)) {
+    try { location.href = 'intent://quick/home?l=' + l + '#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end'; } catch (e) {}
+  }
+}
+
 function zzz16_vlang(prof) { const p = zzz16_prefs(); return String((prof === 'n' ? (p.nVoiceLang || p.voiceLang) : p.voiceLang) || 'auto'); }
 function zzz16_rate(prof) { const p = zzz16_prefs(); const r = Number(prof === 'n' ? p.nRate : p.cRate); return r >= 0.5 && r <= 2 ? r : 1; }
 function zzz16_lang_of(t, prof) {
   const pick = zzz16_vlang(prof || 'c');
   if (pick === 'sk' || pick === 'en' || pick === 'uk') return pick;
-  let last = 'sk', lastLat = 'sk';
-  try { last = localStorage.getItem('zzz16_last_lang') || 'sk'; lastLat = localStorage.getItem('zzz16_last_latin') || 'sk'; } catch (e) {}
+  const home = zzz16_home();
+  let last = home, lastLat = home === 'uk' ? 'sk' : home;
+  try { last = localStorage.getItem('zzz16_last_lang') || last; lastLat = localStorage.getItem('zzz16_last_latin') || lastLat; } catch (e) {}
   const d = zzz16_detect(t);
   if (d === '?') return last === 'uk' ? lastLat : last;
   try { if (d !== last) localStorage.setItem('zzz16_last_lang', d); if (d !== 'uk') localStorage.setItem('zzz16_last_latin', d); } catch (e) {}
@@ -37674,27 +37685,56 @@ function zzz16_alert(d) {
 }
 
 function zzz16_quiet() { try { return !!zzz16_prefs().quiet; } catch (e) { return false; } }
+
+let zzz16QuietPending = null;
 function zzz16_set_quiet(on) {
-  const p = zzz16_prefs(); p.quiet = !!on; zzz16_save_prefs(p);
+  const p = zzz16_prefs(); const prev = !!p.quiet; p.quiet = !!on; zzz16_save_prefs(p);
   if (on) zzz16_stop_reading();
   try { zzz_haptic_pulse(on ? 60 : 30); } catch (e) {}
-  if (zzz14b17_in_app() || (zzz14b17_is_android() && zzz14b17_app_code() > 0)) {
+  const withApp = zzz14b17_in_app() || (zzz14b17_is_android() && zzz14b17_app_code() > 0);
+  const say = (txt) => { try { zzz6f2_show_toast(txt, 'info', 6000); } catch (e) {} };
+  const log = (res) => { try { zzz_report_issue('reader', 'Quiet regime ' + (on ? 'ON' : 'OFF') + ' - ' + res, { quiet: !!on, app: withApp, tags: ['reader', 'quiet'] }); } catch (e) {} };
+  if (withApp) {
+    zzz16QuietPending = { on: !!on, prev, t: Date.now(), done: false };
+    const pend = zzz16QuietPending;
     try { location.href = 'intent://quick/quiet?on=' + (on ? 1 : 0) + '#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end'; } catch (e) {}
+    setTimeout(() => {
+      if (zzz16QuietPending !== pend || pend.done) return;
+      zzz16QuietPending = null;
+      const q = zzz16_prefs(); q.quiet = prev; zzz16_save_prefs(q);
+      try { zzz_ai_paint(); } catch (e) {}
+      say('QUIET REGIME not changed - the Verso app did not take it (was the question "open Verso" cancelled?). Hold +AI+ again and tap Open.');
+      log('app did not take it, web undone');
+    }, 4000);
+    say(on ? 'QUIET REGIME ON - VERSO READER silent in Verso and in the app; notifications still come.' : 'QUIET REGIME OFF - VERSO READER voice back on (Verso and the app).');
+  } else {
+    say(on ? 'QUIET REGIME ON - VERSO READER silent; notifications still come. Hold +AI+ again to switch it off.' : 'QUIET REGIME OFF - VERSO READER voice back on.');
+    log('web only (no Verso app on this phone)');
   }
-  try { zzz6f2_show_toast(on ? 'VERSO READER silent (quiet regime) - notifications still come. Hold +AI+ again to switch the voice back on.' : 'VERSO READER voice back on.', 'info'); } catch (e) {}
   try { zzz_ai_paint(); } catch (e) {}
 }
+document.addEventListener('visibilitychange', () => {
+  const pend = zzz16QuietPending;
+  if (!pend || pend.done || document.visibilityState !== 'hidden' || Date.now() - pend.t > 4000) return;
+  pend.done = true; zzz16QuietPending = null;
+  try { zzz_report_issue('reader', 'Quiet regime ' + (pend.on ? 'ON' : 'OFF') + ' - web + app switched together', { quiet: pend.on, app: true, tags: ['reader', 'quiet'] }); } catch (e) {}
+});
 (function zzz16_quiet_hold() {
-  let t = null, x0 = 0, y0 = 0;
-  const cancel = () => { if (t) { clearTimeout(t); t = null; } };
+
+  let t = null, armed = false, x0 = 0, y0 = 0;
+  const cancel = () => { if (t) { clearTimeout(t); t = null; } armed = false; };
   document.addEventListener('pointerdown', (e) => {
     const ai = e.target && e.target.closest && e.target.closest('#versoAIButton');
     if (!ai) return;
     x0 = e.clientX; y0 = e.clientY; cancel();
-    t = setTimeout(() => { t = null; window.zzzAiHoldAt = Date.now(); zzz16_set_quiet(!zzz16_quiet()); }, 1200);
+    t = setTimeout(() => { t = null; armed = true; window.zzzAiHoldAt = Date.now(); try { zzz_haptic_pulse(25); } catch (e2) {} }, 1200);
   }, true);
-  document.addEventListener('pointermove', (e) => { if (t && (Math.abs(e.clientX - x0) > 12 || Math.abs(e.clientY - y0) > 12)) cancel(); }, true);
-  ['pointerup', 'pointercancel'].forEach(ev => document.addEventListener(ev, cancel, true));
+  document.addEventListener('pointermove', (e) => { if ((t || armed) && (Math.abs(e.clientX - x0) > 12 || Math.abs(e.clientY - y0) > 12)) cancel(); }, true);
+  document.addEventListener('pointerup', () => {
+    if (armed) { armed = false; window.zzzAiHoldAt = Date.now(); zzz16_set_quiet(!zzz16_quiet()); return; }
+    cancel();
+  }, true);
+  document.addEventListener('pointercancel', cancel, true);
 })();
 
 function zzz16_level(tier) {
@@ -37710,12 +37750,15 @@ function zzz16_notify_speech(items) {
   if (lvl === 'off') return '';
   const mine = list.filter(i => (i.prio === 'urgent' ? 'U' : (i.prio === 'attention' ? 'A' : 'O')) === top);
   const users = Array.from(new Set(mine.map(i => i.user).filter(Boolean)));
-  const who = users.slice(0, 3).join(', ') + (users.length > 3 ? ' a ďalší' : '');
+  const home = zzz16_home();
+  const W = {
+    sk: { and: ' a ďalší', from: ' od ', one: { U: 'Urgentná správa', A: 'Dôležitá správa', O: 'Nová správa' }, few: { U: 'urgentné správy', A: 'dôležité správy', O: 'nové správy' }, many: { U: 'urgentných správ', A: 'dôležitých správ', O: 'nových správ' } },
+    en: { and: ' and others', from: ' from ', one: { U: 'Urgent message', A: 'Important message', O: 'New message' }, few: { U: 'urgent messages', A: 'important messages', O: 'new messages' }, many: { U: 'urgent messages', A: 'important messages', O: 'new messages' } },
+    uk: { and: ' та інші', from: ' від ', one: { U: 'Термінове повідомлення', A: 'Важливе повідомлення', O: 'Нове повідомлення' }, few: { U: 'термінові повідомлення', A: 'важливі повідомлення', O: 'нові повідомлення' }, many: { U: 'термінових повідомлень', A: 'важливих повідомлень', O: 'нових повідомлень' } }
+  }[home];
+  const who = users.slice(0, 3).join(', ') + (users.length > 3 ? W.and : '');
   const n = mine.length;
-  const one = top === 'U' ? 'Urgentná správa' : (top === 'A' ? 'Dôležitá správa' : 'Nová správa');
-  const few = top === 'U' ? 'urgentné správy' : (top === 'A' ? 'dôležité správy' : 'nové správy');
-  const many = top === 'U' ? 'urgentných správ' : (top === 'A' ? 'dôležitých správ' : 'nových správ');
-  const head = (n === 1 ? one : (n + ' ' + (n < 5 ? few : many))) + (who ? ' od ' + who : '') + '.';
+  const head = (n === 1 ? W.one[top] : (n + ' ' + (n < 5 ? W.few[top] : W.many[top]))) + (who ? W.from + who : '') + '.';
   if (lvl !== 'full' || zzz16_mode() !== 'my') return head;
   const texts = mine.filter(i => i.text).slice(-3).map(i => String(i.text).replace(/\s+/g, ' ').slice(0, 300));
   return texts.length ? head + ' ' + texts.join('. ') : head;
@@ -38169,6 +38212,19 @@ function zzz14b2_render_language_settings(host) {
     else { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn'; b.textContent = 'SOON'; b.disabled = true; r.appendChild(b); }
     box.appendChild(r);
   };
+
+  const hl = document.createElement('div'); hl.className = 'zzz14b2-voice';
+  const curH = zzz16_home();
+  [['sk', 'SK'], ['en', 'EN'], ['uk', 'UK']].forEach(([k, t]) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn' + (k === curH ? ' is-on' : ''); b.textContent = t;
+    b.addEventListener('click', () => {
+      zzz16_set_home(k);
+      hl.querySelectorAll('button').forEach(x => x.classList.toggle('is-on', x === b));
+      try { zzz6f2_show_toast(k === 'uk' ? 'Home language: Ukrainian (keyboard УКР on).' : (k === 'en' ? 'Home language: English.' : 'Home language: Slovak.'), 'info'); } catch (e) {}
+    });
+    hl.appendChild(b);
+  });
+  row('Home language', 'Your own language: Verso speaks its own words in it (e.g. „Urgent message from …“), reads unclear texts in it and starts the keyboard in it (UK = Ukrainian letters). Later: translation into it and dictation.', '', hl);
   row('App language', 'English.', 'choose the language of the whole app (always one language at a time).');
 
   const kb = document.createElement('div'); kb.className = 'zzz14b2-voice';
@@ -44694,7 +44750,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'B23-READ-APP 2026-10-26';
+const VERSO_BUILD = 'QUIET-SYNC 2026-10-26';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
