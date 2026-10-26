@@ -65,10 +65,15 @@ async function versoSwShow(d) {
   const c = { u: 0, a: 0, o: 0, last: {} };
   if (prev && prev.c) { c.u = prev.c.u || 0; c.a = prev.c.a || 0; c.o = prev.c.o || 0; c.last = prev.c.last || {}; }
   c[tier] += 1;
-  c.last[tier] = { body: d.body || '', entry: d.entry || '', title: d.title || '' };
+
+  const who = String(d.title || '').replace(/^Verso:\s*/, '').trim();
+  const b0 = String(d.body || '');
+  const body = who && b0.indexOf(who) < 0 ? `${who}: ${b0}` : b0;
+  c.last[tier] = { body, entry: d.entry || '', title: d.title || '', who };
   const top = c.u ? 'u' : (c.a ? 'a' : 'o');
   const head = top === 'u' ? `⚠ URGENT ${c.u}` : (top === 'a' ? `ATTENTION ${c.a}` : `${c.o} new`);
-  const rest = [top !== 'u' && c.u ? `${c.u} urgent` : '', top !== 'a' && c.a ? `${c.a} attention` : '', top !== 'o' && c.o ? `${c.o} new` : ''].filter(Boolean).join(' · ');
+  const nm = (t) => (c.last[t] && c.last[t].who ? ` (${String(c.last[t].who).replace(/[()]/g, '')})` : '');
+  const rest = [top !== 'u' && c.u ? `${c.u} urgent${nm('u')}` : '', top !== 'a' && c.a ? `${c.a} attention${nm('a')}` : '', top !== 'o' && c.o ? `${c.o} new${nm('o')}` : ''].filter(Boolean).join(' · ');
   const lastTop = c.last[top] || {};
   const loud = tier === 'u' || tier === 'a';
   const urgent = tier === 'u';
