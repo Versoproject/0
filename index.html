@@ -9346,6 +9346,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   }
   .zzz5w5cm-ccl-mini.is-search { cursor: pointer; color: #ea8c00; border-color: #ea8c00; }
   
+  .zzz1cn-reads { font-size: 10px; color: #2e8b57; text-align: right; margin-top: 2px; opacity: .85; }
+  
   .zzz1cn-read-flash { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: #16a34a; color: #fff; font-weight: 800; font-size: 11px; padding: 1px 8px; border-radius: 8px; pointer-events: none; z-index: 3; }
   .zzz1cn-read-on { position: relative; outline: 1px solid #16a34a; }
   
@@ -14330,7 +14332,7 @@ function zzz14pt_blank() { return { types: [] }; }
 function zzz14pt_norm(cfg) {
   const c = (cfg && typeof cfg === 'object') ? cfg : {};
   const types = Array.isArray(c.types) ? c.types : [];
-  return { types: types.map((t, i) => ({
+  return { reads: c.reads !== false, types: types.map((t, i) => ({
     id: String(t.id || ('t' + (i + 1))), name: String(t.name || '').slice(0, 40),
 
     period: ['hour', 'day', 'week', 'month', 'year'].indexOf(String(t.period || '')) >= 0 ? String(t.period) : '',
@@ -14680,6 +14682,9 @@ async function zzz14pt_render(panel, api) {
     b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
     return b;
   };
+
+  panel.insertBefore(chk(cfg.reads !== false, 'READ RECEIPTS in this chat (senders see who read their message)', v => { cfg.reads = v; },
+    'Off = nobody in this chat sees who read a message. Each person can also switch it off for himself in Settings › NOTIFICATIONS.'), list);
   const paint = () => {
     list.innerHTML = '';
     if (!cfg.types.length) {
@@ -17072,6 +17077,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     zzz1cn_fit_comm_window(box);
     cnGoBottom();
     cnWatchPrio();
+    zzz1cn_reads_paint(cnFeed, cnEntryKey);
   };
 
   requestAnimationFrame(() => requestAnimationFrame(() => { zzz1cn_fit_comm_window(box); cnGoBottom(); }));
@@ -25944,6 +25950,7 @@ function zzz5w8_open_item(it, anchorEl) {
   }
   if (it.src === 'chat') {
 
+    zzz1cn_tap_read(it.raw);
     zzz_open_chat_entry(it.entry, it.raw && it.raw.id);
     return;
   }
@@ -27904,6 +27911,7 @@ function zzz3d_open(it, el) {
       zzz3d_render();
       return;
     }
+    zzz1cn_tap_read(r);
     zzz_open_chat_entry(it.entry, r.id);
   } catch (e) {
     zzz6f2_show_toast(`Could not open it: ${(e && e.message) || e}`, 'warn');
@@ -37193,6 +37201,68 @@ function zzz1cn_notif_kind(r, meN, seen) {
 }
 
 const ZZZ1CN_URG_EXPLICIT_FROM = Date.parse('2026-10-22T12:00:00Z');
+
+function zzz1cn_tap_read(r) {
+  try {
+    if (!r || !r.entry_key) return;
+    const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+    if (zzz10v1_normalize(r.username || '') === meN) return;
+    if (zzz1cn_prio_of(r) === 'urgent') { if (!zzz1cn_urg_handled(r)) zzz5w8_to_checked({ src: 'chat', raw: r }); return; }
+    const t = Date.parse(r.created_at || '') || Date.now();
+    zzz1cn_seen_mark(String(r.entry_key), zzz1cn_prio_of(r) ? 'prio' : 'seen', t);
+    zzz1cn_seen_mark(String(r.entry_key), 'seen', t);
+  } catch (e) {}
+}
+
+let zzz1cnReadsShare = null;
+function zzz1cn_reads_share() {
+  if (zzz1cnReadsShare === null) {
+    zzz1cnReadsShare = true;
+    try { const v = localStorage.getItem('verso_reads_share'); if (v === '0') zzz1cnReadsShare = false; } catch (e) {}
+    try {
+      sb.from('verso_user_settings').select('prefs').eq('module', 'reads').limit(1).then(({ data }) => {
+        if (data && data[0] && data[0].prefs && data[0].prefs.share === false) { zzz1cnReadsShare = false; try { localStorage.setItem('verso_reads_share', '0'); } catch (e) {} }
+      });
+    } catch (e) {}
+  }
+  return zzz1cnReadsShare;
+}
+async function zzz1cn_reads_share_set(on) {
+  zzz1cnReadsShare = !!on;
+  try { localStorage.setItem('verso_reads_share', on ? '1' : '0'); } catch (e) {}
+  const u = String(zzz0r1_get_current_username() || '').trim().toLowerCase();
+  if (!u) return;
+  try {
+    const { error } = await sb.from('verso_user_settings').upsert(['app', 'webapp', 'web'].map(rt => ({ username: u, runtime: rt, module: 'reads', prefs: { share: !!on } })), { onConflict: 'username,runtime,module' });
+    if (error) throw error;
+    zzz6f2_show_toast(on ? 'READ RECEIPTS: everyone sees when you read.' : 'READ RECEIPTS: nobody sees when you read.');
+  } catch (e) { zzz6f2_show_toast('READ RECEIPTS not saved: ' + (e.message || e), 'warn'); }
+}
+
+const zzz1cnReads = {};
+async function zzz1cn_reads_paint(feed, entryKey) {
+  try {
+    const key = String(entryKey || '').replace(/\D/g, '');
+    if (!key || !feed || !feed.isConnected) return;
+    const c = zzz1cnReads[key] || (zzz1cnReads[key] = { at: 0, rows: [], busy: false });
+    if (!c.busy && Date.now() - c.at > 20000) {
+      c.busy = true;
+      try { const { data, error } = await sb.rpc('verso_note_reads', { p_entry_key: key }); if (!error && Array.isArray(data)) { c.rows = data; c.at = Date.now(); } }
+      finally { c.busy = false; }
+    }
+    if (!feed.isConnected) return;
+    const by = {};
+    c.rows.forEach(r => { (by[String(r.note_id)] = by[String(r.note_id)] || []).push(r); });
+    feed.querySelectorAll('.zzz1cn-note[data-zzz1cn-id]').forEach(el => {
+      const list = by[el.dataset.zzz1cnId];
+      let tag = el.querySelector(':scope > .zzz1cn-reads');
+      if (!list || !list.length) { if (tag) tag.remove(); return; }
+      if (!tag) { tag = document.createElement('div'); tag.className = 'zzz1cn-reads'; el.appendChild(tag); }
+      tag.textContent = '\u2713 READ \u00b7 ' + list.sort((a, b) => Date.parse(a.read_at) - Date.parse(b.read_at))
+        .map(r => r.reader + ' ' + zzz5w8_fmt_time(Date.parse(r.read_at) || 0)).join(', ');
+    });
+  } catch (e) {}
+}
 function zzz1cn_urg_handled(r) {
   if (!r || !r.id) return false;
   try {
@@ -38533,6 +38603,10 @@ function zzz16_render_settings(host) {
       });
       r.appendChild(l); r.appendChild(g); box.appendChild(r);
     };
+
+    { const share = zzz1cn_reads_share();
+      row('READ RECEIPTS', share ? 'EVERYONE sees when you read their messages (✓ READ under their message).' : 'NOBODY sees when you read their messages.',
+        share ? 'EVERYONE' : 'NOBODY', share, false, () => { zzz1cn_reads_share_set(!share); draw(); }); }
     if (p.quiet) row('QUIET REGIME (VERSO READER silent)', 'On: nothing is read aloud, notifications still come. Hold the +AI+ circle 1-2 s to switch it, or tap here.', 'OFF', false, false, () => { zzz16_set_quiet(false); draw(); });
     lvlRow('U', '⚠ URGENT', 'Default: who + the message text (text only on MY DEVICE)');
     lvlRow('A', 'ATTENTION', 'Default: only who');
@@ -44750,7 +44824,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'HOME-LANG 2026-10-26';
+const VERSO_BUILD = 'READ-RECEIPT 2026-10-26';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
