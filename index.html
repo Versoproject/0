@@ -37306,13 +37306,48 @@ const ZZZ16_PREFS_KEY = 'verso_notif_prefs_v1';
 const ZZZ16_DEFAULT = { on: false, sound: true, vibrate: true, speak: true, preview: false, personal: true };
 const zzz16State = { seeded: false, user: '', announced: new Set(), audio: null, swReg: null, pendingOpen: '', opening: false };
 
+const ZZZ16_SRV_TABLE = 'verso_user_settings';
+const zzz16Srv = { pulled: {}, timer: null };
+function zzz16_who() {
+  let u = ''; try { u = String(zzz0r1_get_current_username() || '').trim().toLowerCase(); } catch (e) {}
+  let rt = 'web'; try { rt = zzz_verso_runtime(); } catch (e) {}
+  return { u, rt, key: ZZZ16_PREFS_KEY + ':' + (u || '-') + ':' + rt };
+}
+function zzz16_runtime_label(rt) { return rt === 'app' ? 'VERSO APP' : rt === 'webapp' ? 'VERSO WEB APP' : 'VERSO WEB'; }
 function zzz16_prefs() {
-  let p = {};
-  try { p = JSON.parse(localStorage.getItem(ZZZ16_PREFS_KEY) || '{}') || {}; } catch (e) { p = {}; }
+  const w = zzz16_who();
+  let p = null;
+  try { p = JSON.parse(localStorage.getItem(w.key) || 'null'); } catch (e) { p = null; }
+  if (!p) { try { p = JSON.parse(localStorage.getItem(ZZZ16_PREFS_KEY) || '{}') || {}; } catch (e) { p = {}; } }
+  if (w.u && zzz6f7_isLoggedIn && !zzz16Srv.pulled[w.key]) { zzz16Srv.pulled[w.key] = 1; zzz16_srv_pull(w); }
   return Object.assign({}, ZZZ16_DEFAULT, p);
 }
 function zzz16_save_prefs(p) {
-  try { localStorage.setItem(ZZZ16_PREFS_KEY, JSON.stringify(p)); } catch (e) {}
+  const w = zzz16_who();
+  try { localStorage.setItem(w.key, JSON.stringify(p)); } catch (e) {}
+  if (!w.u || !zzz6f7_isLoggedIn) return;
+  clearTimeout(zzz16Srv.timer);
+  zzz16Srv.timer = setTimeout(() => zzz16_srv_push(w, p), 500);
+}
+async function zzz16_srv_push(w, p) {
+  try {
+    const { error } = await sb.from(ZZZ16_SRV_TABLE).upsert({ username: w.u, runtime: w.rt, module: 'reader', prefs: p }, { onConflict: 'username,runtime,module' });
+    if (error) throw error;
+  } catch (e) { try { zzz_report_issue('settings', 'Reader settings not saved on the server: ' + (e.message || e), { runtime: w.rt, tags: ['settings', 'reader'] }); } catch (e2) {} }
+}
+async function zzz16_srv_pull(w) {
+  try {
+    const { data, error } = await sb.from(ZZZ16_SRV_TABLE).select('prefs').eq('runtime', w.rt).eq('module', 'reader').maybeSingle();
+    if (error) throw error;
+    if (data && data.prefs && typeof data.prefs === 'object') {
+      try { localStorage.setItem(w.key, JSON.stringify(data.prefs)); } catch (e) {}
+      try { document.querySelectorAll('.zzz16-box').forEach(b => { if (b._zzz16Redraw) b._zzz16Redraw(); }); } catch (e) {}
+    } else {
+
+      let cur = null; try { cur = JSON.parse(localStorage.getItem(w.key) || localStorage.getItem(ZZZ16_PREFS_KEY) || 'null'); } catch (e) {}
+      if (cur) zzz16_srv_push(w, Object.assign({}, ZZZ16_DEFAULT, cur));
+    }
+  } catch (e) { delete zzz16Srv.pulled[w.key]; }
 }
 function zzz16_mode() { return (typeof zzz10dmActive === 'string') ? zzz10dmActive : 'my'; }
 function zzz16_allowed() { return zzz16_mode() !== 'foreign'; }
@@ -38178,12 +38213,14 @@ function zzz16_render_settings(host) {
       .zzz16-btn.on{background:#1e7d3a;border-color:#2fb35a}
       .zzz16-btn[disabled]{opacity:.4}
       .zzz16-msg{margin-top:8px;font-size:12px;opacity:.85}
-      .zzz16-msg.warn{color:#ffb347;opacity:1}`;
+      .zzz16-msg.warn{color:#ffb347;opacity:1}
+      .zzz16-for{width:100%;max-width:420px;box-sizing:border-box;margin:8px auto 0;padding:8px 12px;border:1px solid #D4AF37;border-radius:8px;color:#D4AF37;font-size:12px;font-weight:700;line-height:1.35}`;
     document.head.appendChild(st);
   }
   const box = document.createElement('div');
   box.className = 'zzz16-box';
   host.appendChild(box);
+  box._zzz16Redraw = () => { try { draw(); } catch (e) {} };
   const draw = (msg, warn) => {
     const p = zzz16_prefs();
     const mode = zzz16_mode();
@@ -43788,6 +43825,13 @@ function open_settings_workspace() {
     tabContent.appendChild(slot);
   } else if (zzz10_0ActiveTab === 'settings' && typeof zzz16_render_settings === 'function') {
     zzz16_render_settings(tabContent);
+    try {
+      const w = zzz16_who();
+      const sh = document.createElement('div'); sh.className = 'zzz16-for';
+      sh.textContent = 'SETTINGS FOR: ' + zzz16_runtime_label(w.rt) + ' \u00b7 ' + (w.u || '-')
+        + ' \u2014 saved on the server only for this way of login (' + ['VERSO APP', 'VERSO WEB APP', 'VERSO WEB'].filter(x => x !== zzz16_runtime_label(w.rt)).join(' and ') + ' keep their own).';
+      tabContent.insertBefore(sh, tabContent.firstChild);
+    } catch (e) {}
     if (typeof zzz14b2_render_language_settings === 'function') zzz14b2_render_language_settings(tabContent);
     if (typeof zzz22_render_live_data === 'function') zzz22_render_live_data(tabContent);
 
@@ -44425,7 +44469,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'APK-44-BLOCKED-HINT 2026-10-26';
+const VERSO_BUILD = 'SET-PER-RUNTIME 2026-10-26';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
