@@ -37617,7 +37617,7 @@ function zzz_native_what(url) {
   if (path === 'quick/reader') return 'VERSO READER on / off';
   return 'the Verso app';
 }
-function zzz_native_note(url) {
+function zzz_native_note(url, wait) {
   try {
     let n = document.getElementById('zzzNativeNote');
     if (!n) {
@@ -37629,12 +37629,27 @@ function zzz_native_note(url) {
     n.innerHTML = '';
     const a = document.createElement('div'); a.style.color = '#D4AF37'; a.textContent = 'Opening in the Verso app: ' + zzz_native_what(url);
     const b = document.createElement('div'); b.style.cssText = 'font-weight:400;font-size:12px;opacity:.85';
-    b.textContent = 'If Android asks about an „external app Verso“ - it is this Verso app (Otvoriť / Open).';
+    b.textContent = wait ? 'Lift your finger - the Verso app starts then.' : 'If Android asks about an „external app Verso“ - it is this Verso app (Otvoriť / Open).';
     n.append(a, b); n.style.display = 'block';
     clearTimeout(zzz_native_note._t); zzz_native_note._t = setTimeout(() => { n.style.display = 'none'; }, 6000);
   } catch (e) {}
 }
-function zzz_native_go(url) { zzz_native_note(url); try { location.href = url; } catch (e) {} }
+
+function zzz_native_go(url) {
+  let active = true;
+  try { if (navigator.userActivation) active = navigator.userActivation.isActive; } catch (e) {}
+  if (active) { zzz_native_note(url); try { location.href = url; } catch (e) {} return; }
+  zzz_native_go._pending = url; zzz_native_go._at = Date.now();
+  zzz_native_note(url, true);
+}
+['touchend', 'pointerup', 'click'].forEach(ev => document.addEventListener(ev, () => {
+  const url = zzz_native_go._pending;
+  if (!url) return;
+  zzz_native_go._pending = null;
+  if (Date.now() - (zzz_native_go._at || 0) > 8000) return;
+  zzz_native_note(url);
+  try { location.href = url; } catch (e) {}
+}, true));
 document.addEventListener('click', (e) => {
   const a = e.target && e.target.closest && e.target.closest('a[href^="intent://"]');
   if (a) zzz_native_note(a.getAttribute('href'));
@@ -44890,7 +44905,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'READ-ONCE-MSG 2026-10-26';
+const VERSO_BUILD = 'NATIVE-GESTURE 2026-10-26';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -47992,7 +48007,10 @@ function zzz14b17_dl_panel(opts) {
       if (!o.fileName && man.versionName) fileName = 'verso-' + man.versionName + '.apk';
       const mb = (Number(man.bytes) / 1048576).toFixed(1);
       info.textContent = 'version ' + (man.versionName || man.version) + ' \u00b7 ' + mb + ' MB \u00b7 signed by The Verso Project';
-      const r = await fetch(o.man ? fileUrl : fileUrl + '?v=' + (man.versionCode || man.version || Date.now()), { cache: 'no-store' });
+
+      let src = fileUrl;
+      if (!o.file && typeof man.url === 'string' && man.url.indexOf('https://raw.githubusercontent.com/Versoproject/0/apk/') === 0) src = man.url;
+      const r = await fetch(o.man || src !== fileUrl ? src : fileUrl + '?v=' + (man.versionCode || man.version || Date.now()), { cache: 'no-store' });
       if (!r.ok || !r.body) throw new Error('HTTP ' + r.status);
       const rd = r.body.getReader(); const parts = []; let got = 0;
       for (;;) {
