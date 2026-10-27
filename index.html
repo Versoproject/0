@@ -9092,6 +9092,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz1cn-note.zzz1cn-note-mine.zzz5w8-has-alarm { box-shadow: inset -4px 0 0 #D4AF37; }
   .zzz5w8-st-new, .zzz5w8-st-due { color: #f0a640; }
   .zzz5w8-st-seen { color: #9a9a9a; }
+  .zzz5w8-st-read { color: #9a9a9a; }   
   .zzz5w8-st-planned { color: #9aa6ff; }
   .zzz5w8-st-done { color: #7fcf83; }
   .zzz5w8-c-text { white-space: normal !important; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
@@ -25035,7 +25036,7 @@ function zzz5w8_status_of(it) {
     if (r.id && zzz5w8DoneNotes[String(r.id)]) return 'DONE';
 
     if (r.is_saved && r.note_status) return String(r.note_status).toUpperCase();
-    if (it.checked) return 'SEEN';
+    if (it.checked) return 'READ';
     if (!/^\d+$/.test(String(r.entry_key || ''))) return 'OPEN';
     return 'NEW';
   }
@@ -25064,7 +25065,7 @@ function zzz5w8_is_open(mode) {
   return mode ? (w.dataset.mode || 'main') === mode : true;
 }
 
-const ZZZ5W8_MODE_TITLES = { main: 'NOTIFICATIONS', shifted: 'SHIFTED', done: 'CHECKED', hidden: 'HIDDEN' };
+const ZZZ5W8_MODE_TITLES = { main: 'NOTIFICATIONS', shifted: 'SHIFTED', done: 'READ', hidden: 'HIDDEN' };
 function zzz5w8_sync_button_gold() {
   const btn = document.getElementById('versoNotificationsButton');
   if (btn) btn.classList.toggle('zzz5w8-active', zzz5w8_is_open());
@@ -25225,7 +25226,7 @@ function zzz5w8_to_checked(it) {
   if (it.src !== 'chat' || it.done || it.hidden || it.checked) return;
   if (it.task && it.task.pending && it.task.canMe) return;
   if (zzz5w8ShiftMissing) return;
-  zzz5w8_put_state(it, { until: null }).then(() => { try { zzz5w8_render(); } catch (e) {} }).catch(() => {});
+  zzz5w8_put_state(it, { until: null }).then(() => { try { zzz5w8_render(); } catch (e) {} try { zzz3dSig = ''; zzz3d_render(); } catch (e) {} }).catch(() => {});
 }
 
 async function zzz5w8_hide(it, on, quiet) {
@@ -25236,7 +25237,7 @@ async function zzz5w8_hide(it, on, quiet) {
   if (zzz5w8HiddenMissing) { zzz6f2_show_toast(`HIDE needs SQL "${ZZZ5W8_HIDDEN_SQL}" in Supabase - it is not deployed yet.`, 'warn'); return; }
   try {
     await zzz5w8_put_state(it, on ? { hidden: true, until: null } : { hidden: false });
-    if (!quiet) zzz6f2_show_toast(on ? 'Hidden - it is in HIDDEN, swipe right there to bring it back.' : 'Back from HIDDEN (as CHECKED).');
+    if (!quiet) zzz6f2_show_toast(on ? 'Hidden - it is in HIDDEN, swipe right there to bring it back.' : 'Back from HIDDEN (as READ).');
   } catch (e) {
     const m = String((e && (e.message || e.details)) || e);
     if (String(e && e.code) === 'PGRST204' || String(e && e.code) === '42703' || /hidden/i.test(m)) {
@@ -25258,6 +25259,22 @@ function zzz5w8_swipe_hide(it) {
       zzz3d_offer_undo('\u2298 HIDDEN \u00b7 ' + lab, () => zzz5w8_hide(it, false, true));
     }
   });
+}
+
+function zzz5w8_swipe_read(it) {
+  if (!it) return;
+  if (it.hidden) { zzz5w8_hide(it, false); return; }
+  if (it.checked) { zzz6f2_show_toast('Already READ.', 'ok'); return; }
+  const isMsg = it.src === 'chat' || it.src === 'reminder' || it.src === 'schedule';
+  if (!isMsg) { zzz6f2_show_toast('READ works for messages and reminders - SHIFT this one.', 'warn'); return; }
+  if (it.src === 'chat' && zzz5w8ShiftMissing) { zzz6f2_show_toast('READ needs SQL "' + ZZZ5W8_SHIFT_SQL + '" in Supabase.', 'warn'); return; }
+  zzz5w8_to_checked(it);
+  it.checked = true;
+  try { zzz3dSig = ''; zzz3d_render(); } catch (e) {}
+  if (it.src === 'chat' && typeof zzz3d_offer_undo === 'function') {
+    const lab = (it.entry ? '#' + it.entry + ' ' : '') + (it.text || '').slice(0, 40);
+    zzz3d_offer_undo('\u2713 READ \u00b7 ' + lab, () => zzz5w8_unshift(it));
+  }
 }
 
 function zzz5w8_item_of_note(n) {
@@ -25307,7 +25324,7 @@ function zzz5w8_bind_chat_swipe(wrap, note) {
   wrap.dataset.zzz1cnId = wrap.dataset.zzz1cnId || String(note.id);
   wrap._zzz5w8Note = note;
   zzz5w8_paint_chat_hidden(wrap);
-  zzz5w8_bind_swipe(wrap, () => zzz5w8_swipe_hide(zzz5w8_item_of_note(note)),
+  zzz5w8_bind_swipe(wrap, () => zzz5w8_swipe_read(zzz5w8_item_of_note(note)),
     () => zzz5w8_shift_prompt(zzz5w8_item_of_note(note), wrap));
 }
 async function zzz5w8_unshift(it, quiet) {
@@ -26721,7 +26738,7 @@ function zzz5w8_build_shift_bar(it) {
   });
   if (it.shifted) chip('BACK NOW', 'Bring it back to NOTIFICATIONS now', () => zzz5w8_unshift(it));
   chip('DONE', it.src === 'chat' && it.raw && it.raw.is_saved ? 'Done - set in Notes too' : 'Mark as done', () => doDone(true));
-  chip('HIDE', 'Hide it - it stays in HIDDEN (swipe right does the same)', () => zzz5w8_swipe_hide(it));
+  chip('HIDE', 'Hide it - it stays in HIDDEN (swipe right = READ)', () => zzz5w8_swipe_hide(it));
   if (it.src !== 'invite' && it.src !== 'op') chip('\u23f0 ALARM', 'Reminder or schedule for exactly this - it brings you back here', () => zzz5w8_alarm_from_item(it));
   return bar;
 }
@@ -26943,7 +26960,7 @@ function zzz5w8_build_row(it) {
   line.addEventListener('click', () => { if (!line._zzzSwiped) zzz5w8_open_shift(it, line); });
   if (it.src === 'chat' || it.src === 'reminder' || it.src === 'schedule') zzz_bind_long_press(line, ZZZ5W8_HOLD_PLAY_MS, () => { line._zzzSwiped = true; setTimeout(() => { line._zzzSwiped = false; }, 700); zzz5w8_play_shift(it); });
 
-  zzz5w8_bind_swipe(line, () => zzz5w8_swipe_hide(it), () => zzz5w8_shift_prompt(it, line));
+  zzz5w8_bind_swipe(line, () => zzz5w8_swipe_read(it), () => zzz5w8_shift_prompt(it, line));
   if (it.src === 'chat' && it.prio === 'urgent') line.addEventListener('dblclick', () => zzz5w8_play_item(it));
 
   return line;
@@ -26971,7 +26988,7 @@ function zzz5w8_build_card(it) {
   card.title = it.src === 'chat' ? 'Tap = open + SHIFTED, hold = read aloud + SHIFTED, swipe right = open and keep, swipe left = SHIFT' : 'Tap = change it, mark it done';
   card.addEventListener('click', () => { if (!card._zzzSwiped) zzz5w8_open_shift(it, card); });
   if (it.src === 'chat' || it.src === 'reminder' || it.src === 'schedule') zzz_bind_long_press(card, ZZZ5W8_HOLD_PLAY_MS, () => { card._zzzSwiped = true; setTimeout(() => { card._zzzSwiped = false; }, 700); zzz5w8_play_shift(it); });
-  zzz5w8_bind_swipe(card, () => zzz5w8_swipe_hide(it), () => zzz5w8_shift_prompt(it, card));
+  zzz5w8_bind_swipe(card, () => zzz5w8_swipe_read(it), () => zzz5w8_shift_prompt(it, card));
   if (it.src === 'chat' && it.prio === 'urgent') card.addEventListener('dblclick', () => zzz5w8_play_item(it));
   return card;
 }
@@ -27691,7 +27708,7 @@ function zzz3d_render_now() {
   }
 
   if (!list.length) {
-    zzz3d_msg(box, zzz5w8State.error ? 'Some notifications could not load: ' + zzz5w8State.error : 'Nothing waiting ✓', !!zzz5w8State.error);
+    zzz3d_msg(box, zzz5w8State.error ? 'Some notifications could not load: ' + zzz5w8State.error : 'Nothing new ✓', !!zzz5w8State.error);
     return;
   }
 
@@ -27732,7 +27749,7 @@ function zzz3d_render_now() {
   runTx.textContent = cur.text || (cur.src === 'chat' ? '(empty message)' : ZZZ3D_SRC_NAME[cur.src]);
   runBox.appendChild(runTx);
   body.appendChild(runBox);
-  ban.title = `${ZZZ3D_SRC_NAME[cur.src]} ${cur.prio.toUpperCase()} - tap = open + SHIFTED, hold = read aloud + SHIFTED, swipe right = open and keep, swipe left = SHIFT`;
+  ban.title = `${ZZZ3D_SRC_NAME[cur.src]} ${cur.prio.toUpperCase()} - tap = open + SHIFTED, hold = read aloud + SHIFTED, swipe right = READ, swipe left = SHIFT`;
   if (cur.src === 'op' && cur.btn) {
     const cb = document.createElement('button');
     cb.type = 'button'; cb.className = 'zzz3d-op-btn'; cb.textContent = cur.btn;
@@ -27772,7 +27789,7 @@ function zzz3d_render_now() {
     r.appendChild(tx);
     const ago = zzz3d_ago(it);
     if (ago) { const ag = document.createElement('span'); ag.className = 'zzz3d-ago'; ag.textContent = ago; r.appendChild(ag); }
-    r.title = `${k + 1}. ${ZZZ3D_SRC_NAME[it.src]} ${it.prio.toUpperCase()} - tap = open + SHIFTED, hold = read aloud + SHIFTED, swipe right = open and keep, left = SHIFT`;
+    r.title = `${k + 1}. ${ZZZ3D_SRC_NAME[it.src]} ${it.prio.toUpperCase()} - tap = open + SHIFTED, hold = read aloud + SHIFTED, swipe right = READ, left = SHIFT`;
     r.addEventListener('click', () => {
       if (r._zzz3dSwiped) return;
       zzz3dCurId = it.id;
@@ -28027,7 +28044,7 @@ function zzz3d_swipe(el, it) {
     zzz3dSwiping = false;
     if (zzz3dPending) { zzz3dPending = false; zzz3dSig = ''; zzz3d_render(); }
 
-    if (d > ZZZ3D_SWIPE_PX) zzz5w8_swipe_hide(it);
+    if (d > ZZZ3D_SWIPE_PX) zzz5w8_swipe_read(it);
     else if (d < -ZZZ3D_SWIPE_PX) zzz5w8_shift_prompt(it, el);
   };
   el.addEventListener('pointerup', end);
@@ -34065,7 +34082,7 @@ function zzz14cs_feed_row(it, wrap) {
     const ta = wrap.querySelector('.zzz14cs-feed-comp textarea');
     if (ta) { try { ta.focus({ preventScroll: true }); } catch (e) {} }
   });
-  zzz5w8_bind_swipe(r, () => { r._zzz3dSwiped = true; setTimeout(() => { r._zzz3dSwiped = false; }, 400); zzz5w8_swipe_hide(it); },
+  zzz5w8_bind_swipe(r, () => { r._zzz3dSwiped = true; setTimeout(() => { r._zzz3dSwiped = false; }, 400); zzz5w8_swipe_read(it); },
     () => { r._zzz3dSwiped = true; setTimeout(() => { r._zzz3dSwiped = false; }, 400); zzz5w8_shift_prompt(it, r); });
   zzz3d_hold(r, it);
   return r;
@@ -37991,7 +38008,7 @@ function zzz16_urgent_banner(items, anyPrio) {
       const it = dashItem();
       if (!it) { zzz6f2_show_toast('This message is not in the dashboard yet - try again in a moment.', 'warn'); return; }
       close();
-      if (dx > 0) zzz5w8_swipe_hide(it); else zzz3d_shift(it);
+      if (dx > 0) zzz5w8_swipe_read(it); else zzz3d_shift(it);
       return;
     }
     zzz16_stop_reading();
@@ -44920,7 +44937,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = 'NOTIF-LINE 2026-10-27';
+const VERSO_BUILD = 'SWIPE-READ 2026-10-27';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
