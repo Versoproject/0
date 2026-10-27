@@ -37457,7 +37457,8 @@ function zzz1cn_notif_start() {
 
 const ZZZ16_PREFS_KEY = 'verso_notif_prefs_v1';
 const ZZZ16_DEFAULT = { on: false, sound: true, vibrate: true, speak: true, preview: false, personal: true,
-  lvlU: 'full', lvlA: 'who', lvlO: 'off' };
+  lvlU: 'full', lvlA: 'who', lvlO: 'off',
+  dspU: 'full', dspA: 'full', dspO: 'full' };
 const zzz16State = { seeded: false, user: '', announced: new Set(), audio: null, swReg: null, pendingOpen: '', opening: false };
 
 const ZZZ16_SRV_TABLE = 'verso_user_settings';
@@ -37849,7 +37850,10 @@ const ZZZ16_AUDIO_WINDOW_MS = 3 * 60 * 1000;
 function zzz16_sync_regime() {
   try {
     const reg = zzz16State.swReg;
-    const msg = { type: 'verso-regime', personal: !!zzz16_prefs().personal };
+    const pp = zzz16_prefs();
+
+    const msg = { type: 'verso-regime', personal: !!pp.personal,
+      display: { u: pp.dspU || 'full', a: pp.dspA || 'full', o: pp.dspO || 'full' }, native: !!zzz14b17_in_app() };
     if (reg && reg.active) reg.active.postMessage(msg);
     else if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage(msg);
   } catch (e) {}
@@ -38761,7 +38765,30 @@ function zzz16_render_settings(host) {
       const l = document.createElement('div'); l.textContent = 'NOTIFY READER · speed';
       r.appendChild(l); r.appendChild(zzz16_rate_ctrl('n', !p.on || !p.speak)); box.appendChild(r);
     }
-    toggle('preview', 'Message preview', mode === 'my' ? 'Show the message text in the notification' : 'Only on MY DEVICE', mode !== 'my');
+    toggle('preview', 'Message text on this device', mode === 'my' ? 'The text of new messages comes to this device - needed to read it aloud and to show it (what is shown: below)' : 'Only on MY DEVICE', mode !== 'my');
+
+    if (zzz14b17_in_app()) {
+      row('Shown in the notification', 'In the Verso app: per URGENT / ATTENTION / OPEN (who + text / only who / nothing) and the lock screen - in VERSO READER.', 'OPEN', true, false, () => zzz_native_go('intent://reader#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end'));
+    } else {
+      const dspRow = (tier, label) => {
+        const r = document.createElement('div'); r.className = 'zzz16-row';
+        const l = document.createElement('div'); l.textContent = label;
+        const sm = document.createElement('small'); sm.textContent = 'Shown in the system notification'; l.appendChild(sm);
+        const g = document.createElement('div'); g.className = 'zzz16-seg';
+        const cur = p['dsp' + tier] || 'full';
+        [['full', 'WHO + TEXT'], ['who', 'WHO'], ['off', 'NOTHING']].forEach(([k, t]) => {
+          const b = document.createElement('button'); b.type = 'button';
+          b.className = 'zzz16-btn' + (k === cur ? ' on' : ''); b.textContent = t;
+          b.disabled = !p.on;
+          b.addEventListener('click', () => { const n = zzz16_prefs(); n['dsp' + tier] = k; zzz16_save_prefs(n); zzz16_sync_regime(); draw(); });
+          g.appendChild(b);
+        });
+        r.appendChild(l); r.appendChild(g); box.appendChild(r);
+      };
+      dspRow('U', '⚠ URGENT · shown');
+      dspRow('A', 'ATTENTION · shown');
+      dspRow('O', 'OPEN · shown');
+    }
     row('Test', 'Sound + vibration + read-out + a system notification', 'TEST', false, !p.on, () => {
       const tsp = zzz16_notify_speech([{ prio: 'urgent', user: 'Verso', text: 'Toto je test.' }]);
       const d = { prio: 'urgent', entry: '', speech: tsp, noSpeak: !tsp, title: 'Verso: test', body: 'New message from Verso · test' };
@@ -44955,7 +44982,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-27 21:38';
+const VERSO_BUILD = '2026-10-28 00:58';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;

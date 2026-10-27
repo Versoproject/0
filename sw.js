@@ -57,9 +57,16 @@ async function versoSwPersonal() {
 }
 
 const VERSO_SUMMARY_TAG = 'verso-summary';
+
+async function versoSwDisplay() {
+  try { const r = await (await caches.open('verso-prefs')).match('display'); return r ? JSON.parse(await r.text()) : {}; } catch (e) { return {}; }
+}
 async function versoSwShow(d) {
   d = d || {};
   const tier = d.prio === 'urgent' ? 'u' : (d.prio === 'attention' ? 'a' : 'o');
+  const disp = await versoSwDisplay();
+  const lvl = disp.native ? 'full' : (disp[tier] || 'full');
+  if (lvl === 'off') return;
   let prev = null;
   try { const ns = await self.registration.getNotifications({ tag: VERSO_SUMMARY_TAG }); prev = ns.length ? ns[ns.length - 1].data : null; } catch (e) {}
   const c = { u: 0, a: 0, o: 0, last: {} };
@@ -67,7 +74,12 @@ async function versoSwShow(d) {
   c[tier] += 1;
 
   const who = String(d.title || '').replace(/^Verso:\s*/, '').trim();
-  const b0 = String(d.body || '');
+  let b0 = String(d.body || '');
+  if (lvl === 'who' && who) {
+    const word = tier === 'u' ? 'Urgent message' : (tier === 'a' ? 'Important message' : 'New message');
+    const where = d.project || (d.entry ? '#' + d.entry : '');
+    b0 = `${word} from ${who}${where ? ' \u00b7 ' + where : ''}`;
+  }
   const body = who && b0.indexOf(who) < 0 ? `${who}: ${b0}` : b0;
   c.last[tier] = { body, entry: d.entry || '', title: d.title || '', who };
   const top = c.u ? 'u' : (c.a ? 'a' : 'o');
@@ -111,7 +123,13 @@ self.addEventListener('message', (e) => {
   const m = e.data || {};
   if (m.type === 'verso-show') e.waitUntil(versoSwShow(m.data));
   if (m.type === 'verso-clear') e.waitUntil(self.registration.getNotifications().then(ns => ns.forEach(n => n.close())).catch(() => {}));
-  if (m.type === 'verso-regime') e.waitUntil(caches.open('verso-prefs').then(c => c.put('personal', new Response(m.personal ? '1' : '0'))).catch(() => {}));
+  if (m.type === 'verso-regime') e.waitUntil(caches.open('verso-prefs').then(async (c) => {
+    await c.put('personal', new Response(m.personal ? '1' : '0'));
+    if (m.display) {
+      let old = {}; try { const r = await c.match('display'); old = r ? JSON.parse(await r.text()) : {}; } catch (e) {}
+      await c.put('display', new Response(JSON.stringify(Object.assign({}, m.display, { native: !!(m.native || old.native) }))));
+    }
+  }).catch(() => {}));
 });
 
 self.addEventListener('notificationclick', (e) => {
