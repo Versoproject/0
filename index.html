@@ -6985,6 +6985,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-vkb-media.is-slim { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
   .zzz-vkb-media.is-slim .zzz-vkb-media-key { font-size: 16px; }
   .zzz-vkb-now-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  
+  .zzz-vkb-now-t.is-run { overflow: visible; text-overflow: clip; flex: 0 0 auto; animation: zzzNowRun 14s linear infinite; }
+  @keyframes zzzNowRun { from { transform: translateX(0); } to { transform: translateX(-50%); } }
   .zzz-media-sub { color: #D4AF37; font-size: 10px; font-weight: 800; letter-spacing: .08em; margin: 6px 0 3px; }
   .zzz-media-row.is-gold > div { color: #8a6a12; font-weight: 600; }
   .zzz-media-row.is-silver > div { color: #8f8f8f; }
@@ -45279,7 +45282,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-28 23:47';
+const VERSO_BUILD = '2026-10-28 23:58';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -47894,7 +47897,7 @@ function zzz_media_paint() {
     w._bar.classList.toggle('is-on', ready);
     w._bar.classList.toggle('is-silver', !ready);
     const pb = w._bar.querySelector('.is-play');
-    if (pb) { pb.textContent = playing || !ready ? '\u25B6\uFE0E' : '\u25A0'; pb.classList.toggle('is-playing', playing); pb.classList.toggle('is-stopped', ready && !playing); }
+    if (pb) { pb.textContent = playing || !ready ? '\u25B6\uFE0E' : '\u275A\u275A'; pb.classList.toggle('is-playing', playing); pb.classList.toggle('is-stopped', ready && !playing); }
   }
   zzz_media_place();
 }
@@ -48116,12 +48119,21 @@ function zzz_media_hash() {
     const go = () => { if (!zzz_media_me()) { setTimeout(go, 1000); return; } zzz_media_show(link); };
     go(); return;
   }
-  const add = h.match(/^#media-add=(.+)$/i);
+  const play = h.match(/^#media-play=(.+)$/i);
+  if (play) {
+    let link = ''; try { link = decodeURIComponent(play[1]); } catch (e) {}
+    try { history.replaceState(null, '', location.pathname + location.search + '#media'); } catch (e) {}
+    const go = () => { if (!zzz_media_me()) { setTimeout(go, 1000); return; } if (!/^https?:\/\//i.test(link)) return; zzzMedia.loaded = zzz_media_norm(link); (document.getElementById('zzzMediaWin') ? Promise.resolve() : zzz_media_open()).then(() => zzz_media_play_loaded()); };
+    go(); return;
+  }
+  const add = h.match(/^#media-add=([^&]+)/i);
   if (add) {
     let link = ''; try { link = decodeURIComponent(add[1]); } catch (e) {}
     try { history.replaceState(null, '', location.pathname + location.search + '#media'); } catch (e) {}
     zzzMedia.tab = 'ACTUAL';
-    const go = () => { if (!zzz_media_me()) { setTimeout(go, 1000); return; } if (!document.getElementById('zzzMediaWin')) zzz_media_open(); if (/^https?:\/\//i.test(link)) zzz_media_add_link(link); };
+    const quiet = /&quiet=1/.test(h);
+    try { if (quiet) history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    const go = () => { if (!zzz_media_me()) { setTimeout(go, 1000); return; } if (!quiet && !document.getElementById('zzzMediaWin')) zzz_media_open(); if (/^https?:\/\//i.test(link)) zzz_media_add_link(link); };
     go(); return;
   }
   if (/^#media\b/i.test(h)) { if (!document.getElementById('zzzMediaWin')) zzz_media_open(); }
@@ -48143,8 +48155,36 @@ async function zzz_media_add_clip() {
   let t = '';
   try { t = await navigator.clipboard.readText(); } catch (e) {}
   const m = String(t || '').match(/https?:\/\/\S+/);
-  if (!m) { zzz6f2_show_toast('Copy a link first (e.g. Instagram › Share › Copy link), then + LINK.', 'warn'); return; }
-  await zzz_media_add_link(m[0]);
+  if (!m) {
+    if (zzz_media_offline()) {
+      const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'audio/*,video/*';
+      inp.addEventListener('change', () => { const f = inp.files && inp.files[0]; if (!f) return; zzz_media_play_blob(f); });
+      inp.click(); return;
+    }
+    zzz6f2_show_toast('Copy a link first (e.g. Instagram › Share › Copy link), then + LINK.', 'warn'); return;
+  }
+  zzzMedia.loaded = zzz_media_norm(m[0]);
+  zzz6f2_show_toast('In the media line - \u25B6 = play', 'info');
+  zzz_media_paint(); zzz_media_kb_redraw();
+}
+function zzz_media_play_loaded() {
+  const l = zzzMedia.loaded; zzzMedia.loaded = '';
+  if (!l) return false;
+  zzz_media_add_link(l);
+  const line = zzz_media_line({ link: l });
+  zzz_media_play(line || { id: '', name: '', link: l, tag: '' }, line ? [line] : []);
+  return true;
+}
+function zzz_media_play_blob(file) {
+  const st = zzz_media_stage();
+  st.querySelectorAll('video, iframe').forEach(x => x.remove());
+  const v = document.createElement('video'); v.controls = true; v.autoplay = true; v.playsInline = true; v.className = 'zzz-media-video';
+  v.src = URL.createObjectURL(file);
+  v.addEventListener('playing', zzz_media_paint); v.addEventListener('pause', zzz_media_paint);
+  st.insertBefore(v, st.firstChild);
+  zzzMedia.cur = { id: '', name: file.name, link: '', tag: '' }; zzzMedia.nat = false;
+  try { const pr = v.play(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {}
+  zzz_media_paint(); zzz_media_kb_redraw(); setTimeout(zzz_media_place, 50);
 }
 
 const ZZZ_MEDIA_HOSTS = /^(www\.|m\.)?(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|vm\.tiktok\.com|open\.spotify\.com|vimeo\.com|facebook\.com|fb\.watch|soundcloud\.com|twitch\.tv)$/i;
@@ -48198,6 +48238,7 @@ async function zzz_media_add_link(link) {
   if (it) { zzz6f2_show_toast((had ? 'Already in ALL MEDIA · #' : 'Added to ALL MEDIA · #') + it.num + ' (ACTUAL)', 'info'); zzz_media_redraw(); }
 }
 function zzz_vkb_now_text() {
+  if (zzzMedia.loaded) return '\u2913 ' + zzzMedia.loaded.replace(/^https?:\/\/(www\.)?/, '') + '  \u00b7  \u25B6 = play';
   if (zzzMedia.cur) return (zzz_media_playing() ? '\u25B6\uFE0E ' : '\u275A\u275A ') + zzz_media_title(zzzMedia.cur) + (zzz_media_offline() ? ' \u00b7 OFFLINE' : '');
   const m = Array.from(document.querySelectorAll('video, audio')).find(x => !x.paused) || document.querySelector('video, audio');
   if (!m) return 'nothing is playing in Verso';
@@ -48207,8 +48248,8 @@ function zzz_vkb_now_text() {
 }
 function zzz_vkb_media(a) {
 
-  if (zzzMedia.cur || a === 'play') {
-    if (a === 'play') { if (zzz_media_toggle()) return; }
+  if (zzzMedia.cur || zzzMedia.loaded || a === 'play') {
+    if (a === 'play') { if (zzz_media_play_loaded()) return; if (zzz_media_toggle()) return; }
     else if (a === 'stop') { zzz_media_stop(); return; }
     else if (a === 'rew') { zzz_media_next(-1); return; }
     else if (a === 'ff') { zzz_media_next(1); return; }
@@ -48749,7 +48790,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
         c.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); fn(); }); chips.appendChild(c); return c; };
       chip(zzz_media_offline() ? 'OFFLINE' : 'ONLINE', 'zzz-media-mode' + (zzz_media_offline() ? ' is-off' : ''), () => zzz_media_set_offline(!zzz_media_offline()));
       chip('+ LINK', 'is-add', () => zzz_media_add_clip());
-      chip('LINKS', '', () => zzz_media_open());
+      chip('MEDIA', '', () => zzz_media_open());
       g.appendChild(chips);
       const scr = document.createElement('div'); scr.className = 'zzz-vkb-screen';
       const keys = document.createElement('div'); keys.className = 'zzz-vkb-media';
@@ -48759,7 +48800,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       g.appendChild(scr);
       setTimeout(zzz_media_place, 30);
       const ready = zzz_media_ready(), playing = ready && zzz_media_playing_any();
-      [['|\u25C0\u25C0', 'rew', 'Tap = previous · hold = −10 s'], [playing || !ready ? '\u25B6\uFE0E' : '\u25A0', 'play', 'Play / stop'], ['\u25B6\u25B6|', 'ff', 'Tap = next · hold = +10 s'], [ZZZ_MEDIA_LOOP_SYM[zzz_media_loop()], 'loop', 'Repeat / shuffle']].forEach(([l, a, ti]) => {
+      [['|\u25C0\u25C0', 'rew', 'Tap = previous · hold = −10 s'], [playing || !ready ? '\u25B6\uFE0E' : '\u275A\u275A', 'play', 'Play / stop'], ['\u25B6\u25B6|', 'ff', 'Tap = next · hold = +10 s'], [ZZZ_MEDIA_LOOP_SYM[zzz_media_loop()], 'loop', 'Repeat / shuffle']].forEach(([l, a, ti]) => {
         const seekKey = a === 'rew' || a === 'ff';
         const k = ctrlKey(keys, l, () => { if (a === 'loop') { zzz_media_loop_next(); draw(); return; } if (!seekKey) zzz_vkb_media(a); setTimeout(() => { zzz_media_paint(); draw(); }, 300); }, 'zzz-vkb-media-key');
         k.title = ti;
@@ -48780,7 +48821,13 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       now.style.gridColumn = '1 / span 7'; now.style.gridRow = '3';
       const nowT = document.createElement('span'); nowT.className = 'zzz-vkb-now-t'; nowT.textContent = zzz_vkb_now_text(); now.appendChild(nowT);
       now.title = '2× tap = its line in VERSO MEDIA CENTER';
-      { let nt = 0; now.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); const n = Date.now(); if (n - nt < 350) { nt = 0; zzz_media_show(); } else nt = n; }); }
+
+      { let nt = 0, ht = 0, held = false;
+        now.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); held = false; clearTimeout(ht);
+          ht = setTimeout(() => { held = true; zzz_haptic_pulse(20); const l = zzzMedia.loaded || (zzzMedia.cur && zzzMedia.cur.link); if (l) zzz_media_open_app(l); else zzz6f2_show_toast('Nothing is playing.', 'info'); }, 700); });
+        now.addEventListener('pointerup', () => { clearTimeout(ht); if (held) return; const n = Date.now(); if (n - nt < 350) { nt = 0; zzz_media_show(zzzMedia.loaded || undefined); } else nt = n; });
+        ['pointercancel', 'pointerleave'].forEach(ev => now.addEventListener(ev, () => clearTimeout(ht))); }
+      requestAnimationFrame(() => { if (nowT.scrollWidth > now.clientWidth - 16) { nowT.classList.add('is-run'); nowT.textContent = nowT.textContent + '\u2003\u2003\u2003' + nowT.textContent; } });
       g.appendChild(now);
 
       const win = zzz_vkb_calc_box(type, target);
@@ -49346,7 +49393,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 78;
+const ZZZ14B17_APP_LATEST = 79;
 function zzz14b17_app_code() {
 
   try {
