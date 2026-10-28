@@ -45279,7 +45279,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-28 23:24';
+const VERSO_BUILD = '2026-10-28 23:47';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -47494,6 +47494,28 @@ function zzz_media_norm(link) {
   else if (u.pathname === '/' && !u.search) out = out.replace(/\/$/, '');
   return out.replace(/\?$/, '');
 }
+
+async function zzz_media_meta(link) {
+  try {
+    const r = await fetch(SUPABASE_URL + '/functions/v1/verso-media-meta?url=' + encodeURIComponent(link), { cache: 'no-store' });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) { return null; }
+}
+function zzz_media_name_of(meta, tags, link) {
+  if (!meta) return '';
+  const t = String(meta.title || '').trim(), a = String(meta.author || '').trim(), pv = String(meta.provider || '');
+  const music = /^(Spotify|SoundCloud)$/.test(pv) || /\b(music|radios|podcasts)\b/i.test(String(tags || ''));
+  if (t && a) return (music ? a + ' \u2013 ' + t : (t.toLowerCase().indexOf(a.toLowerCase()) >= 0 ? t : t + ' (' + a + ')')).slice(0, 60);
+  if (t) return t.slice(0, 60);
+  if (pv === 'Instagram') return 'Instagram ' + (meta.kind || 'post');
+  return '';
+}
+async function zzz_media_autoname(it) {
+  if (!it || !it.id || it.name || !/^https?:/i.test(it.link)) return;
+  const nm = zzz_media_name_of(await zzz_media_meta(it.link), it.tags, it.link);
+  if (nm && !it.name) { await zzz_media_set_tags(it, zzz_media_tagw(it.tags), nm); zzz_media_redraw(); zzz_media_paint(); }
+}
 function zzz_media_item(n) {
   const tags = String(n.note_tags || '').toLowerCase();
   const w = zzz_media_tagw(tags);
@@ -47611,6 +47633,8 @@ async function zzz_media_load() {
     }
   } catch (err) { zzzMedia.all = zzzMedia.all || []; }
   zzzMedia.list = zzzMedia.all.filter(x => !x.trash);
+
+  (async () => { for (const x of zzzMedia.list.filter(x => !x.name).slice(0, 12)) { try { await zzz_media_autoname(x); } catch (e) {} } })();
 }
 async function zzz_media_add(link, name, tags) {
   link = String(link || '').trim();
@@ -47624,6 +47648,7 @@ async function zzz_media_add(link, name, tags) {
   if (!n) return null;
   const it = zzz_media_item(Object.assign({ note_text: link, note_name: name || '', note_tags: tags || '' }, n));
   zzzMedia.all = (zzzMedia.all || []).concat([it]); zzzMedia.list = zzzMedia.all.filter(x => !x.trash);
+  if (!it.name) zzz_media_autoname(it);
   return it;
 }
 async function zzz_media_set_tags(it, words, name) {
@@ -47759,7 +47784,11 @@ function zzz_media_open_app(link) {
   if (!/^intent:/.test(a.href)) { a.target = '_blank'; a.rel = 'noopener'; }
   a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove();
 }
-function zzz_media_title(it) { return it ? (it.name || it.theme || String(it.link || '').replace(/^https?:\/\//, '').slice(0, 60)) : ''; }
+function zzz_media_title(it) {
+  if (!it) return '';
+  const l = it.link ? zzz_media_line(it) : null;
+  return (it.name || (l && l.name) || it.theme || String(it.link || '').replace(/^https?:\/\/(www\.|m\.)?/, '').replace(/\?.*$/, '').slice(0, 60));
+}
 function zzz_media_play(it, queue) {
   if (!it) return;
   if (it.link && /^https?:\/\//i.test(it.link)) { const n = zzz_media_norm(it.link); if (n !== it.link) it = Object.assign({}, it, { link: n }); }
@@ -48169,7 +48198,7 @@ async function zzz_media_add_link(link) {
   if (it) { zzz6f2_show_toast((had ? 'Already in ALL MEDIA · #' : 'Added to ALL MEDIA · #') + it.num + ' (ACTUAL)', 'info'); zzz_media_redraw(); }
 }
 function zzz_vkb_now_text() {
-  if (zzzMedia.cur) return (zzz_media_playing() ? '\u25B6\uFE0E ' : '\u275A\u275A ') + zzz_media_title(zzzMedia.cur) + (zzzMedia.nat ? ' \u00b7 VERSO PLAYER' : ' \u00b7 VERSO MEDIA') + (zzz_media_offline() ? ' \u00b7 OFFLINE' : '');
+  if (zzzMedia.cur) return (zzz_media_playing() ? '\u25B6\uFE0E ' : '\u275A\u275A ') + zzz_media_title(zzzMedia.cur) + (zzz_media_offline() ? ' \u00b7 OFFLINE' : '');
   const m = Array.from(document.querySelectorAll('video, audio')).find(x => !x.paused) || document.querySelector('video, audio');
   if (!m) return 'nothing is playing in Verso';
   let name = m.title || (m.dataset && m.dataset.title) || '';
@@ -49317,7 +49346,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 77;
+const ZZZ14B17_APP_LATEST = 78;
 function zzz14b17_app_code() {
 
   try {
