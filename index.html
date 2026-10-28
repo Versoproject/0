@@ -6927,6 +6927,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-vkb-calc-btn { flex: 1 1 0; min-height: 22px; border: 1px solid #3f3f46; border-radius: 6px; background: #262626; color: #e4e4e7;
     font-size: 11px; font-weight: 700; padding: 0 4px; cursor: pointer; touch-action: none; -webkit-tap-highlight-color: transparent; }
   .zzz-vkb-calc-toggle { flex: 0 0 auto; color: #a1a1aa; }
+  
+  .zzz-vkb-nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; flex: 1 1 auto; margin-top: 4px; }
+  .zzz-vkb-nav-key { color: #D4AF37; font-weight: 700; min-height: 0; }
+  .zzz-vkb-calc.is-on .zzz-vkb-nav { display: none; }
+  .zzz-vkb-calc:not(.is-on) .zzz-vkb-calc-sum, .zzz-vkb-calc:not(.is-on) .zzz-vkb-calc-expr,
+  .zzz-vkb-calc:not(.is-on) .zzz-vkb-calc-tape, .zzz-vkb-calc:not(.is-on) .zzz-vkb-calc-foot { display: none; }
   .zzz-vkb-calc.is-on .zzz-vkb-calc-toggle { background: #D4AF37; color: #171717; border-color: #D4AF37; }
   
   .zzz-vkb-chip.is-emoji { font-size: 16px; padding: 0 6px; }
@@ -45090,7 +45096,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-28 12:28';
+const VERSO_BUILD = '2026-10-28 12:34';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -47112,7 +47118,57 @@ function zzz_vkb_calc_paint() {
   tape.innerHTML = '';
   c.tape.forEach((line) => { const d = document.createElement('div'); d.textContent = line; tape.appendChild(d); });
 }
-function zzz_vkb_calc_box(typeFn) {
+
+function zzz_vkb_nav(t, dir) {
+  if (!t || !t.isConnected) return;
+  const scrollable = t.scrollHeight > t.clientHeight + 2;
+  if (dir === 'pgup' || dir === 'pgdn') {
+    const s = dir === 'pgup' ? -1 : 1;
+    if (scrollable) t.scrollTop += s * Math.max(40, t.clientHeight * 0.9);
+    else window.scrollBy(0, s * Math.round(window.innerHeight * 0.6));
+    return;
+  }
+  if (typeof t.selectionStart !== 'number') return;
+  const v = String(t.value || '');
+  let p = t.selectionEnd;
+  if (dir === 'left') p = Math.max(0, (t.selectionStart !== t.selectionEnd ? t.selectionStart : p - 1));
+  else if (dir === 'right') p = Math.min(v.length, p + (t.selectionStart !== t.selectionEnd ? 0 : 1));
+  else {
+    const ls = v.lastIndexOf('\n', p - 1) + 1, col = p - ls;
+    if (dir === 'up') {
+      if (ls === 0) p = 0;
+      else { const ps = v.lastIndexOf('\n', ls - 2) + 1; p = Math.min(ps + col, ls - 1); }
+    } else {
+      const le = v.indexOf('\n', p);
+      if (le < 0) p = v.length;
+      else { const ne = v.indexOf('\n', le + 1); p = Math.min(le + 1 + col, ne < 0 ? v.length : ne); }
+    }
+  }
+  try { t.setSelectionRange(p, p); } catch (e) {}
+  try { t.dispatchEvent(new Event('select', { bubbles: true })); } catch (e) {}
+}
+function zzz_vkb_nav_pad(target) {
+  const pad = document.createElement('div');
+  pad.className = 'zzz-vkb-nav';
+  [['PgDn', 'pgdn', 'Page down'], ['\u2191', 'up', 'Up'], ['PgUp', 'pgup', 'Page up'],
+   ['\u2190', 'left', 'Left'], ['\u2193', 'down', 'Down'], ['\u2192', 'right', 'Right']].forEach(([l, d, ti]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.tabIndex = -1; b.className = 'zzz-vkb-calc-btn zzz-vkb-nav-key'; b.textContent = l; b.title = ti;
+    let rep = 0, wait = 0;
+    const stop = () => { clearTimeout(wait); clearInterval(rep); wait = rep = 0; };
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation(); zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS);
+      zzz_vkb_nav(target, d);
+      stop(); wait = setTimeout(() => { rep = setInterval(() => zzz_vkb_nav(target, d), 80); }, 450);
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => b.addEventListener(ev, stop));
+    b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+    pad.appendChild(b);
+  });
+  return pad;
+}
+
+function zzz_vkb_calc_box(typeFn, target) {
   const box = document.createElement('div');
   box.className = 'zzz-vkb-calc';
   box.style.gridColumn = '6'; box.style.gridRow = '1 / span 4';
@@ -47138,6 +47194,7 @@ function zzz_vkb_calc_box(typeFn) {
     if (v) typeFn(v);
   }));
   box.appendChild(foot);
+  box.appendChild(zzz_vkb_nav_pad(target));
   setTimeout(zzz_vkb_calc_paint, 0);
   return box;
 }
@@ -47595,7 +47652,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       calcKey(digits[9], '1 / span 2', '3');
       calcKey(digits[6], '3', '3'); calcKey(digits[7], '4', '3'); calcKey(digits[8], '5', '3');
       at(ctrlKey(g, '⌫', () => { if (zzz_vkbCalc.on) zzz_vkb_calc_back(); else back(); }), '6 / span 2', '3');
-      const box = zzz_vkb_calc_box(type);
+      const box = zzz_vkb_calc_box(type, target);
       box.style.gridColumn = '8 / span 3'; box.style.gridRow = '1 / span 3';
       g.appendChild(box);
     } else if (page === 'digits') {
@@ -48126,7 +48183,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 66;
+const ZZZ14B17_APP_LATEST = 67;
 function zzz14b17_app_code() {
 
   try {
