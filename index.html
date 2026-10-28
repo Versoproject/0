@@ -6954,6 +6954,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-btn.is-on { background: #D4AF37; color: #171717; }
   .zzz-media-btn.is-red { border-color: #e53935; background: #e53935; color: #fff; }
   .zzz-media-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+  .zzz-media-mode { display: flex; border: 1.5px solid #D4AF37; border-radius: 14px; overflow: hidden; margin-right: auto; }
+  .zzz-media-mode button { border: 0; background: transparent; color: #D4AF37; font-weight: 700; font-size: 10px; padding: 4px 10px; }
+  .zzz-media-mode button.is-on { background: #D4AF37; color: #171717; }
   .zzz-media-tab { border: 0; border-radius: 10px; background: #262626; color: #D4AF37; font-weight: 700; font-size: 10px; padding: 4px 8px; }
   .zzz-media-tab.is-on { background: #D4AF37; color: #171717; }
   .zzz-media-row { display: grid; grid-template-columns: 30px 1fr 1.3fr 52px 28px; gap: 3px; align-items: center; margin-bottom: 3px; cursor: pointer; }
@@ -45193,7 +45196,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-28 17:22';
+const VERSO_BUILD = '2026-10-28 17:36';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -47261,6 +47264,10 @@ const ZZZ_VKB_AI_SVG = (() => {
 
 const ZZZ_MEDIA_TABS = ['ALL', 'STREAMS', 'REELS', 'MUSIC', 'VIDEO', 'MOVIES', 'NETWORKS'];
 const zzzMedia = { list: [], tab: 'ALL', idx: -1, cur: null, sel: new Set(), selecting: false, skips: 0, ytReady: false };
+
+function zzz_media_modes() { try { return JSON.parse(localStorage.getItem('zzz_media_modes') || '{}') || {}; } catch (e) { return {}; } }
+function zzz_media_is_playlist(tab) { const m = zzz_media_modes()[tab]; return m ? m === 'playlist' : tab !== 'STREAMS'; }
+function zzz_media_set_mode(tab, pl) { const m = zzz_media_modes(); m[tab] = pl ? 'playlist' : 'single'; try { localStorage.setItem('zzz_media_modes', JSON.stringify(m)); } catch (e) {} }
 function zzz_media_embed(u) {
   let m;
   try {
@@ -47338,6 +47345,10 @@ function zzz_media_play(it, fromList) {
 function zzz_media_next(step, auto, err) {
   const l = zzz_media_tablist();
   if (!l.length) return;
+  if (auto && !zzz_media_is_playlist(zzzMedia.tab)) {
+    if (err) zzz6f2_show_toast('VERSO MEDIA: this link cannot be played.', 'warn');
+    zzz_media_paint(); return;
+  }
   if (err) { zzzMedia.skips++; if (zzzMedia.skips > l.length) { zzzMedia.skips = 0; zzz6f2_show_toast('VERSO MEDIA: no link in this tab could be played.', 'warn'); return; } }
   let i = l.indexOf(zzzMedia.cur);
   i = i < 0 ? 0 : (i + step + l.length) % l.length;
@@ -47415,13 +47426,19 @@ async function zzz_media_open() {
   paste.append(inp, play, add); w.appendChild(paste);
   const tabs = document.createElement('div'); tabs.className = 'zzz-media-tabs'; w.appendChild(tabs);
   const tools = document.createElement('div'); tools.className = 'zzz-media-tools';
+  const mode = document.createElement('div'); mode.className = 'zzz-media-mode';
+  const mS = document.createElement('button'); mS.type = 'button'; mS.textContent = 'SINGLE'; mS.title = 'Plays only the chosen link (e.g. a stream)';
+  const mP = document.createElement('button'); mP.type = 'button'; mP.textContent = 'PLAYLIST'; mP.title = 'Plays the links of this tab one after another';
+  mode.append(mS, mP);
   const selB = document.createElement('button'); selB.type = 'button'; selB.className = 'zzz-media-btn'; selB.textContent = 'SELECT';
   const delB = document.createElement('button'); delB.type = 'button'; delB.className = 'zzz-media-btn'; delB.textContent = 'DELETE';
-  tools.append(selB, delB); w.appendChild(tools);
+  tools.append(mode, selB, delB); w.appendChild(tools);
   const list = document.createElement('div'); list.className = 'zzz-media-list'; w.appendChild(list);
   const draw = () => {
     tabs.innerHTML = '';
     ZZZ_MEDIA_TABS.forEach(t => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-tab' + (t === zzzMedia.tab ? ' is-on' : ''); b.textContent = t; b.addEventListener('click', () => { zzzMedia.tab = t; draw(); }); tabs.appendChild(b); });
+    const pl = zzz_media_is_playlist(zzzMedia.tab);
+    mS.classList.toggle('is-on', !pl); mP.classList.toggle('is-on', pl);
     selB.classList.toggle('is-on', zzzMedia.selecting);
     delB.classList.toggle('is-red', zzzMedia.sel.size > 0);
     delB.textContent = zzzMedia.sel.size ? 'DELETE ' + zzzMedia.sel.size : 'DELETE';
@@ -47444,6 +47461,8 @@ async function zzz_media_open() {
     zzz_media_paint();
   };
   selB.addEventListener('click', () => { zzzMedia.selecting = !zzzMedia.selecting; if (!zzzMedia.selecting) zzzMedia.sel.clear(); draw(); });
+  mS.addEventListener('click', () => { zzz_media_set_mode(zzzMedia.tab, false); draw(); });
+  mP.addEventListener('click', () => { zzz_media_set_mode(zzzMedia.tab, true); draw(); });
   delB.addEventListener('click', () => {
     if (!zzzMedia.sel.size) { zzz6f2_show_toast('DELETE: tap SELECT, mark the links, then DELETE.', 'info'); return; }
     const ids = Array.from(zzzMedia.sel);
