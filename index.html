@@ -45279,7 +45279,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-28 23:12';
+const VERSO_BUILD = '2026-10-28 23:24';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -47475,10 +47475,30 @@ function zzz_media_embed(u) {
 const ZZZ_MEDIA_DESC = 'ALL MEDIA';
 function zzz_media_me() { return String((typeof zzz0r1_get_current_username === 'function' && zzz0r1_get_current_username()) || '').toLowerCase(); }
 function zzz_media_tagw(tags) { return String(tags || '').toLowerCase().split(/[\s,;]+/).filter(Boolean); }
+
+function zzz_media_norm(link) {
+  const raw = String(link || '').trim().split(/\s+/)[0] || '';
+  let u; try { u = new URL(raw); } catch (e) { return raw; }
+  if (!/^https?:$/.test(u.protocol)) return raw;
+  u.protocol = 'https:';
+  u.hostname = u.hostname.toLowerCase().replace(/^(www|m|mobile)\./, '');
+  u.hash = '';
+  const h = u.hostname;
+  if (/(^|\.)(instagram\.com|tiktok\.com|spotify\.com|threads\.net)$/.test(h)) u.search = '';
+  else if (/(^|\.)(youtube\.com|youtu\.be)$/.test(h)) { const keep = new URLSearchParams(); ['v', 'list', 't'].forEach(k => { if (u.searchParams.has(k)) keep.set(k, u.searchParams.get(k)); }); u.search = keep.toString(); }
+  else {
+    Array.from(u.searchParams.keys()).forEach(k => { if (/^(utm_.*|igsh|igshid|si|fbclid|gclid|mc_cid|mc_eid|feature|psln|pslnn|ref|ref_src|s|share_id|_ga)$/i.test(k)) u.searchParams.delete(k); });
+  }
+  let out = u.toString();
+  if (out.endsWith('/') && u.pathname.length > 1) out = out.slice(0, -1);
+  else if (u.pathname === '/' && !u.search) out = out.replace(/\/$/, '');
+  return out.replace(/\?$/, '');
+}
 function zzz_media_item(n) {
   const tags = String(n.note_tags || '').toLowerCase();
   const w = zzz_media_tagw(tags);
-  return { id: n.id, num: n.note_number, note: n, name: String(n.note_name || '').trim(), link: String(n.note_text || '').trim().split(/\s+/)[0] || '',
+  const rawLink = String(n.note_text || '').trim().split(/\s+/)[0] || '';
+  return { id: n.id, num: n.note_number, note: n, name: String(n.note_name || '').trim(), link: /^https?:\/\//i.test(rawLink) ? zzz_media_norm(rawLink) : rawLink,
     tags, tag: tags.toUpperCase(), pls: w.filter(x => x.indexOf('pls:') === 0).map(x => x.slice(4)).filter(Boolean),
     seen: n.note_status === 'done', trash: w.indexOf('trash') >= 0,
     plsDef: /^playlist:/i.test(String(n.note_text || '')) ? String(n.note_text).replace(/^playlist:\s*/i, '').trim() : '' };
@@ -47574,12 +47594,28 @@ async function zzz_media_load() {
       if (w.indexOf('seen') >= 0) upd.note_status = 'done';
       try { const { error } = await sb.from('verso_chat_notes').update(upd).eq('id', x.id); if (!error) { x.note.note_tags = upd.note_tags; if (upd.note_status) { x.note.note_status = 'done'; x.seen = true; } x.tags = String(upd.note_tags || ''); x.tag = x.tags.toUpperCase(); } } catch (e) {}
     }
+
+    const groups = new Map();
+    zzzMedia.all.filter(x => !x.trash).forEach(x => { if (!groups.has(x.link)) groups.set(x.link, []); groups.get(x.link).push(x); });
+    for (const g of groups.values()) {
+      if (g.length < 2) continue;
+      g.sort((a, b) => a.num - b.num);
+      const keep = g[0], rest = g.slice(1);
+      const tags = Array.from(new Set(g.flatMap(x => zzz_media_tagw(x.tags)).filter(t => t !== 'trash')));
+      const name = g.map(x => x.name).find(Boolean) || '';
+      try {
+        await zzz_media_set_tags(keep, tags, name);
+        if (!keep.seen && g.some(x => x.seen)) await zzz_media_mark_read(keep);
+        for (const x of rest) await zzz_media_set_tags(x, zzz_media_tagw(x.tags).concat(['trash']));
+      } catch (e) {}
+    }
   } catch (err) { zzzMedia.all = zzzMedia.all || []; }
   zzzMedia.list = zzzMedia.all.filter(x => !x.trash);
 }
 async function zzz_media_add(link, name, tags) {
   link = String(link || '').trim();
   if (!/^https?:\/\//i.test(link)) { zzz6f2_show_toast('A link must start with https://', 'warn'); return null; }
+  link = zzz_media_norm(link);
   const have = (zzzMedia.all || []).find(x => x.link === link);
   if (have) return have;
   const e = await zzz_media_entry(true);
@@ -47605,7 +47641,7 @@ async function zzz_media_set_tags(it, words, name) {
   try { zzz5w8_render(); zzz3dSig = ''; zzz3d_render(); } catch (e) {}
   return true;
 }
-function zzz_media_line(it) { return it && it.link ? (zzzMedia.all || []).find(x => x.link === it.link) || null : null; }
+function zzz_media_line(it) { if (!it || !it.link) return null; const n = zzz_media_norm(it.link); return (zzzMedia.all || []).find(x => x.link === n) || null; }
 async function zzz_media_toggle_tag(it, tag, on) {
   let l = zzz_media_line(it) || await zzz_media_add(it.link, it.name || '', 'actual');
   if (!l) return false;
@@ -47726,6 +47762,7 @@ function zzz_media_open_app(link) {
 function zzz_media_title(it) { return it ? (it.name || it.theme || String(it.link || '').replace(/^https?:\/\//, '').slice(0, 60)) : ''; }
 function zzz_media_play(it, queue) {
   if (!it) return;
+  if (it.link && /^https?:\/\//i.test(it.link)) { const n = zzz_media_norm(it.link); if (n !== it.link) it = Object.assign({}, it, { link: n }); }
   if (!it.link) { zzz6f2_show_toast('This row has no link yet (LINK cell).', 'warn'); return; }
   if (queue) zzzMedia.queue = queue.filter(x => x.link);
   if (zzz_media_native() && (zzz_media_offline() || !zzz_media_embed(it.link))) { zzz_media_play_native(it, zzzMedia.queue); return; }
@@ -48102,6 +48139,7 @@ async function zzz_media_clip_auto() {
     let t = ''; try { t = await navigator.clipboard.readText(); } catch (e) { return; }
     const m = String(t || '').match(/https?:\/\/\S+/);
     if (!m || !zzz_media_is_media_link(m[0])) return;
+    m[0] = zzz_media_norm(m[0]);
     let last = ''; try { last = localStorage.getItem('zzz_media_clip_last') || ''; } catch (e) {}
     if (m[0] === last) return;
     try { localStorage.setItem('zzz_media_clip_last', m[0]); } catch (e) {}
