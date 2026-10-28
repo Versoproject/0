@@ -6978,6 +6978,11 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-row .zzz-media-pl { background: #171717; color: #D4AF37; text-align: center; }
   .zzz-media-row.is-cur > div { background: #fff7d6; }
   .zzz-media-row.is-sel > div { background: #ffd6d6; border-color: #e53935; }
+  
+  .zzz-media-row { touch-action: pan-y; transition: transform .12s; }
+  .zzz-media-row.is-sw-keep > div { border-color: #16a34a; background: #dcfce7; }
+  .zzz-media-row.is-sw-shift > div { border-color: #F97316; background: #ffedd5; }
+  .zzz-media-row.is-seen > div:first-child { background: #16a34a; color: #fff; border-color: #16a34a; text-align: center; }
   .zzz-media-empty { color: #a1a1aa; font-size: 11px; padding: 6px 2px; }
   .zzz-media-confirm { position: fixed; inset: 0; z-index: 2147483002; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; }
   .zzz-media-confirm-box { background: #171717; border: 2px solid #D4AF37; border-radius: 12px; padding: 14px; color: #fff; max-width: 320px; font-size: 13px; }
@@ -45219,7 +45224,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-28 18:43';
+const VERSO_BUILD = '2026-10-28 18:57';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -45364,6 +45369,14 @@ function zzz_ops_items(now) {
     if (!st[k]) zzz_ops_set(k, { t: now });
     mk(k, 'attention', 'New Verso version is ready - tap = CONFIRM UPDATE now (it also loads by itself when you pause)', 'CONFIRM UPDATE', () => zzz_dev_reload_now(), now);
   }
+  Object.keys(st).filter(k => k.indexOf('media:') === 0).forEach(k => {
+    const o = st[k]; const it = o.it || { link: k.slice(6) };
+    mk(k, 'open', 'VERSO MEDIA · watch later: ' + (typeof zzz_media_title === 'function' ? zzz_media_title(it) : it.link) + ' - tap = PLAY', 'PLAY', () => {
+      zzz_ops_set(k, { done: true });
+      try { if (!document.getElementById('zzzMediaWin')) zzz_media_open(); zzz_media_play(it, []); } catch (e) {}
+      zzz5w8_render(); zzz3dSig = ''; zzz3d_render();
+    }, o.t);
+  });
   Object.keys(st).filter(k => k.indexOf('updatedapp:') === 0).forEach(k => {
     const o = st[k];
     if (now - (o.t || 0) > 3 * 86400000) return;
@@ -47384,9 +47397,72 @@ async function zzz_media_load() {
 function zzz_media_hist() { try { return JSON.parse(localStorage.getItem('zzz_media_hist') || '[]') || []; } catch (e) { return []; } }
 function zzz_media_hist_add(it) {
   if (!it || !it.link) return;
-  const h = zzz_media_hist().filter(x => x.link !== it.link);
-  h.unshift({ id: it.id, theme: it.theme || '', subs: it.subs || '', name: it.name || '', link: it.link, tag: it.tag || '', t: Date.now() });
+  const all = zzz_media_hist(), old = all.find(x => x.link === it.link);
+  const h = all.filter(x => x.link !== it.link);
+  h.unshift({ id: it.id, theme: it.theme || '', subs: it.subs || '', name: it.name || '', link: it.link, tag: it.tag || '', t: Date.now(), seen: !!(old && old.seen) });
   try { localStorage.setItem('zzz_media_hist', JSON.stringify(h.slice(0, 60))); } catch (e) {}
+}
+
+function zzz_media_me() { return String((typeof zzz0r1_get_current_username === 'function' && zzz0r1_get_current_username()) || '').toLowerCase(); }
+function zzz_media_seen(it) {
+  const me = zzz_media_me(); if (!it || !it.link || !me) return false;
+  const re = new RegExp('(^|[\\s,;])seen:' + me.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=$|[\\s,;])', 'i');
+  const recs = zzzMedia.list.filter(x => x.link === it.link);
+  if (recs.length) return recs.some(x => re.test(x.subs || ''));
+  const h = zzz_media_hist().find(x => x.link === it.link);
+  return !!(h && h.seen);
+}
+async function zzz_media_mark_seen(it, on) {
+  const me = zzz_media_me(); if (!it || !it.link || !me) return;
+  const chip = 'seen:' + me;
+  try { const h = zzz_media_hist(); h.forEach(x => { if (x.link === it.link) x.seen = on; }); localStorage.setItem('zzz_media_hist', JSON.stringify(h)); } catch (e) {}
+  const recs = zzzMedia.list.filter(x => x.link === it.link && x.row);
+  let fail = 0;
+  for (const x of recs) {
+    const f = zzz_parse_fields_json(x.row);
+    const words = String(f.r8 || '').split(/\s+/).filter(w => w && w.toLowerCase() !== chip);
+    if (on) words.push(chip);
+    f.r8 = words.join(' ');
+    const payload = { ...x.row, fields_json: JSON.stringify(f), updated_at: new Date().toISOString() };
+    x.row = payload; x.subs = f.r8;
+    try {
+      const { error } = await sb.from('verso_entries').upsert(payload, { onConflict: 'entry_id' });
+      if (error) throw error;
+      try { submittedEntriesFullCache[payload.entry_id] = payload; } catch (e) {}
+    } catch (e) {
+      fail++;
+      try { submittedEntriesFullCache[payload.entry_id] = payload; zzz4_0_unsyncedEntryIds[payload.entry_id] = Object.assign({}, payload); zzz4_0_save_unsynced_entries_to_storage(); } catch (e2) {}
+    }
+  }
+  zzz6f2_show_toast((on ? '✓ played' : '✓ removed') + ' · ' + zzz_media_title(it) + (recs.length ? ' (' + recs.length + (recs.length === 1 ? ' record' : ' records') + (fail ? ', saved when online' : '') + ')' : ' (only here - no record has this link)'), 'info');
+}
+function zzz_media_shift(it) {
+  if (!it || !it.link) return;
+  zzz_ops_set('media:' + it.link, { t: Date.now(), shifted: true, until: 0, done: false, it: { id: it.id || '', theme: it.theme || '', subs: it.subs || '', name: it.name || '', link: it.link, tag: it.tag || '' } });
+  zzz6f2_show_toast('SHIFTED · ' + zzz_media_title(it) + ' - waits in NOTIFICATIONS › SHIFTED (tap there = play).', 'info');
+  try { zzz5w8_render(); zzz3dSig = ''; zzz3d_render(); } catch (e) {}
+}
+function zzz_media_bind_swipe(el, it, redraw) {
+  let x0 = null, y0 = 0, dx = 0, moved = false, pid = null;
+  el.addEventListener('pointerdown', (e) => { if (e.button > 0 || (e.target.closest && e.target.closest('.zzz-media-pl, .zzz-media-fb'))) return; x0 = e.clientX; y0 = e.clientY; dx = 0; moved = false; pid = e.pointerId; });
+  el.addEventListener('pointermove', (e) => {
+    if (x0 === null || e.pointerId !== pid) return;
+    dx = e.clientX - x0;
+    if (!moved && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(e.clientY - y0) * 1.5) { moved = true; try { el.setPointerCapture(pid); } catch (_) {} }
+    if (!moved) return;
+    el.style.transform = 'translateX(' + dx + 'px)';
+    el.classList.toggle('is-sw-keep', dx > 60); el.classList.toggle('is-sw-shift', dx < -60);
+  });
+  const end = () => {
+    if (x0 === null) return;
+    const d = dx, was = moved; x0 = null; moved = false;
+    el.style.transform = ''; el.classList.remove('is-sw-keep', 'is-sw-shift');
+    if (!was) return;
+    el._zzzSwiped = true; setTimeout(() => { el._zzzSwiped = false; }, 450);
+    if (d > 60) zzz_media_mark_seen(it, !zzz_media_seen(it)).then(redraw);
+    else if (d < -60) zzz_media_shift(it);
+  };
+  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
 }
 function zzz_media_in_tab(it, tab) {
   const words = String(it.tag || '').split(/[\s,;#:]+/).filter(Boolean);
@@ -47613,14 +47689,17 @@ async function zzz_media_open() {
     const l = zzz_media_tablist();
     if (!l.length) { const e = document.createElement('div'); e.className = 'zzz-media-empty'; e.textContent = actual ? 'Nothing played yet - what you play shows here.' : 'No row in this tab - a record with PROJECT NAME „media“ and TAG ' + zzzMedia.tab.toLowerCase() + '.'; list.appendChild(e); }
     l.forEach(it => {
-      const r = document.createElement('div'); r.className = 'zzz-media-row ' + (it.link ? 'is-gold' : 'is-silver') + (zzzMedia.sel.has(it.id) ? ' is-sel' : '');
+      const seen = zzz_media_seen(it);
+      const r = document.createElement('div'); r.className = 'zzz-media-row ' + (it.link ? 'is-gold' : 'is-silver') + (zzzMedia.sel.has(it.id) ? ' is-sel' : '') + (seen ? ' is-seen' : '');
       if (it.link) r.dataset.link = it.link;
-      cell(r, it.id ? String(it.id) : '-'); cell(r, it.theme || '-'); cell(r, it.subs || '-'); cell(r, it.name || '-'); cell(r, it.link || '-');
+      if (actual) { zzz_media_bind_swipe(r, it, draw); r.title = 'Swipe right = ✓ played (again = off) · swipe left = SHIFTED (watch later)'; }
+      cell(r, (seen ? '\u2713 ' : '') + (it.id ? String(it.id) : '-')); cell(r, it.theme || '-'); cell(r, it.subs || '-'); cell(r, it.name || '-'); cell(r, it.link || '-');
       const pb = cell(r, '\u25B6\uFE0E'); pb.className = 'zzz-media-pl';
       const fb = cell(r, '\uD83D\uDCC1'); fb.className = 'zzz-media-fb' + (zzzMediaFiles.has(it.link) ? ' has' : '');
       fb.title = zzz_media_native() ? 'Choose a file on the phone that plays when OFFLINE' : 'Choose a file on this device that plays when OFFLINE';
       fb.addEventListener('click', (e) => { e.stopPropagation(); zzz_media_pick_file(it, draw); });
       r.addEventListener('click', () => {
+        if (r._zzzSwiped) return;
         if (zzzMedia.selecting && it.id) { if (zzzMedia.sel.has(it.id)) zzzMedia.sel.delete(it.id); else zzzMedia.sel.add(it.id); draw(); return; }
         zzz_media_play(it, l);
       });
