@@ -38675,9 +38675,13 @@ function zzz14b2_render_language_settings(host) {
     b.addEventListener('click', () => { zzz_media_set_offline(v); mdBox.querySelectorAll('button').forEach(x => x.classList.toggle('is-on', x === b)); });
     mdBox.appendChild(b);
   });
+  const mdAuto = document.createElement('button'); mdAuto.type = 'button'; mdAuto.className = 'zzz16-btn' + (zzz_media_clip_auto_on() ? ' is-on' : '');
+  mdAuto.textContent = zzz_media_clip_auto_on() ? 'COPIED LINKS → ACTUAL ✓' : 'COPIED LINKS → ACTUAL off';
+  mdAuto.addEventListener('click', () => { const on = !zzz_media_clip_auto_on(); try { localStorage.setItem('zzz_media_clip_auto', on ? '1' : '0'); } catch (e) {} mdAuto.classList.toggle('is-on', on); mdAuto.textContent = on ? 'COPIED LINKS → ACTUAL ✓' : 'COPIED LINKS → ACTUAL off'; });
+  mdBox.appendChild(mdAuto);
   const mdOpen = document.createElement('button'); mdOpen.type = 'button'; mdOpen.className = 'zzz16-btn'; mdOpen.textContent = 'LINKS';
   mdOpen.addEventListener('click', () => zzz_media_open()); mdBox.appendChild(mdOpen);
-  row('VERSO MEDIA', 'ONLINE = the links play · OFFLINE = only the files chosen with 📁 at each link (in the Verso app a file on the phone, played by VERSO PLAYER also with Verso closed; on the web / PC a file kept only in this browser). YouTube & co. play in their own window and need the internet.', '', mdBox);
+  row('VERSO MEDIA CENTER', 'Media links of Instagram, YouTube, TikTok, Spotify… copied anywhere go into ALL MEDIA › ACTUAL when you come back to Verso (only media links are looked at). ONLINE = the links play · OFFLINE = only the files chosen with 📁 at each link (in the Verso app a file on the phone, played by VERSO PLAYER also with Verso closed; on the web / PC a file kept only in this browser). YouTube & co. play in their own window and need the internet.', '', mdBox);
   row('Keyboard languages', 'SK · EN always (Slovak letters by long press). Ukrainian: on / off here or in the keyboard ⚙ window; switch = slide the space key left / right (passwords stay Latin).', '', kb);
 
   const sel = document.createElement('div'); sel.className = 'zzz14b2-voice';
@@ -45266,7 +45270,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-28 22:25';
+const VERSO_BUILD = '2026-10-28 22:43';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -47894,6 +47898,13 @@ function zzz_media_edit(it, redraw) {
 
 function zzz_media_hash() {
   const h = String(location.hash || '');
+  const show = h.match(/^#media-show=(.+)$/i);
+  if (show) {
+    let link = ''; try { link = decodeURIComponent(show[1]); } catch (e) {}
+    try { history.replaceState(null, '', location.pathname + location.search + '#media'); } catch (e) {}
+    const go = () => { if (!zzz_media_me()) { setTimeout(go, 1000); return; } zzz_media_show(link); };
+    go(); return;
+  }
   const add = h.match(/^#media-add=(.+)$/i);
   if (add) {
     let link = ''; try { link = decodeURIComponent(add[1]); } catch (e) {}
@@ -47923,6 +47934,42 @@ async function zzz_media_add_clip() {
   const m = String(t || '').match(/https?:\/\/\S+/);
   if (!m) { zzz6f2_show_toast('Copy a link first (e.g. Instagram › Share › Copy link), then + LINK.', 'warn'); return; }
   await zzz_media_add_link(m[0]);
+}
+
+const ZZZ_MEDIA_HOSTS = /^(www\.|m\.)?(instagram\.com|youtube\.com|youtu\.be|tiktok\.com|vm\.tiktok\.com|open\.spotify\.com|vimeo\.com|facebook\.com|fb\.watch|soundcloud\.com|twitch\.tv)$/i;
+function zzz_media_is_media_link(u) {
+  try { const x = new URL(u); return ZZZ_MEDIA_HOSTS.test(x.hostname) || /\.(mp3|mp4|m4a|aac|ogg|oga|opus|wav|flac|webm|m3u8|mpd)(\?|$)/i.test(x.pathname); } catch (e) { return false; }
+}
+function zzz_media_clip_auto_on() { try { return localStorage.getItem('zzz_media_clip_auto') !== '0'; } catch (e) { return true; } }
+let zzzMediaClipBusy = false;
+async function zzz_media_clip_auto() {
+  if (zzzMediaClipBusy || !zzz_media_clip_auto_on() || !zzz_media_me() || document.visibilityState !== 'visible' || !document.hasFocus()) return;
+  zzzMediaClipBusy = true;
+  try {
+    let t = ''; try { t = await navigator.clipboard.readText(); } catch (e) { return; }
+    const m = String(t || '').match(/https?:\/\/\S+/);
+    if (!m || !zzz_media_is_media_link(m[0])) return;
+    let last = ''; try { last = localStorage.getItem('zzz_media_clip_last') || ''; } catch (e) {}
+    if (m[0] === last) return;
+    try { localStorage.setItem('zzz_media_clip_last', m[0]); } catch (e) {}
+    await zzz_media_add_link(m[0]);
+  } finally { zzzMediaClipBusy = false; }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(zzz_media_clip_auto, 700); });
+window.addEventListener('focus', () => setTimeout(zzz_media_clip_auto, 700));
+
+async function zzz_media_show(link) {
+  if (!document.getElementById('zzzMediaWin')) await zzz_media_open();
+  if (zzzMedia.loadedOf !== zzz_media_me()) await zzz_media_load();
+  link = link || (zzzMedia.cur && zzzMedia.cur.link) || '';
+  if (!link) return;
+  zzzMedia.tab = 'ACTUAL'; zzzMedia.pls = '';
+  zzz_media_redraw();
+  setTimeout(() => {
+    const r = Array.from(document.querySelectorAll('#zzzMediaWin .zzz-media-row[data-link]')).find(x => x.dataset.link === link);
+    if (r) { r.scrollIntoView({ block: 'center' }); r.classList.add('is-cur'); }
+    else zzz6f2_show_toast('This link is not in ALL MEDIA yet - + LINK adds it.', 'info');
+  }, 150);
 }
 async function zzz_media_add_link(link) {
   if (zzzMedia.loadedOf !== zzz_media_me()) await zzz_media_load();
@@ -48103,7 +48150,9 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
   chipDefs.push({ t: '\u2606', sym: true, title: 'Symbols ? ! $ ( ) * "' });
 
   if (isText) {
-    chipDefs.push({ t: '\u{1F4CB}', clip: true, title: 'Clipboard - recent copies', cls: 'is-emoji' });
+    chipDefs.push({ t: '\u{1F4CB}', clip: true, title: 'BOX - recent copies', cls: 'is-emoji' });
+
+    { const last = (zzz_clip_list()[0] || '').replace(/^https?:\/\/(www\.)?/, ''); chipDefs.push({ t: '\u2398' + (last ? ' ' + (last.length > 10 ? last.slice(0, 9) + '\u2026' : last) : ''), paste: true, title: 'PASTE - the last copied text', cls: 'is-text' }); }
     chipDefs.push({ t: 'OK', ins: 'OK', title: 'Quick reply: OK', cls: 'is-text' });
     chipDefs.push({ t: 'I will respond later', ins: 'I will respond later', title: 'Quick reply', cls: 'is-text' });
     ['\u2764\uFE0F', '\u{1F44D}', '\u{1F44B}'].forEach(em => chipDefs.push({ t: em, title: 'Insert ' + em, cls: 'is-emoji' }));
@@ -48185,7 +48234,13 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       e.preventDefault(); e.stopPropagation();
       if (downX === null || Math.abs(e.clientX - downX) > 10) { downX = null; return; }
       downX = null;
-      if (d.emoji) openEmoji('emoji'); else if (d.sym) openEmoji('sym'); else if (d.clip) openEmoji('clip'); else { closeEmoji(); insertChip(d.ins || ch); }
+      if (d.emoji) openEmoji('emoji'); else if (d.sym) openEmoji('sym'); else if (d.clip) openEmoji('clip');
+      else if (d.paste) {
+        closeEmoji();
+        (async () => { let t = ''; try { t = await navigator.clipboard.readText(); } catch (er) {} if (!t) t = zzz_clip_list()[0] || '';
+          if (t) { zzz_vkb_text_insert(target, t); zzz_clip_remember(t); } else zzz6f2_show_toast('Nothing copied yet.', 'info'); })();
+      }
+      else { closeEmoji(); insertChip(d.ins || ch); }
     });
     const up = () => c.classList.remove('is-down');
     c.addEventListener('pointerup', up); c.addEventListener('pointercancel', () => { downX = null; up(); }); c.addEventListener('pointerleave', up);
@@ -48502,8 +48557,8 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       now.className = 'zzz-vkb-now';
       now.style.gridColumn = '1 / span 7'; now.style.gridRow = '3';
       const nowT = document.createElement('span'); nowT.className = 'zzz-vkb-now-t'; nowT.textContent = zzz_vkb_now_text(); now.appendChild(nowT);
-      now.title = 'Tap = VERSO MEDIA CENTER';
-      now.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); zzz_media_open(); });
+      now.title = '2× tap = its line in VERSO MEDIA CENTER';
+      { let nt = 0; now.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); const n = Date.now(); if (n - nt < 350) { nt = 0; zzz_media_show(); } else nt = n; }); }
       g.appendChild(now);
 
       const win = zzz_vkb_calc_box(type, target);
@@ -49069,7 +49124,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 75;
+const ZZZ14B17_APP_LATEST = 76;
 function zzz14b17_app_code() {
 
   try {
