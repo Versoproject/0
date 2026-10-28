@@ -235,7 +235,8 @@ function zzz_ci_paint() {
 function zzz_ci_weather() {
   try {
     var pl = ZZZ_CI_PLACE;
-    var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + pl.lat + '&longitude=' + pl.lon + '&current=temperature_2m,apparent_temperature,weather_code,is_day&timezone=auto';
+
+    var url = SUPABASE_URL + '/functions/v1/verso-weather?a=wx&lat=' + (Math.round(Number(pl.lat) * 10) / 10) + '&lon=' + (Math.round(Number(pl.lon) * 10) / 10);
     fetch(url, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (j) {
       if (pl !== ZZZ_CI_PLACE) return;
       if (!j || !j.current) throw new Error('no current data in the answer');
@@ -38604,7 +38605,6 @@ function zzz24_render_regimes(host) {
   host.appendChild(box);
 }
 
-const ZZZ22_GEO_URL = 'https://geocoding-api.open-meteo.com/v1/search';
 let zzz22Live = null;
 function zzz22_wx_text(code) {
   const c = Number(code);
@@ -38682,6 +38682,8 @@ function zzz22_render_live_data(host) {
       .zzz22-res{text-align:left;padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.35);background:#1b1b1b;color:#fff;font-size:14px}
       .zzz22-res small{display:block;opacity:.7;font-size:12px}
       .zzz22-attr{margin-top:8px;font-size:11px;opacity:.7}
+.zzz-ext-orange { color: #f0962e; font-size: 12px; margin-top: 4px; }   /* [GR:EXTERNAL-COLORS] orange = external source, safe */
+.zzz-ext-red { color: #e04848; font-size: 12px; margin-top: 4px; }   /* [GR:EXTERNAL-COLORS] red = external, data leaves Verso */
       .zzz22-attr a{color:#c9a44f}`;
     document.head.appendChild(st);
   }
@@ -38732,7 +38734,7 @@ function zzz22_render_live_data(host) {
     results.innerHTML = '';
     if (q.length < 2) { say('Type at least 2 letters of the city.', true); return; }
     searching = true; sb.disabled = true; say('Searching…');
-    const url = ZZZ22_GEO_URL + '?name=' + encodeURIComponent(q) + '&count=6&language=sk&format=json';
+    const url = SUPABASE_URL + '/functions/v1/verso-weather?a=geo&q=' + encodeURIComponent(q.slice(0, 60));
     fetch(url, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(j => {
       const list = (j && Array.isArray(j.results)) ? j.results.filter(x => typeof x.latitude === 'number' && typeof x.longitude === 'number') : [];
       if (!list.length) { say('No place found for "' + q + '". Check the spelling or try a bigger town nearby.', true); return; }
@@ -38760,7 +38762,11 @@ function zzz22_render_live_data(host) {
   const attr = document.createElement('div'); attr.className = 'zzz22-attr';
   attr.appendChild(document.createTextNode('Weather data by '));
   const a = document.createElement('a'); a.href = 'https://open-meteo.com/'; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = 'Open-Meteo.com';
-  attr.appendChild(a); box.appendChild(attr);
+  attr.appendChild(a);
+
+  const ext = document.createElement('div'); ext.className = 'zzz-ext-orange';
+  ext.textContent = 'EXTERNAL · safe: weather comes from Open-Meteo through Verso\'s own server - Open-Meteo never sees your device, your IP or who you are; only the place rounded to about 10 km leaves Verso.';
+  attr.appendChild(ext); box.appendChild(attr);
 
   host.insertBefore(box, host.firstChild);
   zzz22Live = { box, timeEl, timeSub, wxName, wxSub, wxIcon, wxErr, placeNow, tick: setInterval(() => zzz22_live_paint(), 1000) };
@@ -45115,7 +45121,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-28 16:50';
+const VERSO_BUILD = '2026-10-28 17:16';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
