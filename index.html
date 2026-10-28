@@ -37686,10 +37686,24 @@ function zzz_native_note(url, wait) {
   } catch (e) {}
 }
 
+function zzz_native_launch(url) {
+  try { localStorage.setItem('zzz_native_at', JSON.stringify({ t: Date.now(), u: String(url).split('#')[0].slice(0, 80) })); } catch (e) {}
+  try { const a = document.createElement('a'); a.href = url; a.style.display = 'none'; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 1000); }
+  catch (e) { try { location.href = url; } catch (e2) {} }
+}
+(function zzz_native_reload_log() {
+  try {
+    const r = JSON.parse(localStorage.getItem('zzz_native_at') || 'null');
+    if (!r || !r.t) return;
+    localStorage.removeItem('zzz_native_at');
+    const s = Math.round((Date.now() - r.t) / 1000);
+    if (s >= 0 && s < 90) setTimeout(() => { try { zzz_report_issue('app-start', 'Verso page reloaded ' + s + ' s after opening ' + r.u + ' (white screen?)', { after_s: s, url: r.u, tags: ['app-start', 'reload'] }); } catch (e) {} }, 8000);
+  } catch (e) {}
+})();
 function zzz_native_go(url) {
   let active = true;
   try { if (navigator.userActivation) active = navigator.userActivation.isActive; } catch (e) {}
-  if (active) { zzz_native_note(url); try { location.href = url; } catch (e) {} return; }
+  if (active) { zzz_native_note(url); zzz_native_launch(url); return; }
   zzz_native_go._pending = url; zzz_native_go._at = Date.now();
   zzz_native_note(url, true);
 }
@@ -37699,7 +37713,7 @@ function zzz_native_go(url) {
   zzz_native_go._pending = null;
   if (Date.now() - (zzz_native_go._at || 0) > 8000) return;
   zzz_native_note(url);
-  try { location.href = url; } catch (e) {}
+  zzz_native_launch(url);
 }, true));
 document.addEventListener('click', (e) => {
   const a = e.target && e.target.closest && e.target.closest('a[href^="intent://"]');
@@ -37873,41 +37887,63 @@ function zzz16_alert(d) {
   return false;
 }
 
-function zzz16_quiet() { try { return !!zzz16_prefs().quiet; } catch (e) { return false; } }
+function zzz16_quiet_hours() { try { const h = Number(zzz16_prefs().quietHours); return (isFinite(h) && h >= 0 && h <= 24) ? h : 2; } catch (e) { return 2; } }
+function zzz16_quiet() {
+  try {
+    const p = zzz16_prefs();
+    if (!p.quiet) return false;
+    if (p.quietUntil && Date.now() >= Number(p.quietUntil)) { p.quiet = false; p.quietUntil = 0; zzz16_save_prefs(p); return false; }
+    return true;
+  } catch (e) { return false; }
+}
+setInterval(() => {
+  try {
+    const p = zzz16_prefs();
+    if (p.quiet && p.quietUntil && Date.now() >= Number(p.quietUntil)) {
+      zzz16_quiet(); zzz_ai_paint();
+      zzz6f2_show_toast('QUIET REGIME ended (' + (zzz16_quiet_hours() || '') + ' h) - VERSO READER voice back on.', 'info', 6000);
+    }
+  } catch (e) {}
+}, 30000);
 
 let zzz16QuietPending = null;
 function zzz16_set_quiet(on) {
-  const p = zzz16_prefs(); const prev = !!p.quiet; p.quiet = !!on; zzz16_save_prefs(p);
+  const hrs = zzz16_quiet_hours();
+  const p = zzz16_prefs(); const prev = !!p.quiet, prevUntil = p.quietUntil || 0;
+  p.quiet = !!on; p.quietUntil = (on && hrs > 0) ? Date.now() + hrs * 3600000 : 0; zzz16_save_prefs(p);
   if (on) zzz16_stop_reading();
   try { zzz_haptic_pulse(on ? 60 : 30); } catch (e) {}
   const withApp = zzz14b17_in_app() || (zzz14b17_is_android() && zzz14b17_app_code() > 0);
   const say = (txt) => { try { zzz6f2_show_toast(txt, 'info', 6000); } catch (e) {} };
   const log = (res) => { try { zzz_report_issue('reader', 'Quiet regime ' + (on ? 'ON' : 'OFF') + ' - ' + res, { quiet: !!on, app: withApp, tags: ['reader', 'quiet'] }); } catch (e) {} };
   if (withApp) {
-    zzz16QuietPending = { on: !!on, prev, t: Date.now(), done: false };
+    zzz16QuietPending = { on: !!on, prev, prevUntil, t: Date.now(), done: false };
     const pend = zzz16QuietPending;
-    try { zzz_native_go('intent://quick/quiet?on=' + (on ? 1 : 0) + '#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end'); } catch (e) {}
+    try { zzz_native_go('intent://quick/quiet?on=' + (on ? 1 : 0) + '&h=' + hrs + '#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end'); } catch (e) {}
     setTimeout(() => {
       if (zzz16QuietPending !== pend || pend.done) return;
       zzz16QuietPending = null;
-      const q = zzz16_prefs(); q.quiet = prev; zzz16_save_prefs(q);
+      const q = zzz16_prefs(); q.quiet = prev; q.quietUntil = pend.prevUntil; zzz16_save_prefs(q);
       try { zzz_ai_paint(); } catch (e) {}
       say('QUIET REGIME not changed - the Verso app did not take it (was the question "open Verso" cancelled?). Hold +AI+ again and tap Open.');
       log('app did not take it, web undone');
     }, 4000);
-    say(on ? 'QUIET REGIME ON - VERSO READER silent in Verso and in the app; notifications still come.' : 'QUIET REGIME OFF - VERSO READER voice back on (Verso and the app).');
+    say(on ? 'QUIET REGIME ON' + (hrs > 0 ? ' for ' + hrs + ' h' : '') + ' - VERSO READER silent in Verso and in the app; notifications still come.' : 'QUIET REGIME OFF - VERSO READER voice back on (Verso and the app).');
   } else {
-    say(on ? 'QUIET REGIME ON - VERSO READER silent; notifications still come. Hold +AI+ again to switch it off.' : 'QUIET REGIME OFF - VERSO READER voice back on.');
+    say(on ? 'QUIET REGIME ON' + (hrs > 0 ? ' for ' + hrs + ' h' : '') + ' - VERSO READER silent; notifications still come. Hold +AI+ again to switch it off.' : 'QUIET REGIME OFF - VERSO READER voice back on.');
     log('web only (no Verso app on this phone)');
   }
   try { zzz_ai_paint(); } catch (e) {}
 }
-document.addEventListener('visibilitychange', () => {
+
+function zzz16_quiet_confirm(how) {
   const pend = zzz16QuietPending;
-  if (!pend || pend.done || document.visibilityState !== 'hidden' || Date.now() - pend.t > 4000) return;
+  if (!pend || pend.done || Date.now() - pend.t > 4000) return;
   pend.done = true; zzz16QuietPending = null;
-  try { zzz_report_issue('reader', 'Quiet regime ' + (pend.on ? 'ON' : 'OFF') + ' - web + app switched together', { quiet: pend.on, app: true, tags: ['reader', 'quiet'] }); } catch (e) {}
-});
+  try { zzz_report_issue('reader', 'Quiet regime ' + (pend.on ? 'ON' : 'OFF') + ' - web + app switched together (' + how + ')', { quiet: pend.on, app: true, tags: ['reader', 'quiet'] }); } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') zzz16_quiet_confirm('hidden'); });
+window.addEventListener('blur', () => zzz16_quiet_confirm('blur'));
 (function zzz16_quiet_hold() {
 
   let t = null, armed = false, x0 = 0, y0 = 0;
@@ -38468,6 +38504,37 @@ function zzz14b2_render_language_settings(host) {
   if (appHere) tbtn.addEventListener('click', () => zzz_native_go('intent://reader#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end'));
   tb.appendChild(tbtn);
   row('Translation', 'In the Verso app: VERSO READER › TRANSLATION - messages are translated into your home language before they are read (NOTIFY and CONTENT READER separately; Google offline in the phone, marked EXTERNAL).', 'in the browser too (own offline translator); better translation via Verso AI.', tb);
+  host.appendChild(box);
+  zzz24_render_regimes(host);
+}
+
+function zzz24_render_regimes(host) {
+  const box = document.createElement('div'); box.className = 'zzz16-box';
+  const h = document.createElement('h3'); h.textContent = 'REGIMES'; box.appendChild(h);
+  const r = document.createElement('div'); r.className = 'zzz16-row';
+  const l = document.createElement('div'); l.textContent = 'QUIET REGIME';
+  const st = document.createElement('small'); st.className = 'zzz14b2-now'; l.appendChild(st);
+  const how = document.createElement('small');
+  how.textContent = 'VERSO READER reads nothing aloud, notifications still come. Switch on / off: hold the +AI+ circle 1-2 s until it vibrates, then lift the finger (in the Verso app too - web and app switch together; if Android asks „open Verso“, tap Open). While it is on, the +AI+ circle is gold. It ends by itself after the hours below (0 = until you switch it off).';
+  l.appendChild(how); r.appendChild(l);
+  const c = document.createElement('div'); c.className = 'zzz14b2-voice';
+  const tg = document.createElement('button'); tg.type = 'button';
+  const hi = document.createElement('input'); hi.type = 'number'; hi.min = '0'; hi.max = '24'; hi.step = '1'; hi.inputMode = 'numeric';
+  hi.value = String(zzz16_quiet_hours()); hi.style.cssText = 'width:4.2em;text-align:center;font-size:16px;padding:6px;border-radius:8px';
+  const hl = document.createElement('span'); hl.textContent = ' h'; hl.style.cssText = 'align-self:center;margin-right:6px';
+  const paint = () => {
+    const on = zzz16_quiet(), u = Number(zzz16_prefs().quietUntil || 0);
+    tg.className = 'zzz16-btn' + (on ? ' is-on' : ''); tg.textContent = on ? 'ON' : 'OFF';
+    st.textContent = on ? ('✓ ON' + (u ? ' until ' + new Date(u).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ' until switched off')) : 'off';
+  };
+  hi.addEventListener('change', () => {
+    let v = Math.round(Number(hi.value)); if (!isFinite(v) || v < 0) v = 0; if (v > 24) v = 24; hi.value = String(v);
+    const p = zzz16_prefs(); p.quietHours = v; zzz16_save_prefs(p);
+    try { zzz6f2_show_toast(v ? 'QUIET REGIME will end by itself after ' + v + ' h (from the next switch on).' : 'QUIET REGIME stays on until you switch it off.', 'info'); } catch (e) {}
+  });
+  tg.addEventListener('click', () => { zzz16_set_quiet(!zzz16_quiet()); setTimeout(paint, 50); setTimeout(paint, 4300); });
+  c.appendChild(hi); c.appendChild(hl); c.appendChild(tg); r.appendChild(c); box.appendChild(r);
+  paint();
   host.appendChild(box);
 }
 
@@ -44982,7 +45049,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-28 00:58';
+const VERSO_BUILD = '2026-10-28 09:13';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -48017,7 +48084,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 60;
+const ZZZ14B17_APP_LATEST = 64;
 function zzz14b17_app_code() {
 
   try {
