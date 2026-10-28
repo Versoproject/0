@@ -6916,6 +6916,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-vkb-l-lab { position: absolute; left: 0; right: 0; bottom: 0; height: calc(50% - 2px); display: flex; align-items: center; justify-content: center; pointer-events: none; }
   
   .zzz-vkb-calc-grid { grid-template-columns: repeat(10, 1fr); grid-template-rows: repeat(3, 1fr); }
+  
+  .zzz-vkb-panel.zzz-vkb-full { left: 0 !important; top: 0 !important; width: 100vw !important; height: 100vh; height: 100dvh; max-width: none; border-radius: 0;
+    display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); padding-bottom: calc(5px + env(safe-area-inset-bottom, 0px)); }
+  .zzz-vkb-full .zzz-vkb-body { flex: 1 1 auto; height: auto; }
+  .zzz-vkb-full .zzz-vkb-calc-grid { grid-template-rows: 36px minmax(0, 1fr) minmax(0, 1fr); }
+  .zzz-vkb-full .zzz-vkb-body > .zzz-vkb-row:not(.zzz-vkb-grid) { flex: 0 0 var(--zzz-vkb-key-h, 40px); }
   .zzz-vkb-row-sym .zzz-vkb-key { font-size: 17px; }
   .zzz-vkb-op { background: #1f1f1f; color: #D4AF37; }
   .zzz-vkb-calc { display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 1.5px solid #3f3f46; border-radius: 8px;
@@ -45235,7 +45241,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-28 19:22';
+const VERSO_BUILD = '2026-10-28 19:40';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -45464,7 +45470,10 @@ if (ZZZ_DEV_AUTO_UPDATE) {
       if (!ai) return;
       const now = Date.now();
       if (window.zzzAiHoldAt && now - window.zzzAiHoldAt < 800) { lastAt = 0; return; }
-      if (now - lastAt <= 350) { lastAt = 0; zzz_dev_double_tap_update(); } else lastAt = now;
+
+      clearTimeout(window.zzzAiOneT);
+      if (now - lastAt <= 350) { lastAt = 0; zzz_dev_double_tap_update(); }
+      else { lastAt = now; window.zzzAiOneT = setTimeout(() => { if (lastAt === now) { lastAt = 0; try { zzz_vkb_open_media(); } catch (er) {} } }, 360); }
     }, true);
   }
   let zzzDevHiddenAt = 0;
@@ -46822,6 +46831,7 @@ function zzz_vkb_keep_bottom(t, r, y, b) {
 }
 function zzz_vkb_place(panel) {
   if (!panel || !panel.isConnected) return;
+  if (panel._full) return;
   const t = panel._target;
   if (panel._text && !(t && t.isConnected)) { zzz_vkb_hide(); return; }
   if (panel._moved) { zzz_vkb_move_to(panel, parseFloat(panel.style.left) || 0, parseFloat(panel.style.top) || 0); return; }
@@ -46977,6 +46987,27 @@ function zzz_vkb_bind_head(panel, head) {
   head.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
+function zzz_vkb_toggle_full(panel, on) {
+  panel._full = on === undefined ? !panel._full : !!on;
+  panel.classList.toggle('zzz-vkb-full', panel._full);
+  if (!panel._full) { panel.style.height = ''; zzz_vkb_place(panel); }
+  setTimeout(() => { try { zzz_media_place(); } catch (e) {} }, 30);
+}
+
+function zzz_vkb_open_media() {
+  if (zzz_vkbPanel && zzz_vkbPanel.isConnected && zzz_vkbPanel._aiOpen) { zzz_vkb_hide(); return; }
+  let t = document.getElementById('zzzVkbMediaTarget');
+  if (!t) { t = document.createElement('textarea'); t.id = 'zzzVkbMediaTarget'; t.style.display = 'none'; t.setAttribute('aria-hidden', 'true'); document.body.appendChild(t); }
+  zzz_vkb_show(t, false, '', null, { text: true, media: true });
+  const panel = zzz_vkbPanel;
+  if (!panel) return;
+  panel._aiOpen = true; panel._moved = true;
+  const b = zzz_vkb_bounds();
+  let pos = null; try { pos = JSON.parse(localStorage.getItem('zzz_vkb_ai_pos') || 'null'); } catch (e) {}
+  if (pos && typeof pos.x === 'number') zzz_vkb_move_to(panel, pos.x, pos.y);
+  else zzz_vkb_move_to(panel, (b.left + b.right - panel.offsetWidth) / 2, b.top);
+  setTimeout(() => { try { zzz_media_place(); } catch (e) {} }, 40);
+}
 function zzz_vkb_toggle_small(panel) {
   panel._small = !panel._small;
   panel.classList.toggle('zzz-vkb-small', panel._small);
@@ -47974,12 +48005,12 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       e.preventDefault(); e.stopPropagation();
       const close = !xMove;
       xStop();
-      if (!close) return;
+      if (!close) { if (panel._aiOpen) { try { localStorage.setItem('zzz_vkb_ai_pos', JSON.stringify({ x: parseFloat(panel.style.left) || 0, y: parseFloat(panel.style.top) || 0 })); } catch (er) {} } return; }
 
       const now = Date.now();
       if (panel._xTapAt && now - panel._xTapAt <= ZZZ_VKB_DOUBLE_TAP_MS) {
         clearTimeout(panel._xCloseT); panel._xTapAt = 0;
-        zzz_vkb_toggle_small(panel);
+        if (page === 'media') zzz_vkb_toggle_full(panel); else zzz_vkb_toggle_small(panel);
         return;
       }
       panel._xTapAt = now;
@@ -48106,7 +48137,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     ai.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); });
     ai.addEventListener('pointerup', (e) => {
       e.preventDefault(); e.stopPropagation(); zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS); closeEmoji();
-      if (page === 'media') page = mediaBack || 'letters'; else { mediaBack = page; page = 'media'; }
+      if (page === 'media') { page = mediaBack || 'letters'; if (panel._full) zzz_vkb_toggle_full(panel, false); } else { mediaBack = page; page = 'media'; }
       draw();
     });
     ai.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
@@ -48146,7 +48177,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
   const kbUk = isText ? zzz23_kb_prefs() : { uk: false, lang: 'sk' };
   const swipeSpace = isText && !!kbUk.uk;
   let ukMode = swipeSpace && kbUk.lang === 'uk';
-  let page = 'letters';
+  let page = opts && opts.media ? 'media' : 'letters';
   let mediaBack = 'letters';
   let caps = false;
 
@@ -48487,6 +48518,16 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
   };
   draw();
   panel._redrawMedia = () => { if (page === 'media') draw(); };
+  {
+    let lastT = 0;
+    panel.addEventListener('pointerup', (e) => {
+      if (page !== 'media') return;
+      const el = e.target;
+      if (el && el.closest && el.closest('button, .zzz-vkb-key, .zzz-vkb-chip, .zzz-vkb-now, .zzz-vkb-screen, .zzz-vkb-calc, .zzz-vkb-close, input, textarea')) return;
+      const n = Date.now();
+      if (n - lastT <= 350) { lastT = 0; zzz_vkb_toggle_full(panel); } else lastT = n;
+    });
+  }
   panel._target = target;
   {
     const sz = zzz_vkb_size_load();
