@@ -45270,7 +45270,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-28 22:43';
+const VERSO_BUILD = '2026-10-28 22:44';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -45368,13 +45368,14 @@ function zzz_ops_items(now) {
       if (have && lastApp && have > lastApp) zzz_ops_set('updatedapp:' + have, { t: now, from: lastApp });
       if (have && have !== lastApp) localStorage.setItem('verso_last_app', String(have));
     } catch (e) {}
-    if (have && have < ZZZ14B17_APP_LATEST) {
-      const k = 'app:' + ZZZ14B17_APP_LATEST;
+    const latestApp = Math.max(ZZZ14B17_APP_LATEST, Number(zzzVersoLiveApp) || 0);
+    if (have && have < latestApp) {
+      const k = 'app:' + latestApp;
       if (!st[k]) zzz_ops_set(k, { t: now });
 
       const firstSeen = (st[k] && st[k].t) || now;
       if (have >= 29 && now - firstSeen < 24 * 3600000 && !(st[k] && st[k].ask)) {   } else
-      mk(k, 'urgent', `New Verso app 1.0.${ZZZ14B17_APP_LATEST} (you have 1.0.${have}) - tap = CONFIRM UPDATE (verified, signed by The Verso Project)`, 'CONFIRM UPDATE', zzz_ops_app_update_now, now);
+      mk(k, 'urgent', `New Verso app 1.0.${latestApp} (you have 1.0.${have}) - tap = CONFIRM UPDATE (verified, signed by The Verso Project)`, 'CONFIRM UPDATE', zzz_ops_app_update_now, now);
     }
   }
 
@@ -45449,8 +45450,19 @@ function zzz_dev_double_tap_update() {
 document.addEventListener('visibilitychange', () => {
   if (zzzDblReloadOnReturn && document.visibilityState === 'visible') { zzzDblReloadOnReturn = false; setTimeout(() => zzz_dev_reload_now(), 600); }
 });
-setTimeout(() => { try { zzz14b17_live_app(); zzz14b17_live_web(); } catch (e) {} }, 4000);
-setInterval(() => { try { if (document.visibilityState === 'visible') { zzz14b17_live_app(); zzz14b17_live_web(); } } catch (e) {} }, 10 * 60000);
+
+let zzzLiveCheckAt = 0;
+function zzz14b17_live_check(force) {
+  if (!force && Date.now() - zzzLiveCheckAt < 60000) return;
+  zzzLiveCheckAt = Date.now();
+  const a0 = zzzVersoLiveApp, w0 = zzzVersoLiveWeb;
+  Promise.all([zzz14b17_live_app(), zzz14b17_live_web()]).then(() => {
+    if (zzzVersoLiveApp !== a0 || zzzVersoLiveWeb !== w0) { try { window.dispatchEvent(new Event('zzz-verso-live')); } catch (e) {} }
+  }).catch(() => {});
+}
+setTimeout(() => { try { zzz14b17_live_check(true); } catch (e) {} }, 4000);
+setInterval(() => { try { if (document.visibilityState === 'visible') zzz14b17_live_check(true); } catch (e) {} }, 2 * 60000);
+document.addEventListener('visibilitychange', () => { try { if (document.visibilityState === 'visible') zzz14b17_live_check(false); } catch (e) {} });
 function zzz_dev_reload_now() {
   try { if (typeof zzz_wip_flush === 'function') zzz_wip_flush(); } catch (e) {}
   try { if (typeof zzz_ui_save === 'function') zzz_ui_save(true); } catch (e) {}
@@ -49314,6 +49326,8 @@ function zzz14b17_settings_updates(host) {
   };
   document.addEventListener('visibilitychange', onVis);
   window.addEventListener('focus', onVis);
+  const onLive = () => { if (!host.isConnected) { window.removeEventListener('zzz-verso-live', onLive); return; } paint(); };
+  window.addEventListener('zzz-verso-live', onLive);
 }
 
 function zzz14b17_live_app() {
