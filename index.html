@@ -2564,6 +2564,25 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   }
   .zzz1cn-clock.is-on { background-color: #D4AF37; border-color: #D4AF37; color: #171717; }
   
+  .zzz23tr-tog {
+    flex: 0 0 26px; height: 24px; padding: 0; margin-left: 2px; box-sizing: border-box; overflow: hidden; white-space: nowrap;
+    border: 1.5px solid #c9b77a; border-radius: 6px; background-color: #f5f5f0; color: #8a6d1f;
+    font-size: 8px; font-weight: 800; line-height: 1; letter-spacing: -0.2px; cursor: pointer;
+  }
+  .zzz23tr-tog.is-in { border-color: #e08a1e; color: #b8650a; background-color: #fff3e2; }
+  .zzz23tr-tog.is-out { border-color: #e08a1e; background-color: #e08a1e; color: #fff; }
+  .zzz23tr-chip { display: inline-block; margin: 2px 0 0; padding: 0 6px; height: 16px; border: 1px solid #e08a1e; border-radius: 8px;
+    background: #fff3e2; color: #b8650a; font: 800 9px/14px system-ui, sans-serif; cursor: pointer; }
+  .zzz23tr-mark { color: #b8650a; font-size: 8px; font-weight: 800; }
+  .zzz23tr-pick { position: fixed; left: 8px; right: 8px; z-index: 2147483000; max-width: 420px; margin: 0 auto; padding: 10px 12px 12px;
+    background: #141414; color: #fff; border: 2px solid #D4AF37; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.6); }
+  .zzz23tr-pick-h { color: #D4AF37; font: 800 13px/1.2 system-ui, sans-serif; margin-right: 28px; }
+  .zzz23tr-pick-s { font-size: 11px; opacity: .8; margin: 3px 0 8px; }
+  .zzz23tr-pick-g { display: flex; flex-wrap: wrap; gap: 6px; }
+  .zzz23tr-pb { min-width: 50px; height: 34px; padding: 0 8px; border: 1.5px solid #D4AF37; border-radius: 8px; background: #222; color: #fff; font: 800 13px/1 system-ui, sans-serif; }
+  .zzz23tr-pb.is-on { background: #D4AF37; color: #171717; }
+  .zzz23tr-pick-x { position: absolute; top: 6px; right: 8px; width: 26px; height: 26px; border: 0; border-radius: 13px; background: #333; color: #fff; font-size: 16px; line-height: 1; }
+  
   .zzz1cn-target-row:has(.zzz1cn-target.is-set) .zzz1cn-target-x {
     border-style: solid;
     background-color: rgba(212, 175, 55, 0.14);
@@ -17517,6 +17536,9 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
   cnPaintClock();
   cnTargetRow.appendChild(cnClock);
 
+  try { cnTargetRow.appendChild(zzz23tr_toggle(() => String(cnEntryKey || ''))); } catch (e) {}
+  document.addEventListener('zzz23tr-changed', (ev) => { try { if (cnFeed.isConnected && ev.detail && (ev.detail.lang || ev.detail.key === String(cnEntryKey || ''))) cnRefreshFeed(); } catch (e) {} });
+
   cnFeed.addEventListener('click', (e) => {
     const n = e.target.closest && e.target.closest('.zzz1cn-note-number');
     if (!n || !cnFeed.contains(n)) return;
@@ -17579,7 +17601,14 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
 
     const mAt = zzz6f58_names(raw, false);
     const mOnly = zzz6f58_names(raw, true);
-    const body = raw;
+    let body = raw;
+
+    let cnTrOrig = null;
+    if (typeof zzz23tr_outgoing === 'function' && zzz23tr_on() && zzz23tr_chat(cnEntryKey).m === 'out') {
+      if (!zzz1cn_opt_has('note_orig')) zzz6f2_show_toast('Translator OUT is not ready on the server yet - sent as written.', 'warn');
+      else if (mAt.length || mOnly.length || /https?:\/\/|verso:/i.test(raw)) zzz6f2_show_toast('Not translated - names and links must stay exact. Sent as written.', 'info');
+      else { const t = await zzz23tr_outgoing(cnEntryKey, raw); if (t) { body = t.text; cnTrOrig = { orig: t.orig, lang: t.lang }; } }
+    }
 
     const granted = zzz6f58_grant_access(mAt.concat(mOnly), cnGateKey);
 
@@ -17593,7 +17622,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
       const a = cnFeedNotes.find(x => String(x.id) === String(cnOptionsAnchor));
       return a && Number(a.note_number) === Number(target) ? Number(a.id) : 0;
     })();
-    const saved = await zzz1cn_add(cnEntryKey, body, privNow, target ? { base: Number(target) } : null, name, !!toSaved, zzz1cn_prio_level(prio), mOnly, cnTaskTags, cnReplyTo);
+    const saved = await zzz1cn_add(cnEntryKey, body, privNow, target ? { base: Number(target) } : null, name, !!toSaved, zzz1cn_prio_level(prio), mOnly, cnTaskTags, cnReplyTo, cnTrOrig);
     if (saved && cnTaskArmSnap && (String(cnTaskArmSnap.num || '').trim() || String(cnTaskArmSnap.amount || '').trim())) {
       try {
         let nid = saved.id, nno = saved.note_number;
@@ -35484,7 +35513,7 @@ function zzz1cn_prio_control(initial, onChange) {
 }
 const ZZZ1CN_COLS_CORE = 'id, entry_key, username, note_number, note_part, note_name, note_text, is_private, is_project';
 
-const ZZZ1CN_COLS_OPT = ['note_status', 'is_saved', 'created_at', 'is_priority', 'note_to', 'note_priority', 'note_tags', 'note_hash', 'reply_to_id'];
+const ZZZ1CN_COLS_OPT = ['note_status', 'is_saved', 'created_at', 'is_priority', 'note_to', 'note_priority', 'note_tags', 'note_hash', 'reply_to_id', 'note_orig', 'note_orig_lang'];
 let zzz1cnOptCols = null;
 function zzz1cn_opt_has(col) {
   return zzz1cnOptCols === null ? ZZZ1CN_COLS_OPT.indexOf(col) >= 0 : zzz1cnOptCols.indexOf(col) >= 0;
@@ -35542,7 +35571,7 @@ async function zzz1cn_load(entryKey) {
   return zzz1cn_local_load(entryKey);
 }
 
-async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, isPriority, noteTo, noteTags, replyToId) {
+async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, isPriority, noteTo, noteTags, replyToId, trOrig) {
   const username = (zzz0r1_get_current_username() || '').trim();
 
   const packOpen = (typeof zzz56_pack_open_members === 'function') ? zzz56_pack_open_members(entryKey) : null;
@@ -35616,6 +35645,11 @@ async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, i
   if (noteTags && zzz1cn_opt_has('note_tags')) payload.note_tags = String(noteTags).toLowerCase();
 
   if (Number(replyToId) > 0 && zzz1cn_opt_has('reply_to_id')) payload.reply_to_id = Number(replyToId);
+
+  if (trOrig && trOrig.orig && /^[a-z]{2}>[a-z]{2}$/.test(String(trOrig.lang || '')) && zzz1cn_opt_has('note_orig')) {
+    payload.note_orig = String(trOrig.orig).slice(0, 20000); payload.note_orig_lang = String(trOrig.lang);
+    row.note_orig = payload.note_orig; row.note_orig_lang = payload.note_orig_lang;
+  }
   if (row.note_to) {
     if (zzz1cn_opt_has('note_to')) payload.note_to = row.note_to;
     else payload.is_private = true;
@@ -36501,6 +36535,8 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   body.className = 'zzz1cn-note-text';
   body.textContent = note.note_text;
   wrap.appendChild(body);
+
+  try { if (zzz10v1_normalize(note.username || '') === me) zzz23tr_attach_own(body, note); else zzz23tr_attach(body, entryKey, note, me); } catch (e) {}
 
   if (note && /^\d+$/.test(String(note.id || '')) && typeof zzz5w8_note_chip === 'function') wrap.appendChild(zzz5w8_note_chip(note));
 
@@ -37824,11 +37860,48 @@ function zzz16_has_dia(t) { return /[\u00C0-\u024F]/.test(String(t || '')); }
 
 function zzz16_scripts(t) {
   const s = String(t || '');
-  return { lat: (s.match(/[A-Za-z\u00C0-\u017F]/g) || []).length, cyr: (s.match(/[\u0400-\u04FF]/g) || []).length };
+  return { lat: (s.match(/[A-Za-z\u00C0-\u017F]/g) || []).length, cyr: (s.match(/[\u0400-\u04FF]/g) || []).length,
+    han: (s.match(/[\u3400-\u4DBF\u4E00-\u9FFF]/g) || []).length, dev: (s.match(/[\u0900-\u0963\u0966-\u097F]/g) || []).length };
+}
+
+const ZZZ16_LANGS = [
+  ['sk', 'SK', 'Slovak', 'sk-SK'], ['en', 'EN', 'English (US)', 'en-US'], ['uk', 'UK', 'Ukrainian', 'uk-UA'],
+  ['es', 'ES', 'Spanish (Latin America · Mexico)', 'es-MX'], ['de', 'DE', 'German (Germany)', 'de-DE'], ['it', 'IT', 'Italian', 'it-IT'],
+  ['fr', 'FR', 'French (France)', 'fr-FR'], ['ru', 'RU', 'Russian', 'ru-RU'], ['zh', 'ZH', 'Chinese (Mandarin · simplified)', 'zh-CN'],
+  ['hi', 'HI', 'Hindi (India)', 'hi-IN']];
+function zzz16_lang_known(l) { return ZZZ16_LANGS.some(x => x[0] === l); }
+const ZZZ16_VOICE_HELLO = { sk: 'Slovenský hlas.', en: 'English voice.', uk: 'Український голос.', es: 'Voz en español.', de: 'Deutsche Stimme.',
+  it: 'Voce italiana.', fr: 'Voix française.', ru: 'Русский голос.', zh: '中文语音。', hi: 'हिंदी आवाज़।' };
+function zzz16_non_latin(l) { return l === 'uk' || l === 'ru' || l === 'zh' || l === 'hi'; }
+const ZZZ16_STOP = {
+  es: 'el los las que por para con una pero muy como está esta este qué hola gracias sí yo usted también ahora bien hay es del al lo mi tu su',
+  de: 'der die das und ist nicht ich du sie wir ein eine mit auf für ja nein danke hallo aber auch wie was wo gut sehr haben bin bist den dem zu',
+  it: 'il che di è non sono per con ciao grazie sì anche come cosa molto bene io lui lei noi questo quello perché ma gli della sei',
+  fr: 'le les des est et je il elle nous vous pas une pour avec bonjour merci oui très bien mais dans sur ce qui c\'est suis tu au du' };
+const ZZZ16_STOP_SETS = Object.fromEntries(Object.entries(ZZZ16_STOP).map(([k, v]) => [k, new Set(v.split(' '))]));
+function zzz16_cyr_lang(t) {
+  const s = String(t || '').toLowerCase();
+  if (/[іїєґ]/.test(s)) return 'uk';
+  if (/[ыэъё]/.test(s)) return 'ru';
+  try { const l = localStorage.getItem('zzz16_last_cyr'); if (l) return l; } catch (e) {}
+  return zzz16_home() === 'ru' ? 'ru' : 'uk';
 }
 function zzz16_detect(t) {
   const sc = zzz16_scripts(t);
-  if (sc.cyr > 0 && sc.cyr >= sc.lat) return 'uk';
+  const top = Math.max(sc.lat, sc.cyr, sc.han, sc.dev);
+  if (top > 0 && sc.han === top) return 'zh';
+  if (top > 0 && sc.dev === top) return 'hi';
+  if (sc.cyr > 0 && sc.cyr >= sc.lat) return zzz16_cyr_lang(t);
+  const low = String(t || '').toLowerCase();
+  if (/[čďľňšťžŕĺôä]/.test(low)) return 'sk';
+  const score = {};
+  if (/[ñ¿¡]/.test(low)) score.es = 2;
+  if (/[ßöü]/.test(low)) score.de = 2;
+  if (/[çœêîûëèàù]/.test(low)) score.fr = 1;
+  if (/[ìò]/.test(low)) score.it = 1;
+  (low.match(/[\p{L}']+/gu) || []).forEach(w => { Object.keys(ZZZ16_STOP_SETS).forEach(k => { if (ZZZ16_STOP_SETS[k].has(w)) score[k] = (score[k] || 0) + 1; }); });
+  const ranked = Object.entries(score).sort((a, b) => b[1] - a[1]);
+  if (ranked.length && ranked[0][1] >= 2 && (ranked.length < 2 || ranked[0][1] > ranked[1][1])) return ranked[0][0];
   if (zzz16_has_dia(t)) return 'sk';
   const W = zzz16Words; if (!W) return '?';
   let en = 0, sk = 0, n = 0;
@@ -37926,7 +37999,7 @@ document.addEventListener('click', (e) => {
   if (a) zzz_native_note(a.getAttribute('href'));
 }, true);
 
-function zzz16_home() { try { const h = String(zzz16_prefs().homeLang || 'sk'); return (h === 'en' || h === 'uk') ? h : 'sk'; } catch (e) { return 'sk'; } }
+function zzz16_home() { try { const h = String(zzz16_prefs().homeLang || 'sk'); return zzz16_lang_known(h) ? h : 'sk'; } catch (e) { return 'sk'; } }
 function zzz16_set_home(l) {
   const p = zzz16_prefs(); p.homeLang = l; zzz16_save_prefs(p);
   try { localStorage.removeItem('zzz16_last_lang'); localStorage.removeItem('zzz16_last_latin'); } catch (e) {}
@@ -37953,13 +38026,17 @@ function zzz16_vlang(prof) { const p = zzz16_prefs(); return String((prof === 'n
 function zzz16_rate(prof) { const p = zzz16_prefs(); const r = Number(prof === 'n' ? p.nRate : p.cRate); return r >= 0.5 && r <= 2 ? r : 1; }
 function zzz16_lang_of(t, prof) {
   const pick = zzz16_vlang(prof || 'c');
-  if (pick === 'sk' || pick === 'en' || pick === 'uk') return pick;
+  if (pick !== 'auto' && zzz16_lang_known(pick)) return pick;
   const home = zzz16_home();
-  let last = home, lastLat = home === 'uk' ? 'sk' : home;
+  let last = home, lastLat = zzz16_non_latin(home) ? 'sk' : home;
   try { last = localStorage.getItem('zzz16_last_lang') || last; lastLat = localStorage.getItem('zzz16_last_latin') || lastLat; } catch (e) {}
   const d = zzz16_detect(t);
-  if (d === '?') return last === 'uk' ? lastLat : last;
-  try { if (d !== last) localStorage.setItem('zzz16_last_lang', d); if (d !== 'uk') localStorage.setItem('zzz16_last_latin', d); } catch (e) {}
+  if (d === '?') return zzz16_non_latin(last) ? lastLat : last;
+  try {
+    if (d !== last) localStorage.setItem('zzz16_last_lang', d);
+    if (!zzz16_non_latin(d)) localStorage.setItem('zzz16_last_latin', d);
+    if (d === 'uk' || d === 'ru') localStorage.setItem('zzz16_last_cyr', d);
+  } catch (e) {}
   return d;
 }
 
@@ -37967,7 +38044,8 @@ function zzz16_safe_text(t) {
   let s = String(t || '');
   try { s = s.normalize('NFC'); } catch (e) {}
   s = s.replace(/(https?:\/\/|www\.)\S+/gi, ' odkaz ').replace(/[\u2019\u02BC]/g, "'");
-  s = s.replace(/[^0-9A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u017F\u0400-\u04FF.,?!:'\- ]+/g, ' ');
+  s = s.replace(/[\u3002\u0964\u0965]/g, '.').replace(/[\uFF0C\u3001]/g, ',').replace(/\uFF1F/g, '?').replace(/\uFF01/g, '!');
+  s = s.replace(/[^0-9A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u017F\u0400-\u04FF\u0900-\u0963\u0966-\u097F\u3400-\u4DBF\u4E00-\u9FFF.,?!:'\- ]+/g, ' ');
   s = s.replace(/([0-9A-Za-z\u00C0-\u017F\u0400-\u04FF]{40})[0-9A-Za-z\u00C0-\u017F\u0400-\u04FF]+/g, '$1');
   return s.replace(/\s+/g, ' ').trim().slice(0, 600);
 }
@@ -37981,9 +38059,11 @@ function zzz16_parts(text, prof) {
     let lang = whole;
     if (auto) {
       const sc = zzz16_scripts(part), d = zzz16_detect(part), words = part.split(/\s+/).length;
-      if (sc.cyr > sc.lat) lang = 'uk';
-      else if (sc.lat > 0 && sc.cyr === 0 && whole === 'uk') lang = (d === 'en' || d === 'sk') ? d : 'sk';
-      else if (words >= 3 && (d === 'en' || d === 'sk')) lang = d;
+      if (sc.han > 0 && sc.han >= sc.lat) lang = 'zh';
+      else if (sc.dev > 0 && sc.dev >= sc.lat) lang = 'hi';
+      else if (sc.cyr > sc.lat) lang = zzz16_cyr_lang(part);
+      else if (sc.lat > 0 && sc.cyr === 0 && zzz16_non_latin(whole)) lang = (d !== '?' && !zzz16_non_latin(d)) ? d : 'sk';
+      else if (words >= 3 && d !== '?' && !zzz16_non_latin(d)) lang = d;
     }
     const said = lang === 'sk' ? zzz16_add_dia(part) : part;
     if (out.length && out[out.length - 1].lang === lang) out[out.length - 1].text += ' ' + said;
@@ -38006,6 +38086,18 @@ function zzz16_voice(lang) {
   if (!zzz16Voices.length) zzz16_load_voices();
   const vs = zzz16Voices;
   if (lang === 'en') { const ve = vs.find((x) => /^en[-_]?(US|GB)?/i.test(x.lang)); if (ve) return ve; }
+  if (lang !== 'sk' && lang !== 'en' && lang !== 'uk' && zzz16_lang_known(lang)) {
+    const code = ZZZ16_LANGS.find(x => x[0] === lang)[3];
+    const vx = vs.find((x) => String(x.lang).replace('_', '-').toLowerCase() === code.toLowerCase()) || vs.find((x) => new RegExp('^' + lang, 'i').test(x.lang));
+    if (vx) return vx;
+    zzz16_voice._hintedX = zzz16_voice._hintedX || {};
+    if (vs.length && !zzz16_voice._hintedX[lang]) {
+      zzz16_voice._hintedX[lang] = true;
+      const nm = ZZZ16_LANGS.find(x => x[0] === lang)[2];
+      try { zzz6f2_show_toast('No ' + nm + ' voice in this phone / browser: install it in the phone\'s text-to-speech settings. In the Verso app VERSO NOTIF MULTIREADER has its own ' + nm + ' voice.', 'warn'); } catch (e) {}
+    }
+    return null;
+  }
   if (lang === 'uk') {
     const vu = vs.find((x) => /^uk/i.test(x.lang));
     if (vu) return vu;
@@ -38035,7 +38127,7 @@ function zzz16_speak(text, prof) {
       const u = new SpeechSynthesisUtterance(pt.text);
       const v = zzz16_voice(pt.lang);
       if (v) u.voice = v;
-      u.lang = v ? v.lang : (pt.lang === 'en' ? 'en-US' : (pt.lang === 'uk' ? 'uk-UA' : 'sk-SK'));
+      u.lang = v ? v.lang : ((ZZZ16_LANGS.find(x => x[0] === pt.lang) || ZZZ16_LANGS[0])[3]);
       u.rate = zzz16_rate(prof);
       speechSynthesis.speak(u);
     });
@@ -38636,6 +38728,380 @@ function zzz16_after_logout() {
   try { if ('speechSynthesis' in window) speechSynthesis.cancel(); } catch (e) {}
 }
 
+const ZZZ23TR_BASE = 'https://raw.githubusercontent.com/Versoproject/0/translate-packs/';
+const ZZZ23TR_PACK = {"wasm":{"file":"bergamot-v3.0.wasm","sha256":"a3a89d9ad0a4ed8f27bf3e403701b23f5709816f6376438503f2fa5b0182c2dc","size":4960506},"glue":{"file":"bergamot-v0.6.0.js","sha256":"faff1ef6285b0d26f01787776fd49299dfb756ecb9688aa990c250e66797b47d","size":100187},"pairs":{"sk-en":{"v":"1.0","files":{"lex":{"file":"tr-sken-v1.0-lex.bin","name":"lex.50.50.sken.s2t.bin","sha256":"18577a7ded6b9957c948f2a384683f7ce09def42336c8141eee7ba86b79e2c8e","size":4913324},"vocab":{"file":"tr-sken-v1.0-vocab.bin","name":"vocab.sken.spm","sha256":"7d25655bd15f34d77db5d2cb96a51c7943c5528f37f83b677a09bb0ea4e4f59b","size":808082},"model":{"file":"tr-sken-v1.0-model.bin","name":"model.sken.intgemm.alphas.bin","sha256":"1686f94838ace314719e945606a09a66dafd40847dd3fd352ad3f7a969aac62f","size":17141051}}},"en-sk":{"v":"2.1","files":{"model":{"file":"tr-ensk-v2.1-model.bin","name":"model.ensk.intgemm.alphas.bin","sha256":"e33af359fd58c8958104b1b74b3ea302800ccba2f125c1629e09d7f9dd9a3804","size":31561787},"lex":{"file":"tr-ensk-v2.1-lex.bin","name":"lex.50.50.ensk.s2t.bin","sha256":"f3d1aec4ee5246d6a6ee5dc7ed4c6b18f6071c7baca69bf1344aef675b95515d","size":3356348},"vocab":{"file":"tr-ensk-v2.1-vocab.bin","name":"vocab.ensk.spm","sha256":"cfa6a9e601d74686b117f041eb1ad9de94c34219110b67367d570a9e27026a46","size":808888}}},"uk-en":{"v":"1.1","files":{"model":{"file":"tr-uken-v1.1-model.bin","name":"model.uken.intgemm.alphas.bin","sha256":"2e7b8bc9d2569d8b4ae244e964cdc343a0aa3735cc83ecb664be84a37cb45f48","size":17141051},"lex":{"file":"tr-uken-v1.1-lex.bin","name":"lex.50.50.uken.s2t.bin","sha256":"32b5e0df493671a223cb5cb32430181cbb7fe6b5562c91dbc3d35410d37e5ff6","size":3914120},"vocab":{"file":"tr-uken-v1.1-vocab.bin","name":"vocab.uken.spm","sha256":"8b51480dfc4ca2d7a08d2bfdaa9e57353ca97e6cf3d5f9aba4c0179d3665bfc0","size":886410}}},"en-uk":{"v":"2.2","files":{"vocab":{"file":"tr-enuk-v2.2-vocab.bin","name":"vocab.enuk.spm","sha256":"4dd6a91feff71e745395dcc0d52f885848ca0d843d5f70628ca51b3be1b70b45","size":922077},"lex":{"file":"tr-enuk-v2.2-lex.bin","name":"lex.50.50.enuk.s2t.bin","sha256":"dbfd4f8dc95da9c575164f7fc95ef00a2fb5f7d9f51b656559f99eeebdb57c87","size":3054364},"model":{"file":"tr-enuk-v2.2-model.bin","name":"model.enuk.intgemm.alphas.bin","sha256":"ed8bb4a811e1c45a259e91052080d25e5c8b4e2df0e59cb1521c04a57855ef97","size":31561787}}},"es-en":{"v":"2.0","files":{"model":{"file":"tr-esen-v2.0-model.bin","name":"model.esen.intgemm.alphas.bin","sha256":"4aed7734152ae0045d1a69ae49c86cfda18f53c61f90e95e1d1de1c7c7c3b033","size":31561787},"lex":{"file":"tr-esen-v2.0-lex.bin","name":"lex.50.50.esen.s2t.bin","sha256":"e2610211d3b9577d012638fe7e7e74ed7b4b708ce96b9e792e67c282a6492daa","size":4636248},"vocab":{"file":"tr-esen-v2.0-vocab.bin","name":"vocab.esen.spm","sha256":"5ae254fa9b15aa182e70fd2a6186b1333c63a29a48043a9224c6aa4fcac058ad","size":816054}}},"en-es":{"v":"2.1","files":{"model":{"file":"tr-enes-v2.1-model.bin","name":"model.enes.intgemm.alphas.bin","sha256":"3b1c399511c01c84c36fae5c0524df44096288efdc8236e182b5c97d7ad2244c","size":31561787},"vocab":{"file":"tr-enes-v2.1-vocab.bin","name":"vocab.enes.spm","sha256":"5ae254fa9b15aa182e70fd2a6186b1333c63a29a48043a9224c6aa4fcac058ad","size":816054},"lex":{"file":"tr-enes-v2.1-lex.bin","name":"lex.50.50.enes.s2t.bin","sha256":"7d51237c0a07027dcd61643cfbbb0f8c48597d19907ef53d2cae9d6bec2cf25c","size":4198436}}},"de-en":{"v":"2.0","files":{"vocab":{"file":"tr-deen-v2.0-vocab.bin","name":"vocab.deen.spm","sha256":"69f730becafa48e3bb2c244eab66456877c08959a02f2bd5519b5a3088b62f9c","size":810073},"lex":{"file":"tr-deen-v2.0-lex.bin","name":"lex.50.50.deen.s2t.bin","sha256":"113b98460468360cca68c042e1cddf49c4e1931cbb975ed04349c9a3bd607010","size":4945796},"model":{"file":"tr-deen-v2.0-model.bin","name":"model.deen.intgemm.alphas.bin","sha256":"3e6f7c2c2425d10824797270b382bee718ff34af2cab9308841c82ca46dc6f20","size":31561787}}},"en-de":{"v":"2.1","files":{"model":{"file":"tr-ende-v2.1-model.bin","name":"model.ende.intgemm.alphas.bin","sha256":"8df29d9494d19f47fd5d97c6a73474c6f657e9f81c1a607c431d02befdf3810f","size":31561787},"vocab":{"file":"tr-ende-v2.1-vocab.bin","name":"vocab.ende.spm","sha256":"69f730becafa48e3bb2c244eab66456877c08959a02f2bd5519b5a3088b62f9c","size":810073},"lex":{"file":"tr-ende-v2.1-lex.bin","name":"lex.50.50.ende.s2t.bin","sha256":"7ed39f1cffbd68a27ddf05bbfe068de2060f1d7e69f1a20e27ae923551dd7393","size":4347672}}},"it-en":{"v":"2.0","files":{"lex":{"file":"tr-iten-v2.0-lex.bin","name":"lex.50.50.iten.s2t.bin","sha256":"0700d6d70b30490e68ff9deca0b45b80310745b491855bde3a13e1692d0cbce1","size":4713616},"vocab":{"file":"tr-iten-v2.0-vocab.bin","name":"vocab.iten.spm","sha256":"3ef0211d4ae6db21440892f180f2019fe2bfc110a330ffa9d2eca9665e4f2bc5","size":812724},"model":{"file":"tr-iten-v2.0-model.bin","name":"model.iten.intgemm.alphas.bin","sha256":"21b70978ce2f3b4da7a06b5de86a09abe3acd30b9eee1b2ebb3582b9bad790bf","size":31561787}}},"en-it":{"v":"2.1","files":{"model":{"file":"tr-enit-v2.1-model.bin","name":"model.enit.intgemm.alphas.bin","sha256":"248f47568788ecc351da7e5e07064d4153b4f71e011364ae2c931ffeec4d1cc2","size":31561787},"vocab":{"file":"tr-enit-v2.1-vocab.bin","name":"vocab.enit.spm","sha256":"3ef0211d4ae6db21440892f180f2019fe2bfc110a330ffa9d2eca9665e4f2bc5","size":812724},"lex":{"file":"tr-enit-v2.1-lex.bin","name":"lex.50.50.enit.s2t.bin","sha256":"8b21914804625b2777dae7fdb636eb78f02a3eb8b7bceaa50f29ac740961da93","size":4133192}}},"fr-en":{"v":"2.0","files":{"lex":{"file":"tr-fren-v2.0-lex.bin","name":"lex.50.50.fren.s2t.bin","sha256":"87c6752ea908f5f0347c10ac0cf7d80d9c2f4f20c81c90168f3e8230b56d4440","size":4824120},"model":{"file":"tr-fren-v2.0-model.bin","name":"model.fren.intgemm.alphas.bin","sha256":"15f997bc0d13808b0b0fbd0786e684a3c8a52adcd8071844b76123fdacbf2b90","size":31561787},"vocab":{"file":"tr-fren-v2.0-vocab.bin","name":"vocab.fren.spm","sha256":"783abf3abe075afdf8d85d233994bef2c3a064e935ab1bed946820aff6ac002a","size":814404}}},"en-fr":{"v":"2.0","files":{"vocab":{"file":"tr-enfr-v2.0-vocab.bin","name":"vocab.enfr.spm","sha256":"783abf3abe075afdf8d85d233994bef2c3a064e935ab1bed946820aff6ac002a","size":814404},"lex":{"file":"tr-enfr-v2.0-lex.bin","name":"lex.50.50.enfr.s2t.bin","sha256":"2585ed98d3af0bc949865aedeb390493d591f56870814376e73e4144c41ed059","size":4372936},"model":{"file":"tr-enfr-v2.0-model.bin","name":"model.enfr.intgemm.alphas.bin","sha256":"6322e296d4fecfe395a8d5723da4ec37ecbe6d7613bb1dfcf4b28e2a47498b68","size":31561787}}},"ru-en":{"v":"2.1","files":{"lex":{"file":"tr-ruen-v2.1-lex.bin","name":"lex.50.50.ruen.s2t.bin","sha256":"c944e753f298bbdf6506388de7257fb48cbd12c83e2807e2c284fc323771895b","size":4397908},"model":{"file":"tr-ruen-v2.1-model.bin","name":"model.ruen.intgemm.alphas.bin","sha256":"aa0efa194b3dbd2da129ba0b8db8ef139126cb0914e57072f62061294746f1e2","size":31561787},"vocab":{"file":"tr-ruen-v2.1-vocab.bin","name":"vocab.ruen.spm","sha256":"de8af5f87e231ee4016cec4bb482e6b584cb1ca34dcb624fc7b8398f25bb35df","size":952371}}},"en-ru":{"v":"2.1","files":{"lex":{"file":"tr-enru-v2.1-lex.bin","name":"lex.50.50.enru.s2t.bin","sha256":"4d91839726b960e70b6d05c53d0cffd16262832b1c0e1ea99d66f412dcc6a239","size":2774540},"vocab":{"file":"tr-enru-v2.1-vocab.bin","name":"vocab.enru.spm","sha256":"56ee63e14e8cb926c394242adc3ed7cc602644c3d33058cff2ce2959d52a6258","size":904455},"model":{"file":"tr-enru-v2.1-model.bin","name":"model.enru.intgemm.alphas.bin","sha256":"184cb5cda528eeefc0f75f5d0035d787b71d74af135e3c5608d01ae02ecfb920","size":31561787}}},"zh-en":{"v":"2.1","files":{"vocab":{"file":"tr-zhen-v2.1-vocab.bin","name":"vocab.zhen.spm","sha256":"dff594318ab7d8b7b60b844ab98ebe6b932ae8045fab15235404c787715965b3","size":1359697},"model":{"file":"tr-zhen-v2.1-model.bin","name":"model.zhen.intgemm.alphas.bin","sha256":"5cd149601802fc8a18124a1c1306144dbbedc058630c4ddb2d53aa76fa9c7c06","size":43977787},"lex":{"file":"tr-zhen-v2.1-lex.bin","name":"lex.50.50.zhen.s2t.bin","sha256":"8524dd4c93ffd7f0ae7be32f77a7c14fea7cdbbebe34ea6ad0ec368d5ddd8b13","size":9219192}}},"en-zh":{"v":"2.2","files":{"model":{"file":"tr-enzh-v2.2-model.bin","name":"model.enzh.intgemm.alphas.bin","sha256":"4e5accc141373565ddc8fa1565bceaa8d0c3482a82cab8131c719ebcc6c2157c","size":43849787},"srcvocab":{"file":"tr-enzh-v2.2-srcvocab.bin","name":"srcvocab.enzh.spm","sha256":"bd9b65504acc6d9726dd281f7defc2adb7c2c22d0688fe2f84697de25197c8c5","size":806952},"trgvocab":{"file":"tr-enzh-v2.2-trgvocab.bin","name":"trgvocab.enzh.spm","sha256":"aded6993c36e440284d11cec3f6b8aef9c0e43188a772d80be342a713adf223d","size":772004},"lex":{"file":"tr-enzh-v2.2-lex.bin","name":"lex.50.50.enzh.s2t.bin","sha256":"4a5e5827788060f1d718a8132b69440929387514a045796e9b77f935db68c055","size":6506248}}},"hi-en":{"v":"1.0","files":{"model":{"file":"tr-hien-v1.0-model.bin","name":"model.hien.intgemm.alphas.bin","sha256":"c82fd6ed3794b79fb9dde0718a22324502a408a9eca73497b5d0a4b8024ec6de","size":17141051},"vocab":{"file":"tr-hien-v1.0-vocab.bin","name":"vocab.hien.spm","sha256":"9cbc02094ac2ebd75211b3bb6789a9d6fa112ce3c08e897f1645f18b21fbab00","size":925436},"lex":{"file":"tr-hien-v1.0-lex.bin","name":"lex.50.50.hien.s2t.bin","sha256":"e789be33dfdb639e98f5cf9eb01aa945ec3c882f68f3c8860389cf846f0112d8","size":4605984}}},"en-hi":{"v":"1.0","files":{"model":{"file":"tr-enhi-v1.0-model.bin","name":"model.enhi.intgemm.alphas.bin","sha256":"18682fa6aa1c1b2f78a6fcbcb354755094d623e65436ef7821720c5213e11a49","size":17141051},"lex":{"file":"tr-enhi-v1.0-lex.bin","name":"lex.50.50.enhi.s2t.bin","sha256":"b473f6fe41cdb7c1dbeeb714fc50314feab77b0af2b2da6f7830ee14492dd847","size":3504820},"vocab":{"file":"tr-enhi-v1.0-vocab.bin","name":"vocab.enhi.spm","sha256":"8017cbf812bae400794c424699b89de90db06ac7a4ca67a420013a9f68b270c1","size":925360}}}}};
+const ZZZ23TR_CACHE = 'verso-translate-v1';
+const zzz23trState = { worker: null, ready: null, seq: 0, wait: new Map(), loaded: new Set(), memo: new Map(), busy: new Set() };
+function zzz23tr_prefs() { try { return JSON.parse(localStorage.getItem('zzz23tr_prefs') || '{}') || {}; } catch (e) { return {}; } }
+function zzz23tr_save_prefs(p) { try { localStorage.setItem('zzz23tr_prefs', JSON.stringify(p)); } catch (e) {} }
+function zzz23tr_on() { return zzz23tr_prefs().on !== false; }
+function zzz23tr_def_mode() { const m = zzz23tr_prefs().def; return m === 'in' || m === 'out' ? m : 'off'; }
+function zzz23tr_def_out() { const l = String(zzz23tr_prefs().out || 'en'); return zzz16_lang_known(l) ? l : 'en'; }
+function zzz23tr_chat(key) {
+  let all = {}; try { all = JSON.parse(localStorage.getItem('zzz23tr_chat') || '{}') || {}; } catch (e) {}
+  const c = all[String(key || '')] || {};
+  return { m: c.m === 'in' || c.m === 'out' || c.m === 'off' ? c.m : zzz23tr_def_mode(), to: zzz16_lang_known(String(c.to || '')) ? c.to : zzz23tr_def_out() };
+}
+function zzz23tr_set_chat(key, patch) {
+  let all = {}; try { all = JSON.parse(localStorage.getItem('zzz23tr_chat') || '{}') || {}; } catch (e) {}
+  all[String(key || '')] = Object.assign(zzz23tr_chat(key), patch);
+  try { localStorage.setItem('zzz23tr_chat', JSON.stringify(all)); } catch (e) {}
+  try { document.dispatchEvent(new CustomEvent('zzz23tr-changed', { detail: { key: String(key || '') } })); } catch (e) {}
+}
+function zzz23tr_pairs_for(from, to) {
+  if (from === to) return [];
+  if (from === 'en' || to === 'en') return [from + '-' + to];
+  return [from + '-en', 'en-' + to];
+}
+function zzz23tr_lang_pairs(l) { return l === 'en' ? [] : [l + '-en', 'en-' + l]; }
+function zzz23tr_size(l) {
+  if (!ZZZ23TR_PACK) return 0;
+  return zzz23tr_lang_pairs(l).reduce((s, p) => s + Object.values((ZZZ23TR_PACK.pairs[p] || {}).files || {}).reduce((a, f) => a + f.size, 0), 0);
+}
+function zzz23tr_mb(b) { return Math.round(b / 1048576) + ' MB'; }
+function zzz23tr_available(l) { return l === 'en' || (!!ZZZ23TR_PACK && zzz23tr_lang_pairs(l).every(p => ZZZ23TR_PACK.pairs[p])); }
+function zzz23tr_installed() { const p = zzz23tr_prefs(); return Array.isArray(p.langs) ? p.langs.filter(zzz16_lang_known) : []; }
+function zzz23tr_has(l) { return l === 'en' || zzz23tr_installed().includes(l); }
+function zzz23tr_can(from, to) { return zzz23tr_on() && zzz23tr_has(from) && zzz23tr_has(to) && zzz23tr_available(from) && zzz23tr_available(to); }
+async function zzz23tr_sha(buf) {
+  const h = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(h)).map(x => x.toString(16).padStart(2, '0')).join('');
+}
+
+async function zzz23tr_file(f, onBytes) {
+  const url = ZZZ23TR_BASE + f.file;
+  let cache = null; try { cache = await caches.open(ZZZ23TR_CACHE); } catch (e) {}
+  if (cache) {
+    try {
+      const hit = await cache.match(url);
+      if (hit) { const b = await hit.arrayBuffer(); if (b.byteLength === f.size && await zzz23tr_sha(b) === f.sha256) { if (onBytes) onBytes(f.size); return b; } await cache.delete(url); }
+    } catch (e) {}
+  }
+  const r = await fetch(url, { cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' });
+  if (!r.ok) throw new Error('download ' + f.file + ': HTTP ' + r.status);
+  const b = await r.arrayBuffer();
+  if (b.byteLength !== f.size) throw new Error(f.file + ': size does not match - not used');
+  if (await zzz23tr_sha(b) !== f.sha256) throw new Error(f.file + ': checksum does not match - not used');
+  if (onBytes) onBytes(f.size);
+  if (cache) { try { await cache.put(url, new Response(b, { headers: { 'content-type': 'application/octet-stream' } })); } catch (e) {} }
+  return b;
+}
+
+async function zzz23tr_install(l, onProgress) {
+  if (!zzz23tr_available(l)) throw new Error('no translator for ' + l + ' in this Verso version');
+  if (zzz23trState.busy.has(l)) return;
+  zzz23trState.busy.add(l);
+  try {
+    const total = zzz23tr_size(l); let done = 0;
+    for (const p of zzz23tr_lang_pairs(l)) for (const f of Object.values(ZZZ23TR_PACK.pairs[p].files)) {
+      await zzz23tr_file(f, (n) => { done += n; if (onProgress) onProgress(done, total); });
+    }
+    const pr = zzz23tr_prefs(); pr.langs = Array.from(new Set(zzz23tr_installed().concat([l]))); zzz23tr_save_prefs(pr);
+    try { document.dispatchEvent(new CustomEvent('zzz23tr-changed', { detail: { lang: l } })); } catch (e) {}
+  } finally { zzz23trState.busy.delete(l); }
+}
+async function zzz23tr_remove(l) {
+  const pr = zzz23tr_prefs(); pr.langs = zzz23tr_installed().filter(x => x !== l); zzz23tr_save_prefs(pr);
+  try {
+    const cache = await caches.open(ZZZ23TR_CACHE);
+
+    const keep = new Set(); pr.langs.forEach(x => zzz23tr_lang_pairs(x).forEach(p => Object.values((ZZZ23TR_PACK.pairs[p] || {}).files || {}).forEach(f => keep.add(f.file))));
+    for (const p of zzz23tr_lang_pairs(l)) for (const f of Object.values((ZZZ23TR_PACK.pairs[p] || {}).files || {})) if (!keep.has(f.file)) await cache.delete(ZZZ23TR_BASE + f.file);
+  } catch (e) {}
+  zzz23trState.loaded.forEach(p => { if (p.split('-').includes(l)) zzz23trState.loaded.delete(p); });
+  if (zzz23trState.worker) { try { zzz23trState.worker.postMessage({ t: 'drop', pairs: zzz23tr_lang_pairs(l) }); } catch (e) {} }
+  try { document.dispatchEvent(new CustomEvent('zzz23tr-changed', { detail: { lang: l } })); } catch (e) {}
+}
+
+const ZZZ23TR_WORKER = `
+const ALIGN = { model: 256, lex: 64, vocab: 64, srcvocab: 64, trgvocab: 64 };
+let B = null; const models = {}; let svc = null;
+function cfg(name) {
+  const c = { 'beam-size': '1', normalize: '1.0', 'word-penalty': '0', 'max-length-break': '128', 'mini-batch-words': '1024', workspace: '128',
+    'max-length-factor': '2.0', 'skip-cost': 'true', 'cpu-threads': '0', quiet: 'true', 'quiet-translation': 'true',
+    'gemm-precision': String(name).endsWith('intgemm8.bin') ? 'int8shiftAll' : 'int8shiftAlphaAll', alignment: 'soft' };
+  return '\\n' + Object.entries(c).map(([k, v]) => '            ' + k + ': ' + v).join('\\n') + '\\n            ';
+}
+function load(pair, files) {
+  const mem = {};
+  for (const t of Object.keys(files)) { const b = files[t].buf; const m = new B.AlignedMemory(b.byteLength, ALIGN[t]); m.getByteArrayView().set(new Uint8Array(b)); mem[t] = m; }
+  const vl = new B.AlignedMemoryList();
+  if (mem.vocab) vl.push_back(mem.vocab); else { vl.push_back(mem.srcvocab); vl.push_back(mem.trgvocab); }
+  const [a, b] = pair.split('-');
+  models[pair] = new B.TranslationModel(a, b, cfg(files.model.name), mem.model, mem.lex || null, vl, null);
+}
+function tr(from, to, text) {
+  const msgs = new B.VectorString(); const opts = new B.VectorResponseOptions();
+  msgs.push_back(text); opts.push_back({ qualityScores: false, alignment: false, html: false });
+  try {
+    const r = (from === 'en' || to === 'en') ? svc.translate(models[from + '-' + to], msgs, opts)
+      : svc.translateViaPivoting(models[from + '-en'], models['en-' + to], msgs, opts);
+    const out = r.get(0).getTranslatedText(); try { r.delete(); } catch (e) {} return out;
+  } finally { msgs.delete(); opts.delete(); }
+}
+self.onmessage = (e) => {
+  const m = e.data;
+  try {
+    if (m.t === 'init') {
+      B = loadBergamot({ INITIAL_MEMORY: 41943040, wasmBinary: m.wasm, print: () => {}, printErr: () => {},
+        onAbort: () => self.postMessage({ id: m.id, err: 'engine could not start' }),
+        onRuntimeInitialized: () => setTimeout(() => { svc = new B.BlockingService({ cacheSize: 0 }); self.postMessage({ id: m.id, ok: 1 }); }, 0) });
+      return;
+    }
+    if (m.t === 'load') { load(m.pair, m.files); self.postMessage({ id: m.id, ok: 1 }); return; }
+    if (m.t === 'drop') { (m.pairs || []).forEach(p => { try { models[p] && models[p].delete(); } catch (x) {} delete models[p]; }); return; }
+    if (m.t === 'tr') { self.postMessage({ id: m.id, ok: 1, text: tr(m.from, m.to, m.text) }); return; }
+  } catch (x) { self.postMessage({ id: m.id, err: String((x && x.message) || x) }); }
+};`;
+function zzz23tr_call(msg, transfer) {
+  return new Promise((res, rej) => {
+    const id = ++zzz23trState.seq;
+    zzz23trState.wait.set(id, { res, rej });
+    zzz23trState.worker.postMessage(Object.assign({ id }, msg), transfer || []);
+  });
+}
+function zzz23tr_engine() {
+  if (zzz23trState.ready) return zzz23trState.ready;
+  zzz23trState.ready = (async () => {
+    if (!ZZZ23TR_PACK) throw new Error('translator not in this Verso version');
+    const glue = await zzz23tr_file(ZZZ23TR_PACK.glue);
+    const wasm = await zzz23tr_file(ZZZ23TR_PACK.wasm);
+    const src = new TextDecoder().decode(glue) + '\n' + ZZZ23TR_WORKER;
+    const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+    const w = new Worker(url); URL.revokeObjectURL(url);
+    w.onmessage = (e) => { const d = e.data || {}; const p = zzz23trState.wait.get(d.id); if (!p) return; zzz23trState.wait.delete(d.id); if (d.err) p.rej(new Error(d.err)); else p.res(d); };
+    w.onerror = (e) => { zzz23trState.wait.forEach(p => p.rej(new Error('translator stopped'))); zzz23trState.wait.clear(); zzz23trState.ready = null; zzz23trState.worker = null; zzz23trState.loaded.clear(); };
+    zzz23trState.worker = w;
+    await zzz23tr_call({ t: 'init', wasm }, [wasm]);
+    return w;
+  })();
+  zzz23trState.ready.catch(() => { zzz23trState.ready = null; });
+  return zzz23trState.ready;
+}
+async function zzz23tr_translate(text, from, to) {
+  const t = String(text || '').trim();
+  if (!t || from === to) return t;
+  if (!zzz23tr_can(from, to)) throw new Error('language not downloaded');
+  const k = from + '>' + to + '|' + t;
+  if (zzz23trState.memo.has(k)) return zzz23trState.memo.get(k);
+  await zzz23tr_engine();
+  for (const p of zzz23tr_pairs_for(from, to)) {
+    if (zzz23trState.loaded.has(p)) continue;
+    const files = {}; const tr = [];
+    for (const [type, f] of Object.entries(ZZZ23TR_PACK.pairs[p].files)) { const buf = await zzz23tr_file(f); files[type] = { buf, name: f.name }; tr.push(buf); }
+    await zzz23tr_call({ t: 'load', pair: p, files }, tr);
+    zzz23trState.loaded.add(p);
+  }
+  const r = await zzz23tr_call({ t: 'tr', from, to, text: t.slice(0, 5000) });
+  const out = String(r.text || '').trim() || t;
+  if (zzz23trState.memo.size > 400) zzz23trState.memo.clear();
+  zzz23trState.memo.set(k, out);
+  return out;
+}
+function zzz23tr_short(l) { const x = ZZZ16_LANGS.find(y => y[0] === l); return x ? x[1] : String(l || '').toUpperCase(); }
+function zzz23tr_name(l) { const x = ZZZ16_LANGS.find(y => y[0] === l); return x ? x[2] : l; }
+
+function zzz23tr_attach(body, entryKey, note, me) {
+  try {
+    if (!body || !note || !zzz23tr_on()) return;
+    const mode = zzz23tr_chat(entryKey).m;
+    if (mode === 'off') return;
+    if (zzz10v1_normalize(note.username || '') === me) return;
+    const text = String(note.note_text || '');
+    if (text.trim().length < 2) return;
+    const home = zzz16_home();
+    const from = zzz16_detect(text);
+    if (!zzz16_lang_known(from) || from === home) return;
+    const chip = document.createElement('button'); chip.type = 'button'; chip.className = 'zzz23tr-chip';
+    chip.addEventListener('mousedown', (e) => e.preventDefault());
+    const orig = text;
+    if (!zzz23tr_can(from, home)) {
+      if (!zzz23tr_available(from) || !zzz23tr_available(home)) return;
+      const need = [from, home].filter(l => !zzz23tr_has(l));
+      chip.textContent = '⬇ ' + need.map(zzz23tr_short).join(' + ') + ' · ' + zzz23tr_mb(need.reduce((s, l) => s + zzz23tr_size(l), 0));
+      chip.title = 'VERSO TRANSLATOR: download ' + need.map(zzz23tr_name).join(' + ') + ' once (offline, nothing leaves the phone), then this chat is translated';
+      chip.addEventListener('click', async (e) => {
+        e.stopPropagation(); chip.disabled = true;
+        try { for (const l of need) await zzz23tr_install(l, (d, t) => { chip.textContent = '⬇ ' + Math.round(d * 100 / Math.max(1, t)) + ' %'; }); zzz6f2_show_toast('Translator ready: ' + need.map(zzz23tr_name).join(' + ') + '.'); }
+        catch (x) { chip.disabled = false; chip.textContent = '⬇ again'; zzz6f2_show_toast('Translator: ' + ((x && x.message) || x), 'warn'); }
+      });
+      body.after(chip);
+      return;
+    }
+    chip.textContent = zzz23tr_short(from) + '→' + zzz23tr_short(home) + ' …';
+    body.after(chip);
+    let showing = 'orig';
+    zzz23tr_translate(orig, from, home).then(out => {
+      if (!body.isConnected) return;
+      body.textContent = out; showing = 'tr';
+      chip.textContent = zzz23tr_short(from) + '→' + zzz23tr_short(home) + ' ⇄';
+      chip.title = 'Translated offline by VERSO TRANSLATOR from ' + zzz23tr_name(from) + ' - tap = original';
+    }).catch(x => { chip.textContent = zzz23tr_short(from) + '→' + zzz23tr_short(home) + ' ⚠'; chip.title = 'Not translated: ' + ((x && x.message) || x); });
+    chip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const k = from + '>' + home + '|' + orig.trim();
+      if (!zzz23trState.memo.has(k)) return;
+      showing = showing === 'tr' ? 'orig' : 'tr';
+      body.textContent = showing === 'tr' ? zzz23trState.memo.get(k) : orig;
+      chip.textContent = zzz23tr_short(from) + (showing === 'tr' ? '→' + zzz23tr_short(home) + ' ⇄' : ' original ⇄');
+    });
+  } catch (e) {}
+}
+
+function zzz23tr_attach_quiet(el, entryKey, note) {
+  try {
+    if (!el || !note || !zzz23tr_on() || zzz23tr_chat(entryKey).m === 'off') return;
+    const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
+    if (zzz10v1_normalize(note.username || '') === me) return;
+    const text = String(el.textContent || ''); const home = zzz16_home(); const from = zzz16_detect(text);
+    if (!zzz16_lang_known(from) || from === home || !zzz23tr_can(from, home)) return;
+    zzz23tr_translate(text, from, home).then(out => {
+      if (!el.isConnected || out === text) return;
+      el.textContent = out;
+      const m = document.createElement('span'); m.className = 'zzz23tr-mark'; m.textContent = ' ' + zzz23tr_short(from) + '→' + zzz23tr_short(home);
+      m.title = 'Translated offline by VERSO TRANSLATOR - the original opens where it was written'; el.appendChild(m);
+    }).catch(() => {});
+  } catch (e) {}
+}
+
+function zzz23tr_attach_own(body, note) {
+  try {
+    if (!body || !note || !note.note_orig || !note.note_orig_lang) return;
+    const [a, b] = String(note.note_orig_lang).split('>');
+    const chip = document.createElement('button'); chip.type = 'button'; chip.className = 'zzz23tr-chip';
+    chip.addEventListener('mousedown', (e) => e.preventDefault());
+    let tr = true;
+    const paint = () => { body.textContent = tr ? String(note.note_text || '') : String(note.note_orig); chip.textContent = tr ? zzz23tr_short(a) + '→' + zzz23tr_short(b) + ' ⇄' : zzz23tr_short(a) + ' original ⇄'; };
+    chip.title = 'Sent translated (VERSO TRANSLATOR) - tap = what was written';
+    chip.addEventListener('click', (e) => { e.stopPropagation(); tr = !tr; paint(); });
+    paint(); body.after(chip);
+  } catch (e) {}
+}
+
+async function zzz23tr_outgoing(entryKey, raw) {
+  if (!zzz23tr_on() || zzz23tr_chat(entryKey).m !== 'out') return null;
+  const to = zzz23tr_chat(entryKey).to;
+  let from = zzz16_detect(raw); if (!zzz16_lang_known(from)) from = zzz16_home();
+  if (from === to) return null;
+  if (!zzz23tr_can(from, to)) {
+    const need = [from, to].filter(l => !zzz23tr_has(l));
+    zzz6f2_show_toast('Not translated - download ' + need.map(zzz23tr_name).join(' + ') + ' first (hold the translator button 1-2 s). Sent as written.', 'warn');
+    return null;
+  }
+  try {
+    const out = await zzz23tr_translate(raw, from, to);
+    return out && out !== raw ? { text: out, orig: raw, lang: from + '>' + to } : null;
+  } catch (e) { zzz6f2_show_toast('Not translated (' + ((e && e.message) || e) + ') - sent as written.', 'warn'); return null; }
+}
+
+function zzz23tr_toggle(getKey) {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz23tr-tog';
+  const paint = () => {
+    const c = zzz23tr_chat(getKey());
+    b.classList.toggle('is-in', c.m === 'in'); b.classList.toggle('is-out', c.m === 'out'); b.classList.toggle('is-off', c.m === 'off');
+    b.textContent = c.m === 'in' ? '◀' + zzz23tr_short(zzz16_home()) : c.m === 'out' ? '⇄' + zzz23tr_short(c.to) : 'A·文';
+    b.title = 'VERSO TRANSLATOR (offline) - ' + (c.m === 'in' ? 'IN: received messages in ' + zzz23tr_name(zzz16_home())
+      : c.m === 'out' ? 'IN+OUT: received in ' + zzz23tr_name(zzz16_home()) + ', my messages sent in ' + zzz23tr_name(c.to) : 'OFF') + ' · tap = next · hold 1-2 s = language';
+    b.style.display = zzz23tr_on() ? '' : 'none';
+  };
+  b.addEventListener('mousedown', (e) => e.preventDefault());
+  b.addEventListener('click', (e) => {
+    e.preventDefault();
+    const c = zzz23tr_chat(getKey());
+    const next = c.m === 'in' ? 'off' : c.m === 'off' ? 'out' : 'in';
+    zzz23tr_set_chat(getKey(), { m: next });
+    paint();
+    zzz6f2_show_toast(next === 'in' ? 'Translator IN: received messages → ' + zzz23tr_name(zzz16_home()) + '.' : next === 'out'
+      ? 'Translator IN+OUT: received → ' + zzz23tr_name(zzz16_home()) + ', my messages → ' + zzz23tr_name(c.to) + ' (hold = other language).' : 'Translator OFF in this chat.');
+  });
+  zzz5w7_bind_tiered_hold(b, [{ ms: 900, fn: () => zzz23tr_pick(b, getKey(), paint) }]);
+  document.addEventListener('zzz23tr-changed', () => { if (b.isConnected) paint(); });
+  paint();
+  return b;
+}
+function zzz23tr_pick(anchor, key, after) {
+  document.querySelectorAll('.zzz23tr-pick').forEach(x => x.remove());
+  const box = document.createElement('div'); box.className = 'zzz23tr-pick';
+  const h = document.createElement('div'); h.className = 'zzz23tr-pick-h'; h.textContent = 'MY MESSAGES IN'; box.appendChild(h);
+  const sub = document.createElement('div'); sub.className = 'zzz23tr-pick-s';
+  sub.textContent = 'Received messages: ' + zzz23tr_name(zzz16_home()) + ' (SETTINGS › Home language). ⬇ = download once.';
+  box.appendChild(sub);
+  const grid = document.createElement('div'); grid.className = 'zzz23tr-pick-g';
+  const cur = zzz23tr_chat(key).to;
+  ZZZ16_LANGS.forEach(x => {
+    const l = x[0]; if (!zzz23tr_available(l)) return;
+    const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'zzz23tr-pb' + (l === cur ? ' is-on' : '');
+    btn.textContent = (zzz23tr_has(l) ? '' : '⬇') + x[1]; btn.title = x[2] + (zzz23tr_has(l) ? '' : ' - download ' + zzz23tr_mb(zzz23tr_size(l)));
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!zzz23tr_has(l)) {
+        btn.disabled = true;
+        try { await zzz23tr_install(l, (d, t) => { btn.textContent = Math.round(d * 100 / Math.max(1, t)) + '%'; }); }
+        catch (x2) { btn.disabled = false; btn.textContent = '⬇' + x[1]; zzz6f2_show_toast('Translator: ' + ((x2 && x2.message) || x2), 'warn'); return; }
+      }
+      zzz23tr_set_chat(key, { to: l, m: 'out' });
+      box.remove(); if (after) after();
+      zzz6f2_show_toast('Translator IN+OUT: my messages in this chat → ' + x[2] + '.');
+    });
+    grid.appendChild(btn);
+  });
+  box.appendChild(grid);
+  const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz23tr-pick-x'; x.textContent = '×';
+  x.addEventListener('click', (e) => { e.stopPropagation(); box.remove(); }); box.appendChild(x);
+  document.body.appendChild(box);
+  try {
+    const r = anchor.getBoundingClientRect();
+    const top = Math.max(8, r.top - box.offsetHeight - 6);
+    box.style.top = top + 'px';
+  } catch (e) {}
+  setTimeout(() => document.addEventListener('pointerdown', function off(ev) { if (!box.contains(ev.target)) { box.remove(); document.removeEventListener('pointerdown', off, true); } }, true), 0);
+}
+
+function zzz23tr_settings(row) {
+  const onBox = document.createElement('div'); onBox.className = 'zzz14b2-voice';
+  const onB = document.createElement('button'); onB.type = 'button';
+  const paintOn = () => { onB.className = 'zzz16-btn' + (zzz23tr_on() ? ' is-on' : ''); onB.textContent = zzz23tr_on() ? 'ON ✓' : 'OFF'; };
+  onB.addEventListener('click', () => { const p = zzz23tr_prefs(); p.on = !zzz23tr_on(); zzz23tr_save_prefs(p); paintOn(); try { document.dispatchEvent(new CustomEvent('zzz23tr-changed')); } catch (e) {} });
+  paintOn(); onBox.appendChild(onB);
+  row('VERSO TRANSLATOR', '🟠 Offline translation inside Verso - web, PC and Verso app the same; nothing leaves the device. Engine + models: Mozilla Firefox Translations (Bergamot, MPL-2.0), see ACKNOWLEDGEMENT. In every chat line a small button: ◀ IN = received messages in your home language · A·文 = OFF · ⇄ IN+OUT = also my messages translated before they are sent (the original stays with the message). Tap = next, hold 1-2 s = language. Translated messages carry a chip - tap = original.', '', onBox);
+  const mBox = document.createElement('div'); mBox.className = 'zzz14b2-voice';
+  [['in', '◀ IN'], ['off', 'OFF'], ['out', '⇄ IN+OUT']].forEach(([k, t]) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn' + (zzz23tr_def_mode() === k ? ' is-on' : ''); b.textContent = t;
+    b.addEventListener('click', () => { const p = zzz23tr_prefs(); p.def = k; zzz23tr_save_prefs(p); mBox.querySelectorAll('button').forEach(x => x.classList.toggle('is-on', x === b)); });
+    mBox.appendChild(b);
+  });
+  row('TRANSLATOR · start in a chat', 'Where the chat button starts in chats you have not set yourself (each chat remembers its own position on this device).', '', mBox);
+  const oBox = document.createElement('div'); oBox.className = 'zzz14b2-voice'; oBox.style.flexWrap = 'wrap';
+  ZZZ16_LANGS.forEach(x => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn' + (zzz23tr_def_out() === x[0] ? ' is-on' : ''); b.textContent = x[1];
+    b.addEventListener('click', () => { const p = zzz23tr_prefs(); p.out = x[0]; zzz23tr_save_prefs(p); oBox.querySelectorAll('button').forEach(y => y.classList.toggle('is-on', y === b)); });
+    oBox.appendChild(b);
+  });
+  row('TRANSLATOR · my messages in', 'Language of my sent messages in IN+OUT (a chat can have its own - hold its button 1-2 s). Received messages are always translated into the Home language above.', '', oBox);
+  const pBox = document.createElement('div'); pBox.className = 'zzz14b2-voice'; pBox.style.flexWrap = 'wrap';
+  const paintPacks = () => {
+    pBox.innerHTML = '';
+    ZZZ16_LANGS.forEach(x => {
+      const l = x[0]; if (l === 'en' || !zzz23tr_available(l)) return;
+      const b = document.createElement('button'); b.type = 'button'; const has = zzz23tr_has(l);
+      b.className = 'zzz16-btn' + (has ? ' is-on' : ''); b.textContent = has ? x[1] + ' ✓' : '⬇' + x[1] + ' ' + zzz23tr_mb(zzz23tr_size(l));
+      b.title = x[2] + (has ? ' - downloaded · tap = remove from this device' : ' - tap = download once (offline afterwards)');
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        try {
+          if (zzz23tr_has(l)) { await zzz23tr_remove(l); zzz6f2_show_toast(x[2] + ' removed from this device (download again any time).'); }
+          else { await zzz23tr_install(l, (d, t) => { b.textContent = x[1] + ' ' + Math.round(d * 100 / Math.max(1, t)) + '%'; }); zzz6f2_show_toast('Translator ready: ' + x[2] + '.'); }
+        } catch (e) { zzz6f2_show_toast('Translator: ' + ((e && e.message) || e), 'warn'); }
+        paintPacks();
+      });
+      pBox.appendChild(b);
+    });
+    if (!pBox.children.length) pBox.textContent = 'Not in this Verso version yet.';
+  };
+  paintPacks();
+  row('TRANSLATOR · languages on this device', 'Each language is downloaded once from Verso\'s copy (checked against the checksum inside Verso) and then works offline. English is built in (every other pair goes through English).', '', pBox);
+}
+
 function zzz14b2_render_language_settings(host) {
 
   const box = document.createElement('div');
@@ -38654,12 +39120,13 @@ function zzz14b2_render_language_settings(host) {
 
   const hl = document.createElement('div'); hl.className = 'zzz14b2-voice';
   const curH = zzz16_home();
-  [['sk', 'SK'], ['en', 'EN'], ['uk', 'UK']].forEach(([k, t]) => {
+  hl.style.flexWrap = 'wrap';
+  ZZZ16_LANGS.map(x => [x[0], x[1]]).forEach(([k, t]) => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn' + (k === curH ? ' is-on' : ''); b.textContent = t;
     b.addEventListener('click', () => {
       zzz16_set_home(k);
       hl.querySelectorAll('button').forEach(x => x.classList.toggle('is-on', x === b));
-      try { zzz6f2_show_toast(k === 'uk' ? 'Home language: Ukrainian (keyboard УКР on).' : (k === 'en' ? 'Home language: English.' : 'Home language: Slovak.'), 'info'); } catch (e) {}
+      try { zzz6f2_show_toast('Home language: ' + ZZZ16_LANGS.find(x => x[0] === k)[2] + (k === 'uk' ? ' (keyboard УКР on).' : '.'), 'info'); } catch (e) {}
     });
     hl.appendChild(b);
   });
@@ -38715,12 +39182,13 @@ function zzz14b2_render_language_settings(host) {
 
   const sel = document.createElement('div'); sel.className = 'zzz14b2-voice';
   const cur = String(zzz16_prefs().voiceLang || 'auto');
-  [['auto', 'AUTO'], ['sk', 'SK'], ['en', 'EN'], ['uk', 'UK']].forEach(([k, t]) => {
+  sel.style.flexWrap = 'wrap';
+  [['auto', 'AUTO']].concat(ZZZ16_LANGS.map(x => [x[0], x[1]])).forEach(([k, t]) => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn' + (k === cur ? ' is-on' : ''); b.textContent = t;
     b.addEventListener('click', () => {
       const p = zzz16_prefs(); p.voiceLang = k; zzz16_save_prefs(p);
       sel.querySelectorAll('button').forEach(x => x.classList.toggle('is-on', x === b));
-      zzz16_speak(k === 'en' ? 'English voice.' : (k === 'sk' ? 'Slovenský hlas.' : (k === 'uk' ? 'Український голос.' : 'Automaticky podľa textu.')));
+      zzz16_speak(ZZZ16_VOICE_HELLO[k] || 'Automaticky podľa textu.');
     });
     sel.appendChild(b);
   });
@@ -38748,7 +39216,8 @@ function zzz14b2_render_language_settings(host) {
   tbtn.className = 'zzz16-btn' + (appHere ? ' is-on' : ''); tbtn.textContent = appHere ? 'OPEN' : 'APP ONLY'; tbtn.disabled = !appHere;
   if (appHere) tbtn.addEventListener('click', () => zzz_native_go('intent://reader#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end'));
   tb.appendChild(tbtn);
-  row('Translation', 'In the Verso app: VERSO NOTIF MULTIREADER › TRANSLATION - messages are translated into your home language before they are read (NOTIFY and CONTENT READER separately; Google offline in the phone, marked EXTERNAL).', 'in the browser too (own offline translator); better translation via Verso AI.', tb);
+  row('Translation · reading aloud', 'In the Verso app: VERSO NOTIF MULTIREADER › TRANSLATION - notifications are translated into your home language before they are read (NOTIFY and CONTENT READER separately; Google offline in the phone, marked EXTERNAL).', 'better translation via Verso AI.', tb);
+  zzz23tr_settings(row);
   host.appendChild(box);
   zzz24_render_regimes(host);
 }
@@ -39076,7 +39545,7 @@ function zzz16_render_settings(host) {
     if (zzz14b17_in_app()) {
       row('NOTIFY READER · voice', 'In the Verso app: voice language, speed, voices and translation are set in VERSO NOTIF MULTIREADER.', 'OPEN', true, false, () => zzz_native_go('intent://reader#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end'));
     } else {
-      segRow('NOTIFY READER · voice language', 'Own choice for notifications (CONTENT READER has its own in LANGUAGE)', [['auto', 'AUTO'], ['sk', 'SK'], ['en', 'EN'], ['uk', 'UK']], zzz16_vlang('n'),
+      segRow('NOTIFY READER · voice language', 'Own choice for notifications (CONTENT READER has its own in LANGUAGE)', [['auto', 'AUTO']].concat(ZZZ16_LANGS.map(x => [x[0], x[1]])), zzz16_vlang('n'),
         (k) => { const n = zzz16_prefs(); n.nVoiceLang = k; zzz16_save_prefs(n); });
       const r = document.createElement('div'); r.className = 'zzz16-row';
       const l = document.createElement('div'); l.textContent = 'NOTIFY READER · speed';
@@ -40946,6 +41415,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
           const bod = document.createElement('div');
           bod.className = 'zzz1cn-ws-subbtn-text';
           bod.textContent = String(cnHideStrip(n.note_text || ''));
+          try { zzz23tr_attach_quiet(bod, String(n.entry_key || ''), n); } catch (e) {}
           b.appendChild(top); b.appendChild(bod);
           b.title = zzz5w7_head_line(n, 0, 0, hide)
             + ' - tap opens it where it was written / double tap shows the full sub link'
@@ -45299,7 +45769,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-29 01:07';
+const VERSO_BUILD = '2026-10-29 01:42';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
