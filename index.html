@@ -6836,6 +6836,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-vkb-panel.zzz-vkb-small { width: min(560px, calc(100vw - 8px)); }
   .zzz-vkb-small .zzz-vkb-key { font-size: 15px; }
   .zzz-vkb-small .zzz-vkb-hint { font-size: 8px; }
+.zzz-vkb-hint.zzz-vkb-hint-sym { color: #8a8a8a !important; opacity: .8; }   
   
   .zzz-vkb-key.zzz-vkb-swap > span:not(.zzz-vkb-hint) { color: #D4AF37; }
   .zzz-vkb-key.zzz-vkb-swap .zzz-vkb-hint { color: #ffffff; }
@@ -29819,8 +29820,10 @@ function zzz56_priv_on(k) {
   return zzz56_modes_get(k).priv;
 }
 function zzz56_sel_key(entryKey) { return 'zzz56_priv_sel_' + String(entryKey || ''); }
+
+function zzz56_uniq(arr) { const seen = new Set(); return (arr || []).filter(x => { const n = zzz10v1_normalize(x); if (!n || seen.has(n)) return false; seen.add(n); return true; }); }
 function zzz56_sel_get(entryKey) {
-  try { const v = JSON.parse(localStorage.getItem(zzz56_sel_key(entryKey)) || '[]'); return Array.isArray(v) ? v : []; }
+  try { const v = JSON.parse(localStorage.getItem(zzz56_sel_key(entryKey)) || '[]'); return Array.isArray(v) ? zzz56_uniq(v) : []; }
   catch (e) { return []; }
 }
 function zzz56_sel_set(entryKey, arr) {
@@ -29921,7 +29924,8 @@ function zzz56_priv_open_presets(anchorEl) {
   head.style.cssText += 'display:flex;align-items:center;gap:6px;';
   const hx = document.createElement('button');
   hx.type = 'button'; hx.className = 'zzz5w5cm-close'; hx.textContent = '\u00d7'; hx.setAttribute('aria-label', 'Close');
-  hx.style.cssText = 'margin-left:auto;flex:0 0 auto;';
+
+  hx.style.cssText = 'margin-left:auto;flex:0 0 auto;width:44px;height:44px;min-width:44px;border-radius:50%;border:2px solid #D4AF37;background:#171717;color:#D4AF37;font-size:26px;font-weight:800;line-height:1;cursor:pointer;';
   hx.addEventListener('click', (e) => { e.stopPropagation(); win.remove(); });
   head.appendChild(hx);
   win.appendChild(head);
@@ -29932,7 +29936,7 @@ function zzz56_priv_open_presets(anchorEl) {
   const me = zzz10v1_normalize(zzz0r1_get_current_username() || '');
   const paint = () => {
     body.innerHTML = '';
-    const people = (zzz56People[ctx] || []).filter(n => zzz10v1_normalize(n) !== me);
+    const people = zzz56_uniq((zzz56People[ctx] || []).filter(n => zzz10v1_normalize(n) !== me));
     const inRec = new Set(people.map(n => zzz10v1_normalize(n)));
     const sel = zzz56_sel_get(ctx);
     const selN = sel.map(x => zzz10v1_normalize(x)).sort().join(',');
@@ -45818,7 +45822,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-29 12:36';
+const VERSO_BUILD = '2026-10-29 13:29';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -49250,7 +49254,6 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     } catch (e) {}
   };
   const back = () => { if (isText) zzz_vkb_text_backspace(target); else target.value = target.value.slice(0, -1); };
-  const replaceLast = (ch) => { back(); type(ch); };
 
   const multiline = isText && (target.tagName === 'TEXTAREA' || target.isContentEditable);
   let spaceAt = 0;
@@ -49285,7 +49288,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       b.className = 'zzz-vkb-key zzz-vkb-pop-key';
       b.textContent = v;
       b.dataset.zzzVkbVariant = v;
-      b.addEventListener('pointerdown', (e) => { e.preventDefault(); replaceLast(v); closePop(); });
+      b.addEventListener('pointerdown', (e) => { e.preventDefault(); type(v); closePop(); });
       pop.appendChild(b);
     });
     panel.appendChild(pop);
@@ -49362,14 +49365,16 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
         if (ch.length === 1 && !/\p{L}/u.test(ch)) hiCommit();
         let c = ch;
         if (caps && !capsLock && c.toLowerCase() !== c.toUpperCase()) { if (oneShotUsed) c = c.toLowerCase(); else oneShotUsed = true; }
-        type(c);
+
+        if (variants && variants.length) k._pend = c; else type(c);
       }
       speedMark(e.timeStamp, tIn);
       if (timer) clearTimeout(timer);
       if (variants && variants.length) timer = setTimeout(() => {
         timer = null;
         k.classList.add('zzz-vkb-key-long');
-        if (variants.length === 1) replaceLast(variants[0]); else openPop(k, variants);
+        k._pend = null;
+        if (variants.length === 1) type(variants[0]); else openPop(k, variants);
       }, ZZZ_VKB_LONGPRESS_MS);
     });
     const finish = (e) => {
@@ -49390,11 +49395,12 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       }
       snapUp(k);
       if (timer) { clearTimeout(timer); timer = null; }
+      if (k._pend != null) { const c0 = k._pend; k._pend = null; if (e && e.type === 'pointerup') type(c0); }
       k.classList.remove('zzz-vkb-key-long');
       if (oneShotUsed && caps && !capsLock) { caps = false; oneShotUsed = false; setTimeout(draw, 0); }
       if (pop && e && e.type === 'pointerup') {
         const over = document.elementFromPoint(e.clientX, e.clientY);
-        if (over && over.dataset && over.dataset.zzzVkbVariant) { replaceLast(over.dataset.zzzVkbVariant); closePop(); }
+        if (over && over.dataset && over.dataset.zzzVkbVariant) { type(over.dataset.zzzVkbVariant); closePop(); }
       }
     };
     k.addEventListener('pointerup', finish);
@@ -49434,9 +49440,11 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     row.appendChild(b);
     return b;
   };
-  const variantsOf = (l) => {
+  const variantsOf = (l, forSym) => {
     const own = isText && ZZZ23_KB_ACC[kbLang] ? ZZZ23_KB_ACC[kbLang][l] : null;
-    const v = own ? own : (isText && (kbLang === 'sk' || kbLang === 'hi') && ZZZ_VKB_ACCENTS[l] ? ZZZ_VKB_ACCENTS[l] : (ZZZ_VKB_HINTS[l] ? [ZZZ_VKB_HINTS[l]] : null));
+    const acc = own ? own : (isText && (kbLang === 'sk' || kbLang === 'hi') && ZZZ_VKB_ACCENTS[l] ? ZZZ_VKB_ACCENTS[l] : null);
+
+    const v = acc ? acc : (forSym && ZZZ_VKB_HINTS[l] ? [ZZZ_VKB_HINTS[l]] : null);
     return v && caps ? v.map(x => x.toUpperCase()) : v;
   };
 
@@ -49452,8 +49460,12 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       const cols = kbLang === 'uk' || kbLang === 'ru' ? 24 : 20;
       if (cols === 24) g.style.gridTemplateColumns = 'repeat(24, 1fr)';
       const letterKey = (l) => {
-        const L = caps ? l.toUpperCase() : l, v = variantsOf(l);
-        if (!sym || !v || !v.length) return charKey(g, L, v);
+        const L = caps ? l.toUpperCase() : l, v = variantsOf(l, sym);
+        if (!sym || !v || !v.length) {
+          const k0 = charKey(g, L, v);
+          if (!v && ZZZ_VKB_HINTS[l]) { const h = document.createElement('span'); h.className = 'zzz-vkb-hint zzz-vkb-hint-sym'; h.textContent = ZZZ_VKB_HINTS[l]; k0.appendChild(h); }
+          return k0;
+        }
         const k = charKey(g, v[0], [L].concat(v.slice(1)));
         k.classList.add('zzz-vkb-swap');
         return k;
@@ -50100,7 +50112,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 100;
+const ZZZ14B17_APP_LATEST = 101;
 function zzz14b17_app_code() {
 
   try {
