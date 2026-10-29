@@ -80,6 +80,8 @@ async function versoSwShow(d) {
     const where = d.project || (d.entry ? '#' + d.entry : '');
     b0 = `${word} from ${who}${where ? ' \u00b7 ' + where : ''}`;
   }
+
+  if (d.priv === true) b0 = '\u{1F512} ' + b0;
   const body = who && b0.indexOf(who) < 0 ? `${who}: ${b0}` : b0;
   c.last[tier] = { body, entry: d.entry || '', title: d.title || '', who };
   const top = c.u ? 'u' : (c.a ? 'a' : 'o');
