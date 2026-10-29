@@ -28195,8 +28195,8 @@ async function zzz3d_shift(it) {
 
 function zzz3d_hold(el, it) {
   if (!it || (it.src !== 'chat' && it.src !== 'reminder' && it.src !== 'schedule')) return;
-  let t = null, x0 = 0, y0 = 0;
-  const stop = () => { if (t) { clearTimeout(t); t = null; } };
+  let t = null, t3 = null, x0 = 0, y0 = 0;
+  const stop = () => { if (t) { clearTimeout(t); t = null; } if (t3) { clearTimeout(t3); t3 = null; } };
   el.addEventListener('contextmenu', (e) => e.preventDefault());
   el.addEventListener('pointerdown', (e) => {
     if (e.button > 0 || (e.target && e.target.closest && e.target.closest('button'))) return;
@@ -28207,10 +28207,29 @@ function zzz3d_hold(el, it) {
       setTimeout(() => { el._zzz3dSwiped = false; }, 700);
       zzz5w8_play_shift(it);
     }, ZZZ5W8_HOLD_PLAY_MS);
+
+    t3 = setTimeout(() => {
+      t3 = null; if (t) { clearTimeout(t); t = null; }
+      el._zzz3dSwiped = true; setTimeout(() => { el._zzz3dSwiped = false; }, 900);
+      try { zzz16_stop_reading(); } catch (e2) {}
+      zzz3d_read_all();
+    }, ZZZ3D_HOLD_ALL_MS);
   });
-  el.addEventListener('pointermove', (e) => { if (t && (Math.abs(e.clientX - x0) > 12 || Math.abs(e.clientY - y0) > 12)) stop(); });
+  el.addEventListener('pointermove', (e) => { if ((t || t3) && (Math.abs(e.clientX - x0) > 12 || Math.abs(e.clientY - y0) > 12)) stop(); });
   el.addEventListener('pointerup', stop);
   el.addEventListener('pointercancel', stop);
+}
+const ZZZ3D_HOLD_ALL_MS = 3000;
+
+function zzz3d_read_all() {
+  let list = [];
+  try { list = zzz3d_order(zzz5w8_collect()); } catch (e) {}
+  const todo = list.filter(i => !i.checked && !i.done && !i.hidden && (i.src === 'chat' || ((i.src === 'reminder' || i.src === 'schedule') && i.due)));
+  if (!todo.length) { zzz6f2_show_toast('Nothing to mark - all READ.', 'ok'); return; }
+  try { navigator.vibrate && navigator.vibrate([40, 60, 40]); } catch (e) {}
+  todo.forEach(i => { try { zzz5w8_to_checked(i); i.checked = true; } catch (e) {} });
+  try { zzz3dSig = ''; zzz3d_render(); } catch (e) {}
+  zzz3d_offer_undo('\u2713 ALL READ \u00b7 ' + todo.length, () => todo.forEach(i => { if (i.src === 'chat') { try { zzz5w8_unshift(i); } catch (e) {} } }));
 }
 
 function zzz3d_swipe(el, it) {
@@ -45824,7 +45843,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-29 17:15';
+const VERSO_BUILD = '2026-10-29 17:40';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -49590,14 +49609,33 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     pk.title = 'Tap = ' + (nextPage === 'symbols' ? 'symbols' : nextPage === 'digits' ? 'numbers / media' : 'letters');
     if (isText) {
 
-      const ck = ctrlKey(rc, 'Ctrl', async () => {
+      const ctrlLinkPaste = async () => {
         let l = '';
         try { const m = String(await navigator.clipboard.readText() || '').match(/https?:\/\/\S+/); if (m) l = m[0]; } catch (e) {}
         if (!l) { for (const x of zzz_clip_list()) { const m = String(x).match(/https?:\/\/\S+/); if (m) { l = m[0]; break; } } }
         if (l) insertChip(l); else zzz6f2_show_toast('No copied link yet.', 'info');
+      };
+
+      const ck = ctrlKey(rc, 'Ctrl', (b) => {
+        b._ctrlFired = false;
+        clearTimeout(b._ctrlT);
+        b._ctrlT = setTimeout(() => {
+          b._ctrlT = null; b._ctrlFired = true;
+          window.zzzVkbCtrlLock = !window.zzzVkbCtrlLock;
+          zzz_haptic_pulse(60); paintCtrl();
+          zzz6f2_show_toast(window.zzzVkbCtrlLock ? 'Ctrl ON - tap Ctrl to switch it off.' : 'Ctrl OFF.', 'info');
+        }, 3000);
       }, 'zzz-vkb-ctrlkey');
-      ck.title = 'Ctrl = paste the last copied link';
-      ck.style.color = '#D4AF37';
+      const paintCtrl = () => { const on = !!window.zzzVkbCtrlLock; ck.style.color = on ? '#141414' : '#D4AF37'; ck.style.background = on ? '#D4AF37' : ''; };
+      ck.addEventListener('pointerup', () => {
+        if (!ck._ctrlT) return;
+        clearTimeout(ck._ctrlT); ck._ctrlT = null;
+        if (window.zzzVkbCtrlLock) { window.zzzVkbCtrlLock = false; paintCtrl(); zzz6f2_show_toast('Ctrl OFF.', 'info'); }
+        else ctrlLinkPaste();
+      });
+      ['pointercancel', 'pointerleave'].forEach(t => ck.addEventListener(t, () => { if (ck._ctrlT) { clearTimeout(ck._ctrlT); ck._ctrlT = null; } }));
+      ck.title = 'Ctrl = paste the last copied link · hold 3 s = Ctrl stays ON';
+      paintCtrl();
     }
     const mic = ctrlKey(rc, ZZZ_VKB_MIC_SVG, () => {}, 'zzz-vkb-mic');
     mic.disabled = true;
