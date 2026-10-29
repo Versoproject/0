@@ -38901,49 +38901,81 @@ async function zzz23tr_translate(text, from, to) {
 function zzz23tr_short(l) { const x = ZZZ16_LANGS.find(y => y[0] === l); return x ? x[1] : String(l || '').toUpperCase(); }
 function zzz23tr_name(l) { const x = ZZZ16_LANGS.find(y => y[0] === l); return x ? x[2] : l; }
 
+const ZZZ23TR_WORDS = {
+  en: 'the and is are you your how what where when why to of in it this that am have has do does doing hello hi thanks thank please yes no not can will would good morning see we they with for on at my me sorry tomorrow today',
+  de: 'der die das und ist nicht ich du sie wir ein eine mit auf für ja nein danke hallo aber auch wie was wo gut sehr haben bin bist den dem zu geht dir mir mich dich krank heute morgen bitte schon noch kann will müde',
+  it: 'il che di è non sono per con ciao grazie sì anche come cosa molto bene io lui lei noi questo quello perché ma gli della sei stanco voglio andare domani ho hai ha bambini qua qui oggi dormire ancora sempre tutto',
+  es: 'el los las que por para con una pero muy como está esta este qué hola gracias sí yo usted también ahora bien hay del al lo su estoy estás quiero mañana hoy niños aquí bueno buenos días tengo tienes vamos cansado',
+  fr: 'le les des est et je il elle nous vous pas une pour avec bonjour merci oui très bien mais dans sur ce qui suis tu au du fatigué veux demain aujourd enfants ici bonsoir aller dormir' };
+const ZZZ23TR_SETS = Object.fromEntries(Object.entries(ZZZ23TR_WORDS).map(([k, v]) => [k, new Set(v.split(' '))]));
+function zzz23tr_detect(t) {
+  const d = zzz16_detect(t);
+  if (d === 'zh' || d === 'hi' || d === 'uk' || d === 'ru') return d;
+  const low = String(t || '').toLowerCase();
+  if (/[čďľňšťžŕĺôä]/.test(low)) return 'sk';
+  const score = {};
+  (low.match(/[\p{L}']+/gu) || []).forEach(w => Object.keys(ZZZ23TR_SETS).forEach(k => { if (ZZZ23TR_SETS[k].has(w)) score[k] = (score[k] || 0) + 1; }));
+  if (/[ñ¿¡]/.test(low)) score.es = (score.es || 0) + 2;
+  if (/[ßöü]/.test(low)) score.de = (score.de || 0) + 2;
+  const ranked = Object.entries(score).sort((a, b) => b[1] - a[1]);
+  if (ranked.length && ranked[0][1] >= 1 && (ranked.length < 2 || ranked[0][1] > ranked[1][1])) return ranked[0][0];
+  return d;
+}
+function zzz23tr_parts(text) {
+  const segs = String(text || '').match(/[^.!?。！？\n]+[.!?。！？]*\s*|\n+/gu) || [String(text || '')];
+  const parts = segs.map(t => ({ t, l: /\p{L}/u.test(t) ? zzz23tr_detect(t) : '' }));
+  for (let i = 0; i < parts.length; i++) if (parts[i].l === '?') {
+    let j = i - 1; while (j >= 0 && (!parts[j].l || parts[j].l === '?')) j--;
+    let k = i + 1; while (k < parts.length && (!parts[k].l || parts[k].l === '?')) k++;
+    parts[i].l = j >= 0 ? parts[j].l : (k < parts.length ? parts[k].l : '?');
+  }
+  return parts;
+}
 function zzz23tr_attach(body, entryKey, note, me) {
   try {
     if (!body || !note || !zzz23tr_on()) return;
     const mode = zzz23tr_chat(entryKey).m;
     if (mode === 'off') return;
     if (zzz10v1_normalize(note.username || '') === me) return;
-    const text = String(note.note_text || '');
-    if (text.trim().length < 2) return;
+    const orig = String(note.note_text || '');
+    if (orig.trim().length < 2) return;
     const home = zzz16_home();
-    const from = zzz16_detect(text);
-    if (!zzz16_lang_known(from) || from === home) return;
+    const parts = zzz23tr_parts(orig);
+    const froms = Array.from(new Set(parts.map(x => x.l).filter(l => zzz16_lang_known(l) && l !== home)));
+    if (!froms.length) return;
     const chip = document.createElement('button'); chip.type = 'button'; chip.className = 'zzz23tr-chip';
     chip.addEventListener('mousedown', (e) => e.preventDefault());
-    const orig = text;
-    if (!zzz23tr_can(from, home)) {
-      if (!zzz23tr_available(from) || !zzz23tr_available(home)) return;
-      const need = [from, home].filter(l => !zzz23tr_has(l));
+    const tag = froms.map(zzz23tr_short).join('·') + '→' + zzz23tr_short(home);
+    const need = froms.concat([home]).filter((l, i, a) => a.indexOf(l) === i && zzz23tr_available(l) && !zzz23tr_has(l));
+    if (need.length) {
       chip.textContent = '⬇ ' + need.map(zzz23tr_short).join(' + ') + ' · ' + zzz23tr_mb(need.reduce((s, l) => s + zzz23tr_size(l), 0));
       chip.title = 'VERSO TRANSLATOR: download ' + need.map(zzz23tr_name).join(' + ') + ' once (offline, nothing leaves the phone), then this chat is translated';
       chip.addEventListener('click', async (e) => {
         e.stopPropagation(); chip.disabled = true;
-        try { for (const l of need) await zzz23tr_install(l, (d, t) => { chip.textContent = '⬇ ' + Math.round(d * 100 / Math.max(1, t)) + ' %'; }); zzz6f2_show_toast('Translator ready: ' + need.map(zzz23tr_name).join(' + ') + '.'); }
+        try { for (const l of need) await zzz23tr_install(l, (d, t) => { chip.textContent = '⬇ ' + zzz23tr_short(l) + ' ' + Math.round(d * 100 / Math.max(1, t)) + ' %'; }); zzz6f2_show_toast('Translator ready: ' + need.map(zzz23tr_name).join(' + ') + '.'); }
         catch (x) { chip.disabled = false; chip.textContent = '⬇ again'; zzz6f2_show_toast('Translator: ' + ((x && x.message) || x), 'warn'); }
       });
       body.after(chip);
       return;
     }
-    chip.textContent = zzz23tr_short(from) + '→' + zzz23tr_short(home) + ' …';
+    chip.textContent = tag + ' …';
     body.after(chip);
-    let showing = 'orig';
-    zzz23tr_translate(orig, from, home).then(out => {
-      if (!body.isConnected) return;
-      body.textContent = out; showing = 'tr';
-      chip.textContent = zzz23tr_short(from) + '→' + zzz23tr_short(home) + ' ⇄';
-      chip.title = 'Translated offline by VERSO TRANSLATOR from ' + zzz23tr_name(from) + ' - tap = original';
-    }).catch(x => { chip.textContent = zzz23tr_short(from) + '→' + zzz23tr_short(home) + ' ⚠'; chip.title = 'Not translated: ' + ((x && x.message) || x); });
+    let showing = 'orig', done = null;
+    Promise.all(parts.map(x => (zzz16_lang_known(x.l) && x.l !== home && zzz23tr_can(x.l, home))
+      ? zzz23tr_translate(x.t, x.l, home).then(o => o + (/\s$/.test(x.t) ? ' ' : '')) : Promise.resolve(x.t)))
+      .then(out => {
+        done = out.join('').trim();
+        if (!body.isConnected) return;
+        body.textContent = done; showing = 'tr';
+        chip.textContent = tag + ' ⇄';
+        chip.title = 'Translated offline by VERSO TRANSLATOR from ' + froms.map(zzz23tr_name).join(' + ') + ' - tap = original';
+      }).catch(x => { chip.textContent = tag + ' ⚠'; chip.title = 'Not translated: ' + ((x && x.message) || x); });
     chip.addEventListener('click', (e) => {
       e.stopPropagation();
-      const k = from + '>' + home + '|' + orig.trim();
-      if (!zzz23trState.memo.has(k)) return;
+      if (done === null) return;
       showing = showing === 'tr' ? 'orig' : 'tr';
-      body.textContent = showing === 'tr' ? zzz23trState.memo.get(k) : orig;
-      chip.textContent = zzz23tr_short(from) + (showing === 'tr' ? '→' + zzz23tr_short(home) + ' ⇄' : ' original ⇄');
+      body.textContent = showing === 'tr' ? done : orig;
+      chip.textContent = showing === 'tr' ? tag + ' ⇄' : 'original ⇄';
     });
   } catch (e) {}
 }
@@ -38953,7 +38985,7 @@ function zzz23tr_attach_quiet(el, entryKey, note) {
     if (!el || !note || !zzz23tr_on() || zzz23tr_chat(entryKey).m === 'off') return;
     const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
     if (zzz10v1_normalize(note.username || '') === me) return;
-    const text = String(el.textContent || ''); const home = zzz16_home(); const from = zzz16_detect(text);
+    const text = String(el.textContent || ''); const home = zzz16_home(); const from = zzz23tr_detect(text);
     if (!zzz16_lang_known(from) || from === home || !zzz23tr_can(from, home)) return;
     zzz23tr_translate(text, from, home).then(out => {
       if (!el.isConnected || out === text) return;
@@ -38981,7 +39013,7 @@ function zzz23tr_attach_own(body, note) {
 async function zzz23tr_outgoing(entryKey, raw) {
   if (!zzz23tr_on() || zzz23tr_chat(entryKey).m !== 'out') return null;
   const to = zzz23tr_chat(entryKey).to;
-  let from = zzz16_detect(raw); if (!zzz16_lang_known(from)) from = zzz16_home();
+  let from = zzz23tr_detect(raw); if (!zzz16_lang_known(from)) from = zzz16_home();
   if (from === to) return null;
   if (!zzz23tr_can(from, to)) {
     const need = [from, to].filter(l => !zzz23tr_has(l));
@@ -45769,7 +45801,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-29 02:48';
+const VERSO_BUILD = '2026-10-29 03:19';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
