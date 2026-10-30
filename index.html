@@ -6988,6 +6988,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     background: #171717; border: 2px solid #D4AF37; border-radius: 12px; padding: 8px; color: #eee; font: 12px/1.3 Roboto, Arial, sans-serif; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
   .zzz-media-head { display: flex; align-items: center; justify-content: space-between; color: #D4AF37; font-weight: 800; letter-spacing: .06em; margin-bottom: 6px; }
   .zzz-media-x { background: transparent; border: 0; color: #fff; font-size: 18px; }
+  .zzz-media-view span { opacity: .55; } .zzz-media-view span.is-act { opacity: 1; color: #D4AF37; font-weight: 800; }   
   .zzz-media-now { color: #D4AF37; font-weight: 700; border: 1px solid #3f3f46; border-radius: 6px; padding: 4px 7px; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   
   .zzz-media-stage { position: fixed; z-index: 2147483003; background: #000; border-radius: 8px; overflow: hidden; }
@@ -45843,7 +45844,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-29 19:19';
+const VERSO_BUILD = '2026-10-30 14:20';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -46764,7 +46765,8 @@ function zzz_back_z(el) {
   }
   return z;
 }
-const ZZZ_BACK_CLOSERS = '.entry-modal-close, .zzz5w5cm-close, .zzz4-0-close-x, .zzz-reg-close, .zzz14cs-pin-close';
+
+const ZZZ_BACK_CLOSERS = '.entry-modal-close, .zzz5w5cm-close, .zzz4-0-close-x, .zzz-reg-close, .zzz14cs-pin-close, .zzz-media-x';
 
 function zzz_back_present(b) {
   if (!b || !b.isConnected) return false;
@@ -46784,6 +46786,8 @@ function zzz_back_close_top() {
     try { const t = p._target; if (p._text && t && t.blur) t.blur(); } catch (e) {}
     return true;
   }
+
+  { const mc = document.querySelectorAll('.zzz-media-confirm'); if (mc.length) { mc[mc.length - 1].remove(); return true; } }
 
   let best = null, bestZ = -1;
   document.querySelectorAll(ZZZ_BACK_CLOSERS).forEach(b => {
@@ -48627,9 +48631,16 @@ async function zzz_media_open() {
   const add = document.createElement('button'); add.type = 'button'; add.className = 'zzz-media-btn'; add.textContent = '+ ADD';
 
   add.addEventListener('click', async () => {
-    const u = inp.value.trim();
+    let u = inp.value.trim();
     const tabTag = zzzMedia.tab === 'ACTUAL' || zzzMedia.tab === 'TRASH' ? 'actual' : zzzMedia.tab.toLowerCase();
-    if (!u) { zzz6f2_show_toast('Paste a link first' + (zzzMedia.view === 'pls' ? ' (or type a new playlist name).' : '.'), 'info'); return; }
+
+    if (!u) {
+      try { const m = String(await navigator.clipboard.readText() || '').match(/https?:\/\/\S+/); if (m) u = m[0]; } catch (e) {}
+      if (!u) { try { for (const x of zzz_clip_list()) { const m = String(x).match(/https?:\/\/\S+/); if (m) { u = m[0]; break; } } } catch (e) {} }
+      if (!u && zzzMedia.cur && /^https?:/i.test(zzzMedia.cur.link || '')) u = zzzMedia.cur.link;
+      if (u) inp.value = u;
+    }
+    if (!u) { zzz6f2_show_toast('Copy a link first (Share › Copy link) - + ADD takes it by itself' + (zzzMedia.view === 'pls' ? ', or type a new playlist name.' : '.'), 'info'); return; }
     if (!/^https?:\/\//i.test(u)) {
       if (zzzMedia.view === 'pls' && !zzzMedia.pls && zzzMedia.tab !== 'ACTUAL') { const pl = await zzz_media_new_playlist(u, tabTag); if (pl) { inp.value = ''; draw(); } return; }
       zzz6f2_show_toast('Paste a link that starts with https://' + (zzzMedia.tab !== 'ACTUAL' ? ' - or switch to PLAYLISTS to make a playlist.' : ''), 'warn'); return;
@@ -48676,8 +48687,9 @@ async function zzz_media_open() {
     const actual = zzzMedia.tab === 'ACTUAL', trashTab = zzzMedia.tab === 'TRASH';
     const plsView = !actual && !trashTab && zzzMedia.view === 'pls';
     viewB.style.display = actual || trashTab ? 'none' : '';
-    viewB.textContent = plsView ? 'PLAYLISTS' : 'ROWS';
-    viewB.classList.toggle('is-on', plsView);
+
+    viewB.innerHTML = '<span' + (plsView ? '' : ' class="is-act"') + '>ROWS</span> \u21c4 <span' + (plsView ? ' class="is-act"' : '') + '>\u2605 PLAYLISTS</span>';
+    viewB.classList.remove('is-on');
     selB.style.display = delB.style.display = trashTab || (plsView && !zzzMedia.pls) ? 'none' : '';
     pubB.style.display = prvB.style.display = cpyB.style.display = zzzMedia.selecting && zzzMedia.sel.size ? '' : 'none';
     selB.classList.toggle('is-on', zzzMedia.selecting);
@@ -48934,7 +48946,7 @@ function zzz_vkb_now_text() {
   if (zzzMedia.loaded) return '\u2913 ' + zzzMedia.loaded.replace(/^https?:\/\/(www\.)?/, '') + '  \u00b7  \u25B6 = play';
   if (zzzMedia.cur) return (zzz_media_playing() ? '\u25B6\uFE0E ' : '\u275A\u275A ') + zzz_media_title(zzzMedia.cur) + (zzz_media_offline() ? ' \u00b7 OFFLINE' : '');
   const m = Array.from(document.querySelectorAll('video, audio')).find(x => !x.paused) || document.querySelector('video, audio');
-  if (!m) return 'nothing is playing in Verso';
+  if (!m) return 'MEDIA PLAYER \u00b7 nothing is playing';
   let name = m.title || (m.dataset && m.dataset.title) || '';
   if (!name) { try { name = decodeURIComponent(String(m.currentSrc || m.src || '').split('/').pop().split('?')[0]); } catch (e) {} }
   return (m.paused ? '\u275A\u275A ' : '\u25B6\uFE0E ') + (name || '(no title)');
@@ -49354,7 +49366,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
   };
   const makeRow = (cls) => { const r = document.createElement('div'); r.className = 'zzz-vkb-row' + (cls ? ' ' + cls : ''); body.appendChild(r); return r; };
 
-  const charKey = (row, ch, variants) => {
+  const charKey = (row, ch, variants, cornerText) => {
     const k = document.createElement('button');
     k.type = 'button';
     k.tabIndex = -1;
@@ -49364,10 +49376,10 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     if (ch === ' ') label.className = 'zzz-vkb-space-lab';
     if (ch === ' ' && isText) { const d = document.createElement('span'); d.className = 'zzz-vkb-dot2'; d.textContent = '2\u00d7\u25cf'; k.appendChild(d); }
     k.appendChild(label);
-    if (variants && variants.length) {
+    if (variants && variants.length && cornerText !== null) {
       const h = document.createElement('span');
       h.className = 'zzz-vkb-hint';
-      h.textContent = variants[0];
+      h.textContent = cornerText !== undefined ? cornerText : variants[0];
       k.appendChild(h);
     }
     let timer = null;
@@ -49483,8 +49495,10 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       const letterKey = (l) => {
         const L = caps ? l.toUpperCase() : l, v = variantsOf(l, sym);
         if (!sym || !v || !v.length) {
-          const k0 = charKey(g, L, v);
-          if (!v && ZZZ_VKB_HINTS[l]) { const h = document.createElement('span'); h.className = 'zzz-vkb-hint zzz-vkb-hint-sym'; h.textContent = ZZZ_VKB_HINTS[l]; k0.appendChild(h); }
+
+          const capsV = [l.toUpperCase()].concat((v || []).filter(x => x.toLowerCase() !== x.toUpperCase()).map(x => x.toUpperCase())).filter(x => x !== L);
+          const k0 = charKey(g, L, (v || []).concat(capsV), v && v.length ? v[0] : null);
+          if ((!v || !v.length) && ZZZ_VKB_HINTS[l]) { const h = document.createElement('span'); h.className = 'zzz-vkb-hint zzz-vkb-hint-sym'; h.textContent = ZZZ_VKB_HINTS[l]; k0.appendChild(h); }
           return k0;
         }
         const k = charKey(g, v[0], [L].concat(v.slice(1)));
@@ -49497,18 +49511,15 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       const sh = at(ctrlKey(g, '⇧', () => {
         const now = Date.now();
 
-        if (multiline && !capsLock && now - shiftTapAt < ZZZ_VKB_SPACE_DOUBLE_MS) { caps = !caps; shiftTapAt = 0; newLine(); draw(); return; }
+        if (multiline && !capsLock && now - shiftTapAt < ZZZ_VKB_SPACE_DOUBLE_MS) { if (shHoldT) { clearTimeout(shHoldT); shHoldT = null; } shiftTapAt = 0; newLine(); draw(); return; }
         if (sym) { sym = false; shiftTapAt = 0; draw(); return; }
-        { const c0 = caps, l0 = capsLock, o0 = oneShotUsed;
-          if (shHoldT) clearTimeout(shHoldT);
-          shHoldT = setTimeout(() => { shHoldT = null; caps = c0; capsLock = l0; oneShotUsed = o0; shiftTapAt = 0; sym = true; zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS * 2); draw(); }, 450);
-          const up = () => { if (shHoldT) { clearTimeout(shHoldT); shHoldT = null; } };
+
+        if (shHoldT) clearTimeout(shHoldT);
+        shHoldT = setTimeout(() => { shHoldT = null; caps = false; capsLock = false; oneShotUsed = false; shiftTapAt = 0; sym = true; zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS * 2); draw(); }, 450);
+        { const up = () => { if (shHoldT) { clearTimeout(shHoldT); shHoldT = null; } };
           document.addEventListener('pointerup', up, { once: true, capture: true });
           document.addEventListener('pointercancel', up, { once: true, capture: true }); }
-        if (capsLock) { caps = false; capsLock = false; }
-        else if (caps && now - shiftTapAt < 450) { capsLock = true; }
-        else { caps = !caps; }
-        oneShotUsed = false; shiftTapAt = now; draw();
+        shiftTapAt = now;
       }, 'zzz-vkb-l zzz-vkb-l-left' + (caps ? ' zzz-vkb-on zzz-vkb-shift-on' : '') + (capsLock ? ' zzz-vkb-capslock' : '') + (sym ? ' zzz-vkb-sym-on' : '')), '1 / span 3', '2 / span 2');
       sh.title = capsLock ? 'CAPS on - tap = off' : (caps ? 'Next letter capital - tap again quickly = CAPS' : 'Capital letter (tap twice = CAPS)');
       const bs = at(ctrlKey(g, '⌫', back, 'zzz-vkb-l zzz-vkb-l-right'), (cols - 2) + ' / span 3', '2 / span 2');
@@ -49523,7 +49534,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
         c.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); fn(); }); chips.appendChild(c); return c; };
       chip(zzz_media_offline() ? 'OFFLINE' : 'ONLINE', 'zzz-media-mode' + (zzz_media_offline() ? ' is-off' : ''), () => zzz_media_set_offline(!zzz_media_offline()));
       chip('+ LINK', 'is-add', () => zzz_media_add_clip());
-      chip('MEDIA', '', () => zzz_media_open());
+      chip('CENTER', '', () => zzz_media_open());
       g.appendChild(chips);
       const scr = document.createElement('div'); scr.className = 'zzz-vkb-screen';
       const keys = document.createElement('div'); keys.className = 'zzz-vkb-media';
@@ -49624,7 +49635,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
           window.zzzVkbCtrlLock = !window.zzzVkbCtrlLock;
           zzz_haptic_pulse(60); paintCtrl();
           zzz6f2_show_toast(window.zzzVkbCtrlLock ? 'Ctrl ON - tap Ctrl to switch it off.' : 'Ctrl OFF.', 'info');
-        }, 3000);
+        }, 1500);
       }, 'zzz-vkb-ctrlkey');
       const paintCtrl = () => { const on = !!window.zzzVkbCtrlLock; ck.style.color = on ? '#141414' : '#D4AF37'; ck.style.background = on ? '#D4AF37' : ''; };
       ck.addEventListener('pointerup', () => {
@@ -49634,7 +49645,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
         else ctrlLinkPaste();
       });
       ['pointercancel', 'pointerleave'].forEach(t => ck.addEventListener(t, () => { if (ck._ctrlT) { clearTimeout(ck._ctrlT); ck._ctrlT = null; } }));
-      ck.title = 'Ctrl = paste the last copied link · hold 3 s = Ctrl stays ON';
+      ck.title = 'Ctrl = paste the last copied link · hold 1.5 s = Ctrl stays ON';
       paintCtrl();
     }
     const mic = ctrlKey(rc, ZZZ_VKB_MIC_SVG, () => {}, 'zzz-vkb-mic');
@@ -50152,7 +50163,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 104;
+const ZZZ14B17_APP_LATEST = 111;
 function zzz14b17_app_code() {
 
   try {
