@@ -39557,6 +39557,7 @@ function zzz_set_needs() {
   const out = [];
   try { if ('Notification' in window && Notification.permission !== 'granted') out.push(['Allow notifications for Verso on this device', () => { try { Notification.requestPermission().then(p => { try { zzz6f2_show_toast(p === 'granted' ? 'Notifications allowed.' : 'Notifications not allowed - the browser / Android decides.', p === 'granted' ? 'ok' : 'warn'); } catch (e) {} }); } catch (e) {} }]); } catch (e) {}
   try { if (zzz14b17_is_android() && !zzz_set_can_app()) out.push(['Install the Verso app (NOTIF LINE, reader, keyboard) - REGISTER › Download Verso app', null]); } catch (e) {}
+  try { if (zzzDev.fresh && zzzDev.rows !== null && zzzDev.rows.some(r => r.device_key !== zzz_dev_keyhash() && Object.keys(r.settings || {}).length)) out.push(['New device - restore your settings from another device (DEVICES)', null]); } catch (e) {}
   try { if (zzz_set_can_app() && !/^[0-9a-f]{64}$/.test(localStorage.getItem('verso_cmd_key') || '')) out.push(['Open the Verso app once from its icon - then the web may send it commands (security key)', null]); } catch (e) {}
   return out;
 }
@@ -39590,13 +39591,95 @@ function zzz_set_overview(host) {
     d.appendChild(l); dl.appendChild(d);
   });
   db.addEventListener('click', () => { dl.style.display = dl.style.display === 'none' ? 'block' : 'none'; });
+  const vb = document.createElement('button'); vb.type = 'button'; vb.className = 'zzz16-btn'; vb.textContent = 'DEVICES';
+  const vl = document.createElement('div'); vl.style.display = 'none';
+  vb.addEventListener('click', () => { const on = vl.style.display === 'none'; vl.style.display = on ? 'block' : 'none'; if (on) { vl.textContent = 'Loading…'; zzz_dev_sync(true).finally(() => zzz_dev_panel(vl)); } });
   const bar = document.createElement('div'); bar.className = 'zzz14b2-voice'; bar.style.flexWrap = 'wrap';
-  bar.appendChild(nb); bar.appendChild(db); box.appendChild(bar); box.appendChild(nl); box.appendChild(dl);
+  bar.appendChild(nb); bar.appendChild(db); bar.appendChild(vb); box.appendChild(bar); box.appendChild(nl); box.appendChild(dl); box.appendChild(vl);
   const first = host.querySelector('.zzz16-for');
   host.insertBefore(box, first ? first.nextSibling : host.firstChild);
   zzz_set_decorate(host);
   try { const mo = new MutationObserver(() => zzz_set_decorate(host)); mo.observe(host, { childList: true, subtree: true }); setTimeout(() => mo.disconnect(), 60000); } catch (e) {}
 }
+
+const ZZZ_DEV_KEYS = ['verso_kb_prefs_v1', 'zzz23tr_prefs', 'zzz23tr_chat', 'zzz_dia_sk', 'zzz_vkb_size', 'zzz_vkb_page', 'zzz_media_on',
+  'zzz_media_offline', 'zzz_media_loop', 'zzz_media_clip_auto', 'zzz_mb_ball', 'zzz_ci_wx', 'zzz56_private_mode', 'zzz56_chat_modes',
+  'zzz1cn_setup', 'zzz1r37_preset_tabs', 'zzz5w5cm_shortcuts', 'zzz6f48_mini_hidden_wraps', 'verso_reads_share'];
+const zzzDev = { at: 0, busy: false, key: '', rows: null, fresh: false };
+function zzz_dev_me() { try { return zzz6f7_isLoggedIn ? zzz10v1_normalize(String(zzz0r1_get_current_username() || '').trim()) : ''; } catch (e) { return ''; } }
+function zzz_dev_keyhash() {
+  if (zzzDev.key) return zzzDev.key;
+  try { zzzDev.key = Array.from(zzz_sha256_bytes(new TextEncoder().encode('verso-device:' + zzz_device_id_base()))).map(x => x.toString(16).padStart(2, '0')).join(''); } catch (e) { zzzDev.key = ''; }
+  return zzzDev.key;
+}
+async function zzz_dev_info() {
+  const ua = navigator.userAgent || '', d = navigator.userAgentData;
+  let model = '', platform = d && d.platform ? d.platform : '', ver = '';
+  try { if (d && d.getHighEntropyValues) { const h = await d.getHighEntropyValues(['model', 'platform', 'platformVersion']); model = h.model || ''; platform = h.platform || platform; ver = h.platformVersion || ''; } } catch (e) {}
+  if (!platform) platform = /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iOS' : /Windows/i.test(ua) ? 'Windows' : /Mac/i.test(ua) ? 'macOS' : /Linux/i.test(ua) ? 'Linux' : '';
+  const w = Math.max(screen.width || 0, screen.height || 0), n = Math.min(screen.width || 0, screen.height || 0);
+  const dtype = /iPad/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua)) ? 'tablet' : (/Android|iPhone/i.test(ua) ? 'phone' : 'pc');
+  const maker = /SM-|Samsung/i.test(model + ua) ? 'Samsung' : (platform === 'iOS' || platform === 'macOS' ? 'Apple' : '');
+  const name = [maker, model].filter(Boolean).join(' ') || (platform ? platform + (dtype === 'pc' ? ' computer' : ' device') : 'Device');
+  return { dtype, name, maker, model, os: [platform, ver].filter(Boolean).join(' '), info: { runtime: zzz_verso_runtime(), screen: w + 'x' + n, fold: /SM-F9/i.test(model) } };
+}
+function zzz_dev_snapshot() {
+  const o = {};
+  ZZZ_DEV_KEYS.forEach(k => { try { const v = localStorage.getItem(k); if (v !== null && v.length < 20000) o[k] = v; } catch (e) {} });
+  return o;
+}
+async function zzz_dev_sync(force) {
+  const me = zzz_dev_me(), key = zzz_dev_keyhash();
+  if (!me || !key || zzzDev.busy || (!force && Date.now() - zzzDev.at < 10 * 60000)) return;
+  zzzDev.busy = true;
+  try {
+    const inf = await zzz_dev_info(), now = new Date().toISOString();
+    const { data: ex } = await sb.from('verso_devices').select('id').eq('username', me).eq('device_key', key).limit(1);
+    if (ex && ex.length) {
+      await sb.from('verso_devices').update({ settings: zzz_dev_snapshot(), info: inf.info, os: inf.os, last_seen_at: now, updated_at: now }).eq('id', ex[0].id);
+    } else {
+      await sb.from('verso_devices').insert({ username: me, device_key: key, dtype: inf.dtype, name: inf.name, maker: inf.maker, model: inf.model, os: inf.os, info: inf.info, settings: zzz_dev_snapshot() });
+      zzzDev.fresh = true;
+      zzz_dev_list();
+    }
+    zzzDev.at = Date.now();
+  } catch (e) {} finally { zzzDev.busy = false; }
+}
+async function zzz_dev_list() {
+  const me = zzz_dev_me(); if (!me) return [];
+  try { const { data } = await sb.from('verso_devices').select('id,device_key,dtype,name,model,os,last_seen_at,settings,parent_id').eq('username', me).is('archived_at', null).order('last_seen_at', { ascending: false }); zzzDev.rows = data || []; } catch (e) { zzzDev.rows = []; }
+  return zzzDev.rows;
+}
+function zzz_dev_restore(row) {
+  const st = (row && row.settings) || {}; let n = 0;
+  Object.keys(st).forEach(k => { if (ZZZ_DEV_KEYS.indexOf(k) >= 0) { try { localStorage.setItem(k, String(st[k])); n++; } catch (e) {} } });
+  zzz6f2_show_toast(`Settings from ${row.name || 'that device'} restored (${n}) - Verso reloads.`, 'ok');
+  setTimeout(() => { try { location.reload(); } catch (e) {} }, 1500);
+}
+function zzz_dev_ago(t) { const m = Math.round((Date.now() - (Date.parse(t || '') || Date.now())) / 60000); return m < 2 ? 'now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago'; }
+async function zzz_dev_panel(host) {
+  host.innerHTML = '';
+  const rows = await zzz_dev_list(), mine = zzz_dev_keyhash();
+  if (!rows.length) { host.textContent = 'No device saved yet - this one is saved within a minute after login.'; return; }
+  const ic = { phone: '📱', tablet: '📲', pc: '💻', browser: '🌐', wifi: '📶', watch: '⌚', iot: '🔌', headset: '🎧', car: '🚗', other: '⬜' };
+  rows.forEach(r => {
+    const d = document.createElement('div'); d.className = 'zzz16-row';
+    const l = document.createElement('div'); l.textContent = (r.parent_id ? '↳ ' : '') + (ic[r.dtype] || '') + ' ' + (r.name || r.model || r.dtype) + (r.device_key === mine ? ' · THIS DEVICE' : '');
+    const sm = document.createElement('small'); sm.className = 'zzz14b2-now'; sm.textContent = [r.os, 'seen ' + zzz_dev_ago(r.last_seen_at), Object.keys(r.settings || {}).length + ' settings saved'].filter(Boolean).join(' · ');
+    l.appendChild(sm); d.appendChild(l);
+    if (r.device_key !== mine && Object.keys(r.settings || {}).length) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn'; b.textContent = 'RESTORE HERE';
+      b.addEventListener('click', () => zzz_dev_restore(r)); d.appendChild(b);
+    }
+    host.appendChild(d);
+  });
+  const note = document.createElement('small'); note.className = 'zzz14b2-soon';
+  note.textContent = 'Linked devices (Wi-Fi, watch, IoT …) appear under their main device later. IMEI: only after your MV phrase (coming).';
+  host.appendChild(note);
+}
+setInterval(() => { zzz_dev_sync(false); }, 60000);
+setTimeout(() => { zzz_dev_sync(false); }, 15000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') zzz_dev_sync(true); });
 
 function zzz14b2_render_language_settings(host) {
 
@@ -46279,7 +46362,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-31 00:01';
+const VERSO_BUILD = '2026-10-31 00:52';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
