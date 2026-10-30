@@ -69,8 +69,13 @@ async function versoSwShow(d) {
   if (lvl === 'off') return;
   let prev = null;
   try { const ns = await self.registration.getNotifications({ tag: VERSO_SUMMARY_TAG }); prev = ns.length ? ns[ns.length - 1].data : null; } catch (e) {}
-  const c = { u: 0, a: 0, o: 0, last: {} };
-  if (prev && prev.c) { c.u = prev.c.u || 0; c.a = prev.c.a || 0; c.o = prev.c.o || 0; c.last = prev.c.last || {}; }
+  const c = { u: 0, a: 0, o: 0, last: {}, w: {} };
+  if (prev && prev.c) { c.u = prev.c.u || 0; c.a = prev.c.a || 0; c.o = prev.c.o || 0; c.last = prev.c.last || {}; c.w = prev.c.w || {}; }
+
+  if (d.watch && d.watch !== 'mute' && d.entry) {
+    if (c.w[d.entry]) return;
+    c.w[d.entry] = 1;
+  }
   c[tier] += 1;
 
   const who = String(d.title || '').replace(/^Verso:\s*/, '').trim();

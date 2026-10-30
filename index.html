@@ -38005,6 +38005,48 @@ try { setTimeout(() => { if ('speechSynthesis' in window) zzz16_words_load(); },
 const ZZZ16_WORD_RE = /[a-zA-Z\u00C0-\u024F']+/g;
 function zzz16_has_dia(t) { return /[\u00C0-\u024F]/.test(String(t || '')); }
 
+let zzzDiaLast = null;
+function zzz_dia_on() { try { return localStorage.getItem('zzz_dia_sk') !== '0'; } catch (e) { return true; } }
+function zzz_dia_fix_word(w) {
+  const W = zzz16Words;
+  if (!W || !W.dia) { zzz16_words_load(); return null; }
+  if (w.length < 2 || !/^[A-Za-z]+$/.test(w)) return null;
+  const low = w.toLowerCase(), r = W.dia[low];
+  if (!r || r === low || r.length !== low.length || !/^[a-záäčďéíĺľňóôŕšťúýž]+$/.test(r)) return null;
+  if (W.en && W.en.has(low)) return null;
+  if (w.length > 1 && w === w.toUpperCase()) return r.toUpperCase();
+  return w[0] !== low[0] ? r[0].toUpperCase() + r.slice(1) : r;
+}
+function zzz_dia_commit(target, lang) {
+  zzzDiaLast = null;
+  if (lang !== 'sk' || !target || target.isContentEditable || !zzz_dia_on()) return;
+  const ty = String(target.type || '').toLowerCase();
+  if (ty === 'password' || ty === 'email' || ty === 'url' || target.autocomplete === 'off' && /pass|secret|code/i.test(target.name || '')) return;
+  try {
+    const p = target.selectionStart, before = String(target.value || '').slice(0, p);
+    const m = /([A-Za-z]+)$/.exec(before);
+    if (!m) return;
+    const prev = before.slice(0, p - m[1].length);
+    if (/[@#/._'\d\p{L}]$/u.test(prev) || /(https?:\/\/|www\.)\S*$/i.test(prev)) return;
+    const f = zzz_dia_fix_word(m[1]);
+    if (!f) return;
+    target.setRangeText(f, p - m[1].length, p, 'end');
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+    zzzDiaLast = { el: target, orig: m[1], fixed: f, at: Date.now() };
+  } catch (e) {}
+}
+function zzz_dia_undo(target) {
+  const L = zzzDiaLast; zzzDiaLast = null;
+  if (!L || L.el !== target || Date.now() - L.at > 15000) return false;
+  try {
+    const p = target.selectionStart, before = String(target.value || '').slice(0, p), last = before.slice(-1);
+    if (!last || /\p{L}/u.test(last) || !before.endsWith(L.fixed + last)) return false;
+    target.setRangeText(L.orig, p - L.fixed.length - 1, p, 'end');
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  } catch (e) { return false; }
+}
+
 function zzz16_scripts(t) {
   const s = String(t || '');
   return { lat: (s.match(/[A-Za-z\u00C0-\u017F]/g) || []).length, cyr: (s.match(/[\u0400-\u04FF]/g) || []).length,
@@ -39395,6 +39437,12 @@ function zzz14b2_render_language_settings(host) {
   mdOpen.addEventListener('click', () => zzz_media_open()); mdBox.appendChild(mdOpen);
   row('VERSO MEDIA CENTER', 'Module of VERSO AI MULTIBOARD: ON / OFF the whole module (VERSO AI = MEDIA CONTROL, player, copied links). Share → VERSO MEDIA CENTER in Instagram, YouTube… (Verso app) saves a link without opening anything. Media links of Instagram, YouTube, TikTok, Spotify… copied anywhere go into ALL MEDIA › ACTUAL when you come back to Verso (only media links are looked at). ONLINE = the links play · OFFLINE = only the files chosen with 📁 at each link (in the Verso app a file on the phone, played by VERSO PLAYER also with Verso closed; on the web / PC a file kept only in this browser). YouTube & co. play in their own window and need the internet.', '', mdBox);
   row('Keyboard languages', 'SK · EN always (Slovak letters by long press). Switch on only the ones you want - УКР / РУС (Cyrillic), ES / DE (QWERTZ) / IT / FR (their letters by long press), HI (type Latin, the word turns into देवनागरी). Here or in the keyboard ⚙ window; switch = slide the space key ‹ › (only through the switched-on ones; passwords stay Latin). Chinese later.', '', kb);
+
+  const diaBtn = document.createElement('button'); diaBtn.type = 'button';
+  const diaPaint = () => { const on = zzz_dia_on(); diaBtn.className = 'zzz16-btn' + (on ? ' is-on' : ''); diaBtn.textContent = on ? 'VOICE-DIA-SK ✓' : 'VOICE-DIA-SK off'; };
+  diaBtn.addEventListener('click', () => { const on = !zzz_dia_on(); try { localStorage.setItem('zzz_dia_sk', on ? '1' : '0'); } catch (e) {} if (on) zzz16_words_load(); diaPaint(); });
+  diaPaint();
+  row('VOICE-DIA-SK', 'SK keyboard: a word written without diacritics gets them when it ends (mas → máš, co → čo). ⌫ right after = your word back. Never in passwords, e-mails, links, after @ / #; English words stay. In the Verso app: keyboard ⚙ › VOICE-DIA-SK.', '', diaBtn);
 
   const sel = document.createElement('div'); sel.className = 'zzz14b2-voice';
   const cur = String(zzz16_prefs().voiceLang || 'auto');
@@ -45985,7 +46033,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-30 20:29';
+const VERSO_BUILD = '2026-10-30 20:45';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -49433,6 +49481,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
   const type = (ch) => { if (isText) zzz_vkb_text_insert(target, ch); else target.value = target.value + ch; };
 
   const hiCommit = () => {
+    if (isText && !isSecret) zzz_dia_commit(target, kbLang);
     if (kbLang !== 'hi' || !isText || target.isContentEditable) return;
     try {
       const p = target.selectionStart, before = String(target.value || '').slice(0, p), m = /[A-Za-z]+$/.exec(before);
@@ -49442,6 +49491,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     } catch (e) {}
   };
   const back = () => { if (isText) zzz_vkb_text_backspace(target); else target.value = target.value.slice(0, -1); };
+  const backKey = () => { if (isText && zzz_dia_undo(target)) return; back(); };
 
   const multiline = isText && (target.tagName === 'TEXTAREA' || target.isContentEditable);
   let spaceAt = 0;
@@ -49670,18 +49720,21 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       const sh = at(ctrlKey(g, '⇧', () => {
         const now = Date.now();
 
-        if (multiline && !capsLock && now - shiftTapAt < ZZZ_VKB_SPACE_DOUBLE_MS) { if (shHoldT) { clearTimeout(shHoldT); shHoldT = null; } shiftTapAt = 0; newLine(); draw(); return; }
+        if (multiline && !capsLock && now - shiftTapAt < ZZZ_VKB_SPACE_DOUBLE_MS) { if (shHoldT) { clearTimeout(shHoldT); shHoldT = null; } shiftTapAt = 0; caps = !caps; newLine(); draw(); return; }
         if (sym) { sym = false; shiftTapAt = 0; draw(); return; }
 
+        if (capsLock) { capsLock = false; caps = false; oneShotUsed = false; shiftTapAt = now; draw(); return; }
+        caps = !caps; oneShotUsed = false;
         if (shHoldT) clearTimeout(shHoldT);
-        shHoldT = setTimeout(() => { shHoldT = null; caps = false; capsLock = false; oneShotUsed = false; shiftTapAt = 0; sym = true; zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS * 2); draw(); }, 450);
+        shHoldT = setTimeout(() => { shHoldT = null; caps = true; capsLock = true; oneShotUsed = false; shiftTapAt = 0; zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS * 2); draw(); }, 450);
+        draw();
         { const up = () => { if (shHoldT) { clearTimeout(shHoldT); shHoldT = null; } };
           document.addEventListener('pointerup', up, { once: true, capture: true });
           document.addEventListener('pointercancel', up, { once: true, capture: true }); }
         shiftTapAt = now;
       }, 'zzz-vkb-l zzz-vkb-l-left' + (caps ? ' zzz-vkb-on zzz-vkb-shift-on' : '') + (capsLock ? ' zzz-vkb-capslock' : '') + (sym ? ' zzz-vkb-sym-on' : '')), '1 / span 3', '2 / span 2');
-      sh.title = capsLock ? 'CAPS on - tap = off' : (caps ? 'Next letter capital - tap again quickly = CAPS' : 'Capital letter (tap twice = CAPS)');
-      const bs = at(ctrlKey(g, '⌫', back, 'zzz-vkb-l zzz-vkb-l-right'), (cols - 2) + ' / span 3', '2 / span 2');
+      sh.title = capsLock ? 'CAPS LOCK on - tap = off' : (caps ? 'Next letter capital - tap = off' : 'Capital letter · hold = CAPS LOCK');
+      const bs = at(ctrlKey(g, '⌫', backKey, 'zzz-vkb-l zzz-vkb-l-right'), (cols - 2) + ' / span 3', '2 / span 2');
       [sh, bs].forEach(k => { k.innerHTML = '<span class="zzz-vkb-l-lab">' + k.innerHTML + '</span>'; });
       if (multiline) { const m = document.createElement('span'); m.className = 'zzz-vkb-para'; m.textContent = '2\u00d7\u23ce'; sh.appendChild(m); sh.title = 'Tap = capital letter · tap twice = new line'; }
     } else if (page === 'media') {
@@ -49763,20 +49816,32 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       digits.slice(0, 5).forEach(d => charKey(r1, d, null));
       digits.slice(5, 10).forEach(d => charKey(r2, d, null));
       ctrlKey(r3, 'abc', () => { page = 'letters'; draw(); }, 'zzz-vkb-pagekey');
-      ctrlKey(r3, '⌫', back);
+      ctrlKey(r3, '⌫', backKey);
     } else {
 
       for (let i = 0, n = 0; n < 3; i += 11, n++) {
         const r = makeRow('zzz-vkb-row-sym');
         symbols.slice(i, i + 11).forEach(sy => charKey(r, sy, null));
-        if (n === 2) ctrlKey(r, '⌫', back);
+        if (n === 2) ctrlKey(r, '⌫', backKey);
       }
     }
     const rc = makeRow('zzz-vkb-row-ctrl');
 
     const nextPage = page === 'letters' ? 'digits' : (page === 'digits' && isSecret ? 'symbols' : 'letters');
-    const pk = ctrlKey(rc, nextPage === 'symbols' ? 'SYMBOLS' : nextPage === 'digits' ? '123' : 'ABC', () => { page = nextPage; if (isText && (page === 'letters' || page === 'digits')) { try { localStorage.setItem('zzz_vkb_page', page); } catch (e) {} } draw(); }, 'zzz-vkb-a1');
-    pk.title = 'Tap = ' + (nextPage === 'symbols' ? 'symbols' : nextPage === 'digits' ? 'numbers / media' : 'letters');
+
+    const pageGo = () => { page = nextPage; sym = false; if (isText && (page === 'letters' || page === 'digits')) { try { localStorage.setItem('zzz_vkb_page', page); } catch (e) {} } draw(); };
+    const pageHold = page === 'letters' && isText;
+    const pk = ctrlKey(rc, nextPage === 'symbols' ? 'SYMBOLS' : nextPage === 'digits' ? '123' : 'ABC', (b) => {
+      if (!pageHold) { pageGo(); return; }
+      b._pgHeld = false; clearTimeout(b._pgT);
+      b._pgT = setTimeout(() => { b._pgT = null; b._pgHeld = true; sym = !sym; caps = capsLock; zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS * 2); draw(); }, 450);
+    }, 'zzz-vkb-a1' + (sym ? ' zzz-vkb-on' : ''));
+    if (pageHold) {
+      pk.addEventListener('pointerup', () => { if (pk._pgT) { clearTimeout(pk._pgT); pk._pgT = null; pageGo(); } });
+      ['pointercancel', 'pointerleave'].forEach(t => pk.addEventListener(t, () => { if (pk._pgT) { clearTimeout(pk._pgT); pk._pgT = null; } }));
+      pk.title = 'Tap = numbers · hold = gold characters (one)';
+    }
+    if (!pageHold) pk.title = 'Tap = ' + (nextPage === 'symbols' ? 'symbols' : nextPage === 'digits' ? 'numbers / media' : 'letters');
     if (isText) {
 
       const ctrlLinkPaste = async () => {
