@@ -26058,14 +26058,19 @@ function zzz5w8_collect() {
     const from = t - (Number(r.notify_before_min) || 0) * 60000;
 
     const seen = Date.parse(st.seen_at || '') || 0;
-    const rep = (Number(r.repeat_min) || 0) * 60000;
-    const sh = zzz5w8Shifts['item:' + r.id] || null;
-    const sst = zzz5w8_shift_state(sh, now);
-    const shifted = sst.shifted, back = sst.back;
-    const fresh = !seen || (rep > 0 && now >= seen + rep) || back;
-    const dueNow = now >= from || back;
+    const prioR = ['urgent', 'attention'].indexOf(r.priority) >= 0 ? r.priority : 'open';
 
-    const checkedIt = sst.checked || (dueNow && !fresh && !st.done_at && !shifted);
+    const backAtR = !seen ? 0 : ((Number(r.repeat_min) || 0) > 0 ? seen + Number(r.repeat_min) * 60000
+      : (ZZZ5W8_SHIFT_AUTO[prioR] ? seen + ZZZ5W8_SHIFT_AUTO[prioR] * 60000 : zzz5w8_next_morning(seen)));
+    const sh0 = zzz5w8Shifts['item:' + r.id] || null;
+    const sst = zzz5w8_shift_state(sh0, now);
+    const back = sst.back;
+    const fresh = !seen || now >= backAtR || back;
+    const dueNow = now >= from || back;
+    const autoWait = dueNow && !fresh && !st.done_at && !sst.shifted && !sst.hidden;
+    const shifted = sst.shifted || autoWait;
+    const sh = sh0 || (autoWait ? { until: new Date(backAtR).toISOString(), auto: true } : null);
+    const checkedIt = sst.checked && !autoWait;
     out.push({
       src: r.kind === 'schedule' ? 'schedule' : 'reminder', id: 'item:' + r.id,
       entry, t, due: dueNow, done: !!st.done_at, fresh, shifted, back, checked: checkedIt, hidden: sst.hidden, shift: sh,
@@ -27114,6 +27119,10 @@ function zzz5w8_build_row(it) {
   const line = document.createElement('div');
   line.className = 'zzz5w5cm-ccl-row zzz5w5cm-ccl-item is-tappable zzz5w8-item zzz5w8-p-' + it.prio
     + (it.due ? '' : ' is-upcoming') + (it.done ? ' is-done' : '') + (it.due && !it.fresh && !it.done ? ' is-seen' : '');
+  if (zzz5w8FocusId && it.id === zzz5w8FocusId) {
+    line.style.outline = '2px solid #D4AF37'; line.style.outlineOffset = '-2px';
+    setTimeout(() => { try { line.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {} }, 120);
+  }
   const v = zzz5w8_row_values(it);
   const mini = document.createElement('span');
   mini.className = 'zzz5w5cm-ccl-mini is-item zzz5w8-mini';
@@ -28077,6 +28086,17 @@ function zzz3d_render_now() {
 
 let zzz3dLastHeadTap = 0;
 let zzz3dHeadTimer = null;
+
+function zzz5w8_open_ws_for(it) {
+  try {
+    zzz5w8Tab = it.src === 'schedule' ? 'schedule' : 'reminders';
+    const mode = it.done ? 'done' : (it.shifted ? 'shifted' : (it.checked ? 'done' : 'main'));
+    open_notification_workspace(mode, false);
+    zzz5w8FocusId = it.id;
+    setTimeout(() => { zzz5w8FocusId = ''; }, 15000);
+  } catch (e) { zzz6f2_show_toast(`Could not open NOTIFICATIONS: ${(e && e.message) || e}`, 'warn'); }
+}
+var zzz5w8FocusId = '';
 function zzz3d_open_w8_full() {
   const bx = document.getElementById('versoDashboardSection');
   if (bx && bx.classList.contains('zzz3d-full')) zzz3d_full(false);
@@ -28193,6 +28213,8 @@ function zzz3d_open(it, el) {
   if (bx && bx.classList.contains('zzz3d-full')) zzz3d_full(false);
   try {
     const r = (it && it.raw) || {};
+
+    if (it.src === 'reminder' || it.src === 'schedule') { zzz5w8_open_ws_for(it); zzz3d_render(); return; }
     if (it.src !== 'chat') { zzz5w8_open_item(it, el); zzz3d_render(); return; }
     if (it.back) zzz5w8_put_state(it, { until: null }).catch(() => {});
     const key = String(r.entry_key || it.key || '');
@@ -46033,7 +46055,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-30 20:45';
+const VERSO_BUILD = '2026-10-30 20:49';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
