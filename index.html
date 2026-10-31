@@ -24,12 +24,14 @@
     var keep = [], got = {};
     h.replace(/^#/, '').split('&').forEach(function (p) {
       var i = p.indexOf('='), k = i > 0 ? p.slice(0, i) : p, v = i > 0 ? p.slice(i + 1) : '';
-      if (k === 'vk' || k === 'did' || k === 'ns' || k === 'perm') got[k] = v; else if (p) keep.push(p);
+      if (k === 'vk' || k === 'did' || k === 'ns' || k === 'perm' || k === 'dn' || k === 'mk' || k === 'md') got[k] = v; else if (p) keep.push(p);
     });
     if (/^[0-9a-f]{64}$/.test(got.vk || '')) localStorage.setItem('verso_cmd_key', got.vk);
     if (/^[0-9a-f]{64}$/.test(got.did || '')) localStorage.setItem('verso_dev_did', got.did);
     if (got.ns && got.ns.length < 8000) localStorage.setItem('verso_native_settings', got.ns);
     if (got.perm && /^[A-Za-z]{1,12}$/.test(got.perm)) localStorage.setItem('verso_native_perm', JSON.stringify({ p: got.perm, t: Date.now() }));
+    if (got.mk || got.md || got.dn) { var dec = function (x) { try { return decodeURIComponent(x || '').slice(0, 60); } catch (e2) { return ''; } };
+      localStorage.setItem('verso_dev_name', JSON.stringify({ dn: dec(got.dn), mk: dec(got.mk), md: dec(got.md) })); }
     history.replaceState(null, '', location.pathname + location.search + (keep.length ? '#' + keep.join('&') : ''));
   } catch (e) {}
 })();
@@ -39635,8 +39637,12 @@ async function zzz_dev_info() {
   if (!platform) platform = /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iOS' : /Windows/i.test(ua) ? 'Windows' : /Mac/i.test(ua) ? 'macOS' : /Linux/i.test(ua) ? 'Linux' : '';
   const w = Math.max(screen.width || 0, screen.height || 0), n = Math.min(screen.width || 0, screen.height || 0);
   const dtype = /iPad/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua)) ? 'tablet' : (/Android|iPhone/i.test(ua) ? 'phone' : 'pc');
-  const maker = /SM-|Samsung/i.test(model + ua) ? 'Samsung' : (platform === 'iOS' || platform === 'macOS' ? 'Apple' : '');
-  const name = [maker, model].filter(Boolean).join(' ') || (platform ? platform + (dtype === 'pc' ? ' computer' : ' device') : 'Device');
+  let maker = /SM-|Samsung/i.test(model + ua) ? 'Samsung' : (platform === 'iOS' || platform === 'macOS' ? 'Apple' : '');
+  let name = [maker, model].filter(Boolean).join(' ') || (platform ? platform + (dtype === 'pc' ? ' computer' : ' device') : 'Device');
+  try {
+    const an = JSON.parse(localStorage.getItem('verso_dev_name') || 'null');
+    if (an && zzz_set_can_app()) { if (an.md) model = an.md; if (an.mk) maker = an.mk.charAt(0).toUpperCase() + an.mk.slice(1); name = an.dn || [maker, model].filter(Boolean).join(' ') || name; }
+  } catch (e) {}
   return { dtype, name, maker, model, os: [platform, ver].filter(Boolean).join(' '), info: { runtime: zzz_verso_runtime(), screen: w + 'x' + n, fold: /SM-F9/i.test(model) } };
 }
 function zzz_dev_snapshot() {
@@ -39652,7 +39658,7 @@ async function zzz_dev_sync(force) {
     const inf = await zzz_dev_info(), now = new Date().toISOString();
     const { data: ex } = await sb.from('verso_devices').select('id').eq('username', me).eq('device_key', key).limit(1);
     if (ex && ex.length) {
-      await sb.from('verso_devices').update({ settings: zzz_dev_snapshot(), info: inf.info, os: inf.os, last_seen_at: now, updated_at: now }).eq('id', ex[0].id);
+      await sb.from('verso_devices').update({ settings: zzz_dev_snapshot(), info: inf.info, os: inf.os, name: inf.name, maker: inf.maker, model: inf.model, dtype: inf.dtype, last_seen_at: now, updated_at: now }).eq('id', ex[0].id);
     } else {
       await sb.from('verso_devices').insert({ username: me, device_key: key, dtype: inf.dtype, name: inf.name, maker: inf.maker, model: inf.model, os: inf.os, info: inf.info, settings: zzz_dev_snapshot() });
       zzzDev.fresh = true;
@@ -39663,7 +39669,7 @@ async function zzz_dev_sync(force) {
 }
 async function zzz_dev_list() {
   const me = zzz_dev_me(); if (!me) return [];
-  try { const { data } = await sb.from('verso_devices').select('id,device_key,dtype,name,model,os,last_seen_at,settings,parent_id').eq('username', me).is('archived_at', null).order('last_seen_at', { ascending: false }); zzzDev.rows = data || []; } catch (e) { zzzDev.rows = []; }
+  try { const { data } = await sb.from('verso_devices').select('id,device_key,dtype,name,maker,model,os,last_seen_at,settings,parent_id').eq('username', me).is('archived_at', null).order('last_seen_at', { ascending: false }); zzzDev.rows = data || []; } catch (e) { zzzDev.rows = []; }
   return zzzDev.rows;
 }
 function zzz_dev_restore(row) {
@@ -39682,8 +39688,11 @@ async function zzz_dev_panel(host) {
   const ic = { phone: '📱', tablet: '📲', pc: '💻', browser: '🌐', wifi: '📶', watch: '⌚', iot: '🔌', headset: '🎧', car: '🚗', other: '⬜' };
   rows.forEach(r => {
     const d = document.createElement('div'); d.className = 'zzz16-row';
-    const l = document.createElement('div'); l.textContent = (r.parent_id ? '↳ ' : '') + (ic[r.dtype] || '') + ' ' + (r.name || r.model || r.dtype) + (r.device_key === mine ? ' · THIS DEVICE' : '');
-    const sm = document.createElement('small'); sm.className = 'zzz14b2-now'; sm.textContent = [r.os, 'seen ' + zzz_dev_ago(r.last_seen_at), Object.keys(r.settings || {}).length + ' settings saved'].filter(Boolean).join(' · ');
+
+    const kind = { phone: 'PHONE', tablet: 'TABLET', pc: 'PC', browser: 'BROWSER', wifi: 'WI-FI', watch: 'WATCH', iot: 'IOT', headset: 'HEADSET', car: 'CAR', other: 'DEVICE' }[r.dtype] || 'DEVICE';
+    const mm = [r.maker, r.model].filter(Boolean).join(' ');
+    const l = document.createElement('div'); l.textContent = (r.parent_id ? '↳ ' : '') + (ic[r.dtype] || '') + ' ' + kind + ' · ' + (r.name || r.model || '-') + (r.device_key === mine ? ' · THIS DEVICE' : '');
+    const sm = document.createElement('small'); sm.className = 'zzz14b2-now'; sm.textContent = [mm && mm !== r.name ? mm : '', r.os, 'seen ' + zzz_dev_ago(r.last_seen_at), Object.keys(r.settings || {}).length + ' settings saved'].filter(Boolean).join(' · ');
     l.appendChild(sm); d.appendChild(l);
     if (r.device_key !== mine && Object.keys(r.settings || {}).length) {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn'; b.textContent = 'RESTORE HERE';
@@ -46380,7 +46389,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-31 01:49';
+const VERSO_BUILD = '2026-10-31 10:37';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
