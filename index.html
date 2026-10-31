@@ -7105,6 +7105,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-confirm { position: fixed; inset: 0; z-index: 2147483002; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; }
   .zzz-media-confirm-box { background: #171717; border: 2px solid #D4AF37; border-radius: 12px; padding: 14px; color: #fff; max-width: 320px; font-size: 13px; }
   .zzz-media-confirm-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  .zzz-media-confirm-text { white-space: pre-line; max-height: 60vh; overflow-y: auto; } 
   
   .zzz-media-place { color: #D4AF37; font-size: 11px; margin: -2px 0 6px; }
   .zzz-media-edit label { display: block; color: #D4AF37; font-size: 10px; font-weight: 800; letter-spacing: .06em; margin: 8px 0 3px; }
@@ -20626,17 +20627,6 @@ async function zzz10r5_compute_system_id(username) {
     console.warn('Zzz10-R5:SYSTEM-ID - crypto.subtle nedostupne, system_id sa vynecha pre tuto registraciu:', e);
     return null;
   }
-}
-
-function zzz10r7_generate_password_salt() {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-async function zzz10r7_hash_password(password, salt) {
-  const encoded = new TextEncoder().encode(salt + ':' + password);
-  const digestBuffer = await crypto.subtle.digest('SHA-256', encoded);
-  return Array.from(new Uint8Array(digestBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 async function zzz6f2_compute_content_hash(text) {
@@ -46618,8 +46608,6 @@ function zzz10v1_update_send_button_state(btn, username, takenUsernamesNormalize
   btn.disabled = taken;
 }
 
-let zzz10v1LastSentActivation = null;
-
 function zzz10v1_update_register_entry_button_state() {
 
   const btn = document.getElementById('versoRegisterSetupEntryButton');
@@ -46849,7 +46837,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-31 19:11';
+const VERSO_BUILD = '2026-10-31 19:38';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -47172,7 +47160,6 @@ function zzz10v1_build_send_activation_button(usernameBox) {
     zzz10v1_set_status('Sending activation code…', 'info');
     try {
       const normalizedUsername = zzz10v1_normalize(username);
-      const normalizedEmail = zzz10v1_normalize(email);
       const result = await zzz10v1_call_gate({ action: 'reserve', username: normalizedUsername, display_name: username, email: email.toLowerCase() }, 15000);
       if (!result.success) {
         if (result.reason === 'username_taken' || result.reason === 'username_reserved') {
@@ -47184,14 +47171,13 @@ function zzz10v1_build_send_activation_button(usernameBox) {
       }
       usernameBox.classList.add('zzz10v1-available');
       usernameBox.classList.remove('zzz10v1-taken');
-      zzz10v1LastSentActivation = { username: normalizedUsername, email: normalizedEmail, expiresAt: result.expires_at };
       zzz10v1_update_register_entry_button_state();
       if (result.email_sent === false) {
         zzz10v1_set_status('The username is reserved for you, but the email with the code could not be sent. Please try SEND ACTIVATION CODE again in a minute.', 'error', 'email_not_sent (Resend)');
       } else if (result.delivered_to === 'admin') {
         zzz10v1_set_status('Username reserved for 24 hours. Your activation code was sent to the Verso administrator, who will give it to you. Then type it in below.', 'ok');
       } else {
-        zzz10v1_set_status('Username reserved for 24 hours. The activation code was sent to ' + email + ' - check your inbox (and spam), then type it in below.', 'ok');
+        zzz10v1_set_status('Username reserved for 24 hours. The activation code was sent to the email you entered - check your inbox (and spam), then type it in below.', 'ok');
       }
     } finally {
       zzz10v1_update_send_button_state(btn, zzz10v1UsernameFieldValue || '', zzz10v1CachedRegistrations.usernames);
@@ -47292,9 +47278,8 @@ async function zzz10v1_submit_register() {
   zzz10v1EmailFieldValue = '';
   zzz10v1UsernameFieldValue = '';
   zzz10v1ActivationCodeValue = '';
-  zzz10v1LastSentActivation = null;
-  zzz10v1_set_status('Registration complete. Logging you in as "' + username + '"…', 'ok');
-  zzz6f2_show_toast('Registration complete - welcome to Verso, ' + username + '.', 'ok');
+  zzz10v1_set_status('Registration complete. Logging you in…', 'ok');
+  zzz6f2_show_toast('Registration complete - welcome to Verso.', 'ok');
 
   write_to_entry('17', username);
   zzz6f36_open_login_modal(username);
@@ -49600,16 +49585,22 @@ function zzz_media_paint() {
   zzz_media_place();
 }
 
-function zzz_media_confirm(text, yes, fn) {
-  const o = document.createElement('div'); o.className = 'zzz-media-confirm';
-  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box';
-  const t = document.createElement('div'); t.textContent = text; b.appendChild(t);
-  const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
-  const y = document.createElement('button'); y.type = 'button'; y.className = 'zzz-media-btn is-red'; y.textContent = yes;
-  const n = document.createElement('button'); n.type = 'button'; n.className = 'zzz-media-btn'; n.textContent = 'CANCEL';
-  y.addEventListener('click', () => { o.remove(); fn(); }); n.addEventListener('click', () => o.remove());
-  row.append(y, n); b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
+function zzz_verso_confirm(text, yes) {
+  return new Promise((resolve) => {
+    const o = document.createElement('div'); o.className = 'zzz-media-confirm';
+    const b = document.createElement('div'); b.className = 'zzz-media-confirm-box';
+    const t = document.createElement('div'); t.className = 'zzz-media-confirm-text'; t.textContent = text; b.appendChild(t);
+    const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
+    const y = document.createElement('button'); y.type = 'button'; y.className = 'zzz-media-btn is-red'; y.textContent = yes || 'OK';
+    const n = document.createElement('button'); n.type = 'button'; n.className = 'zzz-media-btn'; n.textContent = 'CANCEL';
+    let done = false; const end = (v) => { if (done) return; done = true; o.remove(); resolve(v); };
+    y.addEventListener('click', () => end(true)); n.addEventListener('click', () => end(false));
+    o.addEventListener('click', (e) => { if (e.target === o) end(false); });
+    new MutationObserver((m, obs) => { if (!o.isConnected) { obs.disconnect(); end(false); } }).observe(document.body, { childList: true });
+    row.append(y, n); b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
+  });
 }
+function zzz_media_confirm(text, yes, fn) { zzz_verso_confirm(text, yes).then((ok) => { if (ok) fn(); }); }
 async function zzz_media_open() {
   let w = document.getElementById('zzzMediaWin');
   if (w) { w.remove(); zzz_media_place(); return; }
@@ -51956,41 +51947,6 @@ async function zzz11m1_submit_username_setup({ username, content }) {
   }
 }
 
-async function zzz13mv_submit_multiverification_data({ username, verificationType, dataJson }) {
-  if (!username) {
-    zzz6f2_show_toast('Zzz13-MV: chyba username.');
-    return false;
-  }
-  if (!verificationType) {
-    zzz6f2_show_toast('Zzz13-MV: chyba typ verifikacie (verificationType).');
-    return false;
-  }
-  const payload = {
-    username,
-    content: verificationType,
-    category: 'multiverification',
-    data_json: JSON.stringify(dataJson || {}),
-    created_at: new Date().toISOString()
-  };
-  try {
-    const writePromise = sb.from('verso_username_setup').insert(payload);
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Zzz13-MV insert timeout (4s)')), 4000)
-    );
-    const { error } = await Promise.race([writePromise, timeoutPromise]);
-    if (error) throw error;
-    zzz0r1_set_db_connection_state(true);
-    zzz6f2_show_toast(`Zzz13-MV: multiverifikačné dáta uložené (${verificationType}).`);
-    return true;
-  } catch (err) {
-    const errDetail = (err && (err.message || err.details || err.hint)) || String(err);
-    console.error(`Zzz13-MV:MULTIVERIFICATION-DATA - zapis zlyhal. DOVOD: ${errDetail}`);
-    zzz0r1_set_db_connection_state(false, errDetail, true);
-    zzz6f2_show_toast('Zzz13-MV: uloženie zlyhalo, skús znova.');
-    return false;
-  }
-}
-
 function zzz11m1_render_username_setup(body) {
   const built = zzz_build_support_cl_row({
     idPrefix: 'UserSetup',
@@ -52053,7 +52009,7 @@ function zzz10r1_check_and_flag_username_mismatch(username) {
         if (!stillExists) {
           try { localStorage.setItem(ZZZ10R1_EXPECTED_USERNAME_KEY, username); } catch (e) {   }
           if (label) label.classList.remove('zzz0r1-username-mismatch');
-          zzz6f2_show_toast(`Zzz10-R1: previous account "${expected}" no longer exists - this device is now bound to "${username}".`);
+          zzz6f2_show_toast('This device was bound to an account that no longer exists - it is now bound to the account you logged in with.');
         }
       } catch (e) {   }
     })();
@@ -52274,7 +52230,7 @@ async function zzz10r2_logout_precheck() {
       ? `${left} unsent item(s)${what} are REFUSED by the database, not just delayed - they will not go through on the next login either, until the database accepts them.`
       : `${left} unsent item(s)${what} could not be sent now. They stay on this device and will be sent after your next login here.`) + reason);
   if (draft) lines.push('The Command Line has unsaved text - it will be cleared. Press ENTER first if you want to keep it.');
-  return confirm(lines.join('\n\n') + '\n\nLog out anyway?');
+  return zzz_verso_confirm(lines.join('\n\n') + '\n\nLog out anyway?', 'LOG OUT');
 }
 
 function zzz10r2_wipe_local_after_logout() {
@@ -52336,7 +52292,7 @@ function zzz10r2_logout(reason = 'manual', opts = {}) {
     zzz10r2_wipe_local_after_logout();
     zzz10dm_after_logout();
     zzz6f2_show_toast(reason === 'superseded'
-      ? 'Odhlásený: tento účet sa prihlásil na inom zariadení. Ak si to nebol ty, použi núdzové prevzatie účtu (token + MV fráza).'
+      ? 'Odhlásený: server ukončil túto reláciu (napr. núdzové prevzatie účtu alebo odhlásenie na diaľku). Ak si to nebol ty, zmeň heslo alebo použi núdzové prevzatie účtu (token + MV fráza).'
       : reason === 'locked_out'
         ? 'Odhlásený: 5× nesprávne heslo v zámku. Majiteľ účtu dostal email.'
         : 'Zzz10-R2 Log Out: odhlaseny');
@@ -52755,7 +52711,7 @@ async function zzz6f36_submit_login(options = {}) {
   if (window.zzzEdgeOff) { zzz6f2_show_toast('Verso does not run in Edge - open it in Chrome or in the Verso app.', 'warn'); return; }
   { const why = (typeof zzz_ctx_login_refusal === 'function') ? zzz_ctx_login_refusal() : '';
     if (why) { zzz6f2_show_toast('Login refused - ' + why, 'warn'); return; } }
-  if (!options.skipVerification) {
+  {
     const verifyResult = await zzz10r8_verify_login_password(username, enteredPassword);
     if (!verifyResult.verified) {
 
@@ -52803,7 +52759,7 @@ async function zzz6f36_submit_login(options = {}) {
   zzz10r1_check_and_flag_username_mismatch(username);
 
   if (!success && dbWasDownDuringAttempt) {
-    zzz6f2_show_toast(`Zzz6-F36 Login: prihlaseny lokalne ako "${username}" (databaza momentalne nedostupna, oranzovy ram)`);
+    zzz6f2_show_toast('Prihlásený len na tomto zariadení - databáza je momentálne nedostupná (oranžový rám).');
   }
   zzz10_0ActiveTab = 'login-setup';
   zzz6f36_close_login_modal();
