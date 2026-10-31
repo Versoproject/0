@@ -20,11 +20,17 @@
 
 (function () {
   try {
-    var h = String(location.hash || ''), m = h.match(/(^#|&)vk=([0-9a-f]{64})/);
-    if (!m) return;
-    localStorage.setItem('verso_cmd_key', m[2]);
-    var rest = h.replace(/(^#|&)vk=[0-9a-f]{64}/, '$1').replace(/^#&/, '#').replace(/&$/, '');
-    history.replaceState(null, '', location.pathname + location.search + (rest === '#' ? '' : rest));
+    var h = String(location.hash || ''); if (h.indexOf('vk=') < 0) return;
+    var keep = [], got = {};
+    h.replace(/^#/, '').split('&').forEach(function (p) {
+      var i = p.indexOf('='), k = i > 0 ? p.slice(0, i) : p, v = i > 0 ? p.slice(i + 1) : '';
+      if (k === 'vk' || k === 'did' || k === 'ns' || k === 'perm') got[k] = v; else if (p) keep.push(p);
+    });
+    if (/^[0-9a-f]{64}$/.test(got.vk || '')) localStorage.setItem('verso_cmd_key', got.vk);
+    if (/^[0-9a-f]{64}$/.test(got.did || '')) localStorage.setItem('verso_dev_did', got.did);
+    if (got.ns && got.ns.length < 8000) localStorage.setItem('verso_native_settings', got.ns);
+    if (got.perm && /^[A-Za-z]{1,12}$/.test(got.perm)) localStorage.setItem('verso_native_perm', JSON.stringify({ p: got.perm, t: Date.now() }));
+    history.replaceState(null, '', location.pathname + location.search + (keep.length ? '#' + keep.join('&') : ''));
   } catch (e) {}
 })();
 </script>
@@ -39558,13 +39564,21 @@ function zzz_set_needs() {
   try { if ('Notification' in window && Notification.permission !== 'granted') out.push(['Allow notifications for Verso on this device', () => { try { Notification.requestPermission().then(p => { try { zzz6f2_show_toast(p === 'granted' ? 'Notifications allowed.' : 'Notifications not allowed - the browser / Android decides.', p === 'granted' ? 'ok' : 'warn'); } catch (e) {} }); } catch (e) {} }]); } catch (e) {}
   try { if (zzz14b17_is_android() && !zzz_set_can_app()) out.push(['Install the Verso app (NOTIF LINE, reader, keyboard) - REGISTER › Download Verso app', null]); } catch (e) {}
   try { if (zzzDev.fresh && zzzDev.rows !== null && zzzDev.rows.some(r => r.device_key !== zzz_dev_keyhash() && Object.keys(r.settings || {}).length)) out.push(['New device - restore your settings from another device (DEVICES)', null]); } catch (e) {}
+  try {
+    const pm = JSON.parse(localStorage.getItem('verso_native_perm') || 'null');
+    if (pm && pm.p && zzz_set_can_app()) {
+      const names = { l: 'Notification access (NOTIF LINE, reader)', o: 'Display over other apps (NOTIF LINE, +AI+ ball)', a: 'Accessibility › VERSO SCROLL', b: 'Battery: no limit for Verso (notifications on time)', i: 'Allow Verso to install its updates', k: 'Verso keyboard chosen (VERSO AI MULTIBOARD)', n: 'Notifications of the Verso app' };
+      pm.p.split('').forEach(ch => { if (ch !== ch.toLowerCase() || !names[ch]) return;
+        out.push(['DEVICE: ' + names[ch] + ' - tap = open the Android setting (then open the Verso app once to refresh)', () => zzz_native_go('intent://quick/open?s=' + ch + '#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end')]); });
+    }
+  } catch (e) {}
   try { if (zzz_set_can_app() && !/^[0-9a-f]{64}$/.test(localStorage.getItem('verso_cmd_key') || '')) out.push(['Open the Verso app once from its icon - then the web may send it commands (security key)', null]); } catch (e) {}
   return out;
 }
 const ZZZ_SET_DATA = [
   ['☁', 'Records, chats, Notes, alarms (REMS / SCHEDS), READ / SHIFTED, ALL MEDIA, PACKS, contacts', 'Verso server in the EU (Ireland) - back after login on any device and after a reinstall.'],
   ['☁', 'Settings marked ☁', 'Verso server, for your account and each way of login (VERSO APP / WEB APP / WEB).'],
-  ['📱', 'Settings marked 📱, downloaded voices and language packs', 'Only this DEVICE - packs download again on a new device; DEVICE settings come with the coming backup.'],
+  ['📱', 'Settings marked 📱, downloaded voices and language packs', 'This DEVICE - its settings are also backed up on the Verso server (DEVICES); packs download again on a new device.'],
   ['🔒', 'VERSO BOX (copied texts) in the Verso app', 'Encrypted by the phone’s security chip, never leaves the DEVICE, gone after a reinstall (on purpose).'],
   ['🌐', 'Settings marked 🌐, last tab, filters', 'Only this browser.'],
   ['🔑', 'Passwords', 'Never stored readable by Verso - typed only with the Verso keyboard.']
@@ -39604,11 +39618,13 @@ function zzz_set_overview(host) {
 
 const ZZZ_DEV_KEYS = ['verso_kb_prefs_v1', 'zzz23tr_prefs', 'zzz23tr_chat', 'zzz_dia_sk', 'zzz_vkb_size', 'zzz_vkb_page', 'zzz_media_on',
   'zzz_media_offline', 'zzz_media_loop', 'zzz_media_clip_auto', 'zzz_mb_ball', 'zzz_ci_wx', 'zzz56_private_mode', 'zzz56_chat_modes',
-  'zzz1cn_setup', 'zzz1r37_preset_tabs', 'zzz5w5cm_shortcuts', 'zzz6f48_mini_hidden_wraps', 'verso_reads_share'];
+  'zzz1cn_setup', 'zzz1r37_preset_tabs', 'zzz5w5cm_shortcuts', 'zzz6f48_mini_hidden_wraps', 'verso_reads_share',
+  'verso_native_settings'];
 const zzzDev = { at: 0, busy: false, key: '', rows: null, fresh: false };
 function zzz_dev_me() { try { return zzz6f7_isLoggedIn ? zzz10v1_normalize(String(zzz0r1_get_current_username() || '').trim()) : ''; } catch (e) { return ''; } }
 function zzz_dev_keyhash() {
   if (zzzDev.key) return zzzDev.key;
+  try { const did = localStorage.getItem('verso_dev_did') || ''; if (/^[0-9a-f]{64}$/.test(did)) { zzzDev.key = did; return did; } } catch (e) {}
   try { zzzDev.key = Array.from(zzz_sha256_bytes(new TextEncoder().encode('verso-device:' + zzz_device_id_base()))).map(x => x.toString(16).padStart(2, '0')).join(''); } catch (e) { zzzDev.key = ''; }
   return zzzDev.key;
 }
@@ -39653,6 +39669,8 @@ async function zzz_dev_list() {
 function zzz_dev_restore(row) {
   const st = (row && row.settings) || {}; let n = 0;
   Object.keys(st).forEach(k => { if (ZZZ_DEV_KEYS.indexOf(k) >= 0) { try { localStorage.setItem(k, String(st[k])); n++; } catch (e) {} } });
+
+  try { if (st.verso_native_settings && zzz_set_can_app()) zzz_native_go('intent://quick/settings?d=' + encodeURIComponent(String(st.verso_native_settings)) + '#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end'); } catch (e) {}
   zzz6f2_show_toast(`Settings from ${row.name || 'that device'} restored (${n}) - Verso reloads.`, 'ok');
   setTimeout(() => { try { location.reload(); } catch (e) {} }, 1500);
 }
@@ -46362,7 +46380,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-31 00:52';
+const VERSO_BUILD = '2026-10-31 01:05';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
