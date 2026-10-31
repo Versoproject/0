@@ -252,12 +252,20 @@ function zzz_ci_paint() {
   try { if (typeof zzz22_live_paint === 'function') zzz22_live_paint(); } catch (e) {}
 }
 
+function zzz_verso_fn_headers() {
+  try {
+    const t = (typeof zzz0auth_sessionToken !== 'undefined') ? zzz0auth_sessionToken : null;
+    if (!t) return null;
+    return { 'Authorization': 'Bearer ' + t, 'apikey': SUPABASE_ANON_KEY };
+  } catch (e) { return null; }
+}
 function zzz_ci_weather() {
   try {
     var pl = ZZZ_CI_PLACE;
+    var wxH = zzz_verso_fn_headers(); if (!wxH) return;
 
     var url = SUPABASE_URL + '/functions/v1/verso-weather?a=wx&lat=' + (Math.round(Number(pl.lat) * 10) / 10) + '&lon=' + (Math.round(Number(pl.lon) * 10) / 10);
-    fetch(url, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (j) {
+    fetch(url, { cache: 'no-store', headers: wxH }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (j) {
       if (pl !== ZZZ_CI_PLACE) return;
       if (!j || !j.current) throw new Error('no current data in the answer');
       zzzCiWxErr = null;
@@ -7107,6 +7115,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-confirm-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
   .zzz-media-confirm-text { white-space: pre-line; max-height: 60vh; overflow-y: auto; } 
   
+  .zzz-verso-prompt-in { display: block; width: 100%; box-sizing: border-box; margin-top: 10px; border: 1.5px solid #D4AF37; border-radius: 8px; background: #0f0f0f; color: #eee; padding: 7px; font-size: 14px; }
+  .zzz-media-confirm-box.is-prompt { width: min(320px, calc(100vw - 32px)); box-sizing: border-box; }
+  .zzz-media-confirm.is-prompt { align-items: flex-start; padding-top: 12vh; } 
+  
+  .zzz-media-confirm ~ .zzz-vkb-panel { z-index: 2147483004; }
+  
   .zzz-media-place { color: #D4AF37; font-size: 11px; margin: -2px 0 6px; }
   .zzz-media-edit label { display: block; color: #D4AF37; font-size: 10px; font-weight: 800; letter-spacing: .06em; margin: 8px 0 3px; }
   .zzz-media-edit input { width: 100%; box-sizing: border-box; border: 1.5px solid #D4AF37; border-radius: 8px; background: #0f0f0f; color: #eee; padding: 6px; }
@@ -11339,8 +11353,9 @@ function zzz_build_suggest_row(id, textarea, liveSaveId = null) {
   addChipBtn.type = 'button';
   addChipBtn.className = 'zzz6-f17-suggest-chip zzz6-f17-suggest-chip-add';
   addChipBtn.textContent = '+chip';
-  addChipBtn.onclick = () => {
-    const value = (window.prompt('Novy chip (navrh):') || '').trim();
+  addChipBtn.onclick = async () => {
+
+    const value = ((await zzz_verso_prompt('New chip (suggestion):', '', 'ADD')) || '').trim();
     if (!value) return;
     zzz_remember_suggestion(id, value);
     suggestRow.insertBefore(createChip(value), addChipBtn);
@@ -12494,7 +12509,8 @@ async function zzz6f39_forward_from_history() {
         summary = parts.map(x => `${x[0]}: ${x[1]}`).join('\n');
       }
     } catch (e) {   }
-    if (!confirm(`Forward: restore #${id} from Trash?\n(the last record you moved to Trash)` + (summary ? `\n\n${summary}` : ''))) return true;
+
+    if (!(await zzz_verso_confirm(`Forward: restore #${id} from Trash?\n(the last record you moved to Trash)` + (summary ? `\n\n${summary}` : ''), 'RESTORE'))) return true;
     await zzz6f35_restore_from_trash({ entry_id: id, username: me });
     return true;
   } catch (e) { return false; }
@@ -12614,7 +12630,8 @@ async function zzz6f38_undo_all() {
     zzz6f2_show_toast('Zzz6-F38 Back (3s): nie je co vratit spat');
     return;
   }
-  if (!confirm(`Vratit VSETKY (${zzz6f38_undoStack.length}) kroky spat az na zaciatok? Tato akcia sa da postupne vratit cez Forward, ale je hromadna.`)) return;
+
+  if (!(await zzz_verso_confirm(`Undo ALL ${zzz6f38_undoStack.length} steps back to the start? Forward can redo them step by step, but this is a bulk action.`, 'UNDO ALL'))) return;
   let steps = 0;
   while (zzz6f38_undoStack.length > 0) {
     const before = zzz6f38_undoStack.length;
@@ -12630,7 +12647,8 @@ async function zzz6f39_redo_all() {
     zzz6f2_show_toast('Zzz6-F39 Forward (3s): nie je co vratit vpred');
     return;
   }
-  if (!confirm(`Vratit VSETKY (${zzz6f39_redoStack.length}) kroky vpred az na koniec? Hromadna akcia.`)) return;
+
+  if (!(await zzz_verso_confirm(`Redo ALL ${zzz6f39_redoStack.length} steps forward to the end? Bulk action.`, 'REDO ALL'))) return;
   let steps = 0;
   while (zzz6f39_redoStack.length > 0) {
     const before = zzz6f39_redoStack.length;
@@ -13074,7 +13092,8 @@ function zzz1scope_build_section(fields) {
       off.className = 'zzz1scope-off';
       off.textContent = 'WITHDRAW';
       off.addEventListener('click', async () => {
-        if (!window.confirm(`Withdraw this pre-approval?\n${zzz1scope_words(r.scope)}`)) return;
+
+        if (!(await zzz_verso_confirm(`Withdraw this pre-approval?\n${zzz1scope_words(r.scope)}`, 'WITHDRAW'))) return;
         if (await zzz1scope_write(r.scope, r.kind, false)) paintList();
       });
       row.appendChild(off);
@@ -13120,9 +13139,10 @@ function zzz1scope_build_section(fields) {
       zzz6f2_show_toast('Pick at least one cell - an empty scope would mean everything.', 'warn');
       return;
     }
-    if (!window.confirm(`Pre-approve this scope?\n\n${zzz1scope_words(chosen)}\n\n`
+
+    if (!(await zzz_verso_confirm(`Pre-approve this scope?\n\n${zzz1scope_words(chosen)}\n\n`
         + 'It opens nothing on its own - only records where somebody also names you.\n'
-        + 'It applies to records that do not exist yet.')) return;
+        + 'It applies to records that do not exist yet.', 'PRE-APPROVE'))) return;
     if (await zzz1scope_write(chosen, ZZZ1COMM_KIND, true)) { paintList(); }
   });
   mk.appendChild(save);
@@ -23743,10 +23763,11 @@ function zzz1r37_open_preset_modal(pickCallback = null, targetId = 'versoContext
           tabBtn.appendChild(closeX);
         }
 
-        tabBtn.addEventListener('click', () => {
+        tabBtn.addEventListener('click', async () => {
           if (isActive) {
             if (locked) return;
-            const newName = prompt('Premenovat tab:', tab.name);
+
+            const newName = await zzz_verso_prompt('Rename tab:', tab.name, 'RENAME');
             if (newName && newName.trim()) {
               const d = zzz1r37_get_tabs();
               const t = d[group].find(x => x.id === tab.id);
@@ -29015,8 +29036,9 @@ function zzz5w5cm_build_row(kind) {
       zzz_bind_long_press(btn, 5000, () => {
         zzz5t0_open_tab_window(
           btn,
-          () => {
-            const next = window.prompt('Premenovat tab:', tab.label);
+          async () => {
+
+            const next = await zzz_verso_prompt('Rename tab:', tab.label, 'RENAME');
             if (next && next.trim()) { tab.label = next.trim(); zzz5w5cm_render(); }
           },
           () => { zzz5w5cm_delete(kind, tab.id); },
@@ -29978,7 +30000,7 @@ async function zzz5w5cm_clear_pairing_state(row) {
   if (!me || !row) return;
   try {
     const { error } = await sb.from('verso_placements')
-      .delete().eq('username', me).eq('entry_id', row.entry_id);
+      .update({ removed_at: new Date().toISOString() }).eq('username', me).eq('entry_id', row.entry_id).is('removed_at', null);
     if (error) throw error;
     zzz6f2_show_toast(`#${row.entry_id}: back to where the consent puts it.`);
   } catch (e) {
@@ -30282,8 +30304,9 @@ function zzz5w5cm_decorate_attached_rows() {
       paint();
       zzz_bind_hold_selection_guard(tagCell);
       zzz5w7_bind_tiered_hold(tagCell, [{ ms: 1100, fn: async () => {
-        const v = window.prompt(`Your own label for #${item.sourceEntryId} (only you see it):`,
-                                item.zzz5w5cmMyTag || '');
+
+        const v = await zzz_verso_prompt(`Your own label for #${item.sourceEntryId} (only you see it):`,
+                                item.zzz5w5cmMyTag || '', 'SAVE');
         if (v === null) return;
         if (await zzz5w5cm_place_set_tag(zzz5w5cmAttachOwnerTab || zzz5w5cmContactsTab,
                                          item.sourceEntryId, v.trim())) {
@@ -31106,7 +31129,8 @@ function zzz5w5cm_attach_to_contacts(anchorEl) {
           todo.push(p);
         });
         if (!todo.length) { zzz6f2_show_toast('Everyone from that line is already in your contacts.'); return; }
-        if (!window.confirm(`Add to your contacts?\n${todo.map(t => t.name).join(', ')}`)) return;
+
+        if (!(await zzz_verso_confirm(`Add to your contacts?\n${todo.map(t => t.name).join(', ')}`, 'ADD'))) return;
         let added = 0;
         for (const p of todo) {
           if (await zzz5w5cm_add_my_contact(p.name, p.entry ? ('projects:' + p.entry) : 'projects')) added += 1;
@@ -31512,10 +31536,11 @@ function zzz5w5cm_build_pairing() {
   return mod;
 }
 
-function zzz5w5cm_add_comm_tab() {
+async function zzz5w5cm_add_comm_tab() {
   zzz5w5cmTabSeq += 1;
   const key = 'custom-' + zzz5w5cmTabSeq + '-' + Date.now();
-  const label = window.prompt('Name of the new tab:', 'Tab ' + zzz5w5cmTabSeq);
+
+  const label = await zzz_verso_prompt('Name of the new tab:', 'Tab ' + zzz5w5cmTabSeq, 'ADD TAB');
   if (label === null) { zzz5w5cmTabSeq -= 1; return; }
   ZZZ5W5CM_CONTACT_TABS.push({ key, label: (label.trim() || ('Tab ' + zzz5w5cmTabSeq)), fixed: false });
   zzz5w5cmContactsTab = key;
@@ -31765,7 +31790,8 @@ function zzz5w5cm_build_ccl(key, rows, opts) {
           cell.title = r.myTagTitle || 'Your own tag - only you see it';
           cell.addEventListener('click', async (ev) => {
             ev.stopPropagation();
-            const v = window.prompt(cell.title + ':', r.mytag || '');
+
+            const v = await zzz_verso_prompt(cell.title + ':', r.mytag || '', 'SAVE');
             if (v === null) return;
             await r.onMyTag(v.trim());
           });
@@ -31785,7 +31811,8 @@ function zzz5w5cm_build_ccl(key, rows, opts) {
             cell.addEventListener('click', async (ev) => {
               ev.stopPropagation();
               const now = zzz5w5cmMyTagByEntry[num] || '';
-              const v = window.prompt(`Your own tag for #${num}:`, now);
+
+              const v = await zzz_verso_prompt(`Your own tag for #${num}:`, now, 'SAVE');
               if (v === null) return;
               if (await zzz5w5cm_place_set_tag(zzz5w5cmContactsTab, num, v.trim())) {
                 zzz5w5cm_render();
@@ -31965,7 +31992,8 @@ function zzz5w5cm_group_editor(host, g, onDone) {
     del.textContent = 'DELETE GROUP';
     del.title = 'Deletes the group only - your contacts stay';
     del.addEventListener('click', async () => {
-      if (!window.confirm(`Delete the group @${g.name}? Your contacts stay.`)) return;
+
+      if (!(await zzz_verso_confirm(`Delete the group @${g.name}? Your contacts stay.`, 'DELETE'))) return;
       if (await zzz5w5cm_remove_group(g.id)) {
         box.remove();
         zzz6f2_show_toast(`@${g.name} deleted. Your contacts stay.`);
@@ -32163,8 +32191,9 @@ function zzz5w5cm_build_cw_people(tab) {
         myTagTitle: `Your own tag for ${c.name}`,
 
         onDrop: (c.id ? async () => {
-          if (!window.confirm(`Remove ${c.name} from your contacts?`
-            + '\n\nOnly your own contact row goes - records, consents and pairing stay as they are.')) return;
+
+          if (!(await zzz_verso_confirm(`Remove ${c.name} from your contacts?`
+            + '\n\nOnly your own contact row goes - records, consents and pairing stay as they are.', 'REMOVE'))) return;
           if (await zzz5w5cm_remove_my_contact(c.id)) {
             zzz6f2_show_toast(`${c.name} removed from your contacts.`, 'ok');
             paint();
@@ -32234,9 +32263,10 @@ function zzz5w5cm_build_cw_people(tab) {
           const others = (t.people || []).filter(n => zzz10v1_normalize(n) !== meN2);
           if (!others.length) return;
           const blocked = zzz5w5cm_blocked_on(t.entry);
-          const v = window.prompt(
+
+          const v = await zzz_verso_prompt(
             `Blocked on #${t.entry} - names that keep their consent but cannot open the record.\nTeam: ${others.join(', ')}`,
-            blocked.join(', '));
+            blocked.join(', '), 'SAVE');
           if (v === null) return;
           const want = zzz6f21_parse_tags(v);
 
@@ -32974,9 +33004,10 @@ function zzz5w5cm_build_module() {
         x.className = 'zzz5w5cm-tabx';
         x.textContent = '\u00d7';
         x.title = `Delete the tab "${t.label}" - the records stay, only this tab goes`;
-        x.addEventListener('click', (ev) => {
+        x.addEventListener('click', async (ev) => {
           ev.stopPropagation();
-          if (!window.confirm(`Delete the tab "${t.label}"? The records pinned in it stay in the others.`)) return;
+
+          if (!(await zzz_verso_confirm(`Delete the tab "${t.label}"? The records pinned in it stay in the others.`, 'DELETE'))) return;
           zzz5w5cm_delete_comm_tab(t.key);
         });
         b.appendChild(x);
@@ -33299,7 +33330,8 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, entryKey) {
 
     if (renameTag) {
       zzz_bind_long_press(row, 1000, async () => {
-        const nove = window.prompt(`Rename the package "${renameTag}" to:`, renameTag);
+
+        const nove = await zzz_verso_prompt(`Rename the package "${renameTag}" to:`, renameTag, 'RENAME');
         if (!nove || !nove.trim() || nove.trim() === renameTag) return;
         zzz_haptic_pulse(20);
         const ok = await zzz5w5cm_rename_pack(renameTag, nove.trim());
@@ -33360,8 +33392,9 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, entryKey) {
       bl.textContent = 'blocked here - tap to unblock';
       bl.addEventListener('click', async (ev) => {
         ev.stopPropagation();
-        if (!window.confirm(`Unblock ${nm} on #${cisloTu}?\n\n`
-          + 'Their consent never went away, so the record opens for them again straight away.')) return;
+
+        if (!(await zzz_verso_confirm(`Unblock ${nm} on #${cisloTu}?\n\n`
+          + 'Their consent never went away, so the record opens for them again straight away.', 'UNBLOCK'))) return;
         if (await zzz5w5cm_set_blocked(cisloTu, nm, false)) {
           win.remove();
           zzz5w5cm_open_members_window(anchorEl, names, recTag, entryKey);
@@ -33409,10 +33442,11 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, entryKey) {
           + 'You can block people on records of your own.', 'warn');
         return;
       }
-      if (!window.confirm(`Block ${nm} on #${cislo[0]}?\n\nThe record closes for them. `
+
+      if (!(await zzz_verso_confirm(`Block ${nm} on #${cislo[0]}?\n\nThe record closes for them. `
         + 'Their consent stays, so unblocking brings them straight back. '
         + 'You unblock here in MEMBERS (tap the blocked mark next to the name) '
-        + 'or in COMM SETUP > BLOCKED USERS.')) return;
+        + 'or in COMM SETUP > BLOCKED USERS.', 'BLOCK'))) return;
       zzz_haptic_pulse(30);
       if (await zzz5w5cm_set_blocked(cislo[0], nm, true)) {
         win.remove();
@@ -33462,7 +33496,8 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, entryKey) {
       zzz6f2_show_toast('Check somebody first - a pack, a group, a team or single people.', 'warn');
       return;
     }
-    const nazov = window.prompt('Name of the package (your COMM OWN TAG - only you see it):', '');
+
+    const nazov = await zzz_verso_prompt('Name of the package (your COMM OWN TAG - only you see it):', '', 'CREATE');
     if (!nazov || !nazov.trim()) return;
     const r = await zzz5w5cm_make_pack(nazov.trim(), vybrati);
     zzz6f2_show_toast(`"${nazov.trim()}": ${r.ok} of ${vybrati.length} tagged`
@@ -34107,7 +34142,8 @@ function zzz5w5cm_build_directory(opts) {
 
       zzz_bind_hold_selection_guard(chip);
       const editTags = async () => {
-        const v = window.prompt(`My tags for ${c.name}:`, c.tags || '');
+
+        const v = await zzz_verso_prompt(`My tags for ${c.name}:`, c.tags || '', 'SAVE');
         if (v === null) return;
         if (await zzz5w5cm_set_contact_tags(c.id, v)) paintMine();
       };
@@ -34115,7 +34151,8 @@ function zzz5w5cm_build_directory(opts) {
       zzz5w7_bind_tiered_hold(chip, [
         { ms: 1100, fn: editTags },
         { ms: 3000, fn: async () => {
-            if (!window.confirm(`Remove ${c.name} from your contacts?`)) return;
+
+            if (!(await zzz_verso_confirm(`Remove ${c.name} from your contacts?`, 'REMOVE'))) return;
             if (await zzz5w5cm_remove_my_contact(c.id)) paintMine();
           } }
       ]);
@@ -36583,7 +36620,8 @@ async function zzz6f58_pair_entry(name) {
   const clean = String(name || '').trim();
   const known = zzz6f58_known_contact(clean);
   if (!zzz6f58_prepare(clean) && !known) return;
-  if (!confirm(`Create a pairing entry for "${clean}"?`)) return;
+
+  if (!(await zzz_verso_confirm(`Create a pairing entry for "${clean}"?`, 'CREATE'))) return;
   try {
     const res = await submit_entries_to_db({ allowExisting: true });
     if (res === false) return;
@@ -39517,7 +39555,7 @@ function zzz16_after_logout() {
   try { if ('speechSynthesis' in window) speechSynthesis.cancel(); } catch (e) {}
 }
 
-const ZZZ23TR_BASE = 'https://raw.githubusercontent.com/Versoproject/0/translate-packs/';
+const ZZZ23TR_BASE = SUPABASE_URL + '/functions/v1/verso-packs/translate-packs/';
 const ZZZ23TR_PACK = {"wasm":{"file":"bergamot-v3.0.wasm","sha256":"a3a89d9ad0a4ed8f27bf3e403701b23f5709816f6376438503f2fa5b0182c2dc","size":4960506},"glue":{"file":"bergamot-v0.6.0.js","sha256":"faff1ef6285b0d26f01787776fd49299dfb756ecb9688aa990c250e66797b47d","size":100187},"pairs":{"sk-en":{"v":"1.0","files":{"lex":{"file":"tr-sken-v1.0-lex.bin","name":"lex.50.50.sken.s2t.bin","sha256":"18577a7ded6b9957c948f2a384683f7ce09def42336c8141eee7ba86b79e2c8e","size":4913324},"vocab":{"file":"tr-sken-v1.0-vocab.bin","name":"vocab.sken.spm","sha256":"7d25655bd15f34d77db5d2cb96a51c7943c5528f37f83b677a09bb0ea4e4f59b","size":808082},"model":{"file":"tr-sken-v1.0-model.bin","name":"model.sken.intgemm.alphas.bin","sha256":"1686f94838ace314719e945606a09a66dafd40847dd3fd352ad3f7a969aac62f","size":17141051}}},"en-sk":{"v":"2.1","files":{"model":{"file":"tr-ensk-v2.1-model.bin","name":"model.ensk.intgemm.alphas.bin","sha256":"e33af359fd58c8958104b1b74b3ea302800ccba2f125c1629e09d7f9dd9a3804","size":31561787},"lex":{"file":"tr-ensk-v2.1-lex.bin","name":"lex.50.50.ensk.s2t.bin","sha256":"f3d1aec4ee5246d6a6ee5dc7ed4c6b18f6071c7baca69bf1344aef675b95515d","size":3356348},"vocab":{"file":"tr-ensk-v2.1-vocab.bin","name":"vocab.ensk.spm","sha256":"cfa6a9e601d74686b117f041eb1ad9de94c34219110b67367d570a9e27026a46","size":808888}}},"uk-en":{"v":"1.1","files":{"model":{"file":"tr-uken-v1.1-model.bin","name":"model.uken.intgemm.alphas.bin","sha256":"2e7b8bc9d2569d8b4ae244e964cdc343a0aa3735cc83ecb664be84a37cb45f48","size":17141051},"lex":{"file":"tr-uken-v1.1-lex.bin","name":"lex.50.50.uken.s2t.bin","sha256":"32b5e0df493671a223cb5cb32430181cbb7fe6b5562c91dbc3d35410d37e5ff6","size":3914120},"vocab":{"file":"tr-uken-v1.1-vocab.bin","name":"vocab.uken.spm","sha256":"8b51480dfc4ca2d7a08d2bfdaa9e57353ca97e6cf3d5f9aba4c0179d3665bfc0","size":886410}}},"en-uk":{"v":"2.2","files":{"vocab":{"file":"tr-enuk-v2.2-vocab.bin","name":"vocab.enuk.spm","sha256":"4dd6a91feff71e745395dcc0d52f885848ca0d843d5f70628ca51b3be1b70b45","size":922077},"lex":{"file":"tr-enuk-v2.2-lex.bin","name":"lex.50.50.enuk.s2t.bin","sha256":"dbfd4f8dc95da9c575164f7fc95ef00a2fb5f7d9f51b656559f99eeebdb57c87","size":3054364},"model":{"file":"tr-enuk-v2.2-model.bin","name":"model.enuk.intgemm.alphas.bin","sha256":"ed8bb4a811e1c45a259e91052080d25e5c8b4e2df0e59cb1521c04a57855ef97","size":31561787}}},"es-en":{"v":"2.0","files":{"model":{"file":"tr-esen-v2.0-model.bin","name":"model.esen.intgemm.alphas.bin","sha256":"4aed7734152ae0045d1a69ae49c86cfda18f53c61f90e95e1d1de1c7c7c3b033","size":31561787},"lex":{"file":"tr-esen-v2.0-lex.bin","name":"lex.50.50.esen.s2t.bin","sha256":"e2610211d3b9577d012638fe7e7e74ed7b4b708ce96b9e792e67c282a6492daa","size":4636248},"vocab":{"file":"tr-esen-v2.0-vocab.bin","name":"vocab.esen.spm","sha256":"5ae254fa9b15aa182e70fd2a6186b1333c63a29a48043a9224c6aa4fcac058ad","size":816054}}},"en-es":{"v":"2.1","files":{"model":{"file":"tr-enes-v2.1-model.bin","name":"model.enes.intgemm.alphas.bin","sha256":"3b1c399511c01c84c36fae5c0524df44096288efdc8236e182b5c97d7ad2244c","size":31561787},"vocab":{"file":"tr-enes-v2.1-vocab.bin","name":"vocab.enes.spm","sha256":"5ae254fa9b15aa182e70fd2a6186b1333c63a29a48043a9224c6aa4fcac058ad","size":816054},"lex":{"file":"tr-enes-v2.1-lex.bin","name":"lex.50.50.enes.s2t.bin","sha256":"7d51237c0a07027dcd61643cfbbb0f8c48597d19907ef53d2cae9d6bec2cf25c","size":4198436}}},"de-en":{"v":"2.0","files":{"vocab":{"file":"tr-deen-v2.0-vocab.bin","name":"vocab.deen.spm","sha256":"69f730becafa48e3bb2c244eab66456877c08959a02f2bd5519b5a3088b62f9c","size":810073},"lex":{"file":"tr-deen-v2.0-lex.bin","name":"lex.50.50.deen.s2t.bin","sha256":"113b98460468360cca68c042e1cddf49c4e1931cbb975ed04349c9a3bd607010","size":4945796},"model":{"file":"tr-deen-v2.0-model.bin","name":"model.deen.intgemm.alphas.bin","sha256":"3e6f7c2c2425d10824797270b382bee718ff34af2cab9308841c82ca46dc6f20","size":31561787}}},"en-de":{"v":"2.1","files":{"model":{"file":"tr-ende-v2.1-model.bin","name":"model.ende.intgemm.alphas.bin","sha256":"8df29d9494d19f47fd5d97c6a73474c6f657e9f81c1a607c431d02befdf3810f","size":31561787},"vocab":{"file":"tr-ende-v2.1-vocab.bin","name":"vocab.ende.spm","sha256":"69f730becafa48e3bb2c244eab66456877c08959a02f2bd5519b5a3088b62f9c","size":810073},"lex":{"file":"tr-ende-v2.1-lex.bin","name":"lex.50.50.ende.s2t.bin","sha256":"7ed39f1cffbd68a27ddf05bbfe068de2060f1d7e69f1a20e27ae923551dd7393","size":4347672}}},"it-en":{"v":"2.0","files":{"lex":{"file":"tr-iten-v2.0-lex.bin","name":"lex.50.50.iten.s2t.bin","sha256":"0700d6d70b30490e68ff9deca0b45b80310745b491855bde3a13e1692d0cbce1","size":4713616},"vocab":{"file":"tr-iten-v2.0-vocab.bin","name":"vocab.iten.spm","sha256":"3ef0211d4ae6db21440892f180f2019fe2bfc110a330ffa9d2eca9665e4f2bc5","size":812724},"model":{"file":"tr-iten-v2.0-model.bin","name":"model.iten.intgemm.alphas.bin","sha256":"21b70978ce2f3b4da7a06b5de86a09abe3acd30b9eee1b2ebb3582b9bad790bf","size":31561787}}},"en-it":{"v":"2.1","files":{"model":{"file":"tr-enit-v2.1-model.bin","name":"model.enit.intgemm.alphas.bin","sha256":"248f47568788ecc351da7e5e07064d4153b4f71e011364ae2c931ffeec4d1cc2","size":31561787},"vocab":{"file":"tr-enit-v2.1-vocab.bin","name":"vocab.enit.spm","sha256":"3ef0211d4ae6db21440892f180f2019fe2bfc110a330ffa9d2eca9665e4f2bc5","size":812724},"lex":{"file":"tr-enit-v2.1-lex.bin","name":"lex.50.50.enit.s2t.bin","sha256":"8b21914804625b2777dae7fdb636eb78f02a3eb8b7bceaa50f29ac740961da93","size":4133192}}},"fr-en":{"v":"2.0","files":{"lex":{"file":"tr-fren-v2.0-lex.bin","name":"lex.50.50.fren.s2t.bin","sha256":"87c6752ea908f5f0347c10ac0cf7d80d9c2f4f20c81c90168f3e8230b56d4440","size":4824120},"model":{"file":"tr-fren-v2.0-model.bin","name":"model.fren.intgemm.alphas.bin","sha256":"15f997bc0d13808b0b0fbd0786e684a3c8a52adcd8071844b76123fdacbf2b90","size":31561787},"vocab":{"file":"tr-fren-v2.0-vocab.bin","name":"vocab.fren.spm","sha256":"783abf3abe075afdf8d85d233994bef2c3a064e935ab1bed946820aff6ac002a","size":814404}}},"en-fr":{"v":"2.0","files":{"vocab":{"file":"tr-enfr-v2.0-vocab.bin","name":"vocab.enfr.spm","sha256":"783abf3abe075afdf8d85d233994bef2c3a064e935ab1bed946820aff6ac002a","size":814404},"lex":{"file":"tr-enfr-v2.0-lex.bin","name":"lex.50.50.enfr.s2t.bin","sha256":"2585ed98d3af0bc949865aedeb390493d591f56870814376e73e4144c41ed059","size":4372936},"model":{"file":"tr-enfr-v2.0-model.bin","name":"model.enfr.intgemm.alphas.bin","sha256":"6322e296d4fecfe395a8d5723da4ec37ecbe6d7613bb1dfcf4b28e2a47498b68","size":31561787}}},"ru-en":{"v":"2.1","files":{"lex":{"file":"tr-ruen-v2.1-lex.bin","name":"lex.50.50.ruen.s2t.bin","sha256":"c944e753f298bbdf6506388de7257fb48cbd12c83e2807e2c284fc323771895b","size":4397908},"model":{"file":"tr-ruen-v2.1-model.bin","name":"model.ruen.intgemm.alphas.bin","sha256":"aa0efa194b3dbd2da129ba0b8db8ef139126cb0914e57072f62061294746f1e2","size":31561787},"vocab":{"file":"tr-ruen-v2.1-vocab.bin","name":"vocab.ruen.spm","sha256":"de8af5f87e231ee4016cec4bb482e6b584cb1ca34dcb624fc7b8398f25bb35df","size":952371}}},"en-ru":{"v":"2.1","files":{"lex":{"file":"tr-enru-v2.1-lex.bin","name":"lex.50.50.enru.s2t.bin","sha256":"4d91839726b960e70b6d05c53d0cffd16262832b1c0e1ea99d66f412dcc6a239","size":2774540},"vocab":{"file":"tr-enru-v2.1-vocab.bin","name":"vocab.enru.spm","sha256":"56ee63e14e8cb926c394242adc3ed7cc602644c3d33058cff2ce2959d52a6258","size":904455},"model":{"file":"tr-enru-v2.1-model.bin","name":"model.enru.intgemm.alphas.bin","sha256":"184cb5cda528eeefc0f75f5d0035d787b71d74af135e3c5608d01ae02ecfb920","size":31561787}}},"zh-en":{"v":"2.1","files":{"vocab":{"file":"tr-zhen-v2.1-vocab.bin","name":"vocab.zhen.spm","sha256":"dff594318ab7d8b7b60b844ab98ebe6b932ae8045fab15235404c787715965b3","size":1359697},"model":{"file":"tr-zhen-v2.1-model.bin","name":"model.zhen.intgemm.alphas.bin","sha256":"5cd149601802fc8a18124a1c1306144dbbedc058630c4ddb2d53aa76fa9c7c06","size":43977787},"lex":{"file":"tr-zhen-v2.1-lex.bin","name":"lex.50.50.zhen.s2t.bin","sha256":"8524dd4c93ffd7f0ae7be32f77a7c14fea7cdbbebe34ea6ad0ec368d5ddd8b13","size":9219192}}},"en-zh":{"v":"2.2","files":{"model":{"file":"tr-enzh-v2.2-model.bin","name":"model.enzh.intgemm.alphas.bin","sha256":"4e5accc141373565ddc8fa1565bceaa8d0c3482a82cab8131c719ebcc6c2157c","size":43849787},"srcvocab":{"file":"tr-enzh-v2.2-srcvocab.bin","name":"srcvocab.enzh.spm","sha256":"bd9b65504acc6d9726dd281f7defc2adb7c2c22d0688fe2f84697de25197c8c5","size":806952},"trgvocab":{"file":"tr-enzh-v2.2-trgvocab.bin","name":"trgvocab.enzh.spm","sha256":"aded6993c36e440284d11cec3f6b8aef9c0e43188a772d80be342a713adf223d","size":772004},"lex":{"file":"tr-enzh-v2.2-lex.bin","name":"lex.50.50.enzh.s2t.bin","sha256":"4a5e5827788060f1d718a8132b69440929387514a045796e9b77f935db68c055","size":6506248}}},"hi-en":{"v":"1.0","files":{"model":{"file":"tr-hien-v1.0-model.bin","name":"model.hien.intgemm.alphas.bin","sha256":"c82fd6ed3794b79fb9dde0718a22324502a408a9eca73497b5d0a4b8024ec6de","size":17141051},"vocab":{"file":"tr-hien-v1.0-vocab.bin","name":"vocab.hien.spm","sha256":"9cbc02094ac2ebd75211b3bb6789a9d6fa112ce3c08e897f1645f18b21fbab00","size":925436},"lex":{"file":"tr-hien-v1.0-lex.bin","name":"lex.50.50.hien.s2t.bin","sha256":"e789be33dfdb639e98f5cf9eb01aa945ec3c882f68f3c8860389cf846f0112d8","size":4605984}}},"en-hi":{"v":"1.0","files":{"model":{"file":"tr-enhi-v1.0-model.bin","name":"model.enhi.intgemm.alphas.bin","sha256":"18682fa6aa1c1b2f78a6fcbcb354755094d623e65436ef7821720c5213e11a49","size":17141051},"lex":{"file":"tr-enhi-v1.0-lex.bin","name":"lex.50.50.enhi.s2t.bin","sha256":"b473f6fe41cdb7c1dbeeb714fc50314feab77b0af2b2da6f7830ee14492dd847","size":3504820},"vocab":{"file":"tr-enhi-v1.0-vocab.bin","name":"vocab.enhi.spm","sha256":"8017cbf812bae400794c424699b89de90db06ac7a4ca67a420013a9f68b270c1","size":925360}}}}};
 const ZZZ23TR_CACHE = 'verso-translate-v1';
 const zzz23trState = { worker: null, ready: null, seq: 0, wait: new Map(), loaded: new Set(), memo: new Map(), busy: new Set() };
@@ -39566,7 +39604,8 @@ async function zzz23tr_file(f, onBytes) {
       if (hit) { const b = await hit.arrayBuffer(); if (b.byteLength === f.size && await zzz23tr_sha(b) === f.sha256) { if (onBytes) onBytes(f.size); return b; } await cache.delete(url); }
     } catch (e) {}
   }
-  const r = await fetch(url, { cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' });
+  const trH = zzz_verso_fn_headers(); if (!trH) throw new Error('log in to Verso to download a language');
+  const r = await fetch(url, { cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', headers: trH });
   if (!r.ok) throw new Error('download ' + f.file + ': HTTP ' + r.status);
   const b = await r.arrayBuffer();
   if (b.byteLength !== f.size) throw new Error(f.file + ': size does not match - not used');
@@ -40451,7 +40490,9 @@ function zzz22_render_live_data(host) {
     if (q.length < 2) { say('Type at least 2 letters of the city.', true); return; }
     searching = true; sb.disabled = true; say('Searching…');
     const url = SUPABASE_URL + '/functions/v1/verso-weather?a=geo&q=' + encodeURIComponent(q.slice(0, 60));
-    fetch(url, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(j => {
+    const geoH = zzz_verso_fn_headers();
+    if (!geoH) { searching = false; sb.disabled = false; say('Log in to Verso to search places.', true); return; }
+    fetch(url, { cache: 'no-store', headers: geoH }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(j => {
       const list = (j && Array.isArray(j.results)) ? j.results.filter(x => typeof x.latitude === 'number' && typeof x.longitude === 'number') : [];
       if (!list.length) { say('No place found for "' + q + '". Check the spelling or try a bigger town nearby.', true); return; }
       say('Tap the right place:');
@@ -41857,13 +41898,14 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
       zzz_bind_hold_selection_guard(b);
       zzz5w7_bind_tiered_hold(b, [
         { ms: 1100, fn: async () => {
-            const nm = (window.prompt('Rename tab:', t.label) || '').trim();
+
+            const nm = ((await zzz_verso_prompt('Rename tab:', t.label, 'RENAME')) || '').trim();
             if (!nm) return;
             if (await zzz5_6_rename_user_tab(t.key, nm)) paintUserTabs();
           } },
         { ms: 3000, fn: async () => {
 
-            if (!window.confirm(`Move the tab "${t.label}" to trash?`)) return;
+            if (!(await zzz_verso_confirm(`Move the tab "${t.label}" to trash?`, 'MOVE TO TRASH'))) return;
             if (await zzz5_6_trash_user_tab(t.key)) { paintUserTabs(); render(); }
           } }
       ]);
@@ -41877,7 +41919,8 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
     const parentLab = (ZZZ1CN_WS_TABS.find(x => x.key === activeTab) || {}).label || activeTab;
     add.title = `Add a tab under ${parentLab}`;
     add.addEventListener('click', async () => {
-      const nm = (window.prompt(`New tab under ${parentLab}:`) || '').trim();
+
+      const nm = ((await zzz_verso_prompt(`New tab under ${parentLab}:`, '', 'ADD')) || '').trim();
       if (!nm) return;
       if (await zzz5_6_add_user_tab(nm, activeTab)) paintUserTabs();
     });
@@ -44907,7 +44950,8 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     const others = picked.length - mine.length;
     if (!mine.length) { zzz6f2_show_toast('You can only delete your own note.', 'warn'); return; }
     const labels = mine.map(n => '#' + zzz5w7_label_of(n)).join(', ');
-    if (!window.confirm(`Delete ${mine.length} note(s): ${labels}?` + (others ? `\n(${others} from others will be skipped)` : ''))) return;
+
+    if (!(await zzz_verso_confirm(`Delete ${mine.length} note(s): ${labels}?` + (others ? `\n(${others} from others will be skipped)` : ''), 'DELETE'))) return;
     delSel.disabled = true;
     let done = 0;
     for (const n of mine) {
@@ -45398,14 +45442,21 @@ async function zzz6f15_place_entries(rows, targetId, mode) {
       if (mode === 'move') {
 
         const { error: delErr } = await sb.from('verso_placements')
-          .delete().eq('username', me).eq('entry_id', row.entry_id);
+          .update({ removed_at: new Date().toISOString() }).eq('username', me).eq('entry_id', row.entry_id).is('removed_at', null);
         if (delErr) throw delErr;
       }
       const { error: insErr } = await sb.from('verso_placements')
         .insert([{ username: me, entry_id: row.entry_id, tab_id: targetId }]);
       if (insErr) {
 
-        if (String(insErr.code) === '23505') { skipped.push(`#${row.entry_id}`); continue; }
+        if (String(insErr.code) === '23505') {
+
+          const { data: rev, error: revErr } = await sb.from('verso_placements').update({ removed_at: null })
+            .eq('username', me).eq('entry_id', row.entry_id).eq('tab_id', targetId).not('removed_at', 'is', null).select('id');
+          if (revErr) throw revErr;
+          if (rev && rev.length) { done++; continue; }
+          skipped.push(`#${row.entry_id}`); continue;
+        }
         throw insErr;
       }
       done++;
@@ -45665,8 +45716,9 @@ function zzz5t0_render_tabs_row(tabs, innerEl, activeId, prefix, onSelect, onRen
       zzz_bind_long_press(btn, 3000, () => {
         zzz5t0_open_tab_window(
           btn,
-          () => {
-            const next = window.prompt('Premenovat tab:', tab.label);
+          async () => {
+
+            const next = await zzz_verso_prompt('Rename tab:', tab.label, 'RENAME');
             if (next && next.trim()) { tab.label = next.trim(); zzz5t0_render_all_tabs(); }
           },
           () => { zzz5t0_delete_tab(tabs, tab.id, prefix); },
@@ -45740,8 +45792,9 @@ function zzz5t0_render_all_tabs() {
   zzz5t0_render_tabs_row(
     zzz5t0TabsT3, document.getElementById('versoTemplatesTabsRowT3Inner'), zzz5t0ActiveTabIdT3, 'T3',
     (tab) => { zzz5t0ActiveTabIdT3 = tab.id; zzz5t0LastClickedTabId = tab.id; zzz5t0_render_all_tabs(); },
-    (tab) => {
-      const next = window.prompt('Premenovat tab:', tab.label);
+    async (tab) => {
+
+      const next = await zzz_verso_prompt('Rename tab:', tab.label, 'RENAME');
       if (next && next.trim()) { tab.label = next.trim(); zzz5t0_render_all_tabs(); }
     },
     true
@@ -45918,8 +45971,9 @@ function zzz5t4_render_row(tabs, innerEl, activeId, onSelect) {
     zzz_bind_long_press(btn, 5000, () => {
       zzz5t0_open_tab_window(
         btn,
-        () => {
-          const next = window.prompt('Premenovat tab:', tab.label);
+        async () => {
+
+          const next = await zzz_verso_prompt('Rename tab:', tab.label, 'RENAME');
           if (next && next.trim()) { tab.label = next.trim(); zzz5t4_render_all(); }
         },
         () => { zzz5t4_delete_tab(tabs, tab.id); }
@@ -45997,13 +46051,14 @@ function zzz5t0_add_tab(tabsArray, prefix, unused, locked) {
   return newTab;
 }
 
-function zzz5t0_add_template_tab() {
+async function zzz5t0_add_template_tab() {
   const tab = zzz5t0_add_tab(zzz5t0TabsT3, 'T3', null, false);
   const t3a = zzz5t0TabsT3[0];
   if (t3a && Array.isArray(t3a.duplicatedFrom) && t3a.duplicatedFrom.length > 0) {
     tab.duplicatedFrom = t3a.duplicatedFrom.slice();
   }
-  const next = window.prompt('Nazov noveho template tabu:', tab.label);
+
+  const next = await zzz_verso_prompt('Name of the new template tab:', tab.label, 'SAVE');
   if (next && next.trim()) {
     tab.label = next.trim();
     zzz5t0_render_all_tabs();
@@ -46024,7 +46079,7 @@ function zzz5t0_run_add_template_button() {
   zzz6f2_show_toast(`T3a: modul duplikovany (spolu ${t3a.duplicatedFrom.length}).`);
 }
 
-function zzz5t0_bulk_delete_added_templates() {
+async function zzz5t0_bulk_delete_added_templates() {
   const t3a = zzz5t0TabsT3[0];
   if (!t3a) return;
   const dupCount = Array.isArray(t3a.duplicatedFrom) ? t3a.duplicatedFrom.length : 0;
@@ -46035,9 +46090,10 @@ function zzz5t0_bulk_delete_added_templates() {
     return;
   }
   const parts = [];
-  if (dupCount > 0) parts.push(`${dupCount} duplikovanych modulov`);
-  if (anchoredHere) parts.push('presunuty 1-M4a template (vrati sa do T2c)');
-  if (!window.confirm(`Resetovat T3a (${parts.join(' + ')})?`)) return;
+
+  if (dupCount > 0) parts.push(`${dupCount} duplicated module(s)`);
+  if (anchoredHere) parts.push('the moved 1-M4a template (goes back to T2c)');
+  if (!(await zzz_verso_confirm(`Reset T3a (${parts.join(' + ')})?`, 'RESET'))) return;
 
   if (dupCount > 0) delete t3a.duplicatedFrom;
   if (anchoredHere) {
@@ -46837,7 +46893,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-31 19:38';
+const VERSO_BUILD = '2026-10-31 21:02';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -49122,7 +49178,8 @@ function zzz_media_norm(link) {
 
 async function zzz_media_meta(link) {
   try {
-    const r = await fetch(SUPABASE_URL + '/functions/v1/verso-media-meta?url=' + encodeURIComponent(link), { cache: 'no-store' });
+    const mH = zzz_verso_fn_headers(); if (!mH) return null;
+    const r = await fetch(SUPABASE_URL + '/functions/v1/verso-media-meta?url=' + encodeURIComponent(link), { cache: 'no-store', headers: mH });
     if (!r.ok) return null;
     return await r.json();
   } catch (e) { return null; }
@@ -49601,6 +49658,34 @@ function zzz_verso_confirm(text, yes) {
   });
 }
 function zzz_media_confirm(text, yes, fn) { zzz_verso_confirm(text, yes).then((ok) => { if (ok) fn(); }); }
+
+function zzz_verso_prompt(text, value, yes) {
+  return new Promise((resolve) => {
+    const o = document.createElement('div'); o.className = 'zzz-media-confirm is-prompt'; o.setAttribute('data-zzz-nodraft', '1');
+    const b = document.createElement('div'); b.className = 'zzz-media-confirm-box is-prompt';
+    const t = document.createElement('div'); t.className = 'zzz-media-confirm-text'; t.textContent = text; b.appendChild(t);
+    const inp = document.createElement('input'); inp.type = 'text'; inp.className = 'zzz-verso-prompt-in'; inp.autocomplete = 'off';
+    inp.value = (value === undefined || value === null) ? '' : String(value); b.appendChild(inp);
+    const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
+    const y = document.createElement('button'); y.type = 'button'; y.className = 'zzz-media-btn is-on'; y.textContent = yes || 'OK';
+    const n = document.createElement('button'); n.type = 'button'; n.className = 'zzz-media-btn'; n.textContent = 'CANCEL';
+    let done = false;
+    const end = (v) => {
+      if (done) return; done = true;
+      try { if (typeof zzz_vkbPanel !== 'undefined' && zzz_vkbPanel && zzz_vkbPanel._target === inp) zzz_vkb_hide(); } catch (e) {}
+      o.remove(); resolve(v);
+    };
+    y.addEventListener('click', () => end(inp.value)); n.addEventListener('click', () => end(null));
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); end(inp.value); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); end(null); }
+    });
+    o.addEventListener('click', (e) => { if (e.target === o) end(null); });
+    new MutationObserver((m, obs) => { if (!o.isConnected) { obs.disconnect(); end(null); } }).observe(document.body, { childList: true });
+    row.append(y, n); b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
+    setTimeout(() => { try { inp.focus({ preventScroll: true }); inp.select(); } catch (e) {} }, 30);
+  });
+}
 async function zzz_media_open() {
   let w = document.getElementById('zzzMediaWin');
   if (w) { w.remove(); zzz_media_place(); return; }
