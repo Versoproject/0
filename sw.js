@@ -107,7 +107,7 @@ async function versoSwShow(d) {
     vibrate: urgent ? [400, 150, 400, 150, 400] : undefined,
     silent: d.silent === true || !loud,
 
-    actions: lastTop.entry ? [{ action: 'read', title: 'Prečítaj text' }] : [],
+    actions: lastTop.entry ? [{ action: 'read', title: 'Read aloud' }] : [],
     data: { entry: lastTop.entry || '', url: './', c }
   };
   return self.registration.showNotification(`Verso · ${head}`, opts);
