@@ -9458,6 +9458,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz5w8-iw-quick { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
   .zzz5w8-iw-quick .zzz5w5cm-chip { padding: 1px 6px; font-size: 10px; min-height: 0; }
   .zzz5w8-iw-quick .zzz5w5cm-chip.is-on { background-color: #D4AF37; color: #171717; }
+  
+  .zzz5w8-iw-qx { display: inline-block; margin-left: 6px; padding: 0 4px; font-weight: 900; color: #e57373; border-left: 1px solid rgba(212,175,55,.5); }
+  .zzz5w8-iw-quick .zzz5w5cm-chip.is-on .zzz5w8-iw-qx { color: #8b1a1a; }
   .entry-modal-box.zzz5w8-iw-min > :not(.zzz5w8-iw-head) { display: none !important; }
   .entry-modal-box.zzz5w8-iw-min { padding-bottom: 4px !important; }
   .zzz5w8-iw-four { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 6px; align-items: end; }
@@ -26418,6 +26421,13 @@ function zzz5w8_parse_minutes(txt) {
   return Math.round(n * k);
 }
 
+function zzz5w8_hidden_key() { return 'zzz5w8_hidden_tags:' + zzz10v1_normalize(zzz0r1_get_current_username() || ''); }
+function zzz5w8_hidden_tags() {
+  try { const a = JSON.parse(localStorage.getItem(zzz5w8_hidden_key()) || '[]'); return Array.isArray(a) ? a.map(x => String(x).toLowerCase()) : []; } catch (e) { return []; }
+}
+function zzz5w8_hide_tag(v) {
+  try { const a = zzz5w8_hidden_tags(); const t = String(v || '').toLowerCase(); if (t && a.indexOf(t) < 0) a.push(t); localStorage.setItem(zzz5w8_hidden_key(), JSON.stringify(a.slice(-200))); } catch (e) {}
+}
 function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
   document.querySelectorAll('.zzz5w8-item-window').forEach(w => { if (w._zzz5w8Close) w._zzz5w8Close(); });
   const { box, removeBox } = zzz6f41_create_context_window();
@@ -26567,22 +26577,40 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
     cap.appendChild(i);
   };
 
-  const quick = (el, values, multi) => {
+  const quick = (el, values, multi, onRemove) => {
     const lab = el && el.closest && el.closest('.zzz5w8-iw-field');
     if (!lab || !values.length) return;
     const row = document.createElement('span');
     row.className = 'zzz5w8-iw-quick';
     const paintQ = () => row.querySelectorAll('button').forEach(b => {
       const cur = String(el.value || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
-      b.classList.toggle('is-on', multi ? cur.indexOf(b.textContent.toLowerCase()) >= 0 : String(el.value || '').trim().toLowerCase() === b.textContent.toLowerCase());
+      const bv = String(b.dataset.v || b.textContent).toLowerCase();
+      b.classList.toggle('is-on', multi ? cur.indexOf(bv) >= 0 : String(el.value || '').trim().toLowerCase() === bv);
     });
     values.forEach(v => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'zzz5w5cm-chip';
       b.textContent = v;
+      b.dataset.v = v;
+
+      if (onRemove) {
+        const x = document.createElement('span');
+        x.className = 'zzz5w8-iw-qx';
+        x.textContent = '\u00d7';
+        x.title = 'Remove this suggestion';
+        b.appendChild(x);
+      }
       b.addEventListener('click', (ev) => {
         ev.preventDefault(); ev.stopPropagation();
+        if (onRemove && ev.target.closest && ev.target.closest('.zzz5w8-iw-qx')) {
+          const cur = String(el.value || '').split(',').map(x => x.trim()).filter(Boolean).filter(x => x.toLowerCase() !== v.toLowerCase());
+          if (multi) el.value = cur.join(', ');
+          onRemove(v);
+          b.remove();
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          return;
+        }
         if (multi) {
           const cur = String(el.value || '').split(',').map(x => x.trim()).filter(Boolean);
           const at = cur.findIndex(x => x.toLowerCase() === v.toLowerCase());
@@ -26653,11 +26681,12 @@ function zzz5w8_open_item_window(raw, kind, arm, tpl, anchor) {
   quick(repeatIn, ['1h', '1d', '1w']);
   {
     const seenT = [];
+    const hidT = zzz5w8_hidden_tags();
     zzz5w8Items.slice().sort((a, b) => (Date.parse(b.created_at || '') || 0) - (Date.parse(a.created_at || '') || 0)).forEach(r =>
       String(r.tag || '').split(/[,;]+/).map(x => x.trim()).filter(Boolean).forEach(x => {
-        if (seenT.length < 6 && !seenT.some(y => y.toLowerCase() === x.toLowerCase())) seenT.push(x);
+        if (seenT.length < 6 && hidT.indexOf(x.toLowerCase()) < 0 && !seenT.some(y => y.toLowerCase() === x.toLowerCase())) seenT.push(x);
       }));
-    quick(tagIn, seenT, true);
+    quick(tagIn, seenT, true, (v) => zzz5w8_hide_tag(v));
   }
   const prio = zzz1cn_prio_control(pre && pre.priority !== 'open' ? pre.priority : (arm && arm.cfg && arm.cfg.priority) || '', null);
   const prioWrap = document.createElement('span');
@@ -46578,7 +46607,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-10-31 18:02';
+const VERSO_BUILD = '2026-10-31 18:09';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
