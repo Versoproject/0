@@ -4794,6 +4794,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   }
   .zzz1cn-note-user.zzz1r17b-foreign { color: #8c6239; }
   
+  .zzz1cn-note-user.zzz1cn-note-system, .zzz1r17b-comm-window.zzz1cn-compact .zzz1cn-note-user.zzz1cn-note-system { color: #9aa4b2 !important; border: 1px solid #5b6472; border-radius: 4px; padding: 0 4px; font-size: 0.85em; letter-spacing: .04em; }
+  .zzz1cn-note.zzz1cn-note-sys { border-left: 2px solid #5b6472; }
+  .zzz3d-who.is-system { color: #9aa4b2 !important; }
+  
   .zzz6f58-mention {
     color: #8c6239;
     font-weight: 800;
@@ -27205,7 +27209,7 @@ function zzz5w8_play_item(it) {
     n += 1;
   });
   Object.keys(latest).forEach(k => { if (typeof zzz1cn_seen_mark === 'function') zzz1cn_seen_mark(k, 'seen', latest[k]); });
-  if (n) zzz6f2_show_toast(`Read aloud. ${n} open message(s) from ${it.from} marked as read (attention / urgent kept).`);
+  if (n) zzz6f2_show_toast(`Read aloud. ${n} open message(s) from ${zzz_author_label(it.from)} marked as read (attention / urgent kept).`);
   setTimeout(() => { try { zzz5w8_render(); } catch (e) {} }, 400);
 }
 
@@ -27241,7 +27245,7 @@ function zzz5w8_shift_prompt(it, anchor) {
   box.className = 'zzz5w8-shift-prompt';
   const head = document.createElement('div'); head.className = 'zzz5w8-sp-head';
   const v = zzz5w8_row_values(it);
-  head.textContent = [it.entry ? '#' + it.entry : (it.place || ''), it.from, v.when, (it.text || '').slice(0, 80)].filter(Boolean).join(' · ');
+  head.textContent = [it.entry ? '#' + it.entry : (it.place || ''), zzz_author_label(it.from), v.when, (it.text || '').slice(0, 80)].filter(Boolean).join(' · ');
   const x = document.createElement('button'); x.type = 'button'; x.className = 'entry-modal-close zzz5w8-sp-x'; x.textContent = '\u2715';
   x.addEventListener('click', (ev) => { ev.stopPropagation(); box.remove(); });
   head.appendChild(x);
@@ -27397,7 +27401,7 @@ function zzz5w8_build_card(it) {
   card.appendChild(top);
   const tx = document.createElement('div');
   tx.className = 'zzz5w8-card-text';
-  tx.textContent = (it.from && it.src === 'chat' ? it.from + ': ' : '') + (it.text || '');
+  tx.textContent = (it.from && it.src === 'chat' ? zzz_author_label(it.from) + ': ' : '') + (it.text || '');
   card.appendChild(tx);
   card.title = it.src === 'chat' ? 'Tap = open + SHIFTED, hold = read aloud + SHIFTED, swipe right = open and keep, swipe left = SHIFT' : 'Tap = change it, mark it done';
   card.addEventListener('click', () => { if (!card._zzzSwiped) zzz5w8_open_shift(it, card); });
@@ -27982,8 +27986,8 @@ function zzz3d_who_el(it) {
   const sp = document.createElement('span');
   const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
   const mine = zzz10v1_normalize(it.from || '') === meN;
-  sp.className = 'zzz3d-who' + (mine ? '' : ' is-foreign') + (it.prio === 'urgent' ? ' is-urgent' : (it.prio === 'attention' ? ' is-attention' : ''));
-  sp.textContent = it.from || '';
+  sp.className = 'zzz3d-who' + (mine ? '' : ' is-foreign') + (zzz_is_system_author(it.from) ? ' is-system' : '') + (it.prio === 'urgent' ? ' is-urgent' : (it.prio === 'attention' ? ' is-attention' : ''));
+  sp.textContent = zzz_author_label(it.from);
   return sp;
 }
 function zzz3d_ago(it) {
@@ -27996,7 +28000,7 @@ function zzz3d_ago(it) {
 function zzz3d_label(it, list) {
   if (it.src === 'chat') {
     const where = it.project || (it.entry && zzz1cnOwnTag[it.entry]) || it.place || (it.entry ? '#' + it.entry : '');
-    const who = it.from || '';
+    const who = zzz_author_label(it.from);
     return [where, who].filter(Boolean).join(' · ');
   }
   return it.entry ? '#' + it.entry : (it.project || '');
@@ -36754,8 +36758,9 @@ function zzz1cn_copy_source_line(notes) {
   const when = (n) => { const t = zzz1cn_time_of(n); if (t === null) return ''; const d = new Date(t);
     return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
   const en = String(ns[0].entry_key || '').replace(/\D/g, '');
-  if (ns.length === 1) return '\u2014 ' + ['@' + (ns[0].username || '?'), en ? '#' + en : '', when(ns[0])].filter(Boolean).join(' \u00b7 ');
-  const who = Array.from(new Set(ns.map(n => '@' + (n.username || '?')))).join(', ');
+  const zzzAt = (u) => zzz_is_system_author(u) ? 'VERSO SYSTEM' : '@' + (u || '?');
+  if (ns.length === 1) return '\u2014 ' + [zzzAt(ns[0].username), en ? '#' + en : '', when(ns[0])].filter(Boolean).join(' \u00b7 ');
+  const who = Array.from(new Set(ns.map(n => zzzAt(n.username)))).join(', ');
   return '\u2014 ' + [en ? '#' + en : '', who].filter(Boolean).join(' \u00b7 ');
 }
 
@@ -36988,12 +36993,19 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   who.className = 'zzz1cn-note-user' + (isMine ? '' : ' zzz1r17b-foreign');
   who.textContent = '@' + (note.username || '-');
   who.title = 'Who posted it (not editable)';
+
+  if (zzz_is_system_author(note.username)) {
+    who.className = 'zzz1cn-note-user zzz1cn-note-system';
+    who.textContent = '\u2699 VERSO SYSTEM';
+    who.title = 'Automatic message of the Verso system (written by the server, not by a user account)';
+    wrap.classList.add('zzz1cn-note-sys');
+  }
   headId.appendChild(who);
   wrap.dataset.zzz1cnUser = zzz10v1_normalize(note.username || '');
 
   try {
     const packs = (typeof zzz5w5cm_tag_packs === 'function' ? zzz5w5cm_tag_packs() : []).filter(p => p.names.length > 1);
-    if (packs.length > 1) {
+    if (packs.length > 1 && !zzz_is_system_author(note.username)) {
       const un = zzz10v1_normalize(note.username || '');
       const mineP = packs.filter(p => p.names.some(n => zzz10v1_normalize(n) === un)).map(p => p.tag);
       if (mineP.length) { const tm = document.createElement('span'); tm.className = 'zzz1cn-note-team'; tm.textContent = mineP.join(' · '); tm.title = 'Group / team in MEMBERS'; headId.appendChild(tm); }
@@ -39445,7 +39457,7 @@ function zzz16_read_text(items) {
   if (zzz16_mode() !== 'my') { zzz6f2_show_toast('Reading the message text aloud works only on MY DEVICE.', 'warn'); return false; }
   const parts = (items || []).filter(i => i && i.text).slice(-3).map(i => {
     const t = String(i.text).replace(/\s+/g, ' ').slice(0, 300);
-    return (i.user && zzz16_many_contacts(i.entry)) ? `${i.user} píše: ${t}` : t;
+    return (i.user && zzz16_many_contacts(i.entry)) ? `${zzz_is_system_author(i.user) ? 'Verso systém' : i.user} píše: ${t}` : t;
   });
   if (!parts.length) { zzz6f2_show_toast('No message text to read.', 'warn'); return false; }
   const ok = zzz16_speak(parts.join('. '));
@@ -46401,6 +46413,19 @@ function zzz6x_is_reserved_username(name) {
   return ZZZ6X_RESERVED_USERNAME_PATTERN.test(zzz10v1_normalize(name));
 }
 
+function zzz_is_system_username(name) {
+  const n = zzz10v1_normalize(name);
+  if (!n) return false;
+  if (/^verso[^a-z0-9]/.test(n)) return true;
+  const compact = n.replace(/[^a-z0-9]/g, '');
+  return ['system', 'versosystem', 'admin', 'administrator', 'root', 'sysadmin', 'superuser', 'moderator', 'support',
+    'versosupport', 'versoadmin', 'versoai', 'versovi', 'official', 'versoofficial'].indexOf(compact) >= 0;
+}
+
+function zzz_is_system_author(name) { return zzz10v1_normalize(name) === 'verso-system'; }
+
+function zzz_author_label(name) { return zzz_is_system_author(name) ? 'VERSO SYSTEM' : String(name || ''); }
+
 const ZZZ6X_VERSO1 = 'verso1';
 
 function zzz6x_is_verso1(name) {
@@ -46494,7 +46519,7 @@ async function zzz10v1_fetch_known_registrations() {
 function zzz10v1_render_username_highlight(mirrorEl, value, takenUsernamesNormalized) {
   mirrorEl.innerHTML = '';
   if (!value) { zzz10v1_update_username_hint('', false); return; }
-  const isExactTaken = takenUsernamesNormalized.includes(zzz10v1_normalize(value));
+  const isExactTaken = takenUsernamesNormalized.includes(zzz10v1_normalize(value)) || zzz_is_system_username(value);
   const span = document.createElement('span');
 
   const isReservedName = !isExactTaken && zzz6x_is_reserved_username(value);
@@ -46509,7 +46534,10 @@ function zzz10v1_update_username_hint(value, isTaken) {
   if (!hint) return;
   const v = String(value || '').trim();
   if (!v) { hint.textContent = ''; hint.className = 'zzz10v1-user-hint'; return; }
-  if (isTaken) {
+  if (zzz_is_system_username(v)) {
+    hint.textContent = 'This name belongs to the Verso system and cannot be registered. Please choose another one.';
+    hint.className = 'zzz10v1-user-hint zzz10v1-user-hint-taken';
+  } else if (isTaken) {
     hint.textContent = 'This username is already taken. Please choose another one.';
     hint.className = 'zzz10v1-user-hint zzz10v1-user-hint-taken';
   } else if (zzz6x_is_reserved_username(v)) {
@@ -46531,7 +46559,7 @@ function zzz10v1_update_send_button_state(btn, username, takenUsernamesNormalize
     btn.disabled = true;
     return;
   }
-  const taken = takenUsernamesNormalized.includes(zzz10v1_normalize(trimmed)) || zzz10v1_normalize(trimmed) === 'verso';
+  const taken = takenUsernamesNormalized.includes(zzz10v1_normalize(trimmed)) || zzz10v1_normalize(trimmed) === 'verso' || zzz_is_system_username(trimmed);
   btn.classList.add(taken ? 'zzz10v1-btn-taken' : 'zzz10v1-btn-available');
   btn.disabled = taken;
 }
@@ -46765,7 +46793,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-01 17:35';
+const VERSO_BUILD = '2026-11-01 17:43';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
