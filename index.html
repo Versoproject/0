@@ -10266,6 +10266,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   
   .zzz1r17b-comm-window.zzz1cn-compact .zzz1cn-note.zzz1cn-same-sender:not(.zzz1cn-row-full) .zzz1cn-note-user,
   .zzz1r17b-comm-window.zzz1cn-compact .zzz1cn-note.zzz1cn-same-sender:not(.zzz1cn-row-full) .zzz1cn-note-team { display: none !important; }
+  .zzz1cn-note-maintag { font-size: 10px; font-weight: 700; color: #8a6a12; border: 1px solid #D4AF37; border-radius: 7px; padding: 0 5px; white-space: nowrap; max-width: 9em; overflow: hidden; text-overflow: ellipsis; }   
   .zzz1cn-note-team { font-size: 10px; font-weight: 700; color: #7b2ff7; border: 1px solid #b89af0; border-radius: 7px; padding: 0 5px; white-space: nowrap; }
   .zzz1r17b-comm-window.zzz1cn-contacts-hidden > .zzz1r17b-chips-row:not(:has(> .zzz5-6-privbtn, > .zzz5-6-modes)) { display: none; }
   .zzz1r17b-comm-window.zzz1cn-compact .zzz1cn-note:not(.zzz1cn-row-full) .zzz1cn-note-id {
@@ -16978,6 +16979,19 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
   const cnFindHits = () => {
     const q = zzz10v1_normalize(cnFindIn.value.trim());
     if (!q) return [];
+
+    const mk = /^#?(\d+)(?:-([a-z][a-z0-9]*))?$/.exec(q);
+    if (mk) {
+      return Array.from(cnFeed.querySelectorAll('.zzz1cn-note[data-zzz1cn-id]')).filter(el => {
+        const n = cnFeedNotes.find(x => String(x.id) === el.dataset.zzz1cnId);
+        if (!n || Number(n.note_number) !== Number(mk[1])) return false;
+        const part = String(n.note_part || '').toLowerCase(), want = mk[2] || '';
+        if (!want) return true;
+        if (part.indexOf(want) !== 0) return false;
+        const rest = part.slice(want.length);
+        return !rest || (/\d$/.test(want) ? /^[a-z]/.test(rest) : /^\d/.test(rest));
+      });
+    }
     return Array.from(cnFeed.querySelectorAll('.zzz1cn-note[data-zzz1cn-id]')).filter(el => {
       const n = cnFeedNotes.find(x => String(x.id) === el.dataset.zzz1cnId);
       if (!n) return false;
@@ -36933,7 +36947,9 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   if (nmTxt) {
     const nm = document.createElement('span');
     nm.className = 'zzz1cn-note-name';
-    nm.textContent = nmTxt;
+
+    let nmPath = [nmTxt]; try { nmPath = zzz5w7_name_path(note); if (!nmPath.length) nmPath = [nmTxt]; } catch (e) {}
+    nm.textContent = nmPath.join(' \u203a ');
     nm.title = 'Chat name - tap = put this chat into the reply cell';
 
     nm.addEventListener('click', (e) => {
@@ -36942,6 +36958,9 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
     });
     headId.appendChild(nm);
   }
+
+  const mainTag = zzz5w7_main_tag(note);
+  if (mainTag) { const mt = document.createElement('span'); mt.className = 'zzz1cn-note-maintag'; mt.textContent = mainTag; mt.title = 'Main tag (the first tag of this message)'; headId.appendChild(mt); }
 
   if (note && note.__replyCount > 0) {
     const rc = document.createElement('span');
@@ -37223,7 +37242,7 @@ async function zzz1cn_reply_focus_begin(noteId, chatKey) {
   if (el) zzz1cn_reply_origin_attach(el, { id });
 }
 
-const ZZZ5W7_SUB_RE = /^\[#(\d+)-([a-z]+)\]\s*/;
+const ZZZ5W7_SUB_RE = /^\[#(\d+)-([a-z][a-z0-9]*)\]\s*/;
 function zzz5w7_sub_of(note) {
   const part = String((note && note.note_part) || '').trim();
   if (part) return { base: Number(note.note_number) || 0, letter: part };
@@ -37240,12 +37259,37 @@ function zzz5w7_body_of(note) {
 
 function zzz5w7_next_letter(notes, baseNumber, parentPart) {
   const pp = String(parentPart || '').toLowerCase();
-  const used = notes.map(zzz5w7_sub_of).filter(x => x && x.base === Number(baseNumber)).map(x => x.letter);
-  for (let i = 0; i < 26; i++) {
-    const ch = pp + String.fromCharCode(97 + i);
-    if (!used.includes(ch)) return ch;
+  const used = notes.map(zzz5w7_sub_of).filter(x => x && x.base === Number(baseNumber)).map(x => String(x.letter));
+  if (/[a-z]$/.test(pp)) {
+    let mx = 0;
+    used.forEach(u => { if (u.indexOf(pp) === 0 && /^\d+$/.test(u.slice(pp.length))) mx = Math.max(mx, parseInt(u.slice(pp.length), 10)); });
+    return pp + (mx + 1);
   }
-  return pp + 'z' + 'a';
+  const mine = used.filter(u => u.indexOf(pp) === 0 && /^[a-z]+$/.test(u.slice(pp.length))).map(u => u.slice(pp.length));
+  const nextOf = (w) => {
+    const c = w.split(''); let i = c.length - 1;
+    while (i >= 0) { if (c[i] !== 'z') { c[i] = String.fromCharCode(c[i].charCodeAt(0) + 1); return c.join(''); } c[i] = 'a'; i--; }
+    return 'a' + c.join('');
+  };
+  const last = mine.sort((a, b) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0)).pop();
+  return pp + (last ? nextOf(last) : 'a');
+}
+
+function zzz5w7_part_cmp(a, b) { return String(a || '').localeCompare(String(b || ''), 'en', { numeric: true }); }
+
+function zzz5w7_name_path(note) {
+  const names = []; let cur = note, g = 0;
+  while (cur && g++ < 60) {
+    const nm = String(cur.note_name || '').trim();
+    if (nm && names[0] !== nm) names.unshift(nm);
+    if (cur.reply_to_id == null || typeof zzz1cnNoteMap === 'undefined') break;
+    cur = zzz1cnNoteMap.get(String(cur.reply_to_id));
+  }
+  return names;
+}
+
+function zzz5w7_main_tag(note) {
+  try { const t = String((note && note.note_tags) || '').split(/[,\s]+/).map(x => x.trim()).filter(x => x && x.indexOf(':') < 0); return t[0] || ''; } catch (e) { return ''; }
 }
 
 const ZZZ5W7_HIDE_EMPTY = { txt: '', ord: false, ordq: 0, name: false, user: false, priv: false,
@@ -42108,7 +42152,7 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
 
         const notesOf = groups[gk][ek].slice().sort((a, b) =>
           (Number(a.note_number) || 0) - (Number(b.note_number) || 0)
-          || String(a.note_part || '').localeCompare(String(b.note_part || ''))
+          || zzz5w7_part_cmp(a.note_part, b.note_part)
         );
 
         count += notesOf.length;
@@ -46642,7 +46686,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-01 13:53';
+const VERSO_BUILD = '2026-11-01 14:35';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
