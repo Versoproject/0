@@ -6001,6 +6001,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz14b2-voice .zzz16-btn { min-width: 0; padding: 6px 9px; }   
   .zzz14b2-voice .zzz16-btn.is-on { background: #D4AF37; color: #171717; border-color: #D4AF37; }
   
+  .zzz14b2-voice.zzz-mbc { display: flex; flex-direction: column; gap: 6px; align-items: stretch; flex: 1 1 100%; }
+  .zzz-mbc-tabs, .zzz-mbc-body { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .zzz-mbc-note { flex: 1 1 100%; font-size: 12px; color: #888; }
+  
   .zzz1cn-repliers { display: inline-flex; gap: 3px; align-items: center; margin-left: 4px; vertical-align: middle; }
   .zzz1cn-replier { border: 1px solid #8a8f98; background: transparent; color: #c0c4cc; border-radius: 9px; font-size: 9px; font-weight: 700; padding: 0 6px; line-height: 15px; cursor: pointer; }
   .zzz1cn-replier-more { font-size: 9px; color: #8a8f98; }
@@ -38730,7 +38734,7 @@ async function zzz_native_launch(url) {
 
 function zzz_native_cmd_able(url) {
   try {
-    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|kbset|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync)\b/.test(String(url || 'intent://quick/quiet'))
+    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|kbset|mbtop|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync)\b/.test(String(url || 'intent://quick/quiet'))
       && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator;
   } catch (e) { return false; }
 }
@@ -40243,9 +40247,54 @@ function zzz14b2_render_language_settings(host) {
     mbOn.addEventListener('click', () => { const on = !zzz_mb_ball_on(); try { localStorage.setItem('zzz_mb_ball', on ? '1' : '0'); } catch (e) {} try { zzz_native_go(zzz_media_intent('multiboard?on=' + (on ? 1 : 0))); } catch (e) {} paint(); });
     paint(); mbBox.appendChild(mbOn);
   }
-  row('VERSO MULTIBOARD', 'The Verso keyboard made of modules: VERSO KEYPASSBOARD (writing; PASSBOARD in password fields) · MEDIA CENTER · SCROLL · CALCULATOR. ' + 'The +AI+ ball (Verso chain logo, see-through) can be put anywhere; hold it 1 s = hide; the VERSO SCROLL accessibility shortcut (Android › Accessibility › VERSO SCROLL › shortcut: button or 2 fingers up) brings it back and opens MEDIA. '     + (zzz_mb_native()
+  row('VERSO MULTIBOARD', 'The Verso keyboard made of modules: VERSO KEYPASSBOARD (writing; PASSBOARD in password fields) · MEDIA CENTER · SCROLL · CALCULATOR. ' + 'The +AI+ ball (Verso chain logo, see-through) can be put anywhere; tap = MINI (media control + big PgDn), 2× tap = the whole board, hold 2 s = hide; hold PgDn / PgUp 1-2 s = AUTO SCROLL; the VERSO SCROLL accessibility shortcut (Android › Accessibility › VERSO SCROLL › shortcut: button or 2 fingers up) brings it back and opens MEDIA. '     + (zzz_mb_native()
     ? 'Over any app or web page (no text field needed): the gold +AI+ ball - tap = panel MEDIA · CALC · SCROLL, drag = move, hold 1 s = hide (back with the keyboard). SCROLL over other apps: Android › Accessibility › VERSO SCROLL (gestures only, it cannot read the screen).'
     : 'The +AI+ ball over other apps comes with the Verso app (Android).'), '', zzz_mb_native() ? mbBox : null);
+
+  try {
+    const cz = document.createElement('div'); cz.className = 'zzz14b2-voice zzz-mbc'; cz.id = 'zzzMbCustomizer';
+    const st = (() => { try { return JSON.parse(localStorage.getItem('zzz_mbc') || '{}') || {}; } catch (e) { return {}; } })();
+    const save = () => { try { localStorage.setItem('zzz_mbc', JSON.stringify(st)); } catch (e) {} };
+    const send = (k, v) => { st[k] = v; save(); try { if (zzz14b17_in_app()) zzz_native_go(zzz_media_intent('kbset?k=' + k + '&v=' + encodeURIComponent(v))); else zzz6f2_show_toast('Saved here - the app keyboard takes it when you set it in the Verso app.', 'info'); } catch (e) {} };
+    let tab = st.tab || 'PRESET';
+    const body = document.createElement('div'); body.className = 'zzz-mbc-body';
+    const tabs = document.createElement('div'); tabs.className = 'zzz-mbc-tabs';
+    const btn = (t, on, fn, title) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn' + (on ? ' is-on' : ''); b.textContent = t; if (title) b.title = title; b.addEventListener('click', fn); return b; };
+    const txt = (t) => { const d = document.createElement('div'); d.className = 'zzz-mbc-note'; d.textContent = t; return d; };
+    const paint = () => {
+      tabs.innerHTML = ''; body.innerHTML = '';
+      ['PRESET', 'KEYBOARD', 'VOICE', 'MODULES', 'SCROLL'].forEach(t => tabs.appendChild(btn(t, t === tab, () => { tab = t; st.tab = t; save(); paint(); })));
+      if (tab === 'PRESET') {
+        body.appendChild(txt('PRESET = size + the usual switches for the screen; CUSTOM = every other tab by hand.'));
+        body.appendChild(btn('PHONE / COVER · compact', st.preset === 'phone', () => { send('preset', 'phone'); paint(); }));
+        body.appendChild(btn('FOLD INNER / TABLET · large', st.preset === 'big', () => { send('preset', 'big'); paint(); }));
+      } else if (tab === 'KEYBOARD') {
+        body.appendChild(btn('size: COMPACT', st.large === '0', () => { send('large', '0'); paint(); }));
+        body.appendChild(btn('size: LARGE', st.large === '1', () => { send('large', '1'); paint(); }));
+        body.appendChild(txt('Languages: the row "Keyboard languages" below (same in the keyboard ⚙ › KEYBOARD).'));
+      } else if (tab === 'VOICE') {
+        const rOn = zzz_repair_on();
+        body.appendChild(btn(rOn ? 'TEXT REPAIR SK ✓' : 'TEXT REPAIR SK off', rOn, () => { const on = !zzz_repair_on(); try { localStorage.setItem('zzz_repair_sk', on ? '1' : '0'); } catch (e) {} send('repair_sk', on ? '1' : '0'); paint(); }));
+        const dOn = zzz_dia_on();
+        body.appendChild(btn(dOn ? 'VOICE-DIA-SK ✓' : 'VOICE-DIA-SK off', dOn, () => { const on = !zzz_dia_on(); try { localStorage.setItem('zzz_dia_sk', on ? '1' : '0'); } catch (e) {} send('dia_sk', on ? '1' : '0'); paint(); }));
+        const ex = txt('EXTERNAL: MIC (dictation) = Google voice typing - your voice goes to Google. Voice reader: VERSO NOTIF MULTIREADER in this SETTINGS tab.'); ex.style.color = '#e04848';
+        body.appendChild(ex);
+      } else if (tab === 'MODULES') {
+        body.appendChild(txt('+AI+ ball: tap opens · 2× tap = the other one · hold 2 s = hide.'));
+        [['mini', 'MINI · media control'], ['full', 'FULL · whole board'], ['last', 'AS LAST closed']].forEach(([v, t]) => body.appendChild(btn(t, (st.mb_tap || 'mini') === v, () => { send('mb_tap', v); paint(); })));
+        body.appendChild(txt('VERSO MEDIA CENTER on / off: the row VERSO MEDIA CENTER below.'));
+      } else {
+        body.appendChild(btn('SET TOP LINE', false, () => { try { if (zzz14b17_in_app()) zzz_native_go(zzz_media_intent('mbtop')); else zzz6f2_show_toast('Only in the Verso app (Android).', 'warn'); } catch (e) {} }, 'A gold line over the screen: drag it to where the text of the app starts (under its bars), tap = save, hold = default'));
+        const rl = st.read_line !== '0';
+        body.appendChild(btn(rl ? 'READ-FROM-HERE line ✓' : 'READ-FROM-HERE line off', rl, () => { send('read_line', rl ? '0' : '1'); paint(); }));
+        body.appendChild(txt('AUTO SCROLL (hold PgDn / PgUp 1-2 s, hold again = stop) - reading speed:'));
+        [['220', 'SLOW'], ['300', 'NORMAL'], ['400', 'FAST']].forEach(([v, t]) => body.appendChild(btn(t, (st.auto_wpm || '300') === v, () => { send('auto_wpm', v); paint(); })));
+      }
+    };
+    paint();
+    cz.appendChild(tabs); cz.appendChild(body);
+    row('VERSO MULTIBOARD CUSTOMIZER', 'All input settings of the Verso keyboard in tabs - the same as the keyboard ⚙ (hold the logo in the keyboard bar). PRESET per device or CUSTOM.' + (zzz14b17_in_app() ? ' A tap here sets the app keyboard too.' : ' On the phone the Verso app keyboard takes these from its ⚙.'), '', cz);
+  } catch (e) {}
 
   try { const ml = box.lastChild && box.lastChild.firstChild; if (ml) { const ex = document.createElement('div'); ex.className = 'zzz-ext-red'; ex.style.cssText = 'color:#e04848;font-size:12px;margin-top:4px'; ex.textContent = 'EXTERNAL: MIC (dictation) = Google voice typing - your voice goes to Google, outside Verso.'; ml.appendChild(ex); } } catch (e) {}
 
@@ -45843,6 +45892,20 @@ const ZZZ10_0_TABS = [
 ];
 let zzz10_0ActiveTab = 'login-setup';
 
+function zzz_settings_hash() {
+  const m = String(location.hash || '').match(/^#settings=([a-z-]+)/i);
+  if (!m) return;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  let n = 0;
+  const go = () => {
+    if (!(typeof zzz6f7_isLoggedIn !== 'undefined' && zzz6f7_isLoggedIn)) { if (n++ < 30) setTimeout(go, 1000); return; }
+    try { zzz10_0ActiveTab = 'settings'; open_settings_workspace(); } catch (e) { return; }
+    setTimeout(() => { const el = document.getElementById(m[1].toLowerCase() === 'multiboard' ? 'zzzMbCustomizer' : ''); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 700);
+  };
+  go();
+}
+window.addEventListener('hashchange', zzz_settings_hash);
+document.addEventListener('DOMContentLoaded', () => setTimeout(zzz_settings_hash, 1500));
 function open_settings_workspace() {
   const workspace = document.getElementById('versoWorkspaceSection');
   if (!workspace) return;
@@ -46522,7 +46585,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-01 11:57';
+const VERSO_BUILD = '2026-11-01 12:09';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -50923,7 +50986,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 140;
+const ZZZ14B17_APP_LATEST = 141;
 function zzz14b17_app_code() {
 
   try {
