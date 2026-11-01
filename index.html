@@ -9686,8 +9686,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz14cs-h-dot.is-extra.is-zero { display: none; }
   .zzz14cs-space-handle { height: auto !important; min-height: 132px; }
   
-  .zzz14cs-space-handle { width: 28px !important; min-height: 66px; gap: 3px !important; padding: 4px 0 !important; border-radius: 10px 0 0 10px !important; }
-  .zzz14cs-h-dot { width: 16px !important; height: 16px !important; font-size: 9px !important; border-width: 1px !important; }
+  
+  .zzz14cs-space-handle { width: 36px !important; min-height: 72px; gap: 4px !important; padding: 5px 0 !important; border-radius: 12px 0 0 12px !important; }
+  .zzz14cs-h-dot { width: 20px !important; height: 20px !important; font-size: 10px !important; border-width: 1px !important; }
   .zzz14cs-space-handle.is-anon .zzz14cs-h-dot { display: none; }
   
   .zzz-wip-restored { outline: 2px dashed #D4AF37 !important; outline-offset: 1px; }
@@ -46427,7 +46428,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-01 10:41';
+const VERSO_BUILD = '2026-11-01 11:46';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -48501,7 +48502,7 @@ function zzz_vkb_calc_paint() {
   c.tape.forEach((line) => { const d = document.createElement('div'); d.textContent = line; tape.appendChild(d); });
 }
 
-function zzz_vkb_nav(t, dir) {
+function zzz_vkb_nav(t, dir, extend) {
   if (!t || !t.isConnected) return;
   const scrollable = t.scrollHeight > t.clientHeight + 2;
   if (dir === 'pgup' || dir === 'pgdn') {
@@ -48512,6 +48513,22 @@ function zzz_vkb_nav(t, dir) {
   }
   if (typeof t.selectionStart !== 'number') return;
   const v = String(t.value || '');
+
+  if (extend) {
+    const back = t.selectionDirection === 'backward';
+    const anchor = t._zzzSelAnchor != null ? t._zzzSelAnchor : (back ? t.selectionEnd : t.selectionStart);
+    t._zzzSelAnchor = anchor;
+    let f = (t._zzzSelFocus != null ? t._zzzSelFocus : (back ? t.selectionStart : t.selectionEnd));
+    const step = typeof extend === 'number' ? extend : 1;
+    if (dir === 'left') f = Math.max(0, f - step);
+    else if (dir === 'right') f = Math.min(v.length, f + step);
+    else if (dir === 'up') { const ls = v.lastIndexOf('\n', f - 1); f = ls < 0 ? 0 : ls; }
+    else { const le = v.indexOf('\n', f + 1); f = le < 0 ? v.length : le; }
+    t._zzzSelFocus = f;
+    try { t.setSelectionRange(Math.min(anchor, f), Math.max(anchor, f), f < anchor ? 'backward' : 'forward'); } catch (e) {}
+    return;
+  }
+  t._zzzSelAnchor = t._zzzSelFocus = null;
   let p = t.selectionEnd;
   if (dir === 'left') p = Math.max(0, (t.selectionStart !== t.selectionEnd ? t.selectionStart : p - 1));
   else if (dir === 'right') p = Math.min(v.length, p + (t.selectionStart !== t.selectionEnd ? 0 : 1));
@@ -49588,12 +49605,32 @@ function zzz_vkb_nav_pad(target) {
    ['\u2190', 'left', 'Left'], ['\u2193', 'down', 'Down'], ['\u2192', 'right', 'Right']].forEach(([l, d, ti]) => {
     const b = document.createElement('button');
     b.type = 'button'; b.tabIndex = -1; b.className = 'zzz-vkb-calc-btn zzz-vkb-nav-key'; b.textContent = l; b.title = ti;
-    let rep = 0, wait = 0;
-    const stop = () => { clearTimeout(wait); clearInterval(rep); wait = rep = 0; };
+    let rep = 0, wait = 0, sel = false;
+    const arrow = d === 'left' || d === 'right' || d === 'up' || d === 'down';
+    const stop = () => {
+      clearTimeout(wait); clearTimeout(rep); wait = rep = 0;
+
+      if (sel) {
+        sel = false;
+        try {
+          const txt = String(target.value || '').slice(target.selectionStart, target.selectionEnd);
+          if (txt && target.type !== 'password') {
+            if (typeof zzz_clip_remember === 'function') zzz_clip_remember(txt);
+            try { navigator.clipboard && navigator.clipboard.writeText(txt); } catch (e2) {}
+            zzz6f2_show_toast('VERSO BOX: ' + txt.length + ' characters copied.');
+          }
+        } catch (e) {}
+      }
+    };
     b.addEventListener('pointerdown', (e) => {
       e.preventDefault(); e.stopPropagation(); zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS);
       zzz_vkb_nav(target, d);
-      stop(); wait = setTimeout(() => { rep = setInterval(() => zzz_vkb_nav(target, d), 80); }, 450);
+      stop();
+      if (!arrow) { wait = setTimeout(() => { rep = setInterval(() => zzz_vkb_nav(target, d), 80); }, 450); return; }
+
+      const t0 = Date.now(); let n = 0;
+      const tick = () => { sel = true; n++; zzz_vkb_nav(target, d, Date.now() - t0 > 2900 ? 3 : 1); rep = setTimeout(tick, Math.max(35, 230 - n * 12)); };
+      wait = setTimeout(tick, 420);
     });
     ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => b.addEventListener(ev, stop));
     b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
@@ -50792,7 +50829,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 135;
+const ZZZ14B17_APP_LATEST = 139;
 function zzz14b17_app_code() {
 
   try {
