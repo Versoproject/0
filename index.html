@@ -41396,12 +41396,14 @@ async function zzz5_6_add_user_tab(name, parentTab) {
 const ZZZ5_6_PLACE_TABLE = 'verso_placements';
 const zzz5_6Placement = {};
 let zzz5_6PlacementOk = null;
+
 async function zzz5_6_load_placements() {
   try {
-    const { data, error } = await sb.from(ZZZ5_6_PLACE_TABLE).select('item_key, tab_id');
+    const { data, error } = await sb.from(ZZZ5_6_PLACE_TABLE).select('entry_id, tab_id')
+      .is('removed_at', null).like('tab_id', 'u%');
     if (error) throw error;
     Object.keys(zzz5_6Placement).forEach(k => delete zzz5_6Placement[k]);
-    (data || []).forEach(r => { if (r.tab_id) zzz5_6Placement[String(r.item_key)] = 'u' + r.tab_id; });
+    (data || []).forEach(r => { if (/^u\d+$/.test(String(r.tab_id || ''))) zzz5_6Placement[String(r.entry_id)] = String(r.tab_id); });
     zzz5_6PlacementOk = true;
   } catch (e) {
     zzz5_6PlacementOk = false;
@@ -41417,17 +41419,28 @@ async function zzz5_6_place(itemKey, tabKey) {
     zzz6f2_show_toast(zzz_not_ready('Placement', 'verso_placements_v1', '[Zzz5-6:PLACEMENT]'), 'warn');
     return false;
   }
-  const tabId = /^u\d+$/.test(String(tabKey || '')) ? Number(String(tabKey).slice(1)) : null;
+  const entryId = Number(k);
+  if (!Number.isInteger(entryId) || entryId <= 0) {
+    zzz6f2_show_toast('Only a saved record (with an ENTRY NUMBER) can be moved.', 'warn');
+    return false;
+  }
+  const tabKeyNew = /^u\d+$/.test(String(tabKey || '')) ? String(tabKey) : null;
+  const now = new Date().toISOString();
   try {
-    if (tabId) {
-      const { error } = await sb.from(ZZZ5_6_PLACE_TABLE)
-        .upsert({ username: me, item_key: k, tab_id: tabId, updated_at: new Date().toISOString() },
-                { onConflict: 'username,item_key' });
-      if (error) throw error;
-      zzz5_6Placement[k] = 'u' + tabId;
+
+    let q = sb.from(ZZZ5_6_PLACE_TABLE).update({ removed_at: now })
+      .eq('username', me).eq('entry_id', entryId).is('removed_at', null).like('tab_id', 'u%');
+    if (tabKeyNew) q = q.neq('tab_id', tabKeyNew);
+    const { error: e1 } = await q;
+    if (e1) throw e1;
+
+    if (tabKeyNew) {
+      const { error: e2 } = await sb.from(ZZZ5_6_PLACE_TABLE)
+        .upsert({ username: me, entry_id: entryId, tab_id: tabKeyNew, removed_at: null },
+                { onConflict: 'username,entry_id,tab_id' });
+      if (e2) throw e2;
+      zzz5_6Placement[k] = tabKeyNew;
     } else {
-      const { error } = await sb.from(ZZZ5_6_PLACE_TABLE).delete().eq('item_key', k).eq('username', me);
-      if (error) throw error;
       delete zzz5_6Placement[k];
     }
     return true;
@@ -46798,7 +46811,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-01 18:10';
+const VERSO_BUILD = '2026-11-01 19:27';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
