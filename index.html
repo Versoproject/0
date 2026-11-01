@@ -24804,6 +24804,10 @@ function refresh_database_workspace_if_open() {
     return;
   }
 
+  if (workspace.querySelector('.zzz14b21-workspace')) {
+    return;
+  }
+
   if (workspace.querySelector('.communication-workspace')) {
     return;
   }
@@ -46726,11 +46730,230 @@ function zzz2rws_close_shared() {
   try { zzz6f40_workspaceOpener = null; } catch (e) {}
   try { zzz6f22EntryIdFilter = null; } catch (e) {}
 }
+
+const ZZZ14B21_WS = [
+  { btn: 'versoPresetButton', slug: 'preset', label: 'PRESET' },
+  { btn: 'versoProjectsButton', slug: 'projects', label: 'PROJECTS' },
+  { btn: 'versoPrivateButton', slug: 'private', label: 'PRIVATE' },
+  { btn: 'versoFavoritesButton', slug: 'favorites', label: 'FAVORITES' }
+];
+const zzz14b21PlaceNo = {};
+let zzz14b21ActiveTab = {};
+function zzz14b21_css() {
+  if (document.getElementById('zzz14b21Css')) return;
+  const st = document.createElement('style');
+  st.id = 'zzz14b21Css';
+  st.textContent = `
+  .zzz14b21-tabs { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; align-items:center; }
+  .zzz14b21-tab { background:#000; color:#d4af37; border:1px solid #d4af37; border-radius:6px; padding:6px 10px; font-size:13px; }
+  .zzz14b21-tab.is-on { background:#d4af37; color:#000; }
+  .zzz14b21-add { display:flex; gap:6px; margin:6px 0; }
+  .zzz14b21-add input { flex:1; min-width:0; background:#000; color:#fff; border:1px solid #c0c0c0; border-radius:6px; padding:6px; font-size:14px; }
+  .zzz14b21-add button, .zzz14b21-x { background:#000; color:#d4af37; border:1px solid #d4af37; border-radius:6px; padding:6px 10px; }
+  .zzz14b21-row { display:flex; gap:8px; align-items:center; padding:6px 0; border-bottom:1px solid #333; color:#fff; font-size:14px; }
+  .zzz14b21-row .zzz14b21-en { color:#d4af37; white-space:nowrap; cursor:pointer; }
+  .zzz14b21-row .zzz14b21-txt { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .zzz14b21-empty { color:#c0c0c0; padding:8px 0; font-size:13px; }
+  .zzz14b21-link { color:#c0c0c0; font-size:12px; }`;
+  document.head.appendChild(st);
+}
+async function zzz14b21_place_no(slug) {
+  if (zzz14b21PlaceNo[slug]) return zzz14b21PlaceNo[slug];
+  const { data, error } = await sb.from('verso_place_names').select('entry_id').eq('slug', slug).is('retired_at', null).limit(1);
+  if (error) throw error;
+  const n = data && data[0] && data[0].entry_id;
+  if (n) zzz14b21PlaceNo[slug] = n;
+  return n || null;
+}
+function zzz14b21_fields(row) { try { const f = JSON.parse(row.fields_json || '{}'); return (typeof f === 'string') ? JSON.parse(f) : f; } catch (e) { return {}; } }
+
+async function zzz14b21_load_target(tabId) {
+  const me = String(zzz0r1_get_current_username() || '').trim();
+  const { data, error } = await sb.from('verso_placements').select('entry_id, created_at')
+    .eq('username', me).eq('tab_id', tabId).is('removed_at', null).order('created_at', { ascending: true });
+  if (error) throw error;
+  const ids = (data || []).map(r => Number(r.entry_id));
+  if (!ids.length) return [];
+  const { data: rows, error: e2 } = await sb.from('verso_entries').select('entry_id, username, fields_json, is_trashed').in('entry_id', ids);
+  if (e2) throw e2;
+  const byId = {}; (rows || []).forEach(r => { byId[r.entry_id] = r; });
+  return ids.map(id => byId[id]).filter(r => r && !r.is_trashed);
+}
+async function zzz14b21_put(entryId, tabId, placeId) {
+  const me = String(zzz0r1_get_current_username() || '').trim();
+  const { error } = await sb.from('verso_placements')
+    .upsert({ username: me, entry_id: Number(entryId), tab_id: tabId, place_id: Number(placeId), removed_at: null },
+            { onConflict: 'username,entry_id,tab_id' });
+  if (error) throw error;
+}
+async function zzz14b21_take_out(entryId, tabId) {
+  const me = String(zzz0r1_get_current_username() || '').trim();
+  const { error } = await sb.from('verso_placements').update({ removed_at: new Date().toISOString() })
+    .eq('username', me).eq('entry_id', Number(entryId)).eq('tab_id', tabId).is('removed_at', null);
+  if (error) throw error;
+}
+
+async function zzz14b21_create_tab(ws, wsNo, name) {
+  const me = String(zzz0r1_get_current_username() || '').trim();
+  const nm = String(name || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+  if (!me || !nm) return null;
+  const { data: newId, error: e1 } = await sb.rpc('get_next_entry_id');
+  if (e1) throw e1;
+  const fields = { r3: ws.label, r4: me, r5: 'place', r7: '', r9: nm.toUpperCase(),
+    r10: 'place:user/' + ws.slug + '/' + nm.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+    r13: '#en=' + wsNo, tags: 'place' };
+  const { error: e2 } = await sb.from('verso_entries').insert([{ entry_id: newId, r1: '', fields_json: JSON.stringify(fields),
+    content_hash: null, entry_date: zzz6f14_format_today(), username: me, zzz_session_id: zzz_sessionId, updated_at: new Date().toISOString() }]);
+  if (e2) throw e2;
+  await zzz14b21_put(newId, 'ws:' + ws.slug, wsNo);
+  return newId;
+}
+async function open_zzz14b21_workspace(slug) {
+  const ws = ZZZ14B21_WS.find(w => w.slug === slug);
+  const host = document.getElementById('versoWorkspaceSection');
+  if (!ws || !host) return;
+  zzz14b21_css();
+  try { zzz10t2_hide_m4a_template(); } catch (e) {}
+  const box = document.createElement('div');
+  box.className = 'db-workspace zzz14b21-workspace';
+  box.dataset.ws = slug;
+  box.innerHTML = '<div class="db-workspace-title"></div><div class="db-workspace-loading">Loading...</div>';
+  box.querySelector('.db-workspace-title').textContent = ws.label;
+  host.innerHTML = '';
+  host.appendChild(box);
+  let wsNo = null, tabs = [];
+  try {
+    wsNo = await zzz14b21_place_no(slug);
+    if (!wsNo) throw new Error('place ' + slug + ' not found');
+    tabs = await zzz14b21_load_target('ws:' + slug);
+  } catch (e) {
+    console.warn('[Zzz14-B21:WORKSPACES]', zzz_err_detail(e));
+    box.querySelector('.db-workspace-loading').textContent = 'Workspace not loaded - check the connection and try again.';
+    return;
+  }
+  if (!host.contains(box)) return;
+  box.querySelector('.db-workspace-title').textContent = ws.label + ' · #' + wsNo;
+  box.querySelector('.db-workspace-loading').remove();
+  const link = document.createElement('div');
+  link.className = 'zzz14b21-link';
+  link.textContent = 'verso:en=' + wsNo;
+  box.appendChild(link);
+  const tabRow = document.createElement('div'); tabRow.className = 'zzz14b21-tabs'; box.appendChild(tabRow);
+  const addTab = document.createElement('div'); addTab.className = 'zzz14b21-add'; addTab.hidden = true; box.appendChild(addTab);
+  const list = document.createElement('div'); box.appendChild(list);
+  const reopen = () => open_zzz14b21_workspace(slug);
+  if (!tabs.some(t => t.entry_id === zzz14b21ActiveTab[slug])) zzz14b21ActiveTab[slug] = tabs.length ? tabs[0].entry_id : null;
+  tabs.forEach(t => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'zzz14b21-tab' + (t.entry_id === zzz14b21ActiveTab[slug] ? ' is-on' : '');
+    b.textContent = (zzz14b21_fields(t).r9 || ('#' + t.entry_id));
+    b.title = 'verso:en=' + t.entry_id;
+    b.addEventListener('click', () => { zzz14b21ActiveTab[slug] = t.entry_id; reopen(); });
+    tabRow.appendChild(b);
+  });
+  const plus = document.createElement('button');
+  plus.type = 'button'; plus.className = 'zzz14b21-tab'; plus.textContent = '+ TAB';
+  plus.addEventListener('click', () => { addTab.hidden = !addTab.hidden; if (!addTab.hidden) inp.focus(); });
+  tabRow.appendChild(plus);
+  const inp = document.createElement('input'); inp.type = 'text'; inp.placeholder = 'New tab name'; inp.maxLength = 40;
+  const ok = document.createElement('button'); ok.type = 'button'; ok.textContent = 'OK';
+  addTab.appendChild(inp); addTab.appendChild(ok);
+  const doCreate = async () => {
+    const nm = inp.value.trim();
+    if (!nm) return;
+    if (tabs.some(t => String(zzz14b21_fields(t).r9 || '').toLowerCase() === nm.toLowerCase())) {
+      zzz6f2_show_toast('There is already a tab with this name here.', 'warn'); return;
+    }
+    ok.disabled = true;
+    try {
+      const id = await zzz14b21_create_tab(ws, wsNo, nm);
+      if (id) { zzz14b21ActiveTab[slug] = id; zzz6f2_show_toast('Tab ' + nm.toUpperCase() + ' created · #' + id + '.'); }
+      reopen();
+    } catch (e) {
+      console.warn('[Zzz14-B21:WORKSPACES] create tab', zzz_err_detail(e));
+      zzz6f2_show_toast('Tab not created - check the connection and try again.', 'warn');
+      ok.disabled = false;
+    }
+  };
+  ok.addEventListener('click', doCreate);
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') doCreate(); });
+  const tabNo = zzz14b21ActiveTab[slug];
+  if (!tabNo) {
+    const em = document.createElement('div'); em.className = 'zzz14b21-empty';
+    em.textContent = 'Empty workspace - create a tab with + TAB.';
+    list.appendChild(em);
+    return;
+  }
+
+  const put = document.createElement('div'); put.className = 'zzz14b21-add';
+  const pin = document.createElement('input'); pin.type = 'text'; pin.inputMode = 'numeric'; pin.placeholder = '+ #ENTRY NUMBER';
+  const pok = document.createElement('button'); pok.type = 'button'; pok.textContent = 'PLACE';
+  put.appendChild(pin); put.appendChild(pok); list.appendChild(put);
+  const doPut = async () => {
+    const n = Number(String(pin.value).replace(/[^0-9]/g, ''));
+    if (!n) return;
+    pok.disabled = true;
+    try {
+      const { data, error } = await sb.from('verso_entries').select('entry_id').eq('entry_id', n).limit(1);
+      if (error) throw error;
+      if (!data || !data.length) { zzz6f2_show_toast('Record #' + n + ' not found (or not visible to you).', 'warn'); pok.disabled = false; return; }
+      await zzz14b21_put(n, 'p' + tabNo, tabNo);
+      zzz6f2_show_toast('#' + n + ' placed here.');
+      reopen();
+    } catch (e) {
+      console.warn('[Zzz14-B21:WORKSPACES] place', zzz_err_detail(e));
+      zzz6f2_show_toast('Placement not saved - check the connection and try again.', 'warn');
+      pok.disabled = false;
+    }
+  };
+  pok.addEventListener('click', doPut);
+  pin.addEventListener('keydown', (e) => { if (e.key === 'Enter') doPut(); });
+  let rows = [];
+  try { rows = await zzz14b21_load_target('p' + tabNo); } catch (e) { console.warn('[Zzz14-B21:WORKSPACES] tab', zzz_err_detail(e)); }
+  if (!rows.length) {
+    const em = document.createElement('div'); em.className = 'zzz14b21-empty';
+    em.textContent = 'Empty tab - place a record here with its ENTRY NUMBER.';
+    list.appendChild(em);
+  }
+  rows.forEach(r => {
+    const f = zzz14b21_fields(r);
+    const row = document.createElement('div'); row.className = 'zzz14b21-row';
+    const en = document.createElement('span'); en.className = 'zzz14b21-en'; en.textContent = '#' + r.entry_id;
+    en.addEventListener('click', () => { try { zzz6f29_open_entry_number_window(r.entry_id); } catch (e) {} });
+    const tx = document.createElement('span'); tx.className = 'zzz14b21-txt';
+    tx.textContent = [f.r3, f.r9].filter(Boolean).join(' · ') || ('#' + r.entry_id);
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz14b21-x'; x.textContent = '×';
+    x.title = 'Take out of this tab (the record stays)';
+    x.addEventListener('click', async () => {
+      try { await zzz14b21_take_out(r.entry_id, 'p' + tabNo); reopen(); }
+      catch (e) { console.warn('[Zzz14-B21:WORKSPACES] take out', zzz_err_detail(e)); zzz6f2_show_toast('Not changed - check the connection and try again.', 'warn'); }
+    });
+    row.appendChild(en); row.appendChild(tx); row.appendChild(x);
+    list.appendChild(row);
+  });
+}
+(function bindZzz14B21Workspaces() {
+  ZZZ14B21_WS.forEach(w => {
+    const b = document.getElementById(w.btn);
+    if (!b) return;
+    b.addEventListener('click', () => {
+      open_zzz14b21_workspace(w.slug);
+      try { zzz6f40_workspaceOpener = () => open_zzz14b21_workspace(w.slug); } catch (e) {}
+    });
+  });
+})();
+
 const ZZZ2RWS_REGISTRY = [
-  { id: 'versoDatabaseButton', open: () => zzz2rws_has('.db-workspace') && !zzz2rws_has('.trash-workspace, .organizer-workspace, .communication-workspace, .settings-workspace, .zzz5w8-workspace'), close: zzz2rws_close_shared },
+  { id: 'versoDatabaseButton', open: () => zzz2rws_has('.db-workspace') && !zzz2rws_has('.trash-workspace, .organizer-workspace, .communication-workspace, .settings-workspace, .zzz5w8-workspace, .zzz14b21-workspace'), close: zzz2rws_close_shared },
   { id: 'versoTrashButton', open: () => zzz2rws_title_is('TRASH'), close: zzz2rws_close_shared },
   { id: 'versoArchieveButton', open: () => zzz2rws_title_is('ARCHIVE'), close: zzz2rws_close_shared },
   { id: 'versoOrganizerButton', open: () => zzz2rws_has('.organizer-workspace'), close: zzz2rws_close_shared },
+
+  { id: 'versoPresetButton', open: () => zzz2rws_has('.zzz14b21-workspace[data-ws="preset"]'), close: zzz2rws_close_shared },
+  { id: 'versoProjectsButton', open: () => zzz2rws_has('.zzz14b21-workspace[data-ws="projects"]'), close: zzz2rws_close_shared },
+  { id: 'versoPrivateButton', open: () => zzz2rws_has('.zzz14b21-workspace[data-ws="private"]'), close: zzz2rws_close_shared },
+  { id: 'versoFavoritesButton', open: () => zzz2rws_has('.zzz14b21-workspace[data-ws="favorites"]'), close: zzz2rws_close_shared },
   { id: 'versoNotificationsButton', open: () => zzz2rws_has('.zzz5w8-workspace'), close: zzz2rws_close_shared },
   { id: 'versoCommunicationButton', open: () => zzz2rws_has('.communication-workspace'), close: zzz2rws_close_shared },
   { id: 'versoTemplatesButton',
@@ -46796,7 +47019,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-01 19:28';
+const VERSO_BUILD = '2026-11-01 19:37';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
