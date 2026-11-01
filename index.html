@@ -30349,7 +30349,7 @@ function zzz56_sel_get(entryKey) {
     const me = zzz10v1_normalize(zzz0r1_get_current_username() || '');
     const ppl = zzz56People[String(entryKey || '')];
     const inRec = (Array.isArray(ppl) && ppl.length) ? new Set(ppl.map(n => zzz10v1_normalize(n))) : null;
-    v = v.filter(x => { const n = zzz10v1_normalize(x); return n && n !== me && (!inRec || inRec.has(n)); });
+    v = v.filter(x => { const n = zzz10v1_normalize(x); return n && (n === me || !inRec || inRec.has(n)); });
   } catch (e) {}
   return v;
 }
@@ -30399,7 +30399,8 @@ function zzz56_priv_refresh() {
     btn.classList.toggle('is-on', zzz56PrivOn);
 
     const pn = zzz56_pack_name(zzz56PrivCtx);
-    const lastTxt = sel.length ? (pn || (sel.length === 1 ? sel[0] : String(sel.length))) : (g ? g.name : '');
+    const meR = zzz10v1_normalize(zzz0r1_get_current_username() || '');
+    const lastTxt = sel.length ? (pn || (sel.length === 1 ? (zzz10v1_normalize(sel[0]) === meR ? 'ME' : sel[0]) : String(sel.length))) : (g ? g.name : '');
     btn.classList.toggle('is-open-pack', !!(zzz56PrivOn && sel.length && !zzz56_pack_priv(zzz56PrivCtx)));
     btn.classList.toggle('is-ready', !zzz56PrivOn && !!sel.length);
     btn.classList.toggle('is-gold', !!sel.length && !zzz56_pack_priv(zzz56PrivCtx));
@@ -30511,6 +30512,23 @@ function zzz56_priv_open_presets(anchorEl) {
       });
       body.appendChild(b);
     });
+
+    const meName = (zzz0r1_get_current_username() || '').trim();
+    if (meName) {
+      const meIn = sel.some(x => zzz10v1_normalize(x) === me);
+      const mb = document.createElement('button');
+      mb.type = 'button';
+      mb.className = 'zzz5w5cm-dir-hit zzz56-opt zzz56-me' + (meIn ? ' is-sel' : '');
+      mb.textContent = (meIn ? '✓ ' : '+ ') + 'ME (' + meName + ') - to myself';
+      mb.title = 'Picked alone = the message goes only to you and comes back as received: the reader reads it, the translator translates it.';
+      mb.addEventListener('click', () => {
+        zzz56_sel_toggle(ctx, meName); zzz56_pack_name_set(ctx, '');
+        if (!zzz56PrivOn) { zzz56PrivOn = true; zzz56_priv_save(); }
+        zzz56_priv_refresh(); paint();
+        if (!meIn && zzz56_sel_get(ctx).length === 1) zzz6f2_show_toast('PACKS · ME - your messages here go only to you and come back as received (reader + translator).');
+      });
+      body.appendChild(mb);
+    }
 
     body.appendChild(lab('MODE'));
     win.classList.toggle('zzz56-mode-priv', zzz56_pack_priv(ctx)); win.classList.toggle('zzz56-mode-chat', !zzz56_pack_priv(ctx));
@@ -36126,7 +36144,10 @@ async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, i
 
   if (zzz56_priv_on(entryKey) && !packOpen) {
     const meP = zzz10v1_normalize(username || '');
-    const circle = zzz56_priv_recipients(entryKey).filter(n => zzz10v1_normalize(n) !== meP);
+    const pickedAll = zzz56_priv_recipients(entryKey);
+
+    const others = pickedAll.filter(n => zzz10v1_normalize(n) !== meP);
+    const circle = others.length ? others : pickedAll.filter(n => zzz10v1_normalize(n) === meP).slice(0, 1);
     if (!circle.length) {
       zzz6f2_show_toast('PRIVATE is on but nobody is picked - tap the people chips (or turn PRIVATE off).', 'warn');
       return null;
@@ -37106,7 +37127,7 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   body.textContent = note.note_text;
   wrap.appendChild(body);
 
-  try { if (zzz10v1_normalize(note.username || '') === me) zzz23tr_attach_own(body, note); else zzz23tr_attach(body, entryKey, note, me); } catch (e) {}
+  try { if (zzz10v1_normalize(note.username || '') === me && !zzz56_note_to_self(note, me)) zzz23tr_attach_own(body, note); else   zzz23tr_attach(body, entryKey, note, me); } catch (e) {}
 
   if (note && /^\d+$/.test(String(note.id || '')) && typeof zzz5w8_note_chip === 'function') wrap.appendChild(zzz5w8_note_chip(note));
 
@@ -37763,6 +37784,14 @@ const ZZZ1CN_NOTIF_PRIO_NEEDS_MENTION = true;
 function zzz1cn_notif_counts_self(meN) {
   return false;
 }
+
+function zzz56_note_to_self(r, meN) {
+  try {
+    if (!r || !meN || zzz10v1_normalize(r.username || '') !== meN) return false;
+    const to = String(r.note_to || '').split(',').map(x => zzz10v1_normalize(x.trim())).filter(Boolean);
+    return to.length > 0 && to.every(x => x === meN);
+  } catch (e) { return false; }
+}
 const ZZZ1CN_SEEN_TABLE = 'verso_chat_seen';
 let zzz1cnSeenMap = null;
 let zzz1cnSeenAvailable = true;
@@ -38022,7 +38051,7 @@ function zzz1cn_notif_kind(r, meN, seen) {
   if (!key) return null;
   const t = Date.parse(r.created_at || '') || 0;
   if (!t) return null;
-  if (!zzz1cn_notif_counts_self(meN) && zzz10v1_normalize(r.username || '') === meN) return null;
+  if (!zzz1cn_notif_counts_self(meN) && zzz10v1_normalize(r.username || '') === meN && !zzz56_note_to_self(r, meN)) return null;
   if (!zzz1cn_notif_linked(r, meN)) return null;
   if (typeof zzz14pt_note_confirmed === 'function' && zzz14pt_note_confirmed(r)) return '';
   const mark = (seen || {})[key] || { seen: 0, prio: 0 };
@@ -38056,7 +38085,7 @@ function zzz1cn_tap_read(r) {
   try {
     if (!r || !r.entry_key) return;
     const meN = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
-    if (zzz10v1_normalize(r.username || '') === meN) return;
+    if (zzz10v1_normalize(r.username || '') === meN && !zzz56_note_to_self(r, meN)) return;
     if (zzz1cn_prio_of(r) === 'urgent') { if (!zzz1cn_urg_handled(r)) zzz5w8_to_checked({ src: 'chat', raw: r }); return; }
     const t = Date.parse(r.created_at || '') || Date.now();
     zzz1cn_seen_mark(String(r.entry_key), zzz1cn_prio_of(r) ? 'prio' : 'seen', t);
@@ -39753,7 +39782,7 @@ function zzz23tr_attach(body, entryKey, note, me) {
     if (!body || !note || !zzz23tr_on()) return;
     const mode = zzz23tr_chat(entryKey).m;
     if (mode === 'off') return;
-    if (zzz10v1_normalize(note.username || '') === me) return;
+    if (zzz10v1_normalize(note.username || '') === me && !zzz56_note_to_self(note, me)) return;
     const orig = String(note.note_text || '');
     if (orig.trim().length < 2) return;
     const home = zzz16_home();
@@ -39801,7 +39830,7 @@ function zzz23tr_attach_quiet(el, entryKey, note) {
   try {
     if (!el || !note || !zzz23tr_on() || zzz23tr_chat(entryKey).m === 'off') return;
     const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
-    if (zzz10v1_normalize(note.username || '') === me) return;
+    if (zzz10v1_normalize(note.username || '') === me && !zzz56_note_to_self(note, me)) return;
     const text = String(el.textContent || ''); const home = zzz16_home(); const from = zzz23tr_detect(text);
     if (!zzz16_lang_known(from) || from === home || !zzz23tr_can(from, home)) return;
     zzz23tr_translate(text, from, home).then(out => {
@@ -40247,7 +40276,7 @@ function zzz14b2_render_language_settings(host) {
     mbOn.addEventListener('click', () => { const on = !zzz_mb_ball_on(); try { localStorage.setItem('zzz_mb_ball', on ? '1' : '0'); } catch (e) {} try { zzz_native_go(zzz_media_intent('multiboard?on=' + (on ? 1 : 0))); } catch (e) {} paint(); });
     paint(); mbBox.appendChild(mbOn);
   }
-  row('VERSO MULTIBOARD', 'The Verso keyboard made of modules: VERSO KEYPASSBOARD (writing; PASSBOARD in password fields) · MEDIA CENTER · SCROLL · CALCULATOR. ' + 'The +AI+ ball (Verso chain logo, see-through) can be put anywhere; tap = MINI (media control + big PgDn), 2× tap = the whole board, hold 2 s = hide; hold PgDn / PgUp 1-2 s = AUTO SCROLL; the VERSO SCROLL accessibility shortcut (Android › Accessibility › VERSO SCROLL › shortcut: button or 2 fingers up) brings it back and opens MEDIA. '     + (zzz_mb_native()
+  row('VERSO MULTIBOARD', 'The Verso keyboard made of modules: VERSO KEYPASSBOARD (writing; PASSBOARD in password fields) · MEDIA CENTER · SCROLL · CALCULATOR. ' + 'The +AI+ ball (Verso chain logo, see-through) can be put anywhere; tap = MINI (media control + big PgDn), 2× tap = the whole board, hold 1-2 s = open the Verso app (a short buzz at 1 s), hold 3 s = hide (a long buzz, the app does not open); hold PgDn / PgUp 1-2 s = AUTO SCROLL; the VERSO SCROLL accessibility shortcut (Android › Accessibility › VERSO SCROLL › shortcut: button or 2 fingers up) brings it back and opens MEDIA. '     + (zzz_mb_native()
     ? 'Over any app or web page (no text field needed): the gold +AI+ ball - tap = panel MEDIA · CALC · SCROLL, drag = move, hold 1 s = hide (back with the keyboard). SCROLL over other apps: Android › Accessibility › VERSO SCROLL (gestures only, it cannot read the screen).'
     : 'The +AI+ ball over other apps comes with the Verso app (Android).'), '', zzz_mb_native() ? mbBox : null);
 
@@ -40280,7 +40309,7 @@ function zzz14b2_render_language_settings(host) {
         const ex = txt('EXTERNAL: MIC (dictation) = Google voice typing - your voice goes to Google. Voice reader: VERSO NOTIF MULTIREADER in this SETTINGS tab.'); ex.style.color = '#e04848';
         body.appendChild(ex);
       } else if (tab === 'MODULES') {
-        body.appendChild(txt('+AI+ ball: tap opens · 2× tap = the other one · hold 2 s = hide.'));
+        body.appendChild(txt('+AI+ ball: tap opens · 2× tap = the other one · hold 1-2 s = Verso app · hold 3 s = hide.'));
         [['mini', 'MINI · media control'], ['full', 'FULL · whole board'], ['last', 'AS LAST closed']].forEach(([v, t]) => body.appendChild(btn(t, (st.mb_tap || 'mini') === v, () => { send('mb_tap', v); paint(); })));
         body.appendChild(txt('VERSO MEDIA CENTER on / off: the row VERSO MEDIA CENTER below.'));
       } else {
@@ -46585,7 +46614,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-01 12:28';
+const VERSO_BUILD = '2026-11-01 12:40';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -50986,7 +51015,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 142;
+const ZZZ14B17_APP_LATEST = 143;
 function zzz14b17_app_code() {
 
   try {
