@@ -309,7 +309,7 @@ function zzz_ai_net() {
 }
 function zzz_ai_bars(n) {
   var h = [5, 9, 13, 17], out = '';
-  for (var i = 0; i < 4; i++) out += '<rect x="' + (2 + i * 6) + '" y="' + (19 - h[i]) + '" width="4" height="' + h[i] + '" rx="1" fill="' + (i < n ? '#3f3f3f' : '#cfcfcf') + '"/>';
+  for (var i = 0; i < 4; i++) out += '<rect x="' + (2 + i * 6) + '" y="' + (19 - h[i]) + '" width="4" height="' + h[i] + '" rx="1" fill="currentColor"' + (i < n ? '' : ' fill-opacity=".35"') + '/>';
   return '<svg viewBox="0 0 26 20" aria-hidden="true">' + out + '</svg>';
 }
 
@@ -389,14 +389,20 @@ try {
   window.addEventListener('online', function () { zzz_ai_paint(); }); window.addEventListener('offline', function () { zzz_ai_paint(); });
 } catch (e) {}
 
-var zzzChainBusyN = 0, zzzChainBusyOffT = null;
-function zzz_chain_busy(d) {
-  zzzChainBusyN = Math.max(0, zzzChainBusyN + d);
+var zzzChainBusyN = 0, zzzChainSysN = 0, zzzChainBusyOffT = null, zzzChainSysOffT = null;
+function zzz_chain_busy(d, sys) {
+  if (sys) zzzChainSysN = Math.max(0, zzzChainSysN + d); else zzzChainBusyN = Math.max(0, zzzChainBusyN + d);
   const c = document.getElementById('versoEntryButton');
   if (!c) return;
-  if (zzzChainBusyN > 0) { if (zzzChainBusyOffT) { clearTimeout(zzzChainBusyOffT); zzzChainBusyOffT = null; } c.classList.add('zzz-chain-busy'); c._zzzBusyAt = c._zzzBusyAt || Date.now(); return; }
-  const left = Math.max(0, 700 - (Date.now() - (c._zzzBusyAt || 0)));
-  zzzChainBusyOffT = setTimeout(() => { if (zzzChainBusyN === 0) { c.classList.remove('zzz-chain-busy'); c._zzzBusyAt = 0; } }, left);
+  const n = sys ? zzzChainSysN : zzzChainBusyN, cls = sys ? 'zzz-chain-sys' : 'zzz-chain-busy', at = sys ? '_zzzSysAt' : '_zzzBusyAt';
+  if (n > 0) {
+    if (sys && zzzChainSysOffT) { clearTimeout(zzzChainSysOffT); zzzChainSysOffT = null; }
+    if (!sys && zzzChainBusyOffT) { clearTimeout(zzzChainBusyOffT); zzzChainBusyOffT = null; }
+    c.classList.add(cls); c[at] = c[at] || Date.now(); return;
+  }
+  const left = Math.max(0, 700 - (Date.now() - (c[at] || 0)));
+  const t = setTimeout(() => { if ((sys ? zzzChainSysN : zzzChainBusyN) === 0) { c.classList.remove(cls); c[at] = 0; } }, left);
+  if (sys) zzzChainSysOffT = t; else zzzChainBusyOffT = t;
 }
 (function zzz_chain_wrap_fetch() {
   if (!window.fetch || window.fetch._zzzChain) return;
@@ -410,9 +416,11 @@ function zzz_chain_busy(d) {
       track = url.indexOf('.supabase.co') >= 0 && method !== 'GET' && method !== 'HEAD' && body.indexOf('"action":"heartbeat"') < 0;
     } catch (e) { track = false; }
     if (!track) return orig(input, init);
-    zzz_chain_busy(1);
+    let sys = false;
+    try { sys = String(typeof input === 'string' ? input : (input && input.url) || '').indexOf('/functions/v1/') >= 0; } catch (e) {}
+    zzz_chain_busy(1, sys);
     const p = orig(input, init);
-    p.then(() => zzz_chain_busy(-1), () => zzz_chain_busy(-1));
+    p.then(() => zzz_chain_busy(-1, sys), () => zzz_chain_busy(-1, sys));
     return p;
   };
   wrapped._zzzChain = true;
@@ -533,11 +541,15 @@ body{margin:0;color:#fff;font-family:sans-serif;}
 .circle#versoEntryButton > .zzz6-f7-username { z-index: 1; }
 
 .circle#versoEntryButton.zzz-chain-busy { --zzz-chain-fill: #9fd4b0; --zzz-chain-ink: #4f8a63; --zzz-chain-dur: 1.2s; }
-.circle#versoEntryButton.zzz-logo-orange { --zzz-chain-fill: #f6c89a; --zzz-chain-ink: #a8763f; --zzz-chain-dur: 3.2s; }
+
+.circle#versoEntryButton.zzz-chain-sys { --zzz-chain-fill: #e3c463; --zzz-chain-ink: #8a6a12; --zzz-chain-dur: 1.6s; }
+.circle#versoEntryButton.zzz-logo-orange { --zzz-chain-fill: #f6c89a; --zzz-chain-ink: #a8763f; }
 .circle#versoEntryButton.zzz-logo-red { --zzz-chain-fill: #eeaaaa; --zzz-chain-ink: #a14a4a; }
 .circle#versoEntryButton.zzz-chain-busy .zzz-chain-spin,
-.circle#versoEntryButton.zzz-logo-orange .zzz-chain-spin { animation: zzzChainSpin var(--zzz-chain-dur, 2.4s) linear infinite; }
-.circle#versoEntryButton:not(.zzz-chain-busy):not(.zzz-logo-orange):not(.zzz-logo-red) { --zzz-chain-fill: #ffffff; --zzz-chain-ink: #5a5a5a; }
+.circle#versoEntryButton.zzz-chain-sys .zzz-chain-spin { animation: zzzChainSpin var(--zzz-chain-dur, 2.4s) linear infinite; }
+.circle#versoEntryButton.zzz-logo-orange .zzz-chain-spin,
+.circle#versoEntryButton.zzz-logo-red .zzz-chain-spin { animation: none; }
+.circle#versoEntryButton:not(.zzz-chain-busy):not(.zzz-chain-sys):not(.zzz-logo-orange):not(.zzz-logo-red) { --zzz-chain-fill: #ffffff; --zzz-chain-ink: #5a5a5a; }
 
 .zzz-chain-info { position: absolute; inset: 0; pointer-events: none; z-index: 1; container-type: size; }
 .zzz-ci-wx { position: absolute; left: 22cqw; top: 32.5%; width: 30cqw; height: 11cqw; opacity: 1; } 
@@ -555,20 +567,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
 .circle#versoAIButton > .zzz-chain-logo > img { position: absolute; inset: 0; width: 100%; height: 100%; }
 .circle#versoAIButton { --zzz-chain-fill: #ffffff; --zzz-chain-ink: #5a5a5a; }
 
-.circle#versoAIButton.zzz-ai-quiet { --zzz-chain-fill: #e3c463; --zzz-chain-ink: #8a6a12; }
 .circle#versoAIButton { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   
-.circle#versoAIButton.zzz-chain-busy { --zzz-chain-fill: #9fd4b0; --zzz-chain-ink: #4f8a63; --zzz-chain-dur: 1.2s; }
-.circle#versoAIButton.zzz-logo-orange { --zzz-chain-fill: #f6c89a; --zzz-chain-ink: #a8763f; --zzz-chain-dur: 3.2s; }
-.circle#versoAIButton.zzz-logo-red { --zzz-chain-fill: #eeaaaa; --zzz-chain-ink: #a14a4a; }
 
-.circle#versoAIButton.zzz-ai-quiet.zzz-ai-quiet { --zzz-chain-fill: #e3c463; --zzz-chain-ink: #8a6a12; }
 .zzz-ai-qt { position: absolute; left: 0; right: 0; top: 79%; transform: translateY(-50%); text-align: center; white-space: nowrap; display: none;
   font-size: 7cqw; font-weight: 800; letter-spacing: .03em; font-variant-numeric: tabular-nums; }
 .circle#versoAIButton.zzz-ai-quiet .zzz-ai-qt { display: block; }
 .zzz-ai-qt b { color: #c9a227; text-shadow: 0 0 2px #fff, 0 1px 1px rgba(0,0,0,.35); }
 .zzz-ai-qt i { font-style: normal; color: #d42a2a; margin-left: .3em; text-shadow: 0 0 2px #fff; }
-.circle#versoAIButton.zzz-chain-busy .zzz-chain-spin,
-.circle#versoAIButton.zzz-logo-orange .zzz-chain-spin { animation: zzzChainSpin var(--zzz-chain-dur, 2.4s) linear infinite; }
 .zzz-ai-face { position: absolute; inset: 0; pointer-events: none; z-index: 1; container-type: size; }
 .zzz-ai-net, .zzz-ai-sig, .zzz-ai-mark, .zzz-ai-name { position: absolute; left: 0; right: 0; text-align: center; white-space: nowrap; }
 .zzz-ai-net { top: 21%; font-size: 4.6cqw; font-weight: 600; letter-spacing: .04em; color: #3f3f3f; font-variant-numeric: tabular-nums; text-shadow: 0 0 2px #fff; }
@@ -583,6 +588,22 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   -webkit-text-stroke: 0.7px #8c8c8c; font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
 .zzz-ai-name { top: 63%; transform: translateY(-50%); font-size: 7.5cqw; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.9);
   max-width: 60%; margin: 0 auto; overflow: hidden; text-overflow: ellipsis; }
+
+.circle#versoAIButton > .zzz-chain-logo > img { display: none; }
+.circle#versoAIButton > .zzz-chain-logo::before { content: ''; position: absolute; inset: 19%; border-radius: 50%; background: radial-gradient(circle at 50% 35%, #2a2a2a, #111 75%); }
+.circle#versoAIButton.zzz-ai-quiet > .zzz-chain-logo::before { background: radial-gradient(circle at 50% 30%, #F3D77A, #D4AF37 75%); }
+.circle#versoAIButton .zzz-chain-fill { background: var(--zzz-ai-ring, #E5E7EB) !important; }
+.circle#versoAIButton .zzz-chain-ink { background: #3F3F3F !important; }
+.circle#versoAIButton .zzz-chain-spin { animation: none !important; }
+.circle#versoAIButton .zzz-ai-mark { color: #D4AF37; -webkit-text-stroke: 0; font-weight: 700; text-shadow: 0 0 3px #000, 0 0 1px #000; }
+.circle#versoAIButton .zzz-ai-net { color: #e8e8e8; text-shadow: none; }
+.circle#versoAIButton .zzz-ai-sig { color: #ffffff; }
+.circle#versoAIButton.zzz-ai-quiet .zzz-ai-mark { color: #171717; text-shadow: 0 0 2px rgba(255,255,255,.5); }
+.circle#versoAIButton.zzz-ai-quiet .zzz-ai-net,
+.circle#versoAIButton.zzz-ai-quiet .zzz-ai-sig,
+.circle#versoAIButton.zzz-ai-quiet .zzz-ai-name { color: #171717; text-shadow: none; }
+.circle#versoAIButton.zzz-ai-quiet .zzz-ai-qt b { color: #171717; text-shadow: none; }
+.circle#versoAIButton.zzz-ai-quiet .zzz-ai-qt i { color: #8B1A1A; text-shadow: none; }
 
 .circle#versoEntryButton {
   user-select: none;
@@ -33059,6 +33080,8 @@ function zzz5w5cm_tag_packs() {
     zzz6f21_parse_tags(c.tags || '').forEach(t => {
       const name = String(t).trim();
       if (!name) return;
+
+      if (/^(user|known|unknown|project #\d+)$/i.test(name)) return;
       const k = zzz10v1_normalize(name);
       if (!packs[k]) packs[k] = { tag: name, names: [] };
       if (packs[k].names.indexOf(c.name) < 0) packs[k].names.push(c.name);
@@ -46614,7 +46637,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-01 12:40';
+const VERSO_BUILD = '2026-11-01 13:12';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -48758,10 +48781,25 @@ function zzz_mb_native() { try { return zzz14b17_in_app() && zzz14b17_app_code()
 
 let zzzMbCountsSent = '';
 const ZZZ_MB_COUNTS_MIN = 112;
+
+const ZZZ_AI_RING_COLS = ['#E53935', '#F59E0B', '#22C55E', '#2563EB', '#8E44AD', '#E84393', '#C49A6C'];
+function zzz_ai_ring_paint(c) {
+  const root = document.getElementById('versoAIButton');
+  if (!root || !Array.isArray(c)) return;
+  const tot = c.reduce((a, n) => a + Math.max(0, n | 0), 0);
+  let g = '#E5E7EB';
+  if (tot > 0) {
+    const parts = []; let at = 0, one = '';
+    c.forEach((n, k) => { n = Math.max(0, n | 0); if (!n) return; const e = at + n / tot * 360; parts.push(ZZZ_AI_RING_COLS[k] + ' ' + at.toFixed(2) + 'deg ' + e.toFixed(2) + 'deg'); one = ZZZ_AI_RING_COLS[k]; at = e; });
+    g = parts.length === 1 ? one : 'conic-gradient(from 0deg, ' + parts.join(', ') + ')';
+  }
+  if (root._zzzRing !== g) { root._zzzRing = g; root.style.setProperty('--zzz-ai-ring', g); }
+}
 function zzz_mb_push_counts(c) {
+  if (!c) { try { const h = document.getElementById('zzz14csSpaceHandle'); if (!h) return; c = ZZZ3D_CATS.map(p => { const d = h.querySelector('.zzz14cs-h-dot[data-prio="' + p + '"]'); return d ? parseInt(d.textContent, 10) || 0 : 0; }); } catch (e) { return; } }
+  try { zzz_ai_ring_paint(c); } catch (e) {}
   if (!zzz_mb_native()) return;
   try { if (zzz14b17_app_code() < ZZZ_MB_COUNTS_MIN) return; } catch (e) { return; }
-  if (!c) { try { const h = document.getElementById('zzz14csSpaceHandle'); if (!h) return; c = ZZZ3D_CATS.map(p => { const d = h.querySelector('.zzz14cs-h-dot[data-prio="' + p + '"]'); return d ? parseInt(d.textContent, 10) || 0 : 0; }); } catch (e) { return; } }
   let q = false; try { q = typeof zzz16_quiet === 'function' && !!zzz16_quiet(); } catch (e) {}
   let v = 'u=' + c[0] + '&a=' + c[1] + '&o=' + c[2] + '&d=' + (c[3] || 0) + '&r=' + (c[4] || 0) + '&s=' + (c[5] || 0) + '&i=' + (c[6] || 0) + '&q=' + (q ? 1 : 0);
 
@@ -50504,7 +50542,11 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       const jednoriadkove = target.tagName === 'INPUT';
 
       const okTarget = jednoriadkove ? null : zzz_vkb_ok_of(target);
-      const okKey = ctrlKey(rc, (jednoriadkove || okTarget) ? 'OK' : '⏎', () => {
+
+      const ekh = String(target.getAttribute('enterkeyhint') || '').toLowerCase();
+      const ekLab = { send: '\u27a4', search: '\u2315', go: '\u2192', next: '\u21e5', previous: '\u21e4', done: '\u2713', enter: '⏎' }[ekh]
+        || (okTarget ? '\u27a4' : (jednoriadkove ? 'OK' : '⏎'));
+      const okKey = ctrlKey(rc, ekLab, () => {
         hiCommit();
         if (okTarget) { if (!okTarget.disabled && okTarget.isConnected) okTarget.click(); return; }
         zzz_vkb_text_enter(target);
@@ -51015,7 +51057,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 143;
+const ZZZ14B17_APP_LATEST = 144;
 function zzz14b17_app_code() {
 
   try {
@@ -52224,7 +52266,7 @@ function zzz_recompute_logo_status() {
   const isDbDisconnected = !!(label && label.classList.contains('zzz0r1-db-disconnected'));
   circle.classList.remove('zzz-logo-orange', 'zzz-logo-red');
   const aiC = document.getElementById('versoAIButton');
-  if (aiC) { aiC.classList.toggle('zzz-logo-orange', !!(zzz_isOffline || isDbDisconnected) && !zzz_isInStandby); aiC.classList.toggle('zzz-logo-red', !!zzz_isInStandby); }
+  if (aiC) aiC.classList.remove('zzz-logo-orange', 'zzz-logo-red');
   if (zzz_isInStandby) {
     circle.classList.add('zzz-logo-red');
   } else if (zzz_isOffline || isDbDisconnected) {
