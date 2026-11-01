@@ -8464,6 +8464,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
 
   
   .zzz3d-run { font-size: 10px; line-height: 1.3; color: #fff; }
+  .zzz3x-sec { margin-top: 4px; }   
+  .zzz3x-head { font-size: 10px; color: #bbb; letter-spacing: .04em; padding: 2px 4px; }
+  .zzz3x-row { display: flex; align-items: center; gap: 5px; padding: 3px 6px; margin-bottom: 1px; background: rgba(255,255,255,.96); color: #222; border: 1px solid #999; border-radius: 4px; font-size: 12px; white-space: nowrap; overflow: hidden; }
+  .zzz3x-row b { flex: 0 0 auto; }
+  .zzz3x-who { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .zzz3x-row .zzz3d-ago { flex: 0 0 auto; color: #555; }
   .zzz3d-list { position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .zzz3d-row { display: flex; align-items: center; gap: 3px; padding: 2px 2px 2px 5px; margin-bottom: 1px;
     border-radius: 4px; font-size: 9px; color: #e6e6e6; white-space: nowrap; cursor: pointer; touch-action: pan-y;
@@ -28106,7 +28112,7 @@ function zzz3d_render_now() {
   zzz14cs_handle_counts(ready ? list : null);
 
   if (ready) setTimeout(() => { try { zzz3ns_apply(); } catch (e) {} }, 0);
-  const sig = [me, ready, zzz5w8State.error, zzz3dCurId, zzz3dUndo ? zzz3dUndo.text : '', Math.floor(Date.now() / 60000), zzz3sw_line_state() ? 'H' : '',
+  const sig = [me, ready, zzz5w8State.error, zzz3dCurId, zzz3dUndo ? zzz3dUndo.text : '', Math.floor(Date.now() / 60000), zzz3sw_line_state() ? 'H' : '', zzz3x_sig(),
     list.map(i => i.id + ':' + i.prio + ':' + (i.due ? 1 : 0) + ':' + zzz5w8_status_of(i) + ':' + i.text.length).join('|')].join('#');
   if (sig === zzz3dSig && box.classList.contains('zzz3d-on')) return;
   zzz3dSig = sig;
@@ -28208,6 +28214,7 @@ function zzz3d_render_now() {
 
   if (!list.length) {
     zzz3d_msg(box, zzz5w8State.error ? 'Some notifications could not load: ' + zzz5w8State.error : 'Nothing new ✓', !!zzz5w8State.error);
+    zzz3x_append(box);
     return;
   }
 
@@ -28309,6 +28316,7 @@ function zzz3d_render_now() {
     ul.appendChild(r);
   });
   box.appendChild(ul);
+  zzz3x_append(ul);
   const curRow = ul.children[idx];
 
   if (curRow && (curRow.offsetTop < ul.scrollTop || curRow.offsetTop + curRow.offsetHeight > ul.scrollTop + ul.clientHeight)) {
@@ -28832,6 +28840,7 @@ function zzz3ns_apply() {
   zzz3nsBusy = true;
   try {
     try { localStorage.removeItem(ZZZ3NS_IN); } catch (e) {}
+    zzz3x_take(raw);
     const acts = zzz3ns_decode(raw) || [];
     const dkey = ZZZ3NS_DONE + zzz10v1_normalize(me);
     let done = [];
@@ -28864,6 +28873,47 @@ async function zzz3ns_confirm(upto) {
   const url = 'intent://quick/notifsync?upto=' + Math.floor(upto);
   if (!zzz_native_cmd_able(url)) return;
   try { zzz_native_cmd(await zzz_cmd_sign(url)); } catch (e) {}
+}
+
+const ZZZ3X_KEY = 'verso_ext_line';
+function zzz3x_take(raw) {
+  try {
+    const s = String(raw || '').replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(s + '==='.slice((s.length + 3) % 4));
+    const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const j = JSON.parse(new TextDecoder('utf-8').decode(bytes));
+    if (!j || j.v !== 1 || !Array.isArray(j.x)) return;
+    const x = j.x.filter(o => o && Number(o.t) > 0).slice(0, 30)
+      .map(o => ({ a: String(o.a || '').slice(0, 40), w: String(o.w || '').slice(0, 40), t: Number(o.t), g: o.g ? 1 : 0 }));
+    localStorage.setItem(ZZZ3X_KEY, JSON.stringify({ xt: Number(j.xt) || Date.now(), x }));
+    zzz3dSig = '';
+  } catch (e) {}
+}
+function zzz3x_list() {
+  try { const j = JSON.parse(localStorage.getItem(ZZZ3X_KEY) || 'null'); return j && Array.isArray(j.x) ? j : { xt: 0, x: [] }; } catch (e) { return { xt: 0, x: [] }; }
+}
+function zzz3x_sig() { const j = zzz3x_list(); return j.xt + ':' + j.x.length; }
+function zzz3x_append(box) {
+  const j = zzz3x_list();
+  if (!j.x.length) return;
+  const sec = document.createElement('div');
+  sec.className = 'zzz3x-sec';
+  const h = document.createElement('div');
+  h.className = 'zzz3x-head';
+  h.textContent = 'NON VERSO · ' + j.x.length + ' in the phone NOTIF LINE · ' + zzz5w8_fmt_time(j.xt);
+  sec.appendChild(h);
+  j.x.slice().sort((a, b) => b.t - a.t).forEach(o => {
+    const r = document.createElement('div');
+    r.className = 'zzz3x-row';
+    const ap = document.createElement('b'); ap.textContent = o.a || 'app';
+    const w = document.createElement('span'); w.className = 'zzz3x-who'; w.textContent = (o.g ? '👥 ' : '') + (o.w || '');
+    const ag = document.createElement('span'); ag.className = 'zzz3d-ago'; ag.textContent = zzz3d_ago({ src: 'op', t: o.t });
+    r.appendChild(ap); r.appendChild(w); r.appendChild(ag);
+    r.title = 'A message of another app, waiting in the NOTIF LINE of this phone - tap it there to open, swipe READ / SHIFT';
+    r.addEventListener('click', (ev) => { ev.stopPropagation(); zzz6f2_show_toast('Open or mark it READ in the NOTIF LINE on the phone - it stays there until you do.', 'info'); });
+    sec.appendChild(r);
+  });
+  box.appendChild(sec);
 }
 
 function zzz3d_tick() {
@@ -47019,7 +47069,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-01 19:37';
+const VERSO_BUILD = '2026-11-01 20:10';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -51456,7 +51506,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 152;
+const ZZZ14B17_APP_LATEST = 153;
 function zzz14b17_app_code() {
 
   try {
