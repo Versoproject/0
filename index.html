@@ -9241,6 +9241,17 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz5w8-watch-row.zzz5w8-watch-urgent .zzz5w8-watch-lv { background: #c0392b; color: #fff; }
   .zzz5w8-watch-row.zzz5w8-watch-mute .zzz5w8-watch-lv { background: #d9d9d9; color: #555; }
   .zzz1cn-note.zzz5w8-has-alarm { box-shadow: inset 4px 0 0 #D4AF37; }
+  
+  .zzz3d-clock { display: inline-flex; align-items: center; justify-content: center; width: 1.45em; height: 1.45em; margin: 0 3px; border-radius: 50%;
+    border: 2px solid #C8CCD2; font-size: .8em; line-height: 1; flex: 0 0 auto; cursor: pointer; vertical-align: middle; box-sizing: border-box; }
+  .zzz3d-clock.is-on { background: #8e44ad; box-shadow: inset 0 0 0 1.5px #171717; }
+  .zzz3d-clock.is-on.is-sched { background: #e84393; }
+  .zzz3d-clock.zzz3d-ck-p-open { border-color: #2e9d4a; } .zzz3d-clock.zzz3d-ck-p-attention { border-color: #ea8c00; } .zzz3d-clock.zzz3d-ck-p-urgent { border-color: #c0392b; }
+  .zzz3d-clock.zzz3d-ck-w-open { border-color: #2e9d4a; box-shadow: 0 0 0 2px #2563eb; }
+  .zzz3d-clock.zzz3d-ck-w-attention { border-color: #ea8c00; box-shadow: 0 0 0 2px #2563eb; }
+  .zzz3d-clock.zzz3d-ck-w-urgent { border-color: #c0392b; box-shadow: 0 0 0 2px #2563eb; }
+  .zzz3d-clock.is-on:is(.zzz3d-ck-w-open, .zzz3d-ck-w-attention, .zzz3d-ck-w-urgent) { box-shadow: inset 0 0 0 1.5px #171717, 0 0 0 2px #2563eb; }
+  .zzz3d-clock.zzz3d-ck-w-mute { background: #d9d9d9; border: 2px dashed #9ca3af; opacity: .8; }
   .zzz1cn-note.zzz1cn-note-mine.zzz5w8-has-alarm { box-shadow: inset -4px 0 0 #D4AF37; }
   .zzz5w8-st-new, .zzz5w8-st-due { color: #f0a640; }
   .zzz5w8-st-seen { color: #9a9a9a; }
@@ -28137,6 +28148,7 @@ function zzz3d_render_now() {
   const num = document.createElement('b');
   num.textContent = `${idx + 1}/${line.length} `; num.appendChild(zzz_type_icon(cur.src, cur));
   meta.appendChild(num);
+  { const ck = zzz3d_alarm_clock(cur); if (ck) meta.appendChild(ck); }
 
   const agoTop = cur.src === 'chat' ? zzz3d_ago(cur) : (zzz5w8_fmt_time(cur.t) + (cur.due ? '' : ' ›'));
   if (agoTop) { const ag = document.createElement('span'); ag.className = 'zzz3d-ago'; ag.textContent = ' ' + agoTop; meta.appendChild(ag); }
@@ -28195,6 +28207,7 @@ function zzz3d_render_now() {
     tx.className = 'zzz3d-tx';
     tx.textContent = (it.due ? '' : zzz5w8_fmt_time(it.t) + ' · ') + (it.text || '');
     r.appendChild(n); r.appendChild(ic);
+    { const ck = zzz3d_alarm_clock(it); if (ck) r.appendChild(ck); }
     if (lab.textContent) r.appendChild(lab);
     r.appendChild(tx);
     const ago = zzz3d_ago(it);
@@ -28218,6 +28231,25 @@ function zzz3d_render_now() {
   }
 }
 
+function zzz3d_alarm_clock(it) {
+  try {
+    if (!it || it.src !== 'chat' || !it.raw || it.raw.id == null) return null;
+    const note = it.raw;
+    const item = (zzz5w8Items || []).find(i => String(i.note_id || '') === String(note.id) && !i.done_at) || null;
+    const wl = typeof zzz5w8_watch_level_for_note === 'function' ? zzz5w8_watch_level_for_note(note) : '';
+    if (!item && !wl) return null;
+    const b = document.createElement('span');
+    b.className = 'zzz3d-clock' + (item ? ' is-on zzz3d-ck-p-' + String(item.priority || 'open') + (item.kind === 'schedule' ? ' is-sched' : '') : '') + (wl ? ' zzz3d-ck-w-' + wl : '');
+    b.textContent = '\u23f0';
+    b.title = (item ? '\u23f0 ' + zzz5w8_tag_label(item) + ' ' + zzz5w8_fmt_time(Date.parse(item.due_at)) : '') + (wl ? (item ? ' · ' : '') + 'discussion alarm ' + zzz5w8_watch_word(wl) : '') + ' - tap = open';
+    b.addEventListener('click', (ev) => {
+      ev.stopPropagation(); ev.preventDefault();
+      if (item) { if (zzz5w8_my_target(item.id)) zzz5w8_open_member_window({ raw: item }); else zzz5w8_open_item_window(item, item.kind, null, null, b); }
+      else zzz5w8_alarm_from_item(it, b);
+    });
+    return b;
+  } catch (e) { return null; }
+}
 let zzz3dLastHeadTap = 0;
 let zzz3dHeadTimer = null;
 
@@ -46428,7 +46460,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-01 11:46';
+const VERSO_BUILD = '2026-11-01 11:48';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
