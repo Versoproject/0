@@ -38440,13 +38440,63 @@ function zzz_dia_fix_word(w) {
   if (w.length > 1 && w === w.toUpperCase()) return r.toUpperCase();
   return w[0] !== low[0] ? r[0].toUpperCase() + r.slice(1) : r;
 }
+
+function zzz_repair_on() { try { return localStorage.getItem('zzz_repair_sk') !== '0'; } catch (e) { return true; } }
+const ZZZ_KB_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+function zzz_kb_neigh(c) {
+  let o = '';
+  for (let r = 0; r < 3; r++) {
+    const i = ZZZ_KB_ROWS[r].indexOf(c); if (i < 0) continue;
+    for (let dr = -1; dr <= 1; dr++) { const rr = r + dr; if (rr < 0 || rr > 2) continue;
+      for (let dc = -1; dc <= 1; dc++) { const cc = i + dc; if (cc >= 0 && cc < ZZZ_KB_ROWS[rr].length && !(dr === 0 && dc === 0)) o += ZZZ_KB_ROWS[rr][cc]; } }
+  }
+  return o;
+}
+let zzzRepairRank = null;
+function zzz_repair_word(w) {
+  const W = zzz16Words;
+  if (!W || !W.sk) { zzz16_words_load(); return null; }
+  if (!zzzRepairRank) { zzzRepairRank = new Map(); W.sk.forEach((x, i) => { const f = String(x).toLowerCase().normalize('NFD').replace(/\p{M}+/gu, ''); if (!zzzRepairRank.has(f)) zzzRepairRank.set(f, i); }); }
+  if (w.length < 4) return null;
+  const low = w.toLowerCase(), f = low.normalize('NFD').replace(/\p{M}+/gu, '');
+  if (!/^[a-z]+$/.test(f)) return null;
+  if (zzzRepairRank.has(f) || (W.dia && W.dia[f]) || (W.en && W.en.has && W.en.has(f))) return null;
+  const cand = new Set();
+  for (let i = 0; i < f.length; i++) {
+    cand.add(f.slice(0, i) + f.slice(i + 1));
+    if (i + 1 < f.length) cand.add(f.slice(0, i) + f[i + 1] + f[i] + f.slice(i + 2));
+    for (const c of zzz_kb_neigh(f[i])) cand.add(f.slice(0, i) + c + f.slice(i + 1));
+  }
+  for (let i = 0; i <= f.length; i++) for (let c = 97; c <= 122; c++) cand.add(f.slice(0, i) + String.fromCharCode(c) + f.slice(i));
+  let best = Infinity, bw = null;
+  cand.forEach(c => { const r = zzzRepairRank.get(c); if (r !== undefined && r < best && r < 4000 && c.length >= 3) { best = r; bw = c; } });
+  if (!bw) return null;
+  let out = bw;
+  if (zzz_dia_on()) { const d = W.dia && W.dia[bw]; out = (d && d.length === bw.length) ? d : W.sk[best]; }
+  if (w.length > 1 && w === w.toUpperCase()) return out.toUpperCase();
+  return w[0] !== low[0] ? out[0].toUpperCase() + out.slice(1) : out;
+}
 function zzz_dia_commit(target, lang) {
   zzzDiaLast = null;
-  if (lang !== 'sk' || !target || target.isContentEditable || !zzz_dia_on()) return;
+  if (lang !== 'sk' || !target || target.isContentEditable || !(zzz_dia_on() || zzz_repair_on())) return;
   const ty = String(target.type || '').toLowerCase();
   if (ty === 'password' || ty === 'email' || ty === 'url' || target.autocomplete === 'off' && /pass|secret|code/i.test(target.name || '')) return;
   try {
     const p = target.selectionStart, before = String(target.value || '').slice(0, p);
+    const mm = /(\p{L}+)$/u.exec(before);
+    if (!mm) return;
+    const prev0 = before.slice(0, p - mm[1].length);
+    if (/[@#/._'\d]$/u.test(prev0) || /(https?:\/\/|www\.)\S*$/i.test(prev0)) return;
+    if (zzz_repair_on()) {
+      const rp = zzz_repair_word(mm[1]);
+      if (rp && rp !== mm[1]) {
+        target.setRangeText(rp, p - mm[1].length, p, 'end');
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+        zzzDiaLast = { el: target, orig: mm[1], fixed: rp, at: Date.now() };
+        return;
+      }
+    }
+    if (!zzz_dia_on()) return;
     const m = /([A-Za-z]+)$/.exec(before);
     if (!m) return;
     const prev = before.slice(0, p - m[1].length);
@@ -38680,7 +38730,7 @@ async function zzz_native_launch(url) {
 
 function zzz_native_cmd_able(url) {
   try {
-    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync)\b/.test(String(url || 'intent://quick/quiet'))
+    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|kbset|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync)\b/.test(String(url || 'intent://quick/quiet'))
       && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator;
   } catch (e) { return false; }
 }
@@ -40228,6 +40278,18 @@ function zzz14b2_render_language_settings(host) {
   diaBtn.addEventListener('click', () => { const on = !zzz_dia_on(); try { localStorage.setItem('zzz_dia_sk', on ? '1' : '0'); } catch (e) {} if (on) zzz16_words_load(); diaPaint(); });
   diaPaint();
   row('VOICE-DIA-SK', 'SK keyboard: a word written without diacritics gets them when it ends (mas → máš, co → čo). ⌫ right after = your word back. Never in passwords, e-mails, links, after @ / #; English words stay. In the Verso app: keyboard ⚙ › VOICE-DIA-SK.', '', diaBtn);
+
+  const repBtn = document.createElement('button'); repBtn.type = 'button';
+  const repPaint = () => { const on = zzz_repair_on(); repBtn.className = 'zzz16-btn' + (on ? ' is-on' : ''); repBtn.textContent = on ? 'TEXT REPAIR SK ✓' : 'TEXT REPAIR SK off'; };
+  repBtn.addEventListener('click', () => {
+    const on = !zzz_repair_on();
+    try { localStorage.setItem('zzz_repair_sk', on ? '1' : '0'); } catch (e) {}
+    if (on) zzz16_words_load();
+    try { if (zzz14b17_in_app()) zzz_native_go(zzz_media_intent('kbset?k=repair_sk&v=' + (on ? 1 : 0))); } catch (e) {}
+    repPaint();
+  });
+  repPaint();
+  row('TEXT REPAIR SK', 'SK keyboard: one typing slip in a word is repaired when the word ends - a neighbouring key, two swapped letters, a letter too many or missing (nveiem → neviem, zajtar → zajtra). Only words of 4+ letters that Verso does not know, only to a frequent Slovak word; names and new words stay. ⌫ right after = your word back. Here for the web keyboard and the Verso app keyboard; in the app also keyboard ⚙ › TEXT REPAIR SK.', '', repBtn);
 
   const sel = document.createElement('div'); sel.className = 'zzz14b2-voice';
   const cur = String(zzz16_prefs().voiceLang || 'auto');
@@ -46460,7 +46522,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-01 11:48';
+const VERSO_BUILD = '2026-11-01 11:57';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -50861,7 +50923,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 139;
+const ZZZ14B17_APP_LATEST = 140;
 function zzz14b17_app_code() {
 
   try {
