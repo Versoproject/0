@@ -24,10 +24,11 @@
     var keep = [], got = {};
     h.replace(/^#/, '').split('&').forEach(function (p) {
       var i = p.indexOf('='), k = i > 0 ? p.slice(0, i) : p, v = i > 0 ? p.slice(i + 1) : '';
-      if (k === 'vk' || k === 'did' || k === 'ns' || k === 'perm' || k === 'dn' || k === 'mk' || k === 'md' || k === 'notif-sync') got[k] = v; else if (p) keep.push(p);
+      if (k === 'vk' || k === 'did' || k === 'ns' || k === 'perm' || k === 'dn' || k === 'mk' || k === 'md' || k === 'notif-sync' || k === 'rx') got[k] = v; else if (p) keep.push(p);
     });
 
     if (got['notif-sync'] && got['notif-sync'].length < 12000 && /^[A-Za-z0-9_-]+$/.test(got['notif-sync'])) localStorage.setItem('verso_notif_sync_in', got['notif-sync']);
+    if (got.rx && got.rx.length < 12000 && /^[A-Za-z0-9_-]+$/.test(got.rx)) localStorage.setItem('verso_repair_ops_in', got.rx);
     if (/^[0-9a-f]{64}$/.test(got.vk || '')) localStorage.setItem('verso_cmd_key', got.vk);
     if (/^[0-9a-f]{64}$/.test(got.did || '')) localStorage.setItem('verso_dev_did', got.did);
     if (got.ns && got.ns.length < 8000) localStorage.setItem('verso_native_settings', got.ns);
@@ -28927,6 +28928,7 @@ function zzz3d_tick() {
   if (me !== zzz3dUser) { zzz3dUser = me; zzz3dLastLoad = 0; zzz3dCurId = ''; zzz3dCurIdx = 0; }
   try { zzz3tb_apply(); } catch (e) {}
   if (!me || typeof sb === 'undefined' || !sb) { zzz3d_render(); return; }
+  try { zzz_rx_pull(); } catch (e) {}
   if (!zzz5w8_is_open() && !zzz5w8State.loading && Date.now() - zzz3dLastLoad > ZZZ3D_RELOAD_MS) {
     zzz3dLastLoad = Date.now();
     zzz5w8_reload().catch(e => { zzz5w8State.error = 'check the connection'; console.warn('[Zzz3-0:RELOAD]', zzz_err_detail(e)); zzz3d_render(); });
@@ -38659,6 +38661,71 @@ function zzz_dia_fix_word(w) {
 }
 
 function zzz_repair_on() { try { return localStorage.getItem('zzz_repair_sk') !== '0'; } catch (e) { return true; } }
+
+const ZZZ_RX_LS = 'zzz_repair_ex', ZZZ_RX_IN = 'verso_repair_ops_in', ZZZ_RX_MAX = 400;
+let zzzRepairEx = null, zzzRxPulledFor = '', zzzRxBusy = false;
+function zzz_rx_fold(w) { return String(w || '').toLowerCase().normalize('NFD').replace(/\p{M}+/gu, ''); }
+function zzz_rx_set() {
+  if (!zzzRepairEx) { zzzRepairEx = new Set(); try { (JSON.parse(localStorage.getItem(ZZZ_RX_LS) || '[]') || []).forEach(w => { if (/^[a-z]{2,40}$/.test(w)) zzzRepairEx.add(w); }); } catch (e) {} }
+  return zzzRepairEx;
+}
+function zzz_rx_has(w) { return zzz_rx_set().has(zzz_rx_fold(w)); }
+function zzz_rx_list() { return Array.from(zzz_rx_set()).sort(); }
+async function zzz_rx_save(upto) {
+  const l = zzz_rx_list().slice(-ZZZ_RX_MAX);
+  try { localStorage.setItem(ZZZ_RX_LS, JSON.stringify(l)); } catch (e) {}
+  const u = typeof zzz_dev_me === 'function' ? zzz_dev_me() : '';
+  if (u && typeof sb !== 'undefined' && sb) {
+    try {
+      const { error } = await sb.from('verso_user_settings').upsert({ username: u, runtime: 'web', module: 'repair', prefs: { ex: l, t: Date.now() } }, { onConflict: 'username,runtime,module' });
+      if (error) throw error;
+    } catch (e) { zzz_user_error('TEXT REPAIR exceptions not saved on the server - check the connection.', e, '[Zzz14-B17:REPAIR-EXCEPT]'); }
+  }
+  zzz_rx_to_app(upto || 0);
+}
+async function zzz_rx_to_app(upto) {
+  try {
+    if (!zzz14b17_in_app() || zzz14b17_app_code() < 157) return;
+    const b = btoa(zzz_rx_list().slice(-ZZZ_RX_MAX).join(',')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const url = 'intent://quick/repairex?l=' + b + '&upto=' + Math.floor(upto || 0);
+    if (!zzz_native_cmd_able(url)) return;
+    zzz_native_cmd(await zzz_cmd_sign(url));
+  } catch (e) {}
+}
+function zzz_rx_add(w, quiet) {
+  const f = zzz_rx_fold(w);
+  if (!/^[a-z]{2,40}$/.test(f)) { if (!quiet) zzz6f2_show_toast('TEXT REPAIR: write the word first, then Ctrl + T.', 'info'); return false; }
+  zzz_rx_set().add(f);
+  if (!quiet) { zzz6f2_show_toast('TEXT REPAIR: exception added ✓ (' + zzz_rx_set().size + ') - saved for your account.', 'ok'); zzz_rx_save(0); }
+  return true;
+}
+function zzz_rx_remove(f) { zzz_rx_set().delete(f); zzz_rx_save(0); }
+
+async function zzz_rx_pull() {
+  const u = typeof zzz_dev_me === 'function' ? zzz_dev_me() : '';
+  if (!u || zzzRxPulledFor === u || zzzRxBusy || typeof sb === 'undefined' || !sb) return;
+  zzzRxBusy = true;
+  try {
+    const { data, error } = await sb.from('verso_user_settings').select('prefs').eq('username', u).eq('runtime', 'web').eq('module', 'repair').limit(1);
+    if (error) return;
+    zzzRxPulledFor = u;
+    const srv = data && data[0] && data[0].prefs && Array.isArray(data[0].prefs.ex) ? data[0].prefs.ex : null;
+    if (srv) { zzzRepairEx = new Set(srv.filter(w => /^[a-z]{2,40}$/.test(w))); }
+    let ops = [], raw = '';
+    try { raw = localStorage.getItem(ZZZ_RX_IN) || ''; localStorage.removeItem(ZZZ_RX_IN); } catch (e) {}
+    if (raw) {
+      try {
+        const s2 = raw.replace(/-/g, '+').replace(/_/g, '/'), bin = atob(s2 + '==='.slice((s2.length + 3) % 4));
+        const j = JSON.parse(new TextDecoder('utf-8').decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
+        if (Array.isArray(j)) ops = j.filter(o => o && (o.o === '+' || o.o === '-') && Number(o.t) > 0).slice(0, 200);
+      } catch (e) { ops = []; }
+    }
+    let upto = 0;
+    ops.sort((a, b) => a.t - b.t).forEach(o => { const f = zzz_rx_fold(o.w); upto = Math.max(upto, Number(o.t)); if (!/^[a-z]{2,40}$/.test(f)) return; if (o.o === '+') zzz_rx_set().add(f); else zzz_rx_set().delete(f); });
+    if (ops.length || !srv) await zzz_rx_save(upto); else { try { localStorage.setItem(ZZZ_RX_LS, JSON.stringify(zzz_rx_list())); } catch (e) {} zzz_rx_to_app(0); }
+  } catch (e) {} finally { zzzRxBusy = false; }
+}
+
 const ZZZ_KB_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
 function zzz_kb_neigh(c) {
   let o = '';
@@ -38677,6 +38744,7 @@ function zzz_repair_word(w) {
   if (w.length < 4) return null;
   const low = w.toLowerCase(), f = low.normalize('NFD').replace(/\p{M}+/gu, '');
   if (!/^[a-z]+$/.test(f)) return null;
+  if (f !== low || zzz_rx_has(f)) return null;
   if (zzzRepairRank.has(f) || (W.dia && W.dia[f]) || (W.en && W.en.has && W.en.has(f))) return null;
   const cand = new Set();
   for (let i = 0; i < f.length; i++) {
@@ -38704,6 +38772,7 @@ function zzz_dia_commit(target, lang) {
     if (!mm) return;
     const prev0 = before.slice(0, p - mm[1].length);
     if (/[@#/._'\d]$/u.test(prev0) || /(https?:\/\/|www\.)\S*$/i.test(prev0)) return;
+    if (zzz_rx_has(mm[1])) return;
     if (zzz_repair_on()) {
       const rp = zzz_repair_word(mm[1]);
       if (rp && rp !== mm[1]) {
@@ -38947,7 +39016,7 @@ async function zzz_native_launch(url) {
 
 function zzz_native_cmd_able(url) {
   try {
-    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync)\b/.test(String(url || 'intent://quick/quiet'))
+    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex)\b/.test(String(url || 'intent://quick/quiet'))
       && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator;
   } catch (e) { return false; }
 }
@@ -40493,6 +40562,7 @@ function zzz14b2_render_language_settings(host) {
         body.appendChild(btn(rOn ? 'TEXT REPAIR SK ✓' : 'TEXT REPAIR SK off', rOn, () => { const on = !zzz_repair_on(); try { localStorage.setItem('zzz_repair_sk', on ? '1' : '0'); } catch (e) {} send('repair_sk', on ? '1' : '0'); paint(); }));
         const dOn = zzz_dia_on();
         body.appendChild(btn(dOn ? 'VOICE-DIA-SK ✓' : 'VOICE-DIA-SK off', dOn, () => { const on = !zzz_dia_on(); try { localStorage.setItem('zzz_dia_sk', on ? '1' : '0'); } catch (e) {} send('dia_sk', on ? '1' : '0'); paint(); }));
+        body.appendChild(txt('Ctrl + T = the last word → TEXT REPAIR exception (your account, all devices) · Ctrl + space = space without repair · list: TEXT REPAIR EXCEPTIONS below.'));
         const ex = txt('EXTERNAL: MIC (dictation) = Google voice typing - your voice goes to Google. Voice reader: VERSO NOTIF MULTIREADER in this SETTINGS tab.'); ex.style.color = '#e04848';
         body.appendChild(ex);
       } else if (tab === 'MODULES') {
@@ -40561,6 +40631,17 @@ function zzz14b2_render_language_settings(host) {
   });
   repPaint();
   row('TEXT REPAIR SK', 'SK keyboard: one typing slip in a word is repaired when the word ends - a neighbouring key, two swapped letters, a letter too many or missing (nveiem → neviem, zajtar → zajtra). Only words of 4+ letters that Verso does not know, only to a frequent Slovak word; names and new words stay. ⌫ right after = your word back. Here for the web keyboard and the Verso app keyboard; in the app also keyboard ⚙ › TEXT REPAIR SK.', '', repBtn);
+
+  const rxBox = document.createElement('div'); rxBox.className = 'zzz14b2-voice'; rxBox.style.flexWrap = 'wrap';
+  const rxPaint = () => {
+    rxBox.innerHTML = '';
+    const l = zzz_rx_list();
+    if (!l.length) { const n = document.createElement('small'); n.textContent = 'none yet'; rxBox.appendChild(n); }
+    l.forEach(f => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn'; b.textContent = '✕ ' + f; b.title = 'Remove this exception';
+      b.addEventListener('click', () => { zzz_rx_remove(f); rxPaint(); }); rxBox.appendChild(b); });
+  };
+  rxPaint();
+  row('TEXT REPAIR EXCEPTIONS', 'Words TEXT REPAIR and VOICE-DIA-SK never change. Add one: write the word, then hold Ctrl and tap T (Ctrl + T) - if the word was just changed, yours comes back. Ctrl + space = a plain space, nothing is changed for that word. Words written with diacritics are never repaired. One list for your account, the same on the web and in the Verso app keyboard. Tap ✕ = remove.', '', rxBox);
 
   const sel = document.createElement('div'); sel.className = 'zzz14b2-voice';
   const cur = String(zzz16_prefs().voiceLang || 'auto');
@@ -47074,7 +47155,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-02 02:32';
+const VERSO_BUILD = '2026-11-02 02:44';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -50627,6 +50708,8 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       if (before.slice(-1) === ' ') { spaceAt = 0; back(); type('\u2003\u2022 '); return; }
     }
     spaceAt = now;
+
+    if (window.zzzVkbCtrlLock || window.zzzVkbCtrlHeld) { window.zzzVkbCtrlUsed = true; zzzDiaLast = null; type(' '); return; }
     hiCommit();
     type(' ');
   };
@@ -50699,8 +50782,23 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       if (panel._closePops) panel._closePops();
       if (k._calc && zzz_vkbCalc.on) zzz_vkb_calc_input(k._calc);
       else if (ch === ' ') {
-        if (swipeSpace) { k._swX = e.clientX; try { k.setPointerCapture(e.pointerId); } catch (e2) {} }
+
+        if (isText && !isSecret) { k._swX = e.clientX; k._swAt = Date.now(); try { k.setPointerCapture(e.pointerId); } catch (e2) {} clearTimeout(k._swBuzz); k._swBuzz = setTimeout(() => zzz_haptic_pulse(40), 450); }
         else typeSpace();
+      } else if ((window.zzzVkbCtrlLock || window.zzzVkbCtrlHeld) && isText && !isSecret && ch.toLowerCase() === 't') {
+
+        window.zzzVkbCtrlUsed = true;
+        let w = '';
+        try {
+          const L = zzzDiaLast;
+          if (L && L.el === target && Date.now() - L.at < 60000) {
+            const p = target.selectionStart, before = String(target.value || '').slice(0, p), last = before.slice(-1);
+            if (last && !/\p{L}/u.test(last) && before.endsWith(L.fixed + last)) { target.setRangeText(L.orig, p - L.fixed.length - 1, p - 1, 'end'); target.selectionStart = target.selectionEnd = p - L.fixed.length + L.orig.length; target.dispatchEvent(new Event('input', { bubbles: true })); }
+            zzzDiaLast = null; w = L.orig;
+          }
+          if (!w) { const p = target.selectionStart, m = /(\p{L}+)[^\p{L}]*$/u.exec(String(target.value || '').slice(0, p)); if (m) w = m[1]; }
+        } catch (e2) {}
+        zzz_rx_add(w);
       } else {
         if (ch.length === 1 && !/\p{L}/u.test(ch)) hiCommit();
         let c = ch;
@@ -50719,9 +50817,12 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     const finish = (e) => {
       if (e) e.preventDefault();
       if (k._swX != null) {
-        const x0 = k._swX; k._swX = null;
+        const x0 = k._swX; k._swX = null; clearTimeout(k._swBuzz);
         if (e && e.type === 'pointerup') {
-          if (Math.abs(e.clientX - x0) > 30) {
+          if (!swipeSpace || Math.abs(e.clientX - x0) <= 30) {
+            if (Date.now() - (k._swAt || 0) >= 450) { zzzDiaLast = null; type(' '); spaceAt = 0; }
+            else typeSpace();
+          } else if (Math.abs(e.clientX - x0) > 30) {
             const ix = kbCycle.indexOf(kbLang), dir = e.clientX > x0 ? 1 : -1;
             kbLang = kbCycle[((ix < 0 ? 0 : ix) + dir + kbCycle.length) % kbCycle.length];
             const kp = zzz23_kb_prefs(); kp.lang = kbLang; zzz23_kb_save(kp);
@@ -50949,15 +51050,8 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     if (!pageHold) pk.title = 'Tap = ' + (nextPage === 'symbols' ? 'symbols' : nextPage === 'digits' ? 'numbers / media' : 'letters');
     if (isText) {
 
-      const ctrlLinkPaste = async () => {
-        let l = '';
-        try { const m = String(await navigator.clipboard.readText() || '').match(/https?:\/\/\S+/); if (m) l = m[0]; } catch (e) {}
-        if (!l) { for (const x of zzz_clip_list()) { const m = String(x).match(/https?:\/\/\S+/); if (m) { l = m[0]; break; } } }
-        if (l) insertChip(l); else zzz6f2_show_toast('No copied link yet.', 'info');
-      };
-
       const ck = ctrlKey(rc, 'Ctrl', (b) => {
-        b._ctrlFired = false;
+        b._ctrlFired = false; window.zzzVkbCtrlHeld = true; window.zzzVkbCtrlUsed = false;
         clearTimeout(b._ctrlT);
         b._ctrlT = setTimeout(() => {
           b._ctrlT = null; b._ctrlFired = true;
@@ -50967,14 +51061,17 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
         }, 1500);
       }, 'zzz-vkb-ctrlkey');
       const paintCtrl = () => { const on = !!window.zzzVkbCtrlLock; ck.style.color = on ? '#141414' : '#C8CCD2'; ck.style.background = on ? '#C8CCD2' : ''; };
+
       ck.addEventListener('pointerup', () => {
+        window.zzzVkbCtrlHeld = false;
         if (!ck._ctrlT) return;
         clearTimeout(ck._ctrlT); ck._ctrlT = null;
+        if (window.zzzVkbCtrlUsed) { window.zzzVkbCtrlUsed = false; return; }
         if (window.zzzVkbCtrlLock) { window.zzzVkbCtrlLock = false; paintCtrl(); zzz6f2_show_toast('Ctrl OFF.', 'info'); }
-        else ctrlLinkPaste();
+        else zzz6f2_show_toast('Ctrl + T = word → TEXT REPAIR exception · Ctrl + space = space without repair · hold Ctrl 1.5 s = Ctrl ON', 'info');
       });
-      ['pointercancel', 'pointerleave'].forEach(t => ck.addEventListener(t, () => { if (ck._ctrlT) { clearTimeout(ck._ctrlT); ck._ctrlT = null; } }));
-      ck.title = 'Ctrl = paste the last copied link · hold 1.5 s = Ctrl stays ON';
+      ['pointercancel', 'pointerleave'].forEach(t => ck.addEventListener(t, () => { window.zzzVkbCtrlHeld = false; if (ck._ctrlT) { clearTimeout(ck._ctrlT); ck._ctrlT = null; } }));
+      ck.title = 'Ctrl + T = TEXT REPAIR exception · Ctrl + space = plain space · hold 1.5 s = Ctrl stays ON';
       paintCtrl();
     }
     const mic = ctrlKey(rc, ZZZ_VKB_MIC_SVG, () => {}, 'zzz-vkb-mic');
@@ -51691,10 +51788,13 @@ function zzz14b17_settings_updates(host) {
     const wb = document.createElement('button'); wb.type = 'button'; wb.className = 'zzz14b17-app-dl-btn'; zzz_verso_set_btn(wb, 'Web update');
     const wn = document.createElement('div'); wn.className = 'zzz14b17-app-dl-note';
     wn.textContent = 'Only the web part of Verso (screens, functions) - the app stays. ' + (inApp ? 'In the app it also comes by itself within about 30 s.' : '');
+
+    const wext = document.createElement('div'); wext.className = 'zzz-ext-orange';
+    wext.textContent = 'EXTERNAL: Verso web runs on rented hosting (Vercel) and your data on Supabase - Verso\'s own accounts, only Verso runs there, but these servers see your device IP.';
     const wv = document.createElement('div'); wv.className = 'zzz-build-tag'; wv.textContent = 'Verso web ' + VERSO_BUILD;
     let newer = false;
     wb.addEventListener('click', () => { if (newer) { try { zzz_dev_reload_now(); } catch (e) { location.reload(); } } else paint(); });
-    host.append(h2, wb, wn, wv);
+    host.append(h2, wb, wn, wext, wv);
     zzz14b17_live_web().then((live) => {
       if (!live) return;
       if (live === VERSO_BUILD) {
