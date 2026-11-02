@@ -31606,14 +31606,40 @@ async function zzz5w5cm_add_comm_tab() {
 
   const label = await zzz_verso_prompt('Name of the new tab:', 'Tab ' + zzz5w5cmTabSeq, 'ADD TAB');
   if (label === null) { zzz5w5cmTabSeq -= 1; return; }
-  ZZZ5W5CM_CONTACT_TABS.push({ key, label: (label.trim() || ('Tab ' + zzz5w5cmTabSeq)), fixed: false });
+  const nm = label.trim() || ('Tab ' + zzz5w5cmTabSeq);
+
+  let placeNo = null;
+  try {
+    placeNo = await zzz14b21_create_user_place('communication', nm, ZZZ5W5CM_PLACE_PREFIX + key);
+  } catch (e) {
+    zzz5w5cmTabSeq -= 1;
+    zzz_user_error('Tab not created - its place could not be saved. Check the connection and try again.', e, '[Zzz14-B21:USER-PLACE]');
+    return;
+  }
+  ZZZ5W5CM_CONTACT_TABS.push({ key, label: nm, fixed: false, placeNo });
   zzz5w5cmContactsTab = key;
+  zzz6f2_show_toast(`Tab ${nm} created · #${placeNo}.`, 'ok');
   zzz5w5cm_render();
+}
+
+async function zzz5w5cm_load_user_tabs() {
+  const tabs = await zzz14b21_load_user_places('communication');
+  tabs.forEach(t => {
+    if (t.key.indexOf(ZZZ5W5CM_PLACE_PREFIX) !== 0) return;
+    const key = t.key.slice(ZZZ5W5CM_PLACE_PREFIX.length);
+    const have = ZZZ5W5CM_CONTACT_TABS.find(x => x.key === key);
+    if (have) { have.placeNo = t.no; return; }
+    ZZZ5W5CM_CONTACT_TABS.push({ key, label: t.label || ('#' + t.no), fixed: false, placeNo: t.no });
+  });
 }
 
 function zzz5w5cm_delete_comm_tab(key) {
   const idx = ZZZ5W5CM_CONTACT_TABS.findIndex(t => t.key === key);
   if (idx === -1 || ZZZ5W5CM_CONTACT_TABS[idx].fixed) { zzz6f2_show_toast('This tab cannot be deleted - only the tabs you added with "+".', 'warn'); return; }
+  const gone = ZZZ5W5CM_CONTACT_TABS[idx];
+
+  if (gone.placeNo) zzz14b21_archive_user_place(gone.placeNo, 'communication')
+    .catch(e => zzz_user_error('The tab was removed here, but the database did not save it - it may come back after a reload.', e, '[Zzz14-B21:USER-PLACE]'));
   ZZZ5W5CM_CONTACT_TABS.splice(idx, 1);
   delete zzz5w5cmTabAttachments[key];
   if (zzz5w5cmContactsTab === key) zzz5w5cmContactsTab = 'important';
@@ -35229,6 +35255,8 @@ async function zzz5w5cm_load_tab_placements(force) {
   try {
     const me = zzz10v1_normalize(zzz0r1_get_current_username());
     if (!me) return;
+
+    try { await zzz5w5cm_load_user_tabs(); } catch (e) { console.warn('[Zzz14-B21:USER-PLACE]', zzz_err_detail(e)); }
 
     const { data, error } = await sb.from('verso_placements')
       .select('entry_id, tab_id, tags').is('removed_at', null).like('tab_id', ZZZ5W5CM_PLACE_PREFIX + '%');
@@ -41472,6 +41500,12 @@ async function zzz5_6_trash_user_tab(key) {
       .update({ deleted_at: new Date().toISOString() }).eq('id', t.id);
     if (error) throw error;
     if (zzz5_6ActiveUserTab === key) zzz5_6ActiveUserTab = null;
+
+    try {
+      const own = await zzz14b21_load_user_places('author-credits/notes');
+      const p = own.find(x => x.key === key);
+      if (p) await zzz14b21_archive_user_place(p.no, 'author-credits/notes');
+    } catch (e) { console.warn('[Zzz14-B21:USER-PLACE]', zzz_err_detail(e)); }
     await zzz5_6_load_user_tabs();
     zzz6f2_show_toast(`Tab "${t.label}" moved to trash. Anything placed in it is back in NOTES.`);
     return true;
@@ -41505,7 +41539,19 @@ async function zzz5_6_add_user_tab(name, parentTab) {
     if (error) throw error;
 
     await zzz5_6_load_user_tabs();
-    if (zzz5_6_tab_name_taken(nm)) return true;
+    if (zzz5_6_tab_name_taken(nm)) {
+
+      const t = zzz5_6UserTabs.find(x => zzz10v1_normalize(String(x.label || '').trim()) === zzz10v1_normalize(nm));
+      if (t) {
+        try {
+          const no = await zzz14b21_create_user_place('author-credits/notes', nm, t.key);
+          zzz6f2_show_toast(`Tab ${nm} created · #${no}.`, 'ok');
+        } catch (e) {
+          zzz_user_error('The tab is saved, but its place number could not be created - try again later.', e, '[Zzz14-B21:USER-PLACE]');
+        }
+      }
+      return true;
+    }
     zzz6f2_show_toast('Tab not saved - it is not in the table.', 'warn');
     return false;
   } catch (e) {
@@ -46944,6 +46990,48 @@ async function zzz14b21_create_tab(ws, wsNo, name) {
   await zzz14b21_put(newId, 'ws:' + ws.slug, wsNo);
   return newId;
 }
+
+async function zzz14b21_create_user_place(parentSlug, name, oldKey) {
+  const me = String(zzz0r1_get_current_username() || '').trim();
+  const nm = String(name || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+  if (!me || !nm) return null;
+  const parentNo = await zzz14b21_place_no(parentSlug);
+  if (!parentNo) throw new Error('place ' + parentSlug + ' not found');
+  const { data: newId, error: e1 } = await sb.rpc('get_next_entry_id');
+  if (e1) throw e1;
+  const slug = nm.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'tab';
+  const fields = { r3: parentSlug.split('/').pop().toUpperCase(), r4: me, r5: 'place', r7: '', r9: nm,
+    r10: 'place:user/' + parentSlug + '/' + slug + ' key=' + oldKey, r13: '#en=' + parentNo, tags: 'place' };
+  const { error: e2 } = await sb.from('verso_entries').insert([{ entry_id: newId, r1: '', fields_json: JSON.stringify(fields),
+    content_hash: null, entry_date: zzz6f14_format_today(), username: me, zzz_session_id: zzz_sessionId, updated_at: new Date().toISOString() }]);
+  if (e2) throw e2;
+  await zzz14b21_put(newId, 'ws:' + parentSlug, parentNo);
+  return newId;
+}
+
+async function zzz14b21_load_user_places(parentSlug) {
+  const me = String(zzz0r1_get_current_username() || '').trim();
+  if (!me) return [];
+  const { data, error } = await sb.from('verso_placements').select('entry_id, created_at')
+    .eq('username', me).eq('tab_id', 'ws:' + parentSlug).is('removed_at', null).order('created_at', { ascending: true });
+  if (error) throw error;
+  const ids = (data || []).map(r => Number(r.entry_id)).filter(Boolean);
+  if (!ids.length) return [];
+  const { data: rows, error: e2 } = await sb.from('verso_entries').select('entry_id, fields_json, is_trashed').in('entry_id', ids);
+  if (e2) throw e2;
+  const byId = {}; (rows || []).forEach(r => { byId[r.entry_id] = r; });
+  return ids.map(id => byId[id]).filter(r => r && !r.is_trashed).map(r => {
+    const f = zzz_parse_fields_json(r) || {};
+    const key = String(f.r10 || '').split(' key=')[1] || '';
+    return { no: r.entry_id, key: key, label: String(f.r9 || '') };
+  }).filter(t => t.key);
+}
+
+async function zzz14b21_archive_user_place(placeNo, parentSlug) {
+  if (!placeNo) return;
+  await zzz14b21_take_out(placeNo, 'ws:' + parentSlug);
+}
+
 async function open_zzz14b21_workspace(slug) {
   const ws = ZZZ14B21_WS.find(w => w.slug === slug);
   const host = document.getElementById('versoWorkspaceSection');
@@ -47155,7 +47243,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-02 02:47';
+const VERSO_BUILD = '2026-11-02 09:49';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
