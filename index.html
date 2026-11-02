@@ -730,6 +730,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     color: #ffffff !important;
   }
   
+  .zzz14b21-subs-chip-place { background-color: #000 !important; border-color: #d4af37 !important; color: #d4af37 !important; }   
   .zzz6-f8-subs-chip-tab {
     background-color: #dc2626 !important;
     border-color: #b91c1c !important;
@@ -19228,6 +19229,8 @@ function zzz2r38_finalize_subs_placement(subsRaw) {
 
 function zzz2r38_subs_chip_display(sub) {
 
+  const placeMatch = /^place:(#\d+.*)$/.exec(sub);
+  if (placeMatch) return { text: placeMatch[1], cssClass: 'zzz14b21-subs-chip-place', locked: true, label: 'ref-PLACE' };
   const placementMatch = ZZZ2R38_SUBS_PLACEMENT_PATTERN.exec(sub);
   if (placementMatch) return { text: placementMatch[1], cssClass: 'zzz6-f8-subs-chip-placement', locked: true, label: 'ref-TAB' };
   const tabMatch = ZZZ2R38_SUBS_TAB_PATTERN.exec(sub);
@@ -19573,7 +19576,8 @@ function zzz6f8_open_subs_context_modal(id) {
     let openCount = 0;
 
     const refKey = zzz1cn_openadd_key(zzz1cn_current_entry_key());
-    const shown = subs.concat(zzz1cn_refs_get(refKey).filter(c => subs.indexOf(c) < 0));
+    const shown = subs.concat(zzz1cn_refs_get(refKey).filter(c => subs.indexOf(c) < 0))
+      .concat(zzz14b21_place_chips_get(refKey));
     shown.forEach((sub) => {
 
       const isOpenChip = !zzz2r38_subs_chip_display(sub).locked;
@@ -19591,6 +19595,7 @@ function zzz6f8_open_subs_context_modal(id) {
     zzz1cn_subs_note_load(shown.join(', '), () => renderChips(false)).catch(() => {});
 
     zzz1cn_refs_load(refKey, () => renderChips(false)).catch(() => {});
+    zzz14b21_place_chips_load(refKey, () => renderChips(false)).catch(() => {});
 
     const input = document.createElement('input');
     input.type = 'text';
@@ -30191,17 +30196,18 @@ function zzz14cs_build_pin_section(win, rows, closeWin) {
   folder('CONTACTS', 'Users, groups and teams of the comm module.', ZZZ5W5CM_CONTACT_TABS.filter(t => contactKeys.indexOf(t.key) >= 0), true);
   folder('TABS', 'The other tabs of the comm module.', ZZZ5W5CM_CONTACT_TABS.filter(t => contactKeys.indexOf(t.key) < 0), false);
 
-  sekcia('OTHER', 'Your own project or tab - the place is reserved, the target is not set yet.');
-  const other = document.createElement('button');
-  other.type = 'button';
-  other.textContent = 'MY PROJECT / TAB';
-  other.title = 'No target yet - say which project or tab this should pin into';
-  other.addEventListener('click', () => {
-    closeWin();
-    zzz6f2_show_toast('OTHER has no target yet - say which project or tab it should pin into '
-      + 'and it starts working like the rest.', 'warn');
-  });
-  win.appendChild(other);
+  sekcia('MY TABS & PROJECTS', 'Your own tabs and projects in PRESET, PROJECTS, PRIVATE and FAVORITES.');
+  const mySlot = document.createElement('div');
+  mySlot.className = 'zzz14cs-pin-folderbox';
+  mySlot.textContent = 'Loading…';
+  win.appendChild(mySlot);
+  zzz14b21_pin_targets().then(list => {
+    mySlot.textContent = '';
+    if (!list.length) { mySlot.textContent = 'No own tab yet - create one with + TAB in PRESET, PROJECTS, PRIVATE or FAVORITES.'; return; }
+    const realAppend = win.appendChild.bind(win);
+    win.appendChild = (el) => mySlot.appendChild(el);
+    try { folder('MY TABS', '', list, true); } finally { win.appendChild = realAppend; }
+  }).catch(e => { mySlot.textContent = 'Your tabs did not load - check the connection.'; console.warn('[Zzz14-B21:PIN-PLACES]', zzz_err_detail(e)); });
 
   const pin = document.createElement('button');
   pin.type = 'button';
@@ -30216,7 +30222,15 @@ function zzz14cs_build_pin_section(win, rows, closeWin) {
     e.stopPropagation();
     const kluce = Object.keys(vybrane);
     if (!kluce.length) { zzz6f2_show_toast('Tick where it should be pinned first.', 'warn'); return; }
-    kluce.forEach(k => rows.forEach(r => zzz5w5cm_attach_to_tab(k, r.__payload || zzz14cs_pair_payload(r))));
+
+    const placeKeys = kluce.filter(k => /^place:\d+$/.test(k));
+    if (placeKeys.length) {
+      const nums = rows.map(r => Number(r.entry_id)).filter(Boolean);
+      if (nums.length < rows.length) zzz6f2_show_toast('A CL without a record number cannot be placed in your tabs - save it first.', 'warn');
+      Promise.all(placeKeys.flatMap(k => nums.map(n => zzz14b21_put(n, 'p' + k.slice(6), Number(k.slice(6))))))
+        .catch(e => zzz_user_error('Pinning into your tab was not saved - check the connection and try again.', e, '[Zzz14-B21:PIN-PLACES]'));
+    }
+    kluce.filter(k => !/^place:\d+$/.test(k)).forEach(k => rows.forEach(r => zzz5w5cm_attach_to_tab(k, r.__payload || zzz14cs_pair_payload(r))));
     const kam = kluce.map(k => vybrane[k]).join(', ');
     closeWin();
     zzz6f2_show_toast(vela
@@ -47042,16 +47056,58 @@ async function zzz14b21_create_user_place(parentSlug, name, oldKey) {
   if (!me || !nm) return null;
   const parentNo = await zzz14b21_place_no(parentSlug);
   if (!parentNo) throw new Error('place ' + parentSlug + ' not found');
+  return zzz14b21_create_child_place(parentNo, 'ws:' + parentSlug, parentSlug.split('/').pop().toUpperCase(), nm,
+    'place:user/' + parentSlug + '/', ' key=' + oldKey);
+}
+
+async function zzz14b21_create_child_place(parentNo, parentTabId, parentLabel, name, r10Prefix, r10Extra, more) {
+  const me = String(zzz0r1_get_current_username() || '').trim();
+  const nm = String(name || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+  if (!me || !nm) return null;
   const { data: newId, error: e1 } = await sb.rpc('get_next_entry_id');
   if (e1) throw e1;
   const slug = nm.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'tab';
-  const fields = { r3: parentSlug.split('/').pop().toUpperCase(), r4: me, r5: 'place', r7: '', r9: nm,
-    r10: 'place:user/' + parentSlug + '/' + slug + ' key=' + oldKey, r13: '#en=' + parentNo, tags: 'place' };
+  const fields = Object.assign({ r3: parentLabel, r4: me, r5: 'place', r7: '', r9: nm,
+    r10: r10Prefix + slug + (r10Extra || ''), r13: '#en=' + parentNo, tags: 'place' }, more || {});
   const { error: e2 } = await sb.from('verso_entries').insert([{ entry_id: newId, r1: '', fields_json: JSON.stringify(fields),
     content_hash: null, entry_date: zzz6f14_format_today(), username: me, zzz_session_id: zzz_sessionId, updated_at: new Date().toISOString() }]);
   if (e2) throw e2;
-  await zzz14b21_put(newId, 'ws:' + parentSlug, parentNo);
+  await zzz14b21_put(newId, parentTabId, parentNo);
   return newId;
+}
+
+function zzz14b21_project_of(row) {
+  const f = zzz_parse_fields_json(row) || {};
+  const m = /\sproject=([^\s/]+)\/(\d+)/.exec(String(f.r10 || ''));
+  return m ? { owner: m[1], number: Number(m[2]) } : null;
+}
+async function zzz14b21_create_project(ws, wsNo, owner, number, name) {
+  const ow = String(owner || '').trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+  const n = Number(String(number || '').replace(/\D/g, ''));
+  if (!ow || !n) return null;
+  const nm = String(name || '').trim() || ('PROJECT ' + ow + ' #' + n);
+  return zzz14b21_create_child_place(wsNo, 'ws:' + ws.slug, ws.label, nm, 'place:user/' + ws.slug + '/',
+    ' project=' + ow + '/' + n, { r2: String(n) });
+}
+
+async function zzz14b21_pin_targets() {
+  const me = String(zzz0r1_get_current_username() || '').trim();
+  if (!me) return [];
+  const { data, error } = await sb.from('verso_placements').select('entry_id, tab_id').eq('username', me)
+    .like('tab_id', 'ws:%').is('removed_at', null);
+  if (error) throw error;
+  const wsSlugs = ZZZ14B21_WS.map(w => w.slug);
+  const rows = (data || []).filter(r => wsSlugs.indexOf(String(r.tab_id).slice(3)) >= 0 || /^ws:pr\d+$/.test(r.tab_id));
+  const ids = Array.from(new Set(rows.map(r => Number(r.entry_id)).concat(rows.map(r => /^ws:pr(\d+)$/.exec(r.tab_id)).filter(Boolean).map(m => Number(m[1])))));
+  if (!ids.length) return [];
+  const { data: ents, error: e2 } = await sb.from('verso_entries').select('entry_id, fields_json, is_trashed').in('entry_id', ids);
+  if (e2) throw e2;
+  const nm = {}; (ents || []).forEach(e => { if (!e.is_trashed) nm[e.entry_id] = String((zzz_parse_fields_json(e) || {}).r9 || ('#' + e.entry_id)); });
+  return rows.filter(r => nm[r.entry_id]).map(r => {
+    const pr = /^ws:pr(\d+)$/.exec(r.tab_id);
+    const parent = pr ? (nm[Number(pr[1])] || ('#' + pr[1])) : (ZZZ14B21_WS.find(w => 'ws:' + w.slug === r.tab_id) || {}).label;
+    return { key: 'place:' + r.entry_id, label: parent + ' › ' + nm[r.entry_id] + ' #' + r.entry_id };
+  }).sort((a, b) => a.label.localeCompare(b.label));
 }
 
 async function zzz14b21_load_user_places(parentSlug) {
@@ -47075,6 +47131,28 @@ async function zzz14b21_load_user_places(parentSlug) {
 async function zzz14b21_archive_user_place(placeNo, parentSlug) {
   if (!placeNo) return;
   await zzz14b21_take_out(placeNo, 'ws:' + parentSlug);
+}
+
+const zzz14b21PlaceChips = {};
+function zzz14b21_place_chips_get(entryKey) { return zzz14b21PlaceChips[String(entryKey || '')] || []; }
+async function zzz14b21_place_chips_load(entryKey, onChange) {
+  const k = /^\d+$/.test(String(entryKey || '').trim()) ? String(entryKey).trim() : '';
+  const me = String(zzz0r1_get_current_username() || '').trim();
+  if (!k || !me) return;
+  const { data, error } = await sb.from('verso_placements').select('place_id').eq('username', me).eq('entry_id', Number(k))
+    .is('removed_at', null).not('place_id', 'is', null);
+  if (error) throw error;
+  const ids = Array.from(new Set((data || []).map(r => Number(r.place_id)).filter(Boolean)));
+  let chips = [];
+  if (ids.length) {
+    const { data: rows, error: e2 } = await sb.from('verso_entries').select('entry_id, fields_json').in('entry_id', ids);
+    if (e2) throw e2;
+    const nm = {}; (rows || []).forEach(r => { nm[r.entry_id] = String((zzz_parse_fields_json(r) || {}).r9 || ''); });
+    chips = ids.map(id => 'place:#' + id + (nm[id] ? ' ' + nm[id] : ''));
+  }
+  const before = (zzz14b21PlaceChips[k] || []).join('|');
+  zzz14b21PlaceChips[k] = chips;
+  if (before !== chips.join('|') && typeof onChange === 'function') onChange();
 }
 
 async function zzz14b21_slug_to_no(slug) {
@@ -47185,7 +47263,7 @@ async function open_zzz14b21_workspace(slug) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'zzz14b21-tab' + (t.entry_id === zzz14b21ActiveTab[slug] ? ' is-on' : '');
-    b.textContent = (zzz14b21_fields(t).r9 || ('#' + t.entry_id));
+    b.textContent = (zzz14b21_project_of(t) ? '\u25c6 ' : '') + (zzz14b21_fields(t).r9 || ('#' + t.entry_id));
     b.title = 'verso:en=' + t.entry_id;
     b.addEventListener('click', () => { zzz14b21ActiveTab[slug] = t.entry_id; reopen(); });
     tabRow.appendChild(b);
@@ -47220,6 +47298,31 @@ async function open_zzz14b21_workspace(slug) {
   };
   mvOk.addEventListener('click', doMove);
   mvIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') doMove(); });
+
+  const prBox = document.createElement('div'); prBox.className = 'zzz14b21-add'; prBox.hidden = true; box.insertBefore(prBox, list);
+  const prOwner = document.createElement('input'); prOwner.type = 'text'; prOwner.placeholder = 'PROJECT OWNER';
+  prOwner.value = String(zzz0r1_get_current_username() || '').toLowerCase(); prOwner.style.maxWidth = '34%';
+  const prNum = document.createElement('input'); prNum.type = 'text'; prNum.inputMode = 'numeric'; prNum.placeholder = 'PROJECT #'; prNum.style.maxWidth = '22%';
+  const prOk = document.createElement('button'); prOk.type = 'button'; prOk.textContent = '+ PROJECT';
+  prBox.appendChild(prOwner); prBox.appendChild(prNum); prBox.appendChild(prOk);
+  plus.addEventListener('click', () => { prBox.hidden = addTab.hidden; });
+  const doProject = async () => {
+    const ow = prOwner.value.trim(), n = Number(String(prNum.value).replace(/\D/g, ''));
+    if (!ow || !n) { zzz6f2_show_toast('Type the PROJECT OWNER and the PROJECT NUMBER.', 'warn'); return; }
+    if (tabs.some(t => { const p = zzz14b21_project_of(t); return p && p.owner === ow.toLowerCase() && p.number === n; })) {
+      zzz6f2_show_toast('This project is already here.', 'warn'); return;
+    }
+    prOk.disabled = true;
+    try {
+      const id = await zzz14b21_create_project(ws, wsNo, ow, n, inp.value.trim() || '');
+      if (id) { zzz14b21ActiveTab[slug] = id; zzz6f2_show_toast('Project ' + ow + ' #' + n + ' added · #' + id + '. Pin what you need into its tabs.'); }
+      reopen();
+    } catch (e) {
+      zzz_user_error('Project not added - check the connection and try again.', e, '[Zzz14-B21:PROJECT-WS]');
+      prOk.disabled = false;
+    }
+  };
+  prOk.addEventListener('click', doProject);
   const doCreate = async () => {
     const nm = inp.value.trim();
     if (!nm) return;
@@ -47239,7 +47342,52 @@ async function open_zzz14b21_workspace(slug) {
   };
   ok.addEventListener('click', doCreate);
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') doCreate(); });
-  const tabNo = zzz14b21ActiveTab[slug];
+  let tabNo = zzz14b21ActiveTab[slug];
+
+  const activeRow = tabs.find(t => t.entry_id === tabNo);
+  const proj = activeRow ? zzz14b21_project_of(activeRow) : null;
+  if (proj) {
+    const sub = document.createElement('div'); sub.className = 'zzz14b21-tabs'; box.insertBefore(sub, list);
+    const subAdd = document.createElement('div'); subAdd.className = 'zzz14b21-add'; subAdd.hidden = true; box.insertBefore(subAdd, list);
+    const info = document.createElement('div'); info.className = 'zzz14b21-link';
+    info.textContent = 'PROJECT ' + proj.owner + ' #' + proj.number + ' · only what you pin here - the whole project is in DATABASE';
+    box.insertBefore(info, sub);
+    let subs = [];
+    try { subs = await zzz14b21_load_target('ws:pr' + tabNo); } catch (e) { console.warn('[Zzz14-B21:PROJECT-WS]', zzz_err_detail(e)); }
+    const sk = 'pr' + tabNo;
+    if (zzz14b21ActiveTab[sk] && !subs.some(t => t.entry_id === zzz14b21ActiveTab[sk])) zzz14b21ActiveTab[sk] = null;
+    const all = document.createElement('button'); all.type = 'button';
+    all.className = 'zzz14b21-tab' + (!zzz14b21ActiveTab[sk] ? ' is-on' : ''); all.textContent = 'PROJECT';
+    all.addEventListener('click', () => { zzz14b21ActiveTab[sk] = null; reopen(); });
+    sub.appendChild(all);
+    subs.forEach(t => {
+      const b = document.createElement('button'); b.type = 'button';
+      b.className = 'zzz14b21-tab' + (t.entry_id === zzz14b21ActiveTab[sk] ? ' is-on' : '');
+      b.textContent = zzz14b21_fields(t).r9 || ('#' + t.entry_id); b.title = 'verso:en=' + t.entry_id;
+      b.addEventListener('click', () => { zzz14b21ActiveTab[sk] = t.entry_id; reopen(); });
+      sub.appendChild(b);
+    });
+    const sp = document.createElement('button'); sp.type = 'button'; sp.className = 'zzz14b21-tab'; sp.textContent = '+ TAB';
+    sp.addEventListener('click', () => { subAdd.hidden = !subAdd.hidden; if (!subAdd.hidden) sIn.focus(); });
+    sub.appendChild(sp);
+    const sIn = document.createElement('input'); sIn.type = 'text'; sIn.placeholder = 'New project tab name'; sIn.maxLength = 40;
+    const sOk = document.createElement('button'); sOk.type = 'button'; sOk.textContent = 'OK';
+    subAdd.appendChild(sIn); subAdd.appendChild(sOk);
+    const doSub = async () => {
+      const nm = sIn.value.trim(); if (!nm) return;
+      if (subs.some(t => String(zzz14b21_fields(t).r9 || '').toLowerCase() === nm.toLowerCase())) { zzz6f2_show_toast('There is already a tab with this name here.', 'warn'); return; }
+      sOk.disabled = true;
+      try {
+        const id = await zzz14b21_create_child_place(tabNo, 'ws:pr' + tabNo, String(zzz14b21_fields(activeRow).r9 || 'PROJECT'), nm,
+          'place:user/' + slug + '/project-' + proj.owner + '-' + proj.number + '/', '');
+        if (id) { zzz14b21ActiveTab[sk] = id; zzz6f2_show_toast('Tab ' + nm + ' created · #' + id + '.'); }
+        reopen();
+      } catch (e) { zzz_user_error('Tab not created - check the connection and try again.', e, '[Zzz14-B21:PROJECT-WS]'); sOk.disabled = false; }
+    };
+    sOk.addEventListener('click', doSub);
+    sIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSub(); });
+    if (zzz14b21ActiveTab[sk]) tabNo = zzz14b21ActiveTab[sk];
+  }
   if (!tabNo) {
     const em = document.createElement('div'); em.className = 'zzz14b21-empty';
     em.textContent = 'Empty workspace - create a tab with + TAB.';
@@ -47380,7 +47528,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-02 11:14';
+const VERSO_BUILD = '2026-11-02 11:20';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
