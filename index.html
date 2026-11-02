@@ -30162,52 +30162,70 @@ function zzz14cs_build_pin_section(win, rows, closeWin) {
   sekcia('PIN', vela
     ? `Pin these ${rows.length} entry lines to one or more places. They stay where they are.`
     : 'Pin this record to one or more places. It stays where it is.');
-  sekcia('COMM SPACE', 'The comm CRM on the screen to the right.');
-  ciel({ key: ZZZ14CS_SPACE_KEY, label: 'COMM SPACE' });
 
-  const folder = (title, note, tabs, open) => {
+  const groupStack = [];
+  const regKey = (k) => groupStack.forEach(g => g.push(k));
+  const cielInGroup = (t) => { regKey(t.key); return ciel(t); };
+  const group = (title, open, fill) => {
     const h = document.createElement('button');
     h.type = 'button';
     h.className = 'zzz14cs-pin-folder';
     const box = document.createElement('div');
     box.className = 'zzz14cs-pin-folderbox';
+    box.style.paddingLeft = (groupStack.length ? 10 : 0) + 'px';
+    const keys = [];
     let isOpen = !!open;
-    const paints = [];
     const paintHead = () => {
-      const n = tabs.filter(t => vybrane[t.key]).length;
-      h.textContent = `${isOpen ? '\u25be' : '\u25b8'} ${title}${n ? ` \u00b7 ${n} ticked` : ''}`;
+      const n = keys.filter(k => vybrane[k]).length;
+      h.textContent = `${isOpen ? '▾' : '▸'} ${title}${n ? ` · ${n} ticked` : ''}`;
       box.style.display = isOpen ? '' : 'none';
     };
     h.addEventListener('click', (e) => { e.stopPropagation(); isOpen = !isOpen; paintHead(); });
     win.appendChild(h);
-    if (note) { const p2 = document.createElement('div'); p2.className = 'zzz14cs-move-note'; p2.textContent = note; win.appendChild(p2); }
     win.appendChild(box);
-    const realAppend = win.appendChild.bind(win);
-    tabs.forEach(t => {
+    const run = (fn) => {
+      const realAppend = win.appendChild;
       win.appendChild = (el) => box.appendChild(el);
-      const pt = ciel(t);
-      win.appendChild = realAppend;
-      paints.push(pt);
-    });
+      groupStack.push(keys);
+      try { fn(); } finally { groupStack.pop(); win.appendChild = realAppend; }
+      paintHead();
+    };
     box.addEventListener('click', () => setTimeout(paintHead, 0), true);
+    if (fill) run(fill);
     paintHead();
+    return { box, run, keys, paintHead, parents: groupStack.slice() };
   };
   const contactKeys = ['users', 'groups', 'projects'];
-  folder('CONTACTS', 'Users, groups and teams of the comm module.', ZZZ5W5CM_CONTACT_TABS.filter(t => contactKeys.indexOf(t.key) >= 0), true);
-  folder('TABS', 'The other tabs of the comm module.', ZZZ5W5CM_CONTACT_TABS.filter(t => contactKeys.indexOf(t.key) < 0), false);
+  group('ACTUAL COMM', true, () => {
+    cielInGroup({ key: ZZZ14CS_SPACE_KEY, label: 'COMM SPACE' });
+    group('CONTACTS', true, () => ZZZ5W5CM_CONTACT_TABS.filter(t => contactKeys.indexOf(t.key) >= 0).forEach(cielInGroup));
+    group('TABS', false, () => ZZZ5W5CM_CONTACT_TABS.filter(t => contactKeys.indexOf(t.key) < 0).forEach(cielInGroup));
+  });
 
-  sekcia('MY TABS & PROJECTS', 'Your own tabs and projects in PRESET, PROJECTS, PRIVATE and FAVORITES.');
-  const mySlot = document.createElement('div');
-  mySlot.className = 'zzz14cs-pin-folderbox';
-  mySlot.textContent = 'Loading…';
-  win.appendChild(mySlot);
-  zzz14b21_pin_targets().then(list => {
-    mySlot.textContent = '';
-    if (!list.length) { mySlot.textContent = 'No own tab yet - create one with + TAB in PRESET, PROJECTS, PRIVATE or FAVORITES.'; return; }
-    const realAppend = win.appendChild.bind(win);
-    win.appendChild = (el) => mySlot.appendChild(el);
-    try { folder('MY TABS', '', list, true); } finally { win.appendChild = realAppend; }
-  }).catch(e => { mySlot.textContent = 'Your tabs did not load - check the connection.'; console.warn('[Zzz14-B21:PIN-PLACES]', zzz_err_detail(e)); });
+  ZZZ14B21_WS.forEach(w => {
+    const g = group(w.label, false, null);
+    const wait = document.createElement('div'); wait.className = 'zzz14cs-move-note'; wait.textContent = 'Loading…';
+    g.box.appendChild(wait);
+    zzz14b21_pin_tree(w.slug).then(items => {
+      wait.remove();
+
+      g.run(() => {
+        if (!items.length) {
+          const em = document.createElement('div'); em.className = 'zzz14cs-move-note';
+          em.textContent = 'No own tab here yet - create one with + TAB in ' + w.label + '.';
+          win.appendChild(em);
+          return;
+        }
+        items.forEach(it => {
+          if (!it.project) { cielInGroup({ key: 'place:' + it.no, label: it.name }); return; }
+          group('◆ ' + it.name, false, () => {
+            cielInGroup({ key: 'place:' + it.no, label: 'PROJECT' });
+            it.subs.forEach(sb2 => cielInGroup({ key: 'place:' + sb2.no, label: sb2.name }));
+          });
+        });
+      });
+    }).catch(e => { wait.textContent = 'Your tabs did not load - check the connection.'; console.warn('[Zzz14-B21:PIN-PLACES]', zzz_err_detail(e)); });
+  });
 
   const pin = document.createElement('button');
   pin.type = 'button';
@@ -47090,24 +47108,25 @@ async function zzz14b21_create_project(ws, wsNo, owner, number, name) {
     ' project=' + ow + '/' + n, { r2: String(n) });
 }
 
-async function zzz14b21_pin_targets() {
+async function zzz14b21_pin_tree(wsSlug) {
   const me = String(zzz0r1_get_current_username() || '').trim();
   if (!me) return [];
-  const { data, error } = await sb.from('verso_placements').select('entry_id, tab_id').eq('username', me)
-    .like('tab_id', 'ws:%').is('removed_at', null);
+  const { data, error } = await sb.from('verso_placements').select('entry_id, tab_id, created_at').eq('username', me)
+    .like('tab_id', 'ws:%').is('removed_at', null).order('created_at', { ascending: true });
   if (error) throw error;
-  const wsSlugs = ZZZ14B21_WS.map(w => w.slug);
-  const rows = (data || []).filter(r => wsSlugs.indexOf(String(r.tab_id).slice(3)) >= 0 || /^ws:pr\d+$/.test(r.tab_id));
-  const ids = Array.from(new Set(rows.map(r => Number(r.entry_id)).concat(rows.map(r => /^ws:pr(\d+)$/.exec(r.tab_id)).filter(Boolean).map(m => Number(m[1])))));
-  if (!ids.length) return [];
+  const rows = data || [];
+  const top = rows.filter(r => r.tab_id === 'ws:' + wsSlug).map(r => Number(r.entry_id));
+  if (!top.length) return [];
+  const subRows = rows.filter(r => { const m = /^ws:pr(\d+)$/.exec(r.tab_id); return m && top.indexOf(Number(m[1])) >= 0; });
+  const ids = Array.from(new Set(top.concat(subRows.map(r => Number(r.entry_id)))));
   const { data: ents, error: e2 } = await sb.from('verso_entries').select('entry_id, fields_json, is_trashed').in('entry_id', ids);
   if (e2) throw e2;
-  const nm = {}; (ents || []).forEach(e => { if (!e.is_trashed) nm[e.entry_id] = String((zzz_parse_fields_json(e) || {}).r9 || ('#' + e.entry_id)); });
-  return rows.filter(r => nm[r.entry_id]).map(r => {
-    const pr = /^ws:pr(\d+)$/.exec(r.tab_id);
-    const parent = pr ? (nm[Number(pr[1])] || ('#' + pr[1])) : (ZZZ14B21_WS.find(w => 'ws:' + w.slug === r.tab_id) || {}).label;
-    return { key: 'place:' + r.entry_id, label: parent + ' › ' + nm[r.entry_id] + ' #' + r.entry_id };
-  }).sort((a, b) => a.label.localeCompare(b.label));
+  const byId = {}; (ents || []).forEach(e => { if (!e.is_trashed) byId[e.entry_id] = e; });
+  const name = (id) => String((zzz_parse_fields_json(byId[id]) || {}).r9 || ('#' + id));
+  return top.filter(id => byId[id]).map(id => ({
+    no: id, name: name(id), project: !!zzz14b21_project_of(byId[id]),
+    subs: subRows.filter(r => r.tab_id === 'ws:pr' + id && byId[r.entry_id]).map(r => ({ no: Number(r.entry_id), name: name(Number(r.entry_id)) }))
+  }));
 }
 
 async function zzz14b21_load_user_places(parentSlug) {
@@ -47145,10 +47164,29 @@ async function zzz14b21_place_chips_load(entryKey, onChange) {
   const ids = Array.from(new Set((data || []).map(r => Number(r.place_id)).filter(Boolean)));
   let chips = [];
   if (ids.length) {
-    const { data: rows, error: e2 } = await sb.from('verso_entries').select('entry_id, fields_json').in('entry_id', ids);
-    if (e2) throw e2;
-    const nm = {}; (rows || []).forEach(r => { nm[r.entry_id] = String((zzz_parse_fields_json(r) || {}).r9 || ''); });
-    chips = ids.map(id => 'place:#' + id + (nm[id] ? ' ' + nm[id] : ''));
+
+    const info = {};
+    let want = ids.slice();
+    for (let lvl = 0; lvl < 6 && want.length; lvl++) {
+      const { data: rows, error: e2 } = await sb.from('verso_entries').select('entry_id, fields_json').in('entry_id', want);
+      if (e2) throw e2;
+      const next = [];
+      (rows || []).forEach(r => {
+        const f = zzz_parse_fields_json(r) || {};
+        const parent = Number((/#en=(\d+)/.exec(String(f.r13 || '')) || [])[1] || 0);
+        const isRoot = /^place:verso(\s|$)/.test(String(f.r10 || ''));
+        info[r.entry_id] = { name: String(f.r9 || ('#' + r.entry_id)), parent: isRoot ? 0 : parent, root: isRoot,
+          project: !!zzz14b21_project_of(r) };
+        if (parent && !isRoot && !info[parent] && next.indexOf(parent) < 0) next.push(parent);
+      });
+      want = next;
+    }
+    const pathOf = (id) => {
+      const parts = []; let cur = id, guard = 0;
+      while (cur && info[cur] && !info[cur].root && guard++ < 8) { parts.unshift((info[cur].project ? '\u25c6 ' : '') + info[cur].name); cur = info[cur].parent; }
+      return parts.join(' \u203a ');
+    };
+    chips = ids.map(id => 'place:#' + id + ' ' + (pathOf(id) || ('#' + id)));
   }
   const before = (zzz14b21PlaceChips[k] || []).join('|');
   zzz14b21PlaceChips[k] = chips;
@@ -47528,7 +47566,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-02 11:20';
+const VERSO_BUILD = '2026-11-02 11:43';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
