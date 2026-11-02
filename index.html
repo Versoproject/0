@@ -28999,6 +28999,7 @@ function zzz3d_tick() {
   const me = zzz3d_me();
   if (me !== zzz3dUser) { zzz3dUser = me; zzz3dLastLoad = 0; zzz3dCurId = ''; zzz3dCurIdx = 0; }
   try { zzz3tb_apply(); } catch (e) {}
+  try { zzz_kb_user_to_app(); } catch (e) {}
   if (!me || typeof sb === 'undefined' || !sb) { zzz3d_render(); return; }
   try { zzz_rx_pull(); } catch (e) {}
   if (!zzz5w8_is_open() && !zzz5w8State.loading && Date.now() - zzz3dLastLoad > ZZZ3D_RELOAD_MS) {
@@ -38835,14 +38836,15 @@ const ZZZ_RX_LS = 'zzz_repair_ex', ZZZ_RX_IN = 'verso_repair_ops_in', ZZZ_RX_MAX
 let zzzRepairEx = null, zzzRxPulledFor = '', zzzRxBusy = false;
 function zzz_rx_fold(w) { return String(w || '').toLowerCase().normalize('NFD').replace(/\p{M}+/gu, ''); }
 function zzz_rx_set() {
-  if (!zzzRepairEx) { zzzRepairEx = new Set(); try { (JSON.parse(localStorage.getItem(ZZZ_RX_LS) || '[]') || []).forEach(w => { if (/^[a-z]{2,40}$/.test(w)) zzzRepairEx.add(w); }); } catch (e) {} }
+  const uk = zzz_ukey(ZZZ_RX_LS);
+  if (!zzzRepairEx || zzzRepairEx._k !== uk) { zzzRepairEx = new Set(); zzzRepairEx._k = uk; try { (JSON.parse(localStorage.getItem(uk) || '[]') || []).forEach(w => { if (/^[a-z]{2,40}$/.test(w)) zzzRepairEx.add(w); }); } catch (e) {} }
   return zzzRepairEx;
 }
 function zzz_rx_has(w) { return zzz_rx_set().has(zzz_rx_fold(w)); }
 function zzz_rx_list() { return Array.from(zzz_rx_set()).sort(); }
 async function zzz_rx_save(upto) {
   const l = zzz_rx_list().slice(-ZZZ_RX_MAX);
-  try { localStorage.setItem(ZZZ_RX_LS, JSON.stringify(l)); } catch (e) {}
+  try { localStorage.setItem(zzz_ukey(ZZZ_RX_LS), JSON.stringify(l)); } catch (e) {}
   const u = typeof zzz_dev_me === 'function' ? zzz_dev_me() : '';
   if (u && typeof sb !== 'undefined' && sb) {
     try {
@@ -38879,7 +38881,7 @@ async function zzz_rx_pull() {
     if (error) return;
     zzzRxPulledFor = u;
     const srv = data && data[0] && data[0].prefs && Array.isArray(data[0].prefs.ex) ? data[0].prefs.ex : null;
-    if (srv) { zzzRepairEx = new Set(srv.filter(w => /^[a-z]{2,40}$/.test(w))); }
+    if (srv) { zzzRepairEx = new Set(srv.filter(w => /^[a-z]{2,40}$/.test(w))); zzzRepairEx._k = zzz_ukey(ZZZ_RX_LS); }
     let ops = [], raw = '';
     try { raw = localStorage.getItem(ZZZ_RX_IN) || ''; localStorage.removeItem(ZZZ_RX_IN); } catch (e) {}
     if (raw) {
@@ -38891,7 +38893,7 @@ async function zzz_rx_pull() {
     }
     let upto = 0;
     ops.sort((a, b) => a.t - b.t).forEach(o => { const f = zzz_rx_fold(o.w); upto = Math.max(upto, Number(o.t)); if (!/^[a-z]{2,40}$/.test(f)) return; if (o.o === '+') zzz_rx_set().add(f); else zzz_rx_set().delete(f); });
-    if (ops.length || !srv) await zzz_rx_save(upto); else { try { localStorage.setItem(ZZZ_RX_LS, JSON.stringify(zzz_rx_list())); } catch (e) {} zzz_rx_to_app(0); }
+    if (ops.length || !srv) await zzz_rx_save(upto); else { try { localStorage.setItem(zzz_ukey(ZZZ_RX_LS), JSON.stringify(zzz_rx_list())); } catch (e) {} zzz_rx_to_app(0); }
   } catch (e) {} finally { zzzRxBusy = false; }
 }
 
@@ -39185,7 +39187,7 @@ async function zzz_native_launch(url) {
 
 function zzz_native_cmd_able(url) {
   try {
-    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex)\b/.test(String(url || 'intent://quick/quiet'))
+    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user)\b/.test(String(url || 'intent://quick/quiet'))
       && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator;
   } catch (e) { return false; }
 }
@@ -47676,7 +47678,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-02 14:16';
+const VERSO_BUILD = '2026-11-02 14:24';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -49160,10 +49162,46 @@ function zzz_ctx_login_refusal() {
 
 const ZZZ_CLIP_KEY = 'zzz_clip_hist';
 const ZZZ_CLIP_MAX = 10;
-function zzz_clip_list() { if (!zzz_layer_allows('clipHistory')) return []; try { const a = JSON.parse(localStorage.getItem(ZZZ_CLIP_KEY) || '[]'); return Array.isArray(a) ? a.filter(x => typeof x === 'string') : []; } catch (e) { return []; } }
+
+function zzz_ukey(base) {
+  let u = ''; try { u = String(zzz0r1_get_current_username() || '').trim().toLowerCase(); } catch (e) {}
+  const k = base + ':' + (u || '-');
+  if (u) {
+    try {
+      const ck = 'zzz_ukey_claim:' + base;
+      if (localStorage.getItem(ck) === null) {
+        const old = localStorage.getItem(base);
+        if (old !== null && localStorage.getItem(k) === null) localStorage.setItem(k, old);
+        localStorage.removeItem(base); localStorage.setItem(ck, u);
+      }
+    } catch (e) {}
+  }
+  return k;
+}
+function zzz_user_hash16(u) {
+  try { return Array.from(zzz_sha256_bytes(new TextEncoder().encode('verso-user:' + u))).slice(0, 8).map(x => x.toString(16).padStart(2, '0')).join(''); } catch (e) { return ''; }
+}
+const ZZZ_KB_USER_APP = 164;
+let zzzKbUserSent = null;
+async function zzz_kb_user_to_app() {
+  try {
+    if (!zzz14b17_in_app() || zzz14b17_app_code() < ZZZ_KB_USER_APP) return;
+    let u = ''; try { u = String(zzz0r1_get_current_username() || '').trim().toLowerCase(); } catch (e) {}
+    if (typeof zzz10dm_foreign === 'function' && zzz10dm_foreign()) u = '';
+    const h = u ? zzz_user_hash16(u) : '';
+    if (u && !h) return;
+    if (zzzKbUserSent === h) return;
+    const url = 'intent://quick/user?u=' + h;
+    if (!zzz_native_cmd_able(url)) return;
+    zzz_native_cmd(await zzz_cmd_sign(url));
+    zzzKbUserSent = h;
+  } catch (e) {}
+}
+
+function zzz_clip_list() { if (!zzz_layer_allows('clipHistory')) return []; try { const a = JSON.parse(localStorage.getItem(zzz_ukey(ZZZ_CLIP_KEY)) || '[]'); return Array.isArray(a) ? a.filter(x => typeof x === 'string') : []; } catch (e) { return []; } }
 function zzz_clip_clear() {
-  try { localStorage.removeItem(ZZZ_CLIP_KEY); } catch (e) {}
-  try { if (typeof zzz10dmOrig !== 'undefined') zzz10dmOrig.remove.call(window.localStorage, ZZZ_CLIP_KEY); } catch (e) {}
+  try { localStorage.removeItem(ZZZ_CLIP_KEY); localStorage.removeItem(zzz_ukey(ZZZ_CLIP_KEY)); } catch (e) {}
+  try { if (typeof zzz10dmOrig !== 'undefined') zzz10dmOrig.remove.call(window.localStorage, zzz_ukey(ZZZ_CLIP_KEY)); } catch (e) {}
 }
 function zzz_clip_secret_now() {
   const a = document.activeElement;
@@ -49178,7 +49216,7 @@ function zzz_clip_remember(txt) {
     if (!zzz_layer_allows('clipHistory')) return;
     const a = zzz_clip_list().filter(x => x !== txt);
     a.unshift(txt);
-    localStorage.setItem(ZZZ_CLIP_KEY, JSON.stringify(a.slice(0, ZZZ_CLIP_MAX)));
+    localStorage.setItem(zzz_ukey(ZZZ_CLIP_KEY), JSON.stringify(a.slice(0, ZZZ_CLIP_MAX)));
   } catch (e) {}
 }
 try {
@@ -49896,12 +49934,20 @@ function zzz_media_idb() {
     catch (e) { rej(e); }
   });
 }
+
+function zzz_media_fkey(link) { let u = ''; try { u = String(zzz0r1_get_current_username() || '').trim().toLowerCase(); } catch (e) {} return (u || '-') + '|' + link; }
+function zzz_media_legacy_mine() {
+  let u = ''; try { u = String(zzz0r1_get_current_username() || '').trim().toLowerCase(); } catch (e) {}
+  if (!u) return false;
+  try { const ck = 'zzz_ukey_claim:media_files'; if (localStorage.getItem(ck) === null) localStorage.setItem(ck, u); return localStorage.getItem(ck) === u; } catch (e) { return false; }
+}
 async function zzz_media_file_get(link) {
-  try { const db = await zzz_media_idb(); return await new Promise(res => { const q = db.transaction('files').objectStore('files').get(link); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); }
+  const get = async (k) => { const db = await zzz_media_idb(); return await new Promise(res => { const q = db.transaction('files').objectStore('files').get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); };
+  try { return (await get(zzz_media_fkey(link))) || (zzz_media_legacy_mine() ? await get(link) : null); }
   catch (e) { return null; }
 }
 async function zzz_media_files_load() {
-  try { const db = await zzz_media_idb(); await new Promise(res => { const q = db.transaction('files').objectStore('files').getAllKeys(); q.onsuccess = () => { zzzMediaFiles.clear(); (q.result || []).forEach(k => zzzMediaFiles.add(k)); res(); }; q.onerror = () => res(); }); }
+  try { const db = await zzz_media_idb(); await new Promise(res => { const q = db.transaction('files').objectStore('files').getAllKeys(); q.onsuccess = () => { zzzMediaFiles.clear(); const pre = zzz_media_fkey(''), leg = zzz_media_legacy_mine(); (q.result || []).forEach(k => { k = String(k); if (k.startsWith(pre)) zzzMediaFiles.add(k.slice(pre.length)); else if (leg && !/^[^|]{1,40}\|/.test(k)) zzzMediaFiles.add(k); }); res(); };   q.onerror = () => res(); }); }
   catch (e) {}
 }
 function zzz_media_pick_file(it, done) {
@@ -49912,7 +49958,7 @@ function zzz_media_pick_file(it, done) {
     const f = inp.files && inp.files[0]; if (!f) return;
     try {
       const db = await zzz_media_idb();
-      await new Promise((res, rej) => { const t = db.transaction('files', 'readwrite'); t.objectStore('files').put(f, it.link); t.oncomplete = res; t.onerror = () => rej(t.error); });
+      await new Promise((res, rej) => { const t = db.transaction('files', 'readwrite'); t.objectStore('files').put(f, zzz_media_fkey(it.link)); t.oncomplete = res; t.onerror = () => rej(t.error); });
       zzzMediaFiles.add(it.link);
       zzz6f2_show_toast('File for OFFLINE set: ' + f.name + ' (kept only in this browser).', 'info');
       if (done) done();
@@ -50237,12 +50283,12 @@ async function zzz_media_toggle_tag(it, tag, on) {
   return zzz_media_set_tags(l, w);
 }
 
-function zzz_media_hist() { try { return JSON.parse(localStorage.getItem('zzz_media_hist') || '[]') || []; } catch (e) { return []; } }
+function zzz_media_hist() { try { return JSON.parse(localStorage.getItem(zzz_ukey('zzz_media_hist')) || '[]') || []; } catch (e) { return []; } }
 function zzz_media_hist_add(it) {
   if (!it || !it.link) return;
   const h = zzz_media_hist().filter(x => x.link !== it.link);
   h.unshift({ link: it.link, t: Date.now() });
-  try { localStorage.setItem('zzz_media_hist', JSON.stringify(h.slice(0, 200))); } catch (e) {}
+  try { localStorage.setItem(zzz_ukey('zzz_media_hist'), JSON.stringify(h.slice(0, 200))); } catch (e) {}
   const l = zzz_media_line(it);
   if (!l) zzz_media_add(it.link, it.name || '', 'actual').then(() => zzz_media_redraw());
   else if (zzz_media_tagw(l.tags).indexOf('actual') < 0) zzz_media_set_tags(l, zzz_media_tagw(l.tags).concat(['actual'])).then(() => zzz_media_redraw());
@@ -50834,9 +50880,9 @@ async function zzz_media_clip_auto() {
     const m = String(t || '').match(/https?:\/\/\S+/);
     if (!m || !zzz_media_is_media_link(m[0])) return;
     m[0] = zzz_media_norm(m[0]);
-    let last = ''; try { last = localStorage.getItem('zzz_media_clip_last') || ''; } catch (e) {}
+    let last = ''; try { last = localStorage.getItem(zzz_ukey('zzz_media_clip_last')) || ''; } catch (e) {}
     if (m[0] === last) return;
-    try { localStorage.setItem('zzz_media_clip_last', m[0]); } catch (e) {}
+    try { localStorage.setItem(zzz_ukey('zzz_media_clip_last'), m[0]); } catch (e) {}
     await zzz_media_add_link(m[0]);
   } finally { zzzMediaClipBusy = false; }
 }
@@ -52143,7 +52189,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 159;
+const ZZZ14B17_APP_LATEST = 164;
 function zzz14b17_app_code() {
 
   try {
