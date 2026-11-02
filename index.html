@@ -127,6 +127,13 @@
   #zzzUpdScreen .zzzupd-s { color: #b5b5b5; font: 14px/1.4 system-ui, sans-serif; text-align: center; padding: 0 24px; }
   #zzzUpdScreen .zzzupd-c { position: absolute; bottom: 18px; color: #6b6b6b; font: 12px monospace; }
   @keyframes zzzupd-spin { to { transform: rotate(360deg); } }
+  #zzzBusyScreen { position: fixed; inset: 0; z-index: 2147483645; background: rgba(23,23,23,.96); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; touch-action: none; user-select: none; -webkit-user-select: none; }   
+  #zzzBusyScreen .zzzupd-logo { position: relative; width: 120px; height: 120px; display: flex; align-items: center; justify-content: center; }
+  #zzzBusyScreen .zzzupd-chain { animation: zzzupd-spin 3.2s linear infinite; }
+  #zzzBusyScreen .zzzupd-logo b, #zzzBusyScreen .zzzupd-t { color: #D4AF37; font: 700 18px/1.2 system-ui, sans-serif; }
+  #zzzBusyScreen .zzzupd-s { color: #b5b5b5; font: 13px/1.4 system-ui, sans-serif; }
+  #zzzBusyScreen .zzzbusy-bar { width: 180px; height: 4px; border-radius: 2px; background: #333; overflow: hidden; }
+  #zzzBusyScreen .zzzbusy-bar i { display: block; height: 100%; width: 0; background: #D4AF37; transition: width .25s; }
   #zzzUpdScreen .zzzupd-v, #zzzUpdDone .zzzupd-v { font: 700 15px/1.3 monospace; }   
   .zzzupd-v.is-wait { color: #e07b00; } .zzzupd-v.is-ok { color: #4caf50; } .zzzupd-v.is-bad { color: #e04848; }
   #zzzUpdDone { position: fixed; inset: 0; z-index: 2147483646; background: #171717; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; transition: opacity .5s; }
@@ -7049,6 +7056,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-row.is-lab > div { background: #000; color: #fff; border-color: #000; font-weight: 700; font-size: 9px; text-align: center; }
   .zzz-media-row .zzz-media-pl { background: #171717; color: #D4AF37; text-align: center; }
   .zzz-media-row.is-cur > div { background: #fff7d6; }
+  .zzz-media-row.is-drag { position: relative; z-index: 5; opacity: .85; box-shadow: 0 6px 16px rgba(0,0,0,.5); }   
   .zzz-media-row.is-sel > div { background: #ffd6d6; border-color: #e53935; }
   
   .zzz-media-row.is-seen > div { border-color: #16a34a !important; border-width: 2px; }
@@ -47786,7 +47794,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-03 00:12';
+const VERSO_BUILD = '2026-11-03 00:24';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -47899,6 +47907,39 @@ function zzz_upd_screen(kind) {
     setTimeout(done, 120000);
   } catch (e) {}
 }
+
+let zzzBusy = null;
+function zzz_busy_start(title, now) {
+  try {
+    zzz_busy_end();
+    const b = { title: title || 'Verso', pct: 0, text: '', el: null, t0: Date.now() };
+    zzzBusy = b;
+    const show = () => {
+      if (zzzBusy !== b || b.el) return;
+      const o = document.createElement('div'); o.id = 'zzzBusyScreen';
+      o.innerHTML = '<div class="zzzupd-logo"><span class="zzzupd-chain"><i class="zzz-chain-fill"></i><i class="zzz-chain-ink"></i></span><b>VERSO</b></div><div class="zzzupd-t"></div><div class="zzzupd-s"></div><div class="zzzbusy-bar"><i></i></div>';
+      ['pointerdown', 'click', 'touchstart', 'wheel'].forEach(t => o.addEventListener(t, (e) => { e.preventDefault(); e.stopPropagation(); }, { passive: false }));
+      document.body.appendChild(o); b.el = o; zzz_busy_paint();
+    };
+    if (now) show(); else b.timer = setTimeout(show, 400);
+    b.stop = setTimeout(() => { if (zzzBusy === b) zzz_busy_end(); }, 20000);
+  } catch (e) {}
+}
+function zzz_busy_set(pct, text) { if (!zzzBusy) return; zzzBusy.pct = Math.max(zzzBusy.pct, Math.min(100, pct | 0)); if (text) zzzBusy.text = text; zzz_busy_paint(); }
+function zzz_busy_paint() {
+  const b = zzzBusy; if (!b || !b.el) return;
+  b.el.querySelector('.zzzupd-t').textContent = b.title;
+  b.el.querySelector('.zzzupd-s').textContent = (b.text ? b.text + ' · ' : '') + b.pct + ' %';
+  b.el.querySelector('.zzzbusy-bar i').style.width = b.pct + '%';
+}
+function zzz_busy_end() {
+  const b = zzzBusy; zzzBusy = null; if (!b) return;
+  clearTimeout(b.timer); clearTimeout(b.stop);
+  if (b.el) { b.pct = 100; try { b.el.querySelector('.zzzupd-s').textContent = '100 %'; b.el.querySelector('.zzzbusy-bar i').style.width = '100%'; } catch (e) {} setTimeout(() => { try { b.el.remove(); } catch (e) {} }, 180); }
+}
+
+try { if (/^#media\b/i.test(String(location.hash || ''))) setTimeout(() => { if (!document.getElementById('zzzMediaWin')) { zzz_busy_start('VERSO MEDIA CENTER', true); zzz_busy_set(5, 'starting Verso'); } }, 0); } catch (e) {}
+
 function zzz_upd_versions() {
   let app = 0, toApp = 0, web = '', toWeb = '';
   try { app = zzz14b17_in_app() ? zzz14b17_app_code() : 0; } catch (e) {}
@@ -50329,6 +50370,7 @@ async function zzz_media_entry(create) {
 }
 async function zzz_media_load() {
   zzzMedia.loadedOf = zzz_media_me();
+  zzz_media_order_pull();
   const e = await zzz_media_entry(false);
   if (!e) { zzzMedia.all = []; zzzMedia.list = []; return; }
   try {
@@ -50501,7 +50543,79 @@ function zzz_media_in_tab(it, tab) {
   const words = String(it.tag || '').split(/[\s,;#:]+/).filter(Boolean);
   return words.some(w => w === tab || w + 'S' === tab || w === tab.slice(0, -1));
 }
-function zzz_media_tablist() {
+
+let zzzMediaOrder = null;
+function zzz_media_okey() { return String(zzzMedia.tab || '') + '|' + String(zzzMedia.pls || '').toLowerCase(); }
+function zzz_media_order_get() {
+  if (!zzzMediaOrder || zzzMediaOrder._k !== zzz_ukey('zzz_media_order')) {
+    let o = {}; try { o = JSON.parse(localStorage.getItem(zzz_ukey('zzz_media_order')) || '{}') || {}; } catch (e) { o = {}; }
+    zzzMediaOrder = o; Object.defineProperty(zzzMediaOrder, '_k', { value: zzz_ukey('zzz_media_order'), enumerable: false, writable: true });
+  }
+  return zzzMediaOrder;
+}
+async function zzz_media_order_pull() {
+  const u = typeof zzz_dev_me === 'function' ? zzz_dev_me() : '';
+  if (!u || typeof sb === 'undefined' || !sb) return;
+  try {
+    const { data } = await sb.from('verso_user_settings').select('prefs').eq('username', u).eq('runtime', 'web').eq('module', 'media_order').limit(1);
+    const o = data && data[0] && data[0].prefs && data[0].prefs.o;
+    if (o && typeof o === 'object') { const k = zzz_ukey('zzz_media_order'); zzzMediaOrder = o; Object.defineProperty(zzzMediaOrder, '_k', { value: k, enumerable: false, writable: true }); try { localStorage.setItem(k, JSON.stringify(o)); } catch (e) {} }
+  } catch (e) {}
+}
+let zzzMediaOrderT = 0;
+function zzz_media_order_save(key, ids) {
+  const o = zzz_media_order_get();
+  o[key] = ids.slice(0, 300);
+  try { localStorage.setItem(zzz_ukey('zzz_media_order'), JSON.stringify(o)); } catch (e) {}
+  clearTimeout(zzzMediaOrderT);
+  zzzMediaOrderT = setTimeout(async () => {
+    const u = typeof zzz_dev_me === 'function' ? zzz_dev_me() : '';
+    if (!u || typeof sb === 'undefined' || !sb) return;
+    let out = Object.assign({}, o); let js = JSON.stringify(out);
+    while (js.length > 7000 && Object.keys(out).length > 1) { delete out[Object.keys(out)[0]]; js = JSON.stringify(out); }
+    try { const { error } = await sb.from('verso_user_settings').upsert({ username: u, runtime: 'web', module: 'media_order', prefs: { o: out, t: Date.now() } }, { onConflict: 'username,runtime,module' }); if (error) throw error; }
+    catch (e) { zzz_user_error('The new order is kept on this phone, but could not be saved for your account - check the connection.', e, '[Zzz14-B17:MEDIA-ORDER]'); }
+  }, 800);
+}
+function zzz_media_order_apply(l) {
+  const ids = zzz_media_order_get()[zzz_media_okey()];
+  if (!Array.isArray(ids) || !ids.length) return l;
+  const pos = new Map(ids.map((id, i) => [String(id), i]));
+  const fresh = l.filter(x => !pos.has(String(x.id))), kept = l.filter(x => pos.has(String(x.id))).sort((a, b) => pos.get(String(a.id)) - pos.get(String(b.id)));
+  return fresh.concat(kept);
+}
+
+function zzz_media_bind_drag(cellEl, r, it, l, redraw) {
+  if (!it.id) return;
+  cellEl.style.touchAction = 'none'; cellEl.title = 'Hold and drag = move the row';
+  cellEl.addEventListener('pointerdown', (e) => {
+    e.stopPropagation(); e.preventDefault();
+    const list = r.parentNode; if (!list) return;
+    const rows = Array.from(list.querySelectorAll('.zzz-media-row[data-mid]'));
+    const y0 = e.clientY; let dy = 0, armed = false;
+    const arm = setTimeout(() => { armed = true; zzz_haptic_pulse(25); r.classList.add('is-drag'); }, 220);
+    try { cellEl.setPointerCapture(e.pointerId); } catch (x) {}
+    const move = (ev) => { dy = ev.clientY - y0; if (!armed) { if (Math.abs(dy) > 10) clearTimeout(arm); return; } r.style.transform = 'translateY(' + dy + 'px)'; };
+    const up = () => {
+      clearTimeout(arm);
+      cellEl.removeEventListener('pointermove', move); cellEl.removeEventListener('pointerup', up); cellEl.removeEventListener('pointercancel', up);
+      r.style.transform = ''; r.classList.remove('is-drag');
+      r._zzzSwiped = true; setTimeout(() => { r._zzzSwiped = false; }, 400);
+      if (!armed) return;
+      const mid = r.getBoundingClientRect().top + r.offsetHeight / 2 + dy;
+      const order = rows.map(x => x.dataset.mid).filter(x => x !== String(it.id));
+      let at = order.length;
+      for (let i = 0; i < order.length; i++) { const el = rows.find(x => x.dataset.mid === order[i]); const b = el.getBoundingClientRect(); if (mid < b.top + b.height / 2) { at = i; break; } }
+      order.splice(at, 0, String(it.id));
+      zzz_media_order_save(zzz_media_okey(), order);
+      redraw();
+    };
+    cellEl.addEventListener('pointermove', move); cellEl.addEventListener('pointerup', up); cellEl.addEventListener('pointercancel', up);
+  });
+}
+
+function zzz_media_tablist() { const l = zzz_media_tablist_raw(); return zzzMedia.tab === 'TRASH' ? l : zzz_media_order_apply(l); }
+function zzz_media_tablist_raw() {
   if (zzzMedia.tab === 'ACTUAL') {
     const h = zzz_media_hist(), pos = new Map(h.map((x, i) => [x.link, i]));
     const l = zzzMedia.list.filter(x => pos.has(x.link) || zzz_media_tagw(x.tags).indexOf('actual') >= 0);
@@ -50875,9 +50989,11 @@ async function zzz_media_open() {
       const seen = it.seen;
       const r = document.createElement('div'); r.className = 'zzz-media-row ' + (it.link ? 'is-gold' : 'is-silver') + (zzzMedia.sel.has(it.id) ? ' is-sel' : '') + (seen ? ' is-seen' : '');
       if (it.link) r.dataset.link = it.link;
+      if (it.id) r.dataset.mid = String(it.id);
       zzz_media_bind_swipe(r, it, draw);
       r.title = 'Swipe right = READ (stays) · swipe left = SHIFTED (later) · hold = name / tags / file';
       cell(r, (it.pub ? '\uD83C\uDF10' : '\uD83D\uDD12') + (it.num ? String(it.num) : '-'));
+      if (!trashTab && !zzzMedia.selecting) zzz_media_bind_drag(r.firstChild, r, it, l, draw);
       if (it.id) zzz_bind_long_press(r, 700, () => { r._zzzSwiped = true; setTimeout(() => { r._zzzSwiped = false; }, 700); zzz_media_edit(it, draw); });
       const pb = cell(r, '▶︎'); pb.className = 'zzz-media-pl';
 
@@ -50911,9 +51027,10 @@ async function zzz_media_open() {
   w._draw = draw;
   w.addEventListener('scroll', zzz_media_place);
   draw();
-  await zzz_media_load();
-  await zzz_media_files_load();
-  draw();
+
+  if (!zzzBusy) zzz_busy_start('VERSO MEDIA CENTER');
+  zzz_busy_set(30, 'loading your media');
+  try { await zzz_media_load(); zzz_busy_set(75, 'phone files'); await zzz_media_files_load(); zzz_busy_set(95, 'list'); } finally { draw(); zzz_busy_end(); }
 }
 
 function zzz_media_edit(it, redraw) {
@@ -52367,7 +52484,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 170;
+const ZZZ14B17_APP_LATEST = 171;
 function zzz14b17_app_code() {
 
   try {
