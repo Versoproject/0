@@ -116,6 +116,21 @@
   .zzz-chain-box { position: relative; width: min(200px, 46vw); aspect-ratio: 1; }
   .zzz-chain-box > i, .zzz-chain-spin > i, .zzz-chain-spin { position: absolute; inset: 0; display: block; }
   .zzz-chain-text { background: #555; -webkit-mask: url("verso-chain-text.png") center/100% 100% no-repeat; mask: url("verso-chain-text.png") center/100% 100% no-repeat; }
+  #zzzUpdScreen { position: fixed; inset: 0; z-index: 2147483647; background: #171717; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; touch-action: none; user-select: none; -webkit-user-select: none; }   
+  #zzzUpdScreen .zzzupd-logo { position: relative; width: 150px; height: 150px; display: flex; align-items: center; justify-content: center; }
+  #zzzUpdScreen .zzzupd-chain { position: absolute; inset: 0; --zzz-chain-fill: #D4AF37; animation: zzzupd-spin 3.2s linear infinite; }
+  #zzzUpdScreen .zzzupd-logo b { color: #D4AF37; font: 700 18px/1 system-ui, sans-serif; letter-spacing: .08em; }
+  #zzzUpdScreen .zzzupd-t { color: #D4AF37; font: 700 22px/1.2 system-ui, sans-serif; }
+  #zzzUpdScreen .zzzupd-s { color: #b5b5b5; font: 14px/1.4 system-ui, sans-serif; text-align: center; padding: 0 24px; }
+  #zzzUpdScreen .zzzupd-c { position: absolute; bottom: 18px; color: #6b6b6b; font: 12px monospace; }
+  @keyframes zzzupd-spin { to { transform: rotate(360deg); } }
+  #zzzUpdScreen .zzzupd-v, #zzzUpdDone .zzzupd-v { font: 700 15px/1.3 monospace; }   
+  .zzzupd-v.is-wait { color: #e07b00; } .zzzupd-v.is-ok { color: #4caf50; } .zzzupd-v.is-bad { color: #e04848; }
+  #zzzUpdDone { position: fixed; inset: 0; z-index: 2147483646; background: #171717; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; transition: opacity .5s; }
+  #zzzUpdDone.is-out { opacity: 0; }
+  #zzzUpdDone .zzzupd-logo { position: relative; width: 150px; height: 150px; display: flex; align-items: center; justify-content: center; }
+  #zzzUpdDone .zzzupd-chain { position: absolute; inset: 0; --zzz-chain-fill: #4caf50; }
+  #zzzUpdDone .zzzupd-logo b, #zzzUpdDone .zzzupd-t { color: #D4AF37; font: 700 20px/1.2 system-ui, sans-serif; }
   .zzz-chain-fill { background: var(--zzz-chain-fill, #fff); -webkit-mask: url("verso-chain-links.png") center/100% 100% no-repeat; mask: url("verso-chain-links.png") center/100% 100% no-repeat; transition: background-color .35s; }
   .zzz-chain-ink { background: var(--zzz-chain-ink, #555); -webkit-mask: url("verso-chain-lines.png") center/100% 100% no-repeat; mask: url("verso-chain-lines.png") center/100% 100% no-repeat; transition: background-color .35s; }
   .zzz-chain-run .zzz-chain-spin { animation: zzzChainSpin var(--zzz-chain-dur, 2.4s) linear infinite; }
@@ -47678,7 +47693,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-02 14:34';
+const VERSO_BUILD = '2026-11-02 15:00';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -47761,7 +47776,73 @@ setTimeout(() => {
     localStorage.setItem('verso_last_build', VERSO_BUILD);
   } catch (e) {}
 })();
+
+function zzz_upd_screen(kind) {
+  try {
+    try { if (typeof zzz_wip_flush === 'function') zzz_wip_flush(); } catch (e) {}
+    try { if (typeof zzz_ui_save === 'function') zzz_ui_save(true); } catch (e) {}
+    let o = document.getElementById('zzzUpdScreen');
+    if (!o) {
+      o = document.createElement('div'); o.id = 'zzzUpdScreen'; o.setAttribute('role', 'alertdialog'); o.setAttribute('aria-label', 'Verso update');
+      o.innerHTML = '<div class="zzzupd-logo"><span class="zzz-chain-fill zzzupd-chain"></span><b>VERSO</b></div><div class="zzzupd-t">Verso update</div><div class="zzzupd-s"></div><div class="zzzupd-v zzzupd-app"></div><div class="zzzupd-v zzzupd-web"></div><div class="zzzupd-c">// Copyright *-2026* The*Verso*Project</div>';
+      ['pointerdown', 'pointerup', 'click', 'touchstart', 'touchend', 'contextmenu', 'wheel'].forEach(t => o.addEventListener(t, (e) => { e.preventDefault(); e.stopPropagation(); }, { passive: false }));
+      document.body.appendChild(o);
+      try { document.activeElement && document.activeElement.blur && document.activeElement.blur(); } catch (e) {}
+    }
+    o.querySelector('.zzzupd-s').textContent = kind === 'web' ? 'your work is saved · Verso reloads by itself' : 'your work is saved · the app updates and comes back by itself';
+
+    try {
+      const v = zzz_upd_versions();
+      zzz_upd_paint(o, v, false);
+      localStorage.setItem('zzz_upd_pending', JSON.stringify(Object.assign({ kind, t: Date.now() }, v)));
+    } catch (e) {}
+    const at = Date.now();
+    const keys = (e) => { if (document.getElementById('zzzUpdScreen')) { e.preventDefault(); e.stopPropagation(); } };
+    window.addEventListener('keydown', keys, true);
+    const done = () => { try { o.remove(); } catch (e) {} window.removeEventListener('keydown', keys, true); document.removeEventListener('visibilitychange', back); };
+    let hidden = false;
+    const back = () => { if (document.visibilityState === 'hidden') hidden = true; else if (hidden && Date.now() - at > 4000) setTimeout(() => { if (document.visibilityState === 'visible') { done(); try { localStorage.removeItem('zzz_upd_pending'); } catch (e) {} } }, 6000); };
+    document.addEventListener('visibilitychange', back);
+    setTimeout(done, 120000);
+  } catch (e) {}
+}
+function zzz_upd_versions() {
+  let app = 0, toApp = 0, web = '', toWeb = '';
+  try { app = zzz14b17_in_app() ? zzz14b17_app_code() : 0; } catch (e) {}
+  try { toApp = zzz_verso_for_app(); } catch (e) {}
+  try { web = String(VERSO_BUILD || ''); } catch (e) {}
+  try { toWeb = zzzVersoLiveWeb || web; } catch (e) { toWeb = web; }
+  return { app, toApp, web, toWeb };
+}
+function zzz_upd_paint(o, v, after) {
+  const a = o.querySelector('.zzzupd-app'), w = o.querySelector('.zzzupd-web');
+  const cur = zzz_upd_versions();
+  if (v.app) {
+    const ok = after ? cur.app >= v.toApp : v.app >= v.toApp;
+    a.textContent = 'APP ' + (ok ? '1.0.' + (after ? cur.app : v.app) + '  \u2713' : '1.0.' + v.app + '  \u2192  1.0.' + v.toApp);
+    a.className = 'zzzupd-v zzzupd-app ' + (ok ? 'is-ok' : after ? 'is-bad' : 'is-wait');
+  } else a.textContent = '';
+  const wok = after ? (cur.web === v.toWeb || cur.web > v.web) : v.web === v.toWeb;
+  w.textContent = 'WEB ' + (wok ? (after ? cur.web : v.web) + '  \u2713' : v.web + '  \u2192  ' + v.toWeb);
+  w.className = 'zzzupd-v zzzupd-web ' + (wok ? 'is-ok' : after ? 'is-bad' : 'is-wait');
+}
+
+setTimeout(() => {
+  try {
+    const p = JSON.parse(localStorage.getItem('zzz_upd_pending') || 'null');
+    localStorage.removeItem('zzz_upd_pending');
+    if (!p || Date.now() - p.t > 10 * 60000) return;
+    const o = document.createElement('div'); o.id = 'zzzUpdDone';
+    o.innerHTML = '<div class="zzzupd-logo"><span class="zzz-chain-fill zzzupd-chain is-still"></span><b>VERSO</b></div><div class="zzzupd-t">Verso updated</div><div class="zzzupd-v zzzupd-app"></div><div class="zzzupd-v zzzupd-web"></div>';
+    zzz_upd_paint(o, p, true);
+    o.addEventListener('click', () => o.remove());
+    document.body.appendChild(o);
+    setTimeout(() => { try { o.classList.add('is-out'); setTimeout(() => o.remove(), 500); } catch (e) {} }, 2500);
+  } catch (e) {}
+}, 1200);
+
 function zzz_ops_app_update_now() {
+  zzz_upd_screen('app');
   try { if (typeof zzz_wip_flush === 'function') zzz_wip_flush(); } catch (e) {}
   try { if (typeof zzz_ui_save === 'function') zzz_ui_save(true); } catch (e) {}
   const a = document.createElement('a');
@@ -47863,7 +47944,7 @@ function zzz_dev_double_tap_update() {
       try { if (typeof zzz_wip_flush === 'function') zzz_wip_flush(); } catch (e) {}
       try { if (typeof zzz_ui_save === 'function') zzz_ui_save(true); } catch (e) {}
       zzz_verso_upd_tapped();
-      zzz_dev_au_note('Verso app 1.0.' + have + ' \u2192 1.0.' + newest + ' \u00b7 updating\u2026', 2500);
+      zzz_upd_screen('app');
       zzzDblReloadOnReturn = true;
 
       const l = document.createElement('a');
@@ -47908,10 +47989,8 @@ setTimeout(() => { try { zzz14b17_live_check(true); } catch (e) {} }, 4000);
 setInterval(() => { try { if (document.visibilityState === 'visible') zzz14b17_live_check(true); } catch (e) {} }, 2 * 60000);
 document.addEventListener('visibilitychange', () => { try { if (document.visibilityState === 'visible') zzz14b17_live_check(false); } catch (e) {} });
 function zzz_dev_reload_now() {
-  try { if (typeof zzz_wip_flush === 'function') zzz_wip_flush(); } catch (e) {}
-  try { if (typeof zzz_ui_save === 'function') zzz_ui_save(true); } catch (e) {}
-  zzz_dev_au_note('Verso \u00b7 reloading\u2026', 1500);
-  setTimeout(() => { try { location.reload(); } catch (e) {} }, 250);
+  zzz_upd_screen('web');
+  setTimeout(() => { try { location.reload(); } catch (e) {} }, 600);
 }
 if (ZZZ_DEV_AUTO_UPDATE) {
   setTimeout(() => zzz_dev_au_check('load'), 1500);
@@ -52191,7 +52270,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 165;
+const ZZZ14B17_APP_LATEST = 167;
 function zzz14b17_app_code() {
 
   try {
@@ -52238,7 +52317,7 @@ function zzz14b17_render_app_download(btnHost, noteHost, mode) {
 
     a.href = 'intent://update#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end';
     a.removeAttribute('download');
-    a.addEventListener('click', () => { zzz_verso_upd_tapped(); });
+    a.addEventListener('click', () => { zzz_verso_upd_tapped(); zzz_upd_screen('app'); });
   } else {
 
     a.addEventListener('click', (ev) => { if (zzz14b17_dl_panel()) ev.preventDefault(); });
