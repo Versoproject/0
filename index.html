@@ -24,11 +24,12 @@
     var keep = [], got = {};
     h.replace(/^#/, '').split('&').forEach(function (p) {
       var i = p.indexOf('='), k = i > 0 ? p.slice(0, i) : p, v = i > 0 ? p.slice(i + 1) : '';
-      if (k === 'vk' || k === 'did' || k === 'ns' || k === 'perm' || k === 'dn' || k === 'mk' || k === 'md' || k === 'notif-sync' || k === 'rx') got[k] = v; else if (p) keep.push(p);
+      if (k === 'vk' || k === 'did' || k === 'ns' || k === 'perm' || k === 'dn' || k === 'mk' || k === 'md' || k === 'notif-sync' || k === 'rx' || k === 'ab') got[k] = v; else if (p) keep.push(p);
     });
 
     if (got['notif-sync'] && got['notif-sync'].length < 12000 && /^[A-Za-z0-9_-]+$/.test(got['notif-sync'])) localStorage.setItem('verso_notif_sync_in', got['notif-sync']);
     if (got.rx && got.rx.length < 12000 && /^[A-Za-z0-9_-]+$/.test(got.rx)) localStorage.setItem('verso_repair_ops_in', got.rx);
+    try { var ab0 = decodeURIComponent(got.ab || ''); if (/^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(ab0)) localStorage.setItem('verso_app_built', ab0); } catch (e3) {}
     if (/^[0-9a-f]{64}$/.test(got.vk || '')) localStorage.setItem('verso_cmd_key', got.vk);
     if (/^[0-9a-f]{64}$/.test(got.did || '')) localStorage.setItem('verso_dev_did', got.did);
     if (got.ns && got.ns.length < 8000) localStorage.setItem('verso_native_settings', got.ns);
@@ -47796,7 +47797,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-03 00:44';
+const VERSO_BUILD = '2026-11-03 00:51';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -52412,6 +52413,12 @@ function zzz_verso_runtime() {
 }
 
 var zzzVersoLiveApp = 0;
+
+var zzzVersoLiveAppBuilt = '';
+function zzz_app_built() { try { return localStorage.getItem('verso_app_built') || ''; } catch (e) { return ''; } }
+function zzz_app_ver(n, d) { return '1.0.' + n + (d ? ' \u00b7 ' + d : ''); }
+function zzz_app_ver_live(n) { return zzz_app_ver(n, n === zzzVersoLiveApp ? zzzVersoLiveAppBuilt : ''); }
+function zzz_app_ver_mine(n) { return zzz_app_ver(n, zzz_app_built()); }
 function zzz_verso_for_app() { try { return zzzVersoLiveApp || ZZZ14B17_APP_LATEST; } catch (e) { return zzzVersoLiveApp || 0; } }
 function zzz_verso_tag() { let b = ''; try { b = String(VERSO_BUILD || ''); } catch (e) {} const v = zzz_verso_for_app(); return 'VERSO 1.0.' + (v || '?') + ' \u00b7 ' + b; }
 function zzz_verso_set_btn(el, txt) {
@@ -52435,11 +52442,11 @@ function zzz_verso_runtime_info() {
   const W = webOk ? 'WEB \u2713' : 'WEB \u2192 web update (' + zzzVersoLiveWeb + ')';
   if (r === 'app') {
     const c = zzz14b17_app_code();
-    const sub = 'You are in: VERSO APP' + (c ? ' 1.0.' + c : '') + ' \u00b7 web ' + b;
+    const sub = 'You are in: VERSO APP' + (c ? ' ' + zzz_app_ver_mine(c) : '') + ' \u00b7 WEB ' + b;
     if (!c) return { r, ok: false, level: 'red', text: sys + ' \u00b7 APP ? \u00b7 ' + W, sub: sub + ' (open Verso once from the app icon)' };
     if (c > VERSO_FOR_APP) return { r, ok: false, level: 'red', text: 'VERSO 1.0.' + c + ' \u00b7 APP newer than the web (1.0.' + VERSO_FOR_APP + ') \u2717', sub: sub };
     if (c < VERSO_FOR_APP && zzz_verso_upd_stuck(c)) return { r, ok: false, level: 'red', text: sys + ' \u00b7 APP 1.0.' + c + ' \u2717 update did not finish \u00b7 ' + W, sub: sub + ' (tap APK update again; Samsung: Auto Blocker off)' };
-    if (c < VERSO_FOR_APP) return { r, ok: false, level: 'orange', text: sys + ' \u00b7 APP 1.0.' + c + ' \u2192 update the app \u00b7 ' + W, sub: sub };
+    if (c < VERSO_FOR_APP) return { r, ok: false, level: 'orange', text: sys + ' \u00b7 APP ' + zzz_app_ver_mine(c) + ' \u2192 ' + zzz_app_ver_live(VERSO_FOR_APP) + ' (update the app) \u00b7 ' + W, sub: sub };
     return { r, ok: webOk, level: webOk ? 'green' : 'orange', text: sys + ' \u00b7 APP \u2713 \u00b7 ' + W, sub: sub };
   }
   return { r, ok: webOk, level: webOk ? 'green' : 'orange', text: sys + ' \u00b7 ' + W + ' \u00b7 app: not here',
@@ -52451,7 +52458,10 @@ function zzz_verso_runtime_el() {
   const el = document.createElement('div');
   const t = document.createElement('div'); t.className = 'zzz-runtime-sys';
   const sub = document.createElement('div'); sub.className = 'zzz-runtime-sub';
-  el.append(t, sub);
+
+  const forms = document.createElement('div'); forms.className = 'zzz-runtime-sub';
+  forms.textContent = 'Verso has 3 forms: VERSO APP (Android app = APP version 1.0.N · date) · VERSO WEB APP (browser icon) · VERSO WEB ONLINE (browser). All 3 run the same WEB version (date); only the Verso app also has an APP version.';
+  el.append(t, sub, forms);
   const paint = () => { const j = zzz_verso_runtime_info(); t.textContent = j.text; sub.textContent = j.sub; el.className = 'zzz-runtime-label lvl-' + j.level; };
   paint();
   zzz14b17_live_app().then(paint);
@@ -52486,7 +52496,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 174;
+const ZZZ14B17_APP_LATEST = 175;
 function zzz14b17_app_code() {
 
   try {
@@ -52559,11 +52569,11 @@ function zzz14b17_render_app_download(btnHost, noteHost, mode) {
       zzz_verso_set_btn(a, 'APK 1.0.' + have + ' \u2717 newer than published 1.0.' + live);
       a.classList.add('zzz14b17-app-dl-red');
     } else if (have && have >= live) {
-      zzz_verso_set_btn(a, 'APK 1.0.' + have + ' · up to date \u2713');
+      zzz_verso_set_btn(a, 'APK ' + zzz_app_ver_mine(have) + ' · up to date \u2713');
       a.classList.add('zzz14b17-app-dl-ok');
       note.textContent = 'Nothing to update. (Tap = check again / reinstall the newest version.) ' + ZZZ14B17_APK_ALSO_WEB;
     } else {
-      zzz_verso_set_btn(a, 'APK update ' + (have ? '1.0.' + have + ' \u2192 ' : 'to ') + '1.0.' + live);
+      zzz_verso_set_btn(a, 'APK update ' + (have ? zzz_app_ver_mine(have) + ' \u2192 ' : 'to ') + zzz_app_ver_live(live));
       a.classList.add(!have || zzz_verso_upd_stuck(have) ? 'zzz14b17-app-dl-red' : 'zzz14b17-app-dl-orange');
       note.textContent = 'New version 1.0.' + live + ' is ready. One tap: Verso fetches it, checks it and Android asks "Update?". You stay logged in. ' + ZZZ14B17_APK_ALSO_WEB;
     }
@@ -52655,11 +52665,11 @@ function zzz14b17_settings_updates(host) {
       zzz14b17_render_app_download(dl, null, 'update');
       const code = zzz14b17_app_code();
       const av = document.createElement('div'); av.className = 'zzz-build-tag';
-      av.textContent = 'Verso app ' + (code ? '1.0.' + code : '? (open Verso once from the app icon)') + ' \u00b7 newest 1.0.' + ZZZ14B17_APP_LATEST;
+      av.textContent = 'Verso app ' + (code ? zzz_app_ver_mine(code) : '? (open Verso once from the app icon)') + ' \u00b7 newest ' + zzz_app_ver_live(ZZZ14B17_APP_LATEST);
       host.appendChild(av);
       zzz14b17_live_app().then((live) => {
         if (!live) return;
-        av.textContent = 'Verso app ' + (code ? '1.0.' + code : '?') + ' \u00b7 newest 1.0.' + live
+        av.textContent = 'Verso app ' + (code ? zzz_app_ver_mine(code) : '?') + ' \u00b7 newest ' + zzz_app_ver_live(live)
           + (code ? (code >= live ? ' \u2713 up to date' : ' \u2192 update available') : '');
       });
     }
@@ -52700,7 +52710,7 @@ function zzz14b17_settings_updates(host) {
 
 function zzz14b17_live_app() {
   return fetch('/verso-apk.json?v=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
-    .then(j => { const v = (j && Number(j.versionCode)) || null; if (v) zzzVersoLiveApp = v; return v; }).catch(() => null);
+    .then(j => { const v = (j && Number(j.versionCode)) || null; if (v) zzzVersoLiveApp = v; if (j && /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(j.built || '')) zzzVersoLiveAppBuilt = j.built; return v; }).catch(() => null);
 }
 
 function zzz_ring_build(j) {
