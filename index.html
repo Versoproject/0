@@ -11773,9 +11773,15 @@ function zzz14cs_link_open(cislo, pokus) {
   setTimeout(() => zzz14cs_link_open(id, n), 500);
 }
 function zzz14cs_link_check() {
+  if (/[#&]en=\d+&n=/i.test(String(location.hash || ''))) return;
   const id = zzz14cs_link_entry_of_hash();
   if (!id || id === zzz14csLinkDone) return;
   zzz14csLinkDone = id;
+
+  if (typeof zzz6f7_isLoggedIn !== 'undefined' && zzz6f7_isLoggedIn && typeof zzz14b21_open_place === 'function') {
+    zzz14b21_open_place(id).then(done => { if (!done) zzz14cs_link_open(id, 0); }).catch(() => zzz14cs_link_open(id, 0));
+    return;
+  }
   zzz14cs_link_open(id, 0);
 }
 
@@ -11863,7 +11869,7 @@ function zzz_register_link_check(pokus) {
 window.addEventListener('hashchange', () => zzz_register_link_check(0));
 window.addEventListener('load', () => setTimeout(() => zzz_register_link_check(0), 900));
 
-const ZZZ_PLACE_RE = /\bverso:((?:apps=[a-z-]+(?:&app=[a-z0-9-]+)?)|(?:en=\d+))/gi;
+const ZZZ_PLACE_RE = /\bverso:((?:apps=[a-z-]+(?:&app=[a-z0-9-]+)?)|(?:place=[a-z0-9][a-z0-9/-]*[a-z0-9])|(?:en=\d+(?:&n=\d+(?:-[a-z][a-z0-9]*)?)?))/gi;
 function zzz_place_internal(hash) { return 'verso:' + hash; }
 function zzz_place_label(hash) {
   let m = /^apps=([a-z-]+)(?:&app=([a-z0-9-]+))?/i.exec(hash || '');
@@ -11872,6 +11878,10 @@ function zzz_place_label(hash) {
     const it = m[2] && typeof zzz5w9_item === 'function' ? zzz5w9_item(m[2].toLowerCase()) : null;
     return 'VERSO › APPS › ' + (tab ? tab.label : m[1].toUpperCase()) + (m[2] ? ' › ' + (it ? it.name : m[2]) : '');
   }
+  m = /^place=([a-z0-9/-]+)/i.exec(hash || '');
+  if (m) return 'VERSO › ' + m[1].split('/').map(p => p.replace(/-/g, ' ').toUpperCase()).join(' › ');
+  m = /^en=(\d+)&n=(\d+(?:-[a-z][a-z0-9]*)?)/i.exec(hash || '');
+  if (m) return 'VERSO › #' + m[1] + ' › #' + m[2];
   m = /^en=(\d+)/i.exec(hash || '');
   return m ? 'VERSO › #' + m[1] : 'VERSO';
 }
@@ -46961,6 +46971,41 @@ async function zzz14b21_load_target(tabId) {
   const byId = {}; (rows || []).forEach(r => { byId[r.entry_id] = r; });
   return ids.map(id => byId[id]).filter(r => r && !r.is_trashed);
 }
+
+async function zzz14b21_load_place(placeNo) {
+  const me = String(zzz0r1_get_current_username() || '').trim();
+  const { data, error } = await sb.from('verso_placements').select('entry_id, created_at')
+    .eq('username', me).eq('place_id', Number(placeNo)).is('removed_at', null).order('created_at', { ascending: true });
+  if (error) throw error;
+  const ids = Array.from(new Set((data || []).map(r => Number(r.entry_id)).filter(id => id && id !== Number(placeNo))));
+  if (!ids.length) return [];
+  const { data: rows, error: e2 } = await sb.from('verso_entries').select('entry_id, username, fields_json, is_trashed').in('entry_id', ids);
+  if (e2) throw e2;
+  const byId = {}; (rows || []).forEach(r => { byId[r.entry_id] = r; });
+  return ids.map(id => byId[id]).filter(r => r && !r.is_trashed);
+}
+async function zzz14b21_take_out_place(entryId, placeNo) {
+  const me = String(zzz0r1_get_current_username() || '').trim();
+  const { error } = await sb.from('verso_placements').update({ removed_at: new Date().toISOString() })
+    .eq('username', me).eq('entry_id', Number(entryId)).eq('place_id', Number(placeNo)).is('removed_at', null);
+  if (error) throw error;
+}
+
+async function zzz14b21_move_tab(tabNo, ws, wsNo) {
+  const me = String(zzz0r1_get_current_username() || '').trim();
+  const row = await zzz6f29_fetch_entry_row(tabNo);
+  const f = row ? (zzz_parse_fields_json(row) || {}) : {};
+  if (!row || String(f.r5 || '').toLowerCase() !== 'place') return 'Record #' + tabNo + ' is not a tab (place).';
+  if (String(row.username || '').toLowerCase() !== me.toLowerCase()) return 'Tab #' + tabNo + ' is not yours - only your own tabs can be moved.';
+  if (Number(tabNo) === Number(wsNo)) return 'A workspace cannot be moved into itself.';
+  const { data, error } = await sb.from('verso_placements').select('tab_id').eq('username', me).eq('entry_id', Number(tabNo))
+    .like('tab_id', 'ws:%').is('removed_at', null);
+  if (error) throw error;
+  if ((data || []).some(r => r.tab_id === 'ws:' + ws.slug)) return 'Tab #' + tabNo + ' is already here.';
+  for (const r of (data || [])) await zzz14b21_take_out(tabNo, r.tab_id);
+  await zzz14b21_put(tabNo, 'ws:' + ws.slug, wsNo);
+  return '';
+}
 async function zzz14b21_put(entryId, tabId, placeId) {
   const me = String(zzz0r1_get_current_username() || '').trim();
   const { error } = await sb.from('verso_placements')
@@ -47032,6 +47077,75 @@ async function zzz14b21_archive_user_place(placeNo, parentSlug) {
   await zzz14b21_take_out(placeNo, 'ws:' + parentSlug);
 }
 
+async function zzz14b21_slug_to_no(slug) {
+  const s = String(slug || '').toLowerCase().replace(/^\/+|\/+$/g, '');
+  if (!s) return null;
+  const { data, error } = await sb.from('verso_place_names').select('entry_id, retired_at').eq('slug', s).limit(1);
+  if (error) throw error;
+  return (data && data[0] && data[0].entry_id) || null;
+}
+
+async function zzz14b21_open_place(no) {
+  const row = await zzz6f29_fetch_entry_row(no);
+  if (!row) { zzz6f2_show_toast(`#${no} is not readable for you right now.`, 'warn'); return true; }
+  const f = zzz_parse_fields_json(row) || {};
+  if (String(f.r5 || '').toLowerCase() !== 'place') return false;
+  const r10 = String(f.r10 || '');
+  const slug = (/^place:(\S+)/.exec(r10) || [])[1] || '';
+  const apps = (/\sapps=([a-z-]+)/.exec(r10) || [])[1] || '';
+  const ws = ZZZ14B21_WS.find(w => w.slug === slug);
+  if (ws) { open_zzz14b21_workspace(ws.slug); return true; }
+  if (apps || slug === 'apps') { zzz_place_open('apps=' + (apps || 'verso')); return true; }
+  const parentNo = Number((/#en=(\d+)/.exec(String(f.r13 || '')) || [])[1] || 0);
+  if (parentNo) {
+    for (const w of ZZZ14B21_WS) {
+      let wno = null;
+      try { wno = await zzz14b21_place_no(w.slug); } catch (e) {}
+      if (wno && wno === parentNo) { zzz14b21ActiveTab[w.slug] = Number(no); open_zzz14b21_workspace(w.slug); return true; }
+    }
+  }
+
+  zzz6f29_open_readonly_viewer('ENTRY NUMBER', String(no), row);
+  zzz6f2_show_toast(`Place ${f.r9 || ('#' + no)} · #${no}` + (parentNo ? ` (in #${parentNo})` : '') + '.', 'info');
+  return true;
+}
+
+async function zzz14b21_open_chatnote(en, mark) {
+  const mk = /^(\d+)(?:-([a-z][a-z0-9]*))?$/i.exec(String(mark || '').replace(/^#/, ''));
+  if (!mk) { zzz_open_chat_entry(en); return; }
+  let q = sb.from('verso_chat_notes').select('id').eq('entry_key', String(en)).eq('note_number', Number(mk[1]));
+  q = mk[2] ? q.eq('note_part', mk[2].toLowerCase()) : q.or('note_part.is.null,note_part.eq.');
+  const { data, error } = await q.order('id', { ascending: true }).limit(1);
+  const id = !error && data && data[0] ? data[0].id : null;
+  if (!id) zzz6f2_show_toast(`Chatnote #${mk[1]}${mk[2] ? '-' + mk[2] : ''} in #${en} is not readable for you (or does not exist) - the chat opens.`, 'warn');
+  zzz_open_chat_entry(en, id || undefined);
+}
+let zzz14b21LinkDone = '';
+async function zzz14b21_link_check(pokus) {
+  const h = String(location.hash || '');
+  const mp = /[#&]place=([a-z0-9/-]+)/i.exec(h);
+  const mn = /[#&]en=(\d+)&n=(\d+(?:-[a-z][a-z0-9]*)?)/i.exec(h);
+  const key = mp ? 'p:' + mp[1] : (mn ? 'n:' + mn[1] + '-' + mn[2] : '');
+  if (!key) { zzz14b21LinkDone = ''; return; }
+  if (key === zzz14b21LinkDone && !pokus) return;
+  if (typeof zzz6f7_isLoggedIn === 'undefined' || !zzz6f7_isLoggedIn) {
+    if ((pokus || 0) < 40) setTimeout(() => zzz14b21_link_check((pokus || 0) + 1), 500);
+    else zzz6f2_show_toast('Log in to open this Verso place.', 'warn');
+    return;
+  }
+  zzz14b21LinkDone = key;
+  try {
+    if (mn) { await zzz14b21_open_chatnote(mn[1], mn[2]); return; }
+    const no = await zzz14b21_slug_to_no(mp[1]);
+    if (!no) { zzz6f2_show_toast(`Place „${mp[1]}“ does not exist (or is not readable for you).`, 'warn'); return; }
+    if (!(await zzz14b21_open_place(no))) zzz6f29_open_entry_number_window(String(no));
+  } catch (e) {
+    zzz_user_error('The Verso place did not open - check the connection and try again.', e, '[Zzz14-B21:PLACE-LINKS]');
+  }
+}
+window.addEventListener('hashchange', () => zzz14b21_link_check(0));
+window.addEventListener('load', () => setTimeout(() => zzz14b21_link_check(0), 1000));
+
 async function open_zzz14b21_workspace(slug) {
   const ws = ZZZ14B21_WS.find(w => w.slug === slug);
   const host = document.getElementById('versoWorkspaceSection');
@@ -47060,7 +47174,7 @@ async function open_zzz14b21_workspace(slug) {
   box.querySelector('.db-workspace-loading').remove();
   const link = document.createElement('div');
   link.className = 'zzz14b21-link';
-  link.textContent = 'verso:en=' + wsNo;
+  link.textContent = 'verso:place=' + slug + ' · verso:en=' + wsNo;
   box.appendChild(link);
   const tabRow = document.createElement('div'); tabRow.className = 'zzz14b21-tabs'; box.appendChild(tabRow);
   const addTab = document.createElement('div'); addTab.className = 'zzz14b21-add'; addTab.hidden = true; box.appendChild(addTab);
@@ -47083,6 +47197,29 @@ async function open_zzz14b21_workspace(slug) {
   const inp = document.createElement('input'); inp.type = 'text'; inp.placeholder = 'New tab name'; inp.maxLength = 40;
   const ok = document.createElement('button'); ok.type = 'button'; ok.textContent = 'OK';
   addTab.appendChild(inp); addTab.appendChild(ok);
+
+  const mvBox = document.createElement('div'); mvBox.className = 'zzz14b21-add'; mvBox.hidden = true; box.insertBefore(mvBox, list);
+  const mvIn = document.createElement('input'); mvIn.type = 'text'; mvIn.inputMode = 'numeric'; mvIn.placeholder = 'or move your tab here: #TAB NUMBER';
+  const mvOk = document.createElement('button'); mvOk.type = 'button'; mvOk.textContent = 'MOVE HERE';
+  mvBox.appendChild(mvIn); mvBox.appendChild(mvOk);
+  plus.addEventListener('click', () => { mvBox.hidden = addTab.hidden; });
+  const doMove = async () => {
+    const n = Number(String(mvIn.value).replace(/[^0-9]/g, ''));
+    if (!n) return;
+    mvOk.disabled = true;
+    try {
+      const why = await zzz14b21_move_tab(n, ws, wsNo);
+      if (why) { zzz6f2_show_toast(why, 'warn'); mvOk.disabled = false; return; }
+      zzz14b21ActiveTab[slug] = n;
+      zzz6f2_show_toast('Tab #' + n + ' moved to ' + ws.label + '. Its number and link stay.');
+      reopen();
+    } catch (e) {
+      zzz_user_error('The tab was not moved - check the connection and try again.', e, '[Zzz14-B21:MOVE-TAB]');
+      mvOk.disabled = false;
+    }
+  };
+  mvOk.addEventListener('click', doMove);
+  mvIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') doMove(); });
   const doCreate = async () => {
     const nm = inp.value.trim();
     if (!nm) return;
@@ -47134,7 +47271,7 @@ async function open_zzz14b21_workspace(slug) {
   pok.addEventListener('click', doPut);
   pin.addEventListener('keydown', (e) => { if (e.key === 'Enter') doPut(); });
   let rows = [];
-  try { rows = await zzz14b21_load_target('p' + tabNo); } catch (e) { console.warn('[Zzz14-B21:WORKSPACES] tab', zzz_err_detail(e)); }
+  try { rows = await zzz14b21_load_place(tabNo); } catch (e) { console.warn('[Zzz14-B21:WORKSPACES] tab', zzz_err_detail(e)); }
   if (!rows.length) {
     const em = document.createElement('div'); em.className = 'zzz14b21-empty';
     em.textContent = 'Empty tab - place a record here with its ENTRY NUMBER.';
@@ -47150,7 +47287,7 @@ async function open_zzz14b21_workspace(slug) {
     const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz14b21-x'; x.textContent = '×';
     x.title = 'Take out of this tab (the record stays)';
     x.addEventListener('click', async () => {
-      try { await zzz14b21_take_out(r.entry_id, 'p' + tabNo); reopen(); }
+      try { await zzz14b21_take_out_place(r.entry_id, tabNo); reopen(); }
       catch (e) { console.warn('[Zzz14-B21:WORKSPACES] take out', zzz_err_detail(e)); zzz6f2_show_toast('Not changed - check the connection and try again.', 'warn'); }
     });
     row.appendChild(en); row.appendChild(tx); row.appendChild(x);
@@ -47243,7 +47380,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-02 09:49';
+const VERSO_BUILD = '2026-11-02 10:33';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
