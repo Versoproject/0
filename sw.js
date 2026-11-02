@@ -1,6 +1,6 @@
 
 
-const VERSO_SW_CACHE = 'verso-shell-v3';
+const VERSO_SW_CACHE = 'verso-shell-v4';
 const VERSO_SW_STATIC = /\.(png|jpe?g|webmanifest)$/i;
 
 self.addEventListener('install', (e) => {
@@ -24,21 +24,7 @@ self.addEventListener('fetch', (e) => {
 
   if (url.pathname.startsWith('/.well-known/') || /\.apk$/i.test(url.pathname)) return;
   if (req.mode === 'navigate') {
-    e.respondWith((async () => {
-      try {
-        const res = await fetch(req, { cache: 'no-store' });
-
-        if (res && res.ok && (res.headers.get('content-type') || '').includes('text/html')) {
-          const copy = res.clone();
-          caches.open(VERSO_SW_CACHE).then((c) => c.put('./', copy)).catch(() => {});
-        }
-        return res;
-      } catch (err) {
-        const cached = await caches.match('./');
-        if (cached) return cached;
-        throw err;
-      }
-    })());
+    e.respondWith(versoSwNavigate(req));
     return;
   }
   if (VERSO_SW_STATIC.test(url.pathname)) {
@@ -51,6 +37,48 @@ self.addEventListener('fetch', (e) => {
     })());
   }
 });
+
+const VERSO_GOOD_CACHE = 'verso-good';
+const versoSwBuildOf = (html) => { const m = /const VERSO_BUILD = '([^']+)'/.exec(html || ''); return m ? m[1] : ''; };
+async function versoSwPref(k) { try { const r = await (await caches.open('verso-prefs')).match(k); return r ? await r.text() : ''; } catch (e) { return ''; } }
+async function versoSwSetPref(k, v) { try { await (await caches.open('verso-prefs')).put(k, new Response(String(v))); } catch (e) {} }
+async function versoSwGood() {
+  try { const r = await (await caches.open(VERSO_GOOD_CACHE)).match('./'); if (!r) return null; const html = await r.clone().text(); return { res: r, build: versoSwBuildOf(html) }; } catch (e) { return null; }
+}
+async function versoSwWeb() {
+  try { const r = await fetch('./verso-web.json?sw=' + Date.now(), { cache: 'no-store' }); return r.ok ? await r.json() : null; } catch (e) { return null; }
+}
+
+async function versoSwTarget(web, netBuild) {
+  if (!web || !netBuild) return '';
+  const bad = new Set([].concat(web.bad || [], JSON.parse((await versoSwPref('bad')) || '[]')));
+  if (bad.has(netBuild)) return 'not:' + netBuild;
+  if ((await versoSwPref('ring')) === 'beta') return '';
+  if (web.stable && web.build === netBuild && web.stable !== netBuild && !(web.stableAfter && Date.now() >= Date.parse(web.stableAfter))) return web.stable;
+  return '';
+}
+async function versoSwNavigate(req) {
+  let res;
+  try { res = await fetch(req, { cache: 'no-store' }); }
+  catch (err) {
+    const cached = (await caches.match('./')) || (await caches.match('./', { cacheName: VERSO_GOOD_CACHE }));
+    if (cached) return cached;
+    throw err;
+  }
+  try {
+    if (!(res && res.ok && (res.headers.get('content-type') || '').includes('text/html'))) return res;
+    const html = await res.clone().text();
+    const netBuild = versoSwBuildOf(html);
+    const target = await versoSwTarget(await versoSwWeb(), netBuild);
+    if (target) {
+      const good = await versoSwGood();
+
+      if (good && good.build && good.build !== netBuild && (target.startsWith('not:') || good.build === target || good.build < netBuild)) return good.res;
+    }
+    caches.open(VERSO_SW_CACHE).then((c) => c.put('./', new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } }))).catch(() => {});
+    return new Response(html, { status: res.status, headers: res.headers });
+  } catch (e) { return res; }
+}
 
 async function versoSwPersonal() {
   try { const r = await (await caches.open('verso-prefs')).match('personal'); return r ? (await r.text()) !== '0' : true; } catch (e) { return true; }
@@ -128,6 +156,26 @@ self.addEventListener('push', (e) => {
 
 self.addEventListener('message', (e) => {
   const m = e.data || {};
+
+  if (m.type === 'verso-ring') e.waitUntil(versoSwSetPref('ring', m.beta ? 'beta' : 'stable'));
+  if (m.type === 'verso-good' && m.build) e.waitUntil((async () => {
+    try {
+      const cur = await caches.match('./', { cacheName: VERSO_SW_CACHE });
+      if (!cur) return;
+      const html = await cur.clone().text();
+      if (versoSwBuildOf(html) !== m.build) return;
+      await (await caches.open(VERSO_GOOD_CACHE)).put('./', new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } }));
+    } catch (er) {}
+  })());
+  if (m.type === 'verso-bad' && m.build) e.waitUntil((async () => {
+    let b = m.build;
+    if (b === '*current*') { try { const cur = await caches.match('./', { cacheName: VERSO_SW_CACHE }); b = cur ? versoSwBuildOf(await cur.clone().text()) : ''; } catch (er) { b = ''; } }
+    if (!b) return;
+    const list = JSON.parse((await versoSwPref('bad')) || '[]');
+    if (list.indexOf(b) < 0) list.push(b);
+    await versoSwSetPref('bad', JSON.stringify(list.slice(-20)));
+  })());
+  if (m.type === 'verso-good-build' && e.ports && e.ports[0]) e.waitUntil((async () => { const g = await versoSwGood(); e.ports[0].postMessage({ build: g ? g.build : '' }); })());
   if (m.type === 'verso-show') e.waitUntil(versoSwShow(m.data));
   if (m.type === 'verso-clear') e.waitUntil(self.registration.getNotifications().then(ns => ns.forEach(n => n.close())).catch(() => {}));
   if (m.type === 'verso-regime') e.waitUntil(caches.open('verso-prefs').then(async (c) => {

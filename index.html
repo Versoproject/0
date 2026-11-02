@@ -40,6 +40,40 @@
 })();
 </script>
 <script>
+
+(function () {
+  var BETA = ['vrso', 'verso1', 'verso2', 'verso3'];
+  function sw() { return navigator.serviceWorker && navigator.serviceWorker.controller; }
+  function post(m) { try { var c = sw(); if (c) c.postMessage(m); } catch (e) {} }
+  function user() { try { var l = document.getElementById('zzz6f7UsernameLabel'); return l ? String(l.textContent || '').trim().toLowerCase() : ''; } catch (e) { return ''; } }
+  function ring() { var u = user(); var on = BETA.indexOf(u) >= 0; try { localStorage.setItem('verso_ring', on ? 'beta' : 'stable'); } catch (e) {} post({ type: 'verso-ring', beta: on }); }
+  window.zzz_ring_sync = ring;
+  function goodBuild(cb) {
+    try {
+      var c = sw(); if (!c || !window.MessageChannel) return cb('');
+      var ch = new MessageChannel(), done = false;
+      ch.port1.onmessage = function (ev) { if (!done) { done = true; cb((ev.data && ev.data.build) || ''); } };
+      c.postMessage({ type: 'verso-good-build' }, [ch.port2]);
+      setTimeout(function () { if (!done) { done = true; cb(''); } }, 3000);
+    } catch (e) { cb(''); }
+  }
+  setTimeout(function () {
+    var build = ''; try { build = VERSO_BUILD; } catch (e) {}
+    var ok = false;
+    try { ok = !!build && window.__versoMainDone === true && typeof zzz3d_render === 'function' && typeof zzz6f7_set_login_state === 'function' && !!document.getElementById('zzz6f7UsernameLabel'); } catch (e) {}
+    ring();
+    if (ok) { post({ type: 'verso-good', build: build }); return; }
+    post({ type: 'verso-bad', build: build || '*current*' });
+    try { if (sessionStorage.getItem('verso_rolled')) return; } catch (e) {}
+    goodBuild(function (g) {
+      if (!g || g === build) return;
+      try { sessionStorage.setItem('verso_rolled', '1'); localStorage.setItem('verso_rolled_back', JSON.stringify({ from: build || '?', to: g, t: Date.now() })); } catch (e) {}
+      location.reload();
+    });
+  }, 20000);
+})();
+</script>
+<script>
 (function () {
   var shown = 0;
   function show(msg) {
@@ -20770,6 +20804,7 @@ function zzz6f7_set_login_state(isLoggedIn) {
 
   if (isLoggedIn) { try { zzz6f40_load_fixes(); } catch (e) {} try { zzz5t0_tabs_load(); } catch (e) {} }
   if (typeof zzz_recompute_logo_status === 'function') zzz_recompute_logo_status();
+  try { if (typeof window.zzz_ring_sync === 'function') window.zzz_ring_sync(); } catch (e) {}
 }
 
 (function bindZzz6F7LoginState() {
@@ -47619,7 +47654,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-02 12:29';
+const VERSO_BUILD = '2026-11-02 14:05';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -47647,8 +47682,12 @@ async function zzz_dev_au_check(why) {
   if (why !== 'load' && Date.now() - zzzDevAuAt < 20000) return;
   zzzDevAuBusy = true; zzzDevAuAt = Date.now();
   try {
-    const sig = await zzz_dev_au_sig();
+
+    let sig = null;
+    try { const lw = await zzz14b17_live_web(); if (lw) sig = 'b:' + lw; } catch (e) {}
+    if (!sig) sig = await zzz_dev_au_sig();
     if (!sig) return;
+    if (zzzDevAuSig === null && sig === 'b:' + VERSO_BUILD) { zzzDevAuSig = sig; return; }
     if (zzzDevAuSig === null) { zzzDevAuSig = sig; return; }
     if (sig === zzzDevAuSig) return;
 
@@ -47680,6 +47719,16 @@ function zzz_ops_set(key, patch) {
   const st = zzz_ops_load(); st[key] = Object.assign({}, st[key] || {}, patch);
   try { localStorage.setItem(ZZZ_OPS_KEY, JSON.stringify(st)); } catch (e) {}
 }
+
+setTimeout(() => {
+  try {
+    const rb = JSON.parse(localStorage.getItem('verso_rolled_back') || 'null');
+    if (!rb) return;
+    localStorage.removeItem('verso_rolled_back');
+    zzz6f2_show_toast('Verso went back to the last working version (' + rb.to + ') - the new one (' + rb.from + ') did not start correctly and was reported.', 'warn', 9000);
+    zzz_report_issue('update', 'Auto-rollback: build ' + rb.from + ' did not start, back to ' + rb.to, { tags: ['update', 'rollback'], from: rb.from, to: rb.to });
+  } catch (e) {}
+}, 6000);
 
 (function zzz_ops_note_build() {
   try {
@@ -52287,9 +52336,18 @@ function zzz14b17_live_app() {
   return fetch('/verso-apk.json?v=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
     .then(j => { const v = (j && Number(j.versionCode)) || null; if (v) zzzVersoLiveApp = v; return v; }).catch(() => null);
 }
+
+function zzz_ring_build(j) {
+  if (!j || !j.build) return null;
+  let beta = false; try { beta = localStorage.getItem('verso_ring') === 'beta'; } catch (e) {}
+  const bad = [].concat(j.bad || []);
+  if (bad.indexOf(j.build) >= 0) return j.stable || VERSO_BUILD;
+  if (beta || !j.stable || j.stable === j.build || (j.stableAfter && Date.now() >= Date.parse(j.stableAfter))) return j.build;
+  return j.stable;
+}
 function zzz14b17_live_web() {
   return fetch('/verso-web.json?v=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
-    .then(j => { const b = (j && j.build) || null; if (b) zzzVersoLiveWeb = b; return b; }).catch(() => null);
+    .then(j => { const b = zzz_ring_build(j); if (b) zzzVersoLiveWeb = b; return b; }).catch(() => null);
 }
 
 const ZZZ5W9_TABS = [
@@ -53984,6 +54042,7 @@ function zzz10m2_render_login_setup(body) {
   body.appendChild(zzz10dm_build_row());
 }
 
+window.__versoMainDone = true;
 </script>
 </body>
 </html>
