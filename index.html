@@ -47799,7 +47799,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-03 01:33';
+const VERSO_BUILD = '2026-11-03 01:38';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -50185,6 +50185,14 @@ function zzz_media_pick_file(it, done) {
       await new Promise((res, rej) => { const t = db.transaction('files', 'readwrite'); t.objectStore('files').put(f, zzz_media_fkey(it.link)); t.oncomplete = res; t.onerror = () => rej(t.error); });
       zzzMediaFiles.add(it.link);
       zzz6f2_show_toast('File for OFFLINE set: ' + f.name + ' (kept only in this browser).', 'info');
+
+      try {
+        if (it.id) {
+          const w = zzz_media_tagw(it.tags), kind = /^audio\//.test(f.type || '') ? 'music' : /^video\//.test(f.type || '') ? 'video' : '';
+          const nm = it.name ? undefined : String(f.name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[_]+/g, ' ').slice(0, 60);
+          if (nm !== undefined || (kind && !w.some(x => ZZZ_MEDIA_TABWORDS.indexOf(x) >= 0))) await zzz_media_set_tags(it, kind && !w.some(x => ZZZ_MEDIA_TABWORDS.indexOf(x) >= 0) ? w.concat([kind]) : w, nm);
+        }
+      } catch (e2) {}
       if (done) done();
     } catch (e) { zzz6f2_show_toast('The file could not be kept (browser storage full?).', 'warn'); }
   });
@@ -50413,7 +50421,22 @@ async function zzz_media_load() {
 
   (async () => { for (const x of zzzMedia.list.filter(x => !x.name).slice(0, 12)) { try { await zzz_media_autoname(x); } catch (e) {} } })();
 }
+
+const ZZZ_MEDIA_TABWORDS = ['streams', 'reels', 'music', 'video', 'movies', 'networks', 'radios', 'podcasts', 'live'];
+function zzz_media_autotag(link) {
+  const l = String(link || '').toLowerCase();
+  if (/music\.youtube\.|spotify\.com\/(track|album|playlist|artist)|soundcloud\.com|deezer\.com|music\.apple\.com|tidal\.com|bandcamp\.com/.test(l)) return 'music';
+  if (/youtube\.com\/shorts|instagram\.com\/(reel|reels|p)\/|tiktok\.com|facebook\.com\/reel/.test(l)) return 'reels';
+  if (/spotify\.com\/(show|episode)|podcasts\.apple\.com|podcasts\.google|anchor\.fm|podbean|castbox/.test(l)) return 'podcasts';
+  if (/twitch\.tv|youtube\.com\/live|\/live\b/.test(l)) return 'live';
+  if (/radio|tunein\.com|\.m3u8?(\?|$)|icecast|shoutcast/.test(l)) return 'radios';
+  if (/youtube\.com|youtu\.be|vimeo\.com|dailymotion\.com/.test(l)) return 'video';
+  if (/\.(mp3|m4a|aac|ogg|oga|opus|flac|wav)(\?|$)/.test(l)) return 'music';
+  if (/\.(mp4|webm|mkv|mov)(\?|$)/.test(l)) return 'video';
+  return '';
+}
 async function zzz_media_add(link, name, tags) {
+  { const tw = String(tags || '').toLowerCase().split(/\s+/).filter(Boolean); if (!tw.some(w => ZZZ_MEDIA_TABWORDS.indexOf(w) >= 0)) { const a = zzz_media_autotag(link); if (a) tags = (tw.concat([a])).join(' '); } }
   link = String(link || '').trim();
   if (!/^https?:\/\//i.test(link)) { zzz6f2_show_toast('A link must start with https://', 'warn'); return null; }
   link = zzz_media_norm(link);
@@ -50937,7 +50960,10 @@ async function zzz_media_open() {
   const bulk = async (on) => { const l = selItems(); if (!l.length) { zzz6f2_show_toast('Mark rows first (SELECT).', 'info'); return; } let n = 0; for (const it of l) if (await zzz_media_set_public(it, on)) n++; zzz6f2_show_toast(n + (on ? ' public' : ' private'), 'info'); draw(); };
   pubB.addEventListener('click', () => bulk(true)); prvB.addEventListener('click', () => bulk(false));
   cpyB.addEventListener('click', () => { const l = selItems(); if (!l.length) { zzz6f2_show_toast('Mark rows first (SELECT).', 'info'); return; } zzz_media_copy(l); });
-  tools.append(viewB, selB, pubB, prvB, cpyB, delB);
+
+  const allB = document.createElement('button'); allB.type = 'button'; allB.className = 'zzz-media-btn'; allB.textContent = '\u25B6 ALL'; allB.title = 'Play this list from the top';
+  allB.addEventListener('click', () => { const l = zzz_media_tablist().filter(x => x.link); if (!l.length) { zzz6f2_show_toast('Nothing to play in this list yet.', 'info'); return; } zzz_media_play(l[0], l); });
+  tools.append(allB, viewB, selB, pubB, prvB, cpyB, delB);
   const list = document.createElement('div'); list.className = 'zzz-media-list'; w.appendChild(list);
   const cell = (r, txt) => { const d = document.createElement('div'); d.textContent = txt; r.appendChild(d); return d; };
   const draw = () => {
@@ -50953,11 +50979,13 @@ async function zzz_media_open() {
 
     viewB.innerHTML = '<span' + (plsView ? '' : ' class="is-act"') + '>ROWS</span> \u21c4 <span' + (plsView ? ' class="is-act"' : '') + '>\u2605 PLAYLISTS</span>';
     viewB.classList.remove('is-on');
-    selB.style.display = delB.style.display = trashTab || (plsView && !zzzMedia.pls) ? 'none' : '';
+
+    selB.style.display = delB.style.display = trashTab ? 'none' : '';
+    allB.style.display = trashTab || (plsView && !zzzMedia.pls) ? 'none' : '';
     pubB.style.display = prvB.style.display = cpyB.style.display = zzzMedia.selecting && zzzMedia.sel.size ? '' : 'none';
     selB.classList.toggle('is-on', zzzMedia.selecting);
-    delB.classList.toggle('is-red', zzzMedia.sel.size > 0);
-    delB.textContent = zzzMedia.sel.size ? 'DELETE ' + zzzMedia.sel.size : 'DELETE';
+    { const nSel = plsView && !zzzMedia.pls ? (zzzMedia.selPls ? zzzMedia.selPls.size : 0) : zzzMedia.sel.size;
+      delB.classList.toggle('is-red', nSel > 0); delB.textContent = nSel ? 'DELETE ' + nSel : 'DELETE'; }
     list.innerHTML = '';
     const lhd = document.createElement('div'); lhd.className = 'zzz-media-listhead';
     const lt = document.createElement('div'); lt.className = 'zzz-media-sub';
@@ -50978,7 +51006,11 @@ async function zzz_media_open() {
         const allPub = members.length && members.every(x => x.pub);
         const pp = cell(r, allPub ? '\uD83C\uDF10' : '\uD83D\uDD12'); pp.className = 'zzz-media-fb'; pp.title = 'Tap = the whole playlist ' + (allPub ? 'PRIVATE' : 'PUBLIC');
         pp.addEventListener('click', async (e) => { e.stopPropagation(); if (!members.length) return; let n = 0; for (const x of members) if (await zzz_media_set_public(x, !allPub)) n++; zzz6f2_show_toast('Playlist ' + pl.name + ': ' + n + (allPub ? ' private' : ' public'), 'info'); draw(); });
-        r.addEventListener('click', () => { zzzMedia.pls = pl.name; draw(); });
+        if (zzzMedia.selPls && zzzMedia.selPls.has(pl.name)) r.classList.add('is-sel');
+        r.addEventListener('click', () => {
+          if (zzzMedia.selecting) { zzzMedia.selPls = zzzMedia.selPls || new Set(); if (zzzMedia.selPls.has(pl.name)) zzzMedia.selPls.delete(pl.name); else zzzMedia.selPls.add(pl.name); draw(); return; }
+          zzzMedia.pls = pl.name; draw();
+        });
         pb.addEventListener('click', (e) => { e.stopPropagation(); if (pl.link) zzz_media_play({ id: '', name: pl.name, link: pl.link, tag: 'PLAYLIST' }, []); else if (pl.items.length) zzz_media_play(pl.items[0], pl.items); else zzz6f2_show_toast('Empty playlist - open it and + ADD links.', 'info'); });
         list.appendChild(r);
       });
@@ -50997,7 +51029,11 @@ async function zzz_media_open() {
       if (it.id) r.dataset.mid = String(it.id);
       zzz_media_bind_swipe(r, it, draw);
       r.title = 'Swipe right = READ (stays) · swipe left = SHIFTED (later) · hold = name / tags / file';
+
       cell(r, (it.pub ? '\uD83C\uDF10' : '\uD83D\uDD12') + (it.num ? String(it.num) : '-'));
+      cell(r, it.name || '-');
+      cell(r, zzz_media_tagw(it.tags).filter(t => t !== 'actual').join(' ') || '-');
+      cell(r, (it.link || '-').replace(/^https?:\/\/(www\.)?/, ''));
       if (!trashTab && !zzzMedia.selecting) zzz_media_bind_drag(r.firstChild, r, it, l, draw);
       if (it.id) zzz_bind_long_press(r, 700, () => { r._zzzSwiped = true; setTimeout(() => { r._zzzSwiped = false; }, 700); zzz_media_edit(it, draw); });
       const pb = cell(r, '▶︎'); pb.className = 'zzz-media-pl';
@@ -51017,8 +51053,24 @@ async function zzz_media_open() {
     });
     zzz_media_paint();
   };
-  selB.addEventListener('click', () => { zzzMedia.selecting = !zzzMedia.selecting; if (!zzzMedia.selecting) zzzMedia.sel.clear(); draw(); });
+  selB.addEventListener('click', () => { zzzMedia.selecting = !zzzMedia.selecting; if (!zzzMedia.selecting) { zzzMedia.sel.clear(); if (zzzMedia.selPls) zzzMedia.selPls.clear(); } draw(); });
   delB.addEventListener('click', () => {
+
+    if (zzzMedia.view === 'pls' && !zzzMedia.pls) {
+      const names = Array.from(zzzMedia.selPls || []);
+      if (!names.length) { zzz6f2_show_toast('DELETE: tap SELECT, mark the playlists, then DELETE.', 'info'); return; }
+      zzz_media_confirm('Move ' + names.length + (names.length === 1 ? ' playlist' : ' playlists') + ' (' + names.join(', ') + ') to TRASH? The rows stay in ALL MEDIA.', 'MOVE TO TRASH', async () => {
+        for (const nm of names) {
+          const k = nm.toLowerCase();
+          for (const it of (zzzMedia.list || []).filter(x => x.pls.some(p => p.toLowerCase() === k))) await zzz_media_set_tags(it, zzz_media_tagw(it.tags).filter(w => w !== 'pls:' + k));
+          for (const d of (zzzMedia.plsDefs || []).filter(d => d.plsDef.toLowerCase() === k)) await zzz_media_set_tags(d, zzz_media_tagw(d.tags).concat(['trash']));
+        }
+        zzzMedia.selPls.clear(); zzzMedia.selecting = false;
+        await zzz_media_load(); draw();
+        zzz6f2_show_toast(names.length + (names.length === 1 ? ' playlist' : ' playlists') + ' moved to TRASH.', 'info');
+      });
+      return;
+    }
     if (!zzzMedia.sel.size) { zzz6f2_show_toast('DELETE: tap SELECT, mark the rows, then DELETE.', 'info'); return; }
     const ids = Array.from(zzzMedia.sel);
     zzz_media_confirm('Move ' + ids.length + (ids.length === 1 ? ' line' : ' lines') + ' to TRASH? You can restore them from the TRASH tab.', 'MOVE TO TRASH', async () => {
