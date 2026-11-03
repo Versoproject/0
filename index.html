@@ -7055,6 +7055,16 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-tagchip { border: 1px solid #D4AF37; background: #171717; color: #D4AF37; border-radius: 10px; padding: 2px 8px; font-size: 11px; }
   .zzz-media-tagchip.is-on { background: #D4AF37; color: #111; font-weight: 700; }
   .zzz-media-tagchip.is-clear { border-color: #888; color: #bbb; }
+  
+  .zzz-vi-line { display: flex; gap: 4px; align-items: center; margin: 0 0 6px; }
+  .zzz-vi-line button { flex: 0 0 auto; border: 2px solid #F0962E; border-radius: 12px; background: #151515; color: #F0962E; font-weight: 700; font-size: 11px; padding: 3px 7px; white-space: nowrap; }
+  .zzz-vi-line button.is-on { background: #4CAF50; border-color: #4CAF50; color: #000; }
+  .zzz-vi-line button.is-off { border-color: #6B7280; color: #9CA3AF; }
+  .zzz-vi-line .zzz-vi-prio { border: 0; color: #fff; }
+  .zzz-vi-line .zzz-vi-prio.p-open { background: #2E7D32; } .zzz-vi-line .zzz-vi-prio.p-attention { background: #E07B00; } .zzz-vi-line .zzz-vi-prio.p-urgent { background: #C0392B; }
+  .zzz-vi-line select { flex: 0 1 auto; max-width: 74px; min-width: 0; border: 1.5px solid #D4AF37; border-radius: 12px; background: #0f0f0f; color: #D4AF37; font-size: 11px; padding: 3px 2px; }
+  .zzz-vi-line input { flex: 1 1 60px; min-width: 0; border: 1px solid #D4AF37; border-radius: 10px; background: #0e0e0e; color: #fff; padding: 6px; font-size: 14px; }
+  .zzz-vi-line .zzz-vi-go { border-color: #D4AF37; background: #D4AF37; color: #000; }
   .zzz-media-paste input { flex: 1; min-width: 0; border: 1.5px dashed #D4AF37; border-radius: 8px; background: #0f0f0f; color: #eee; padding: 6px; }
   .zzz-media-btn { border: 1.5px solid #D4AF37; border-radius: 14px; background: transparent; color: #D4AF37; font-weight: 700; padding: 4px 10px; font-size: 11px; }
   .zzz-media-btn.is-on { background: #D4AF37; color: #171717; }
@@ -35269,6 +35279,7 @@ function zzz14cs_feed_target_paint(comp, items) {
 }
 
 let zzz14csFeedNum = null;
+let zzz14csFeedRem = null;
 function zzz14cs_feed_composer(comp, items) {
   const keepText = (comp.querySelector('textarea') || {}).value || '';
   comp.innerHTML = '';
@@ -35286,7 +35297,40 @@ function zzz14cs_feed_composer(comp, items) {
   privChk.title = 'Checked = private note (only you see it)';
   const privTx = document.createElement('span'); privTx.textContent = 'privacy';
   privWrap.append(privChk, privTx);
-  chips.append(prioWrap, privWrap);
+
+  const ekNow = () => { const n = zzz14cs_feed_target(zzz14cs_feed_items(zzz14cs_feed_prefs())); return n && n.entry_key ? String(n.entry_key) : ''; };
+  const tools = document.createElement('span'); tools.className = 'zzz1cn-max-slot';
+  const clock = document.createElement('button'); clock.type = 'button'; clock.className = 'zzz1cn-clock'; clock.textContent = '\u23f0';
+  const paintClock = () => {
+    clock.classList.toggle('is-on', !!zzz14csFeedRem);
+    if (zzz14csFeedRem) clock.innerHTML = zzz_kind_glyph_svg(zzz14csFeedRem.kind === 'schedule' ? 'schedule' : 'reminder'); else clock.textContent = '\u23f0';
+    clock.title = zzz14csFeedRem ? 'Reminder / schedule set - added when you send · tap = change' : 'Reminder / schedule for this message';
+  };
+  clock.addEventListener('mousedown', (e) => e.preventDefault());
+  clock.addEventListener('click', (e) => {
+    e.preventDefault();
+    const ek = ekNow();
+    if (!ek) { zzz6f2_show_toast('Tap a notification first - the alarm belongs to its chat.', 'warn'); return; }
+    zzz5w8_open_item_window(null, zzz14csFeedRem ? zzz14csFeedRem.kind : 'schedule', {
+      entry: /^\d+$/.test(ek) ? ek : '', cfg: zzz14csFeedRem, anchor: clock,
+      members: (typeof zzz56PrivOn !== 'undefined' && zzz56PrivOn && typeof zzz56_priv_recipients === 'function') ? zzz56_priv_recipients(ek) : null,
+      onArm: (cfg) => { zzz14csFeedRem = cfg; paintClock(); zzz6f2_show_toast('Set for this message - it is added when you send it.'); },
+      onDisarm: () => { zzz14csFeedRem = null; paintClock(); }
+    });
+  });
+  paintClock();
+  tools.appendChild(clock);
+  let trTog = null; try { trTog = zzz23tr_toggle(ekNow); tools.appendChild(trTog); } catch (e) {}
+  const maxBtn = document.createElement('button'); maxBtn.type = 'button'; maxBtn.className = 'zzz1cn-max-btn'; maxBtn.textContent = '\u26f6';
+  maxBtn.title = 'Bigger text field (whole window) · tap again = back';
+  tools.appendChild(maxBtn);
+  const pk = (typeof zzz56_priv_button === 'function') ? zzz56_priv_button() : null;
+  if (pk) {
+
+    pk.addEventListener('pointerdown', () => { try { const ek = ekNow(); if (ek && zzz56PrivCtx !== ek) { zzz56_ctx_set(ek); zzz56_priv_refresh(); } } catch (e) {} }, true);
+  }
+  chips.append(tools, prioWrap, privWrap);
+  if (pk) chips.appendChild(pk);
   comp.appendChild(chips);
 
   const row = document.createElement('div'); row.className = 'zzz1cn-row zzz14cs-feed-cn';
@@ -35311,6 +35355,13 @@ function zzz14cs_feed_composer(comp, items) {
   side.append(tRow, nmWrap, send);
   row.appendChild(side);
   comp.appendChild(row);
+
+  const maxFit = () => { try { const vv = window.visualViewport; row.style.setProperty('--zzz1cn-vvtop', (vv ? vv.offsetTop : 0) + 'px'); row.style.setProperty('--zzz1cn-vvh', (vv ? vv.height : window.innerHeight) + 'px'); } catch (e) {} };
+  const maxSet = (on) => { row.classList.toggle('zzz1cn-max', on); maxBtn.textContent = on ? '\u2921' : '\u26f6'; if (on) { main.appendChild(maxBtn); maxFit(); } else tools.insertBefore(maxBtn, tools.children[2] || null); };
+  maxBtn.addEventListener('mousedown', (e) => e.preventDefault());
+  maxBtn.addEventListener('click', (e) => { e.preventDefault(); maxSet(!row.classList.contains('zzz1cn-max')); try { ta.focus({ preventScroll: true }); } catch (er) {} });
+  comp._zzzMaxOff = () => { if (row.classList.contains('zzz1cn-max')) maxSet(false); };
+  try { const ek0 = ekNow(); if (ek0 && zzz56PrivCtx !== ek0 && !document.querySelector('.zzz1r17b-comm-window')) { zzz56_ctx_set(ek0); setTimeout(zzz56_priv_refresh, 0); } } catch (e) {}
 
   const paintNum = () => {
     const n = zzz14cs_feed_target(zzz14cs_feed_items(zzz14cs_feed_prefs()));
@@ -35341,9 +35392,19 @@ function zzz14cs_feed_composer(comp, items) {
     if (priv && typeof zzz1cn_private_ok === 'function' && !zzz1cn_private_ok(ek)) { zzz6f2_show_toast('Private notes are off in this record - uncheck privacy.', 'warn'); return; }
     busy = true; send.disabled = true;
     try {
+      try { comp._zzzMaxOff && comp._zzzMaxOff(); } catch (e) {}
       const mOnly = zzz6f58_names(text, true);
       const name = String(nm.value || '').trim();
-      const saved = await zzz1cn_add(ek, text, priv, tn ? { base: tn } : null, name, !!save, zzz1cn_prio_level(zzz14csFeedPrio) || zzz56_prio_mode(ek), mOnly);
+
+      let body = text, trOrig = null;
+      try {
+        if (typeof zzz23tr_outgoing === 'function' && zzz23tr_on() && zzz23tr_chat(ek).m === 'out' && zzz1cn_opt_has('note_orig')
+          && !zzz6f58_names(text, false).length && !mOnly.length && !/https?:\/\/|verso:/i.test(text)) {
+          const t = await zzz23tr_outgoing(ek, text); if (t) { body = t.text; trOrig = { orig: t.orig, lang: t.lang }; }
+        }
+      } catch (e) {}
+      const saved = await zzz1cn_add(ek, body, priv, tn ? { base: tn } : null, name, !!save, zzz1cn_prio_level(zzz14csFeedPrio) || zzz56_prio_mode(ek), mOnly, null, 0, trOrig);
+      if (saved && zzz14csFeedRem) { const cfg = zzz14csFeedRem; zzz14csFeedRem = null; try { paintClock(); } catch (e) {} try { zzz5w8_insert_from_chat(cfg, ek, body, zzz14csFeedPrio, saved); } catch (e) {} }
       if (saved) {
         zzz6f2_show_toast((save ? 'Note saved' : 'Chatnote') + ` #${zzz5w7_label_of(saved)} → #${ek}.`);
         zzzLastActAt = Date.now();
@@ -47891,7 +47952,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-03 13:09';
+const VERSO_BUILD = '2026-11-03 13:15';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -49565,28 +49626,74 @@ async function zzz_vi_entry(create) {
   } catch (e) { zzz_user_error('VI: your VI record could not be created - check the connection and try again.', e, '[Zzz14-VI:LINE]'); return null; }
 }
 function zzz_vi_back() { try { if (zzz14b17_in_app()) zzz_native_go(zzz_media_intent('backapp')); } catch (e) {} }
-async function zzz_vi_send(b64) {
-  let o = null;
-  try { o = JSON.parse(decodeURIComponent(escape(atob(String(b64).replace(/-/g, '+').replace(/_/g, '/'))))); } catch (e) { o = null; }
-  const text = o && typeof o.t === 'string' ? o.t.trim().slice(0, 4000) : '';
-  if (!text) { zzz_busy_end(); zzz6f2_show_toast('VI LINE: nothing to send.', 'warn'); return; }
-  zzz_busy_set(40);
+
+async function zzz_vi_post(text, prio, pack) {
+  text = String(text || '').trim().slice(0, 4000);
+  if (!text) { zzz6f2_show_toast('VI LINE: write something first.', 'info'); return false; }
   const e = await zzz_vi_entry(true);
-  if (!e) { zzz_busy_end(); return; }
-  let to = [], pk = String(o.k || '').trim();
+  if (!e) return false;
+  let to = [], pk = String(pack || '').trim();
   if (pk) {
     const p = (zzz5w5cm_tag_packs() || []).find(x => zzz10v1_normalize(x.tag) === zzz10v1_normalize(pk));
     to = p ? p.names.slice() : [];
-    if (!to.length) { zzz_busy_end(); zzz6f2_show_toast('VI LINE: pack „' + pk + '“ is not in your contacts any more - nothing was sent.', 'warn'); return; }
+    if (!to.length) { zzz6f2_show_toast('VI LINE: pack „' + pk + '“ is not in your contacts any more - nothing was sent.', 'warn'); return false; }
   }
-  zzz_busy_set(70);
   try {
-    const saved = await zzz1cn_add(String(e.entry_id), text, !to.length, null, '', true, zzz1cn_prio_level(String(o.p || '')), to, 'vi');
+    const saved = await zzz1cn_add(String(e.entry_id), text, !to.length, null, '', true, zzz1cn_prio_level(String(prio || '')), to, 'vi');
     if (!saved) throw new Error('not saved');
-    zzz_busy_set(100); zzz_busy_end();
     zzz6f2_show_toast('VI ✓ sent to your VI record #' + e.entry_id + (to.length ? ' · pack ' + pk : ' · private'), 'info');
-    setTimeout(zzz_vi_back, 700);
-  } catch (x) { zzz_busy_end(); zzz_user_error('VI LINE: the line was not saved - check the connection and send it again.', x, '[Zzz14-VI:LINE]'); }
+    return true;
+  } catch (x) { zzz_user_error('VI LINE: the line was not saved - check the connection and send it again.', x, '[Zzz14-VI:LINE]'); return false; }
+}
+function zzz_vi_get(k, d) { try { return localStorage.getItem(zzz_ukey('zzz_vi_' + k)) || d; } catch (e) { return d; } }
+function zzz_vi_put(k, v) { try { localStorage.setItem(zzz_ukey('zzz_vi_' + k), String(v)); } catch (e) {} }
+function zzz_vi_line_el() {
+  if (zzz_vi_get('line', '1') !== '1') return null;
+  const row = document.createElement('div'); row.className = 'zzz-vi-line';
+  const MODES = ['on', 'standby', 'off'], PR = ['open', 'attention', 'urgent'];
+  const vi = document.createElement('button'); vi.type = 'button';
+  const paintVi = () => { const m = zzz_vi_get('mode', 'standby'); vi.textContent = 'VI ' + (m === 'on' ? 'ON' : m === 'off' ? 'OFF' : 'STBY'); vi.className = m === 'on' ? 'is-on' : (m === 'off' ? 'is-off' : ''); };
+  paintVi(); vi.title = 'VI (Verso Intelligence): tap = ON / STANDBY / OFF (the bot is coming) · 2× tap = your VI record in COMM SPACE · hold = hide the VI LINE';
+  let t1 = 0, last = 0, held = false, ht = 0;
+  vi.addEventListener('pointerdown', () => { held = false; clearTimeout(ht); ht = setTimeout(() => { held = true; zzz_vi_put('line', '0'); row.remove(); zzz6f2_show_toast('VI LINE hidden - back: hold the title VERSO MEDIA CENTER.', 'info'); }, 900); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => vi.addEventListener(ev, () => clearTimeout(ht)));
+  vi.addEventListener('click', () => {
+    if (held) return;
+    const now = Date.now();
+    if (now - last < 320) { clearTimeout(t1); last = 0; zzz_vi_open(); return; }
+    last = now;
+    t1 = setTimeout(() => { const m = zzz_vi_get('mode', 'standby'); zzz_vi_put('mode', MODES[(MODES.indexOf(m) + 1) % 3]); paintVi(); }, 300);
+  });
+  const pr = document.createElement('button'); pr.type = 'button';
+  const paintPr = () => { const p = zzz_vi_get('prio', 'open'); pr.textContent = p === 'urgent' ? 'URG' : (p === 'attention' ? 'ATT' : 'OPEN'); pr.className = 'zzz-vi-prio p-' + p; };
+  paintPr(); pr.title = 'Priority: OPEN → ATTENTION → URGENT';
+  pr.addEventListener('click', () => { const p = zzz_vi_get('prio', 'open'); zzz_vi_put('prio', PR[(PR.indexOf(p) + 1 + 3) % 3]); paintPr(); });
+  const pk = document.createElement('select'); pk.title = 'PACK: only its members see the line (none = private)';
+  const fill = () => {
+    const cur = zzz_vi_get('pack', ''); pk.innerHTML = '';
+    const o0 = document.createElement('option'); o0.value = ''; o0.textContent = '🔒 me'; pk.appendChild(o0);
+    (zzz5w5cm_tag_packs() || []).forEach(p => { const o = document.createElement('option'); o.value = p.tag; o.textContent = p.tag; pk.appendChild(o); });
+    pk.value = Array.from(pk.options).some(o => o.value === cur) ? cur : '';
+  };
+  fill(); pk.addEventListener('focus', fill); pk.addEventListener('change', () => zzz_vi_put('pack', pk.value));
+  const inp = document.createElement('input'); inp.type = 'text'; inp.placeholder = 'VI · chatnote'; inp.enterKeyHint = 'send';
+  inp.value = zzz_vi_get('draft', ''); inp.addEventListener('input', () => zzz_vi_put('draft', inp.value));
+  const go = document.createElement('button'); go.type = 'button'; go.className = 'zzz-vi-go'; go.textContent = '➤'; go.title = 'Send into your VI record';
+  let busy = false;
+  const send = async () => { if (busy) return; busy = true; go.disabled = true; try { if (await zzz_vi_post(inp.value, zzz_vi_get('prio', 'open'), pk.value)) { inp.value = ''; zzz_vi_put('draft', ''); } } finally { busy = false; go.disabled = false; } };
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+  go.addEventListener('click', send);
+  row.append(vi, pr, pk, inp, go);
+  return row;
+}
+async function zzz_vi_send(b64) {
+  let o = null;
+  try { o = JSON.parse(decodeURIComponent(escape(atob(String(b64).replace(/-/g, '+').replace(/_/g, '/'))))); } catch (e) { o = null; }
+  if (!o || typeof o.t !== 'string' || !o.t.trim()) { zzz_busy_end(); zzz6f2_show_toast('VI LINE: nothing to send.', 'warn'); return; }
+  zzz_busy_set(50);
+  const ok = await zzz_vi_post(o.t, o.p, o.k);
+  zzz_busy_set(100); zzz_busy_end();
+  if (ok) setTimeout(zzz_vi_back, 700);
 }
 async function zzz_vi_open() {
   const e = await zzz_vi_entry(true);
@@ -51150,6 +51257,9 @@ async function zzz_media_open() {
   w = document.createElement('div'); w.id = 'zzzMediaWin'; w.className = 'zzz-media-win';
   const head = document.createElement('div'); head.className = 'zzz-media-head';
   const ttl = document.createElement('span'); ttl.textContent = 'VERSO MEDIA CENTER';
+  { let ht = 0; ttl.addEventListener('pointerdown', () => { clearTimeout(ht); ht = setTimeout(() => {
+      if (w.querySelector('.zzz-vi-line')) return; zzz_vi_put('line', '1'); const vl = zzz_vi_line_el(); if (vl) head.after(vl); zzz6f2_show_toast('VI LINE shown.', 'info'); }, 900); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => ttl.addEventListener(ev, () => clearTimeout(ht))); }
   const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-x'; x.textContent = '✕'; x.title = 'Close (playing goes on)';
   x.addEventListener('click', () => { w.remove(); zzz_media_place(); });
   const modeB = document.createElement('button'); modeB.type = 'button'; modeB.className = 'zzz-media-btn zzz-media-mode' + (zzz_media_offline() ? ' is-off' : '');
@@ -51157,6 +51267,7 @@ async function zzz_media_open() {
   modeB.addEventListener('click', () => zzz_media_set_offline(!zzz_media_offline()));
   const hr = document.createElement('span'); hr.className = 'zzz-media-head-r'; hr.append(modeB, x);
   head.append(ttl, hr); w.appendChild(head);
+  try { const vl = zzz_vi_line_el(); if (vl) w.appendChild(vl); } catch (e) {}
   const nowL = document.createElement('div'); nowL.className = 'zzz-media-now'; w.appendChild(nowL);
   const slot = document.createElement('div'); slot.className = 'zzz-media-slot'; w.appendChild(slot);
 
