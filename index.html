@@ -131,6 +131,7 @@
   #zzzUpdScreen .zzzupd-t { color: #D4AF37; font: 700 22px/1.2 system-ui, sans-serif; }
   #zzzUpdScreen .zzzupd-s { color: #b5b5b5; font: 14px/1.4 system-ui, sans-serif; text-align: center; padding: 0 24px; }
   #zzzUpdScreen .zzzupd-c { position: absolute; bottom: 18px; color: #6b6b6b; font: 12px monospace; }
+  #zzzUpdScreen .zzzupd-go { margin-top: 10px; padding: 14px 26px; border-radius: 22px; background: #D4AF37; color: #171717; font: 700 16px/1 system-ui, sans-serif; text-decoration: none; }   
   @keyframes zzzupd-spin { to { transform: rotate(360deg); } }
   #zzzBusyScreen { position: fixed; inset: 0; z-index: 2147483645; background: rgba(23,23,23,.96); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; touch-action: none; user-select: none; -webkit-user-select: none; }   
   #zzzBusyScreen .zzzupd-logo { position: relative; width: 120px; height: 120px; display: flex; align-items: center; justify-content: center; }
@@ -39458,7 +39459,7 @@ async function zzz_native_launch(url) {
 
 function zzz_native_cmd_able(url) {
   try {
-    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|vipacks|ring)\b/.test(String(url || 'intent://quick/quiet'))
+    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|vipacks|ring|relaunch)\b/.test(String(url || 'intent://quick/quiet'))
       && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator;
   } catch (e) { return false; }
 }
@@ -47959,7 +47960,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-03 13:49';
+const VERSO_BUILD = '2026-11-03 14:04';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -48067,7 +48068,7 @@ function zzz_upd_screen(kind) {
     window.addEventListener('keydown', keys, true);
     const done = () => { try { o.remove(); } catch (e) {} window.removeEventListener('keydown', keys, true); document.removeEventListener('visibilitychange', back); };
     let hidden = false;
-    const back = () => { if (document.visibilityState === 'hidden') hidden = true; else if (hidden && Date.now() - at > 4000) setTimeout(() => { if (document.visibilityState === 'visible') { done(); try { localStorage.removeItem('zzz_upd_pending'); } catch (e) {} } }, 6000); };
+    const back = () => { if (document.visibilityState === 'hidden') hidden = true; else if (hidden && Date.now() - at > 4000) setTimeout(() => { if (document.visibilityState === 'visible' && !o.dataset.relaunch) { done(); try { localStorage.removeItem('zzz_upd_pending'); } catch (e) {} } }, 6000); };
     document.addEventListener('visibilitychange', back);
     setTimeout(done, 120000);
   } catch (e) {}
@@ -48281,8 +48282,32 @@ function zzz_dev_double_tap_update() {
   zzz_dev_reload_now();
 }
 document.addEventListener('visibilitychange', () => {
-  if (zzzDblReloadOnReturn && document.visibilityState === 'visible') { zzzDblReloadOnReturn = false; setTimeout(() => zzz_dev_reload_now(), 600); }
+  if (zzzDblReloadOnReturn && document.visibilityState === 'visible') {
+    zzzDblReloadOnReturn = false;
+
+    let p = null; try { p = JSON.parse(localStorage.getItem('zzz_upd_pending') || 'null'); } catch (e) {}
+    if (p && p.kind === 'app') { zzz_upd_relaunch(p); return; }
+    setTimeout(() => zzz_dev_reload_now(), 600);
+  }
 });
+
+function zzz_upd_relaunch(p) {
+  try {
+    try { localStorage.setItem('zzz_upd_pending', JSON.stringify(Object.assign({}, p, { t: Date.now() }))); } catch (e) {}
+    let o = document.getElementById('zzzUpdScreen');
+    if (!o) { zzz_upd_screen('app'); o = document.getElementById('zzzUpdScreen'); try { localStorage.setItem('zzz_upd_pending', JSON.stringify(Object.assign({}, p, { t: Date.now() }))); } catch (e) {} }
+    if (!o) { zzz_dev_reload_now(); return; }
+    o.dataset.relaunch = '1';
+    o.querySelector('.zzzupd-s').textContent = 'the new app is installed · Verso opens with it';
+    const go = document.createElement('a'); go.className = 'zzzupd-go'; go.textContent = 'Tap to continue Verso';
+    go.href = 'intent://quick/relaunch#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end';
+    zzz_cmd_sign(go.getAttribute('href')).then(u => { go.href = u; }).catch(() => {});
+    ['pointerdown', 'pointerup', 'click', 'touchstart', 'touchend'].forEach(t => go.addEventListener(t, (e) => e.stopPropagation(), true));
+    go.addEventListener('click', () => { setTimeout(() => { if (document.visibilityState === 'visible') { try { location.reload(); } catch (e) {} } }, 3000); });
+    o.appendChild(go);
+    try { zzz_native_cmd('intent://quick/relaunch'); } catch (e) {}
+  } catch (e) { zzz_dev_reload_now(); }
+}
 
 let zzzLiveCheckAt = 0;
 function zzz14b17_live_check(force) {
@@ -53091,7 +53116,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 185;
+const ZZZ14B17_APP_LATEST = 186;
 function zzz14b17_app_code() {
 
   try {
