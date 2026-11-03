@@ -47268,7 +47268,10 @@ function zzz10v1_update_register_entry_button_state() {
   const codeReady = !!username && !!email && /^\d{6}$/.test(code);
   const password = passwordInput ? String(passwordInput.value || '') : '';
   if (passwordInput) passwordInput.disabled = !codeReady;
-  if (btn) btn.disabled = !(codeReady && password.length > 0);
+  const phraseInput = document.getElementById('versoRegisterSetupPhraseInput');
+  const phrase = phraseInput ? String(phraseInput.value || '').trim() : '';
+  if (phraseInput) phraseInput.disabled = !codeReady;
+  if (btn) btn.disabled = !(codeReady && password.length > 0 && phrase.length >= 4);
 }
 
 function zzz10v1_build_password_field() {
@@ -47289,6 +47292,16 @@ function zzz10v1_build_password_field() {
   input.addEventListener('input', () => zzz10v1_update_register_entry_button_state());
   input._vkbOk = 'versoRegisterSetupEntryButton';
   wrap.appendChild(input);
+
+  const pl = document.createElement('button'); pl.type = 'button'; pl.className = 'entry-number-button zzz10v1-field-label'; pl.disabled = true; pl.textContent = 'MV PHRASE';
+  pl.style.marginTop = '6px';
+  wrap.appendChild(pl);
+  const phrase = zzz_vkb_make_secret('versoRegisterSetupPhraseInput', 'entry-cell zzz6f36-login-local-input', 'MV PHRASE', 'min. 4 letters');
+  phrase.disabled = true;
+  phrase.placeholder = 'MV phrase - needed with the recovery token (min. 4 letters)';
+  phrase.addEventListener('input', () => zzz10v1_update_register_entry_button_state());
+  phrase._vkbOk = 'versoRegisterSetupEntryButton';
+  wrap.appendChild(phrase);
 
   return { wrap, input };
 }
@@ -48029,7 +48042,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-03 19:13';
+const VERSO_BUILD = '2026-11-03 19:53';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -48599,6 +48612,10 @@ async function zzz10v1_submit_register() {
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { zzz10v1_set_status('Please enter a valid EMAIL.', 'warn'); return; }
   if (!/^\d{6}$/.test(enteredActivationCode)) { zzz10v1_set_status(ZZZ10V1_REASON_TEXT.code_required, 'warn'); return; }
   if (!password) { zzz10v1_set_status(ZZZ10V1_REASON_TEXT.password_required, 'warn'); return; }
+  const phraseInput = document.getElementById('versoRegisterSetupPhraseInput');
+  const mvPhrase = (phraseInput ? phraseInput.value : '').trim();
+  if (mvPhrase.length < 4) { zzz10v1_set_status('Please choose an MV PHRASE (min. 4 letters) - the recovery token works only together with it.', 'warn'); return; }
+  if (mvPhrase.toLowerCase() === password.toLowerCase()) { zzz10v1_set_status('The MV PHRASE must be different from the password.', 'warn'); return; }
 
   if (zzz4r17SearchMode) {
     zzz4r17_toggle_search_mode();
@@ -48622,6 +48639,13 @@ async function zzz10v1_submit_register() {
     return;
   }
 
+  let phraseOk = false;
+  try {
+    const pr = await zzz10v1_call_gate({ action: 'set_mv_phrase', username: normalizedUsername, password, mvPhrase }, 20000);
+    phraseOk = !!(pr && pr.success);
+  } catch (e) { phraseOk = false; }
+  if (phraseInput) phraseInput.value = '';
+  if (!phraseOk) zzz6f2_show_toast('Registered, but the MV PHRASE was not saved - set it now in Login setup › CHANGE PASSWORD (MV PHRASE).', 'warn');
   zzz10v1_registrationsLocalCache[normalizedUsername] = { username };
   zzz6f37_write_audit_log('user_register', { username });
   zzz6f36_reset_command_line();
