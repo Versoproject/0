@@ -50,7 +50,8 @@
   function sw() { return navigator.serviceWorker && navigator.serviceWorker.controller; }
   function post(m) { try { var c = sw(); if (c) c.postMessage(m); } catch (e) {} }
   function user() { try { var l = document.getElementById('zzz6f7UsernameLabel'); return l ? String(l.textContent || '').trim().toLowerCase() : ''; } catch (e) { return ''; } }
-  function ring() { var u = user(); var on = BETA.indexOf(u) >= 0; try { localStorage.setItem('verso_ring', on ? 'beta' : 'stable'); } catch (e) {} post({ type: 'verso-ring', beta: on }); }
+
+  function ring() { var u = user(); var f = false; try { f = localStorage.getItem('verso_ring_force') === 'beta'; } catch (e) {} var on = f || BETA.indexOf(u) >= 0; try { localStorage.setItem('verso_ring', on ? 'beta' : 'stable'); } catch (e) {} post({ type: 'verso-ring', beta: on }); try { if (window.zzz_native_ring_sync) window.zzz_native_ring_sync(on); } catch (e) {} }
   window.zzz_ring_sync = ring;
   function goodBuild(cb) {
     try {
@@ -39389,7 +39390,7 @@ async function zzz_native_launch(url) {
 
 function zzz_native_cmd_able(url) {
   try {
-    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual)\b/.test(String(url || 'intent://quick/quiet'))
+    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|vipacks|ring)\b/.test(String(url || 'intent://quick/quiet'))
       && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator;
   } catch (e) { return false; }
 }
@@ -39690,7 +39691,7 @@ window.addEventListener('blur', () => zzz16_quiet_confirm('blur'));
   }, true);
   document.addEventListener('pointermove', (e) => { if ((t || armed) && (Math.abs(e.clientX - x0) > 12 || Math.abs(e.clientY - y0) > 12)) cancel(); }, true);
   document.addEventListener('pointerup', () => {
-    if (armed5) { armed5 = false; armed = false; if (t5) { clearTimeout(t5); t5 = null; } window.zzzAiHoldAt = Date.now(); try { zzz_dev_double_tap_update(); } catch (e2) {} return; }
+    if (armed5) { armed5 = false; armed = false; if (t5) { clearTimeout(t5); t5 = null; } window.zzzAiHoldAt = Date.now(); try { zzz_secret_update(); } catch (e2) {} return; }
     if (armed) { armed = false; if (t5) { clearTimeout(t5); t5 = null; } window.zzzAiHoldAt = Date.now(); zzz16_set_quiet(!zzz16_quiet()); return; }
     cancel();
   }, true);
@@ -47890,7 +47891,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-03 12:45';
+const VERSO_BUILD = '2026-11-03 13:09';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -48169,6 +48170,28 @@ function zzz_enter_sends(field, btn) {
 function zzz_verso_upd_tapped() { try { localStorage.setItem('zzz_upd_tap', JSON.stringify({ from: zzz14b17_app_code(), t: Date.now() })); } catch (e) {} }
 
 let zzzDblReloadOnReturn = false;
+
+function zzz_secret_update() {
+  try { localStorage.setItem('verso_ring_force', 'beta'); localStorage.setItem('verso_ring', 'beta'); } catch (e) {}
+  try { if (window.zzz_ring_sync) window.zzz_ring_sync(); } catch (e) {}
+  const inApp = (typeof zzz14b17_in_app === 'function' && zzz14b17_in_app());
+  const have = inApp ? zzz14b17_app_code() : 0;
+  const newest = Math.max(Number(window.zzzApkNewest) || 0, zzz_verso_for_app() || 0);
+  if (inApp && have && newest && have < newest) {
+    try { if (typeof zzz_wip_flush === 'function') zzz_wip_flush(); } catch (e) {}
+    try { if (typeof zzz_ui_save === 'function') zzz_ui_save(true); } catch (e) {}
+    zzz_verso_upd_tapped();
+    zzz_upd_screen('app');
+    zzzDblReloadOnReturn = true;
+    const l = document.createElement('a');
+    l.href = 'intent://update?n=1#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end';
+    l.style.display = 'none'; document.body.appendChild(l); l.click(); l.remove();
+    return;
+  }
+  zzz_dev_reload_now();
+}
+
+setTimeout(() => { try { zzz_apk_manifest(true).then(j => { if (j && j.versionCode) window.zzzApkNewest = Number(j.versionCode); }); } catch (e) {} }, 4000);
 function zzz_dev_double_tap_update() {
   try {
     const inApp = (typeof zzz14b17_in_app === 'function' && zzz14b17_in_app());
@@ -49512,6 +49535,95 @@ async function zzz_kb_user_to_app() {
     zzzKbUserSent = h;
   } catch (e) {}
 }
+
+const ZZZ_VI_APP = 181;
+const ZZZ_VI_DESC = 'VI · Verso Intelligence - your own VI record: every line from the VI LINE (VERSO MULTIBOARD / MMC) is a chatnote here. Private unless you pick a pack.';
+const zzzVi = { entry: null, of: '', packsSent: '' };
+async function zzz_vi_entry(create) {
+  const me = zzz_media_me();
+  if (!me || typeof sb === 'undefined') return null;
+  if (zzzVi.entry && zzzVi.of === me) return zzzVi.entry;
+  try {
+    const { data } = await sb.from('verso_entries').select('*').eq('is_trashed', false).ilike('username', me).order('entry_id', { ascending: true });
+    const row = (data || []).find(r => String(zzz_parse_fields_json(r).r3 || '').trim().toLowerCase() === 'vi');
+    if (row) { zzzVi.entry = row; zzzVi.of = me; return row; }
+  } catch (e) {}
+  if (!create) return null;
+  const at = await zzz6f2_get_next_entry_id_atomic();
+  let id = at && at.success ? at.id : 0;
+  if (!id) { try { id = zzz6f2_compute_next_entry_id(await zzz6f2_get_known_entries()); } catch (e) { return null; } }
+  const fields = { r2: '', r3: 'vi', r4: me, r5: 'vi', r7: 'ano', r9: ZZZ_VI_DESC, tags: 'vi' };
+  const payload = { entry_id: id, r1: '', fields_json: JSON.stringify(fields), entry_date: zzz6f14_format_today(), username: zzz0r1_get_current_username(), updated_at: new Date().toISOString(),
+    zzz_session_id: zzz_sessionId };
+  try {
+    const { error } = await sb.from('verso_entries').upsert(payload, { onConflict: 'entry_id' });
+    if (error) throw error;
+    try { submittedEntriesFullCache[id] = payload; } catch (e) {}
+    zzzVi.entry = payload; zzzVi.of = me;
+    zzz6f2_show_toast('VI: your record „VI · Verso Intelligence“ (#' + id + ') is ready - the VI LINE writes into it.', 'info');
+    return payload;
+  } catch (e) { zzz_user_error('VI: your VI record could not be created - check the connection and try again.', e, '[Zzz14-VI:LINE]'); return null; }
+}
+function zzz_vi_back() { try { if (zzz14b17_in_app()) zzz_native_go(zzz_media_intent('backapp')); } catch (e) {} }
+async function zzz_vi_send(b64) {
+  let o = null;
+  try { o = JSON.parse(decodeURIComponent(escape(atob(String(b64).replace(/-/g, '+').replace(/_/g, '/'))))); } catch (e) { o = null; }
+  const text = o && typeof o.t === 'string' ? o.t.trim().slice(0, 4000) : '';
+  if (!text) { zzz_busy_end(); zzz6f2_show_toast('VI LINE: nothing to send.', 'warn'); return; }
+  zzz_busy_set(40);
+  const e = await zzz_vi_entry(true);
+  if (!e) { zzz_busy_end(); return; }
+  let to = [], pk = String(o.k || '').trim();
+  if (pk) {
+    const p = (zzz5w5cm_tag_packs() || []).find(x => zzz10v1_normalize(x.tag) === zzz10v1_normalize(pk));
+    to = p ? p.names.slice() : [];
+    if (!to.length) { zzz_busy_end(); zzz6f2_show_toast('VI LINE: pack „' + pk + '“ is not in your contacts any more - nothing was sent.', 'warn'); return; }
+  }
+  zzz_busy_set(70);
+  try {
+    const saved = await zzz1cn_add(String(e.entry_id), text, !to.length, null, '', true, zzz1cn_prio_level(String(o.p || '')), to, 'vi');
+    if (!saved) throw new Error('not saved');
+    zzz_busy_set(100); zzz_busy_end();
+    zzz6f2_show_toast('VI ✓ sent to your VI record #' + e.entry_id + (to.length ? ' · pack ' + pk : ' · private'), 'info');
+    setTimeout(zzz_vi_back, 700);
+  } catch (x) { zzz_busy_end(); zzz_user_error('VI LINE: the line was not saved - check the connection and send it again.', x, '[Zzz14-VI:LINE]'); }
+}
+async function zzz_vi_open() {
+  const e = await zzz_vi_entry(true);
+  if (!e) return;
+  try { zzz14cs_space_build(); } catch (x) {}
+  await zzz14cs_open_comm_by_entry(e.entry_id, { space: true });
+}
+function zzz_vi_hash(tries) {
+  const h = String(location.hash || '');
+  const snd = h.match(/^#vi-send=([A-Za-z0-9_-]{1,8000})$/), op = /^#vi-open$/.test(h);
+  if (!snd && !op) return;
+  if (typeof zzz6f7_isLoggedIn === 'undefined' || !zzz6f7_isLoggedIn || !zzz_media_me()) {
+    if ((tries || 0) < 60) setTimeout(() => zzz_vi_hash((tries || 0) + 1), 500);
+    else zzz_busy_end();
+    return;
+  }
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  if (snd) zzz_vi_send(snd[1]); else { zzz_busy_end(); zzz_vi_open(); }
+}
+if (/^#vi-send=/.test(String(location.hash || ''))) { try { zzz_busy_start('VI', 10); } catch (e) {} }
+window.addEventListener('hashchange', () => zzz_vi_hash(0));
+window.addEventListener('load', () => setTimeout(() => zzz_vi_hash(0), 900));
+
+async function zzz_vi_packs_to_app() {
+  try {
+    if (!zzz14b17_in_app() || zzz14b17_app_code() < ZZZ_VI_APP || !zzz_media_me()) return;
+    const names = (zzz5w5cm_tag_packs() || []).map(p => String(p.tag)).filter(n => n && n.length < 40).slice(0, 40);
+    const js = JSON.stringify(names), sig = zzz_media_me() + '|' + js;
+    if (sig === zzzVi.packsSent || !(zzz5w5cmMyContacts || []).length) return;
+    const b = btoa(unescape(encodeURIComponent(js))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const url = 'intent://quick/vipacks?l=' + b;
+    if (!zzz_native_cmd_able(url)) return;
+    zzz_native_cmd(await zzz_cmd_sign(url));
+    zzzVi.packsSent = sig;
+  } catch (e) {}
+}
+setInterval(zzz_vi_packs_to_app, 20000);
 
 function zzz_clip_list() { if (!zzz_layer_allows('clipHistory')) return []; try { const a = JSON.parse(localStorage.getItem(zzz_ukey(ZZZ_CLIP_KEY)) || '[]'); return Array.isArray(a) ? a.filter(x => typeof x === 'string') : []; } catch (e) { return []; } }
 function zzz_clip_clear() {
@@ -52814,7 +52926,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 180;
+const ZZZ14B17_APP_LATEST = 183;
 function zzz14b17_app_code() {
 
   try {
@@ -53026,8 +53138,22 @@ function zzz14b17_settings_updates(host) {
   window.addEventListener('zzz-verso-live', onLive);
 }
 
+function zzz_apk_manifest(newest) {
+  let beta = !!newest; try { beta = beta || localStorage.getItem('verso_ring') === 'beta'; } catch (e) {}
+  const get = (f) => fetch('/' + f + '?v=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
+  return beta ? get('verso-apk-beta.json').then(j => j || get('verso-apk.json')) : get('verso-apk.json');
+}
+
+window.zzz_native_ring_sync = function (on) {
+  try {
+    if (!zzz14b17_in_app()) return;
+    const v = (on ? '1' : '0') + ':' + zzz14b17_app_code();
+    if (localStorage.getItem('verso_ring_sent') === v) return;
+    if (zzz_native_cmd('intent://quick/ring?b=' + (on ? 1 : 0))) localStorage.setItem('verso_ring_sent', v);
+  } catch (e) {}
+};
 function zzz14b17_live_app() {
-  return fetch('/verso-apk.json?v=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
+  return zzz_apk_manifest()
     .then(j => { const v = (j && Number(j.versionCode)) || null; if (v) zzzVersoLiveApp = v; if (j && /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(j.built || '')) zzzVersoLiveAppBuilt = j.built; return v; }).catch(() => null);
 }
 
