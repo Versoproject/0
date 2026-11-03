@@ -7064,6 +7064,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-vi-line .zzz-vi-prio.p-open { background: #2E7D32; } .zzz-vi-line .zzz-vi-prio.p-attention { background: #E07B00; } .zzz-vi-line .zzz-vi-prio.p-urgent { background: #C0392B; }
   .zzz-vi-line select { flex: 0 1 auto; max-width: 74px; min-width: 0; border: 1.5px solid #D4AF37; border-radius: 12px; background: #0f0f0f; color: #D4AF37; font-size: 11px; padding: 3px 2px; }
   .zzz-vi-line input { flex: 1 1 60px; min-width: 0; border: 1px solid #D4AF37; border-radius: 10px; background: #0e0e0e; color: #fff; padding: 6px; font-size: 14px; }
+  .zzz-vi-line .zzz-vi-rp { border-color: #D4AF37; color: #D4AF37; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
+  .zzz-vi-line .zzz-vi-rp[hidden] { display: none; }
   .zzz-vi-line .zzz-vi-go { border-color: #D4AF37; background: #D4AF37; color: #000; }
   .zzz-media-paste input { flex: 1; min-width: 0; border: 1.5px dashed #D4AF37; border-radius: 8px; background: #0f0f0f; color: #eee; padding: 6px; }
   .zzz-media-btn { border: 1.5px solid #D4AF37; border-radius: 14px; background: transparent; color: #D4AF37; font-weight: 700; padding: 4px 10px; font-size: 11px; }
@@ -28486,6 +28488,7 @@ function zzz3d_render_now() {
       if (over > 4) { runTx.style.setProperty('--zzz3d-run-dx', '-' + (over + 16) + 'px'); runTx.style.animationDuration = Math.max(6, Math.round((over + 120) / 28)) + 's'; runTx.classList.add('is-running'); }
     } catch (e) {}
   });
+  window.zzzLineCur = cur.src === 'chat' ? cur : null;
   ban.title = `MAIN NOTIF LINE · ${ZZZ3D_SRC_NAME[cur.src]} ${cur.prio.toUpperCase()} - tap = open + SHIFTED, hold = read aloud + SHIFTED, swipe right = READ, swipe left = SHIFT`;
   if (cur.src === 'op' && cur.btn) {
     const cb = document.createElement('button');
@@ -35231,9 +35234,13 @@ function zzz14cs_feed_row(it, wrap) {
   r.appendChild(tx);
   const ago = zzz3d_ago(it);
   if (ago) { const ag = document.createElement('span'); ag.className = 'zzz3d-ago'; ag.textContent = ago; r.appendChild(ag); }
-  r.title = `${it.prio.toUpperCase()} · tap = reply to this (and it is read), ✉ / swipe right = open chat and keep, swipe left = SHIFT, hold = read aloud + SHIFTED`;
+  r.title = `${it.prio.toUpperCase()} · tap = reply to this (and it is read), 2× tap / ✉ / swipe right = open its chat, swipe left = SHIFT, hold = read aloud + SHIFTED`;
+
   r.addEventListener('click', () => {
     if (r._zzz3dSwiped) return;
+    const now = Date.now(), tid = String((it.raw && it.raw.id) || it.entry || '');
+    if (window.zzzFeedTap && window.zzzFeedTap.id === tid && now - window.zzzFeedTap.at < 400) { window.zzzFeedTap = null; zzz14cs_feed_open(it, false); return; }
+    window.zzzFeedTap = { id: tid, at: now };
     zzz14csFeedSel = Object.assign({}, it.raw || {}); zzz14csFeedNum = null;
     zzz14cs_feed_read(it, r);
     zzz14cs_feed_paint(wrap, true);
@@ -47952,7 +47959,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-03 13:16';
+const VERSO_BUILD = '2026-11-03 13:49';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -49627,6 +49634,31 @@ async function zzz_vi_entry(create) {
 }
 function zzz_vi_back() { try { if (zzz14b17_in_app()) zzz_native_go(zzz_media_intent('backapp')); } catch (e) {} }
 
+function zzz_vi_reply_find(r) {
+  if (!r) return null;
+  let all = []; try { all = zzz5w8_collect(); } catch (e) { all = []; }
+  const norm = (x) => zzz10v1_normalize(String(x || '').trim());
+  const who = norm(r.who), e = String(r.e || '').trim(), w = norm(r.w);
+  const hits = all.filter(it => it.src === 'chat' && it.entry && it.raw && it.raw.entry_key
+    && (e ? String(it.entry) === e || String(it.raw.entry_key) === e : (w && norm(it.project) === w))
+    && (!who || norm(it.from) === who || norm(it.from).indexOf(who) === 0 || who.indexOf(norm(it.from)) === 0));
+  if (!hits.length) return null;
+  const at = Number(r.at) || 0;
+  return hits.sort((a, b) => at ? Math.abs((a.t || 0) - at) - Math.abs((b.t || 0) - at) : (b.t || 0) - (a.t || 0))[0];
+}
+async function zzz_vi_reply(it, text, prio) {
+  text = String(text || '').trim().slice(0, 4000);
+  if (!text) { zzz6f2_show_toast('VI LINE: write something first.', 'info'); return false; }
+  const n = it.raw || {}, ek = String(n.entry_key || it.entry);
+  try {
+    const saved = await zzz1cn_add(ek, text, false, n.note_number ? { base: Number(n.note_number) } : null, '', false,
+      zzz1cn_prio_level(String(prio || '')) || (typeof zzz56_prio_mode === 'function' ? zzz56_prio_mode(ek) : ''), zzz6f58_names(text, true), null, 0);
+    if (!saved) throw new Error('not saved');
+    try { zzz14cs_feed_read(it, null); } catch (e) { try { zzz5w8_to_checked(it); } catch (e2) {} }
+    zzz6f2_show_toast('VI ↩ #' + zzz5w7_label_of(saved) + ' → #' + ek + (it.from ? ' (' + it.from + ')' : ''), 'info');
+    return true;
+  } catch (x) { zzz_user_error('VI LINE: the answer was not saved - check the connection and send it again.', x, '[Zzz14-VI:REPLY-NOTIF]'); return false; }
+}
 async function zzz_vi_post(text, prio, pack) {
   text = String(text || '').trim().slice(0, 4000);
   if (!text) { zzz6f2_show_toast('VI LINE: write something first.', 'info'); return false; }
@@ -49676,14 +49708,30 @@ function zzz_vi_line_el() {
     pk.value = Array.from(pk.options).some(o => o.value === cur) ? cur : '';
   };
   fill(); pk.addEventListener('focus', fill); pk.addEventListener('change', () => zzz_vi_put('pack', pk.value));
+
+  const rp = document.createElement('button'); rp.type = 'button'; rp.className = 'zzz-vi-rp'; rp.title = 'Answer the message in the NOTIF LINE · tap = not to it';
+  let rpIt = null, rpDrop = '';
+  const rpKey = (x) => x && x.raw ? String(x.raw.id || '') : '';
+  const paintRp = () => {
+    const c = window.zzzLineCur || null;
+    rpIt = c && rpKey(c) && rpKey(c) !== rpDrop ? c : null;
+    rp.hidden = !rpIt;
+    if (rpIt) rp.textContent = '↩ ' + (rpIt.from ? String(rpIt.from).slice(0, 10) : '#' + rpIt.entry);
+    inp.placeholder = rpIt ? 'answer #' + rpIt.entry : 'VI · chatnote';
+  };
+  rp.addEventListener('click', () => { rpDrop = rpKey(rpIt); paintRp(); });
   const inp = document.createElement('input'); inp.type = 'text'; inp.placeholder = 'VI · chatnote'; inp.enterKeyHint = 'send';
   inp.value = zzz_vi_get('draft', ''); inp.addEventListener('input', () => zzz_vi_put('draft', inp.value));
   const go = document.createElement('button'); go.type = 'button'; go.className = 'zzz-vi-go'; go.textContent = '➤'; go.title = 'Send into your VI record';
   let busy = false;
-  const send = async () => { if (busy) return; busy = true; go.disabled = true; try { if (await zzz_vi_post(inp.value, zzz_vi_get('prio', 'open'), pk.value)) { inp.value = ''; zzz_vi_put('draft', ''); } } finally { busy = false; go.disabled = false; } };
+  const send = async () => { if (busy) return; busy = true; go.disabled = true;
+    try { const ok = rpIt ? await zzz_vi_reply(rpIt, inp.value, zzz_vi_get('prio', 'open')) : await zzz_vi_post(inp.value, zzz_vi_get('prio', 'open'), pk.value);
+      if (ok) { inp.value = ''; zzz_vi_put('draft', ''); if (rpIt) { rpDrop = rpKey(rpIt); paintRp(); } } } finally { busy = false; go.disabled = false; } };
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
   go.addEventListener('click', send);
-  row.append(vi, pr, pk, inp, go);
+  row.append(vi, pr, pk, rp, inp, go);
+  paintRp();
+  const rpT = setInterval(() => { if (!row.isConnected) { clearInterval(rpT); return; } paintRp(); }, 1500);
   return row;
 }
 async function zzz_vi_send(b64) {
@@ -49691,7 +49739,13 @@ async function zzz_vi_send(b64) {
   try { o = JSON.parse(decodeURIComponent(escape(atob(String(b64).replace(/-/g, '+').replace(/_/g, '/'))))); } catch (e) { o = null; }
   if (!o || typeof o.t !== 'string' || !o.t.trim()) { zzz_busy_end(); zzz6f2_show_toast('VI LINE: nothing to send.', 'warn'); return; }
   zzz_busy_set(50);
-  const ok = await zzz_vi_post(o.t, o.p, o.k);
+  let ok = false;
+  if (o.r && (o.r.e || o.r.w)) {
+    let it = null;
+    for (let i = 0; i < 24 && !it; i++) { it = zzz_vi_reply_find(o.r); if (!it) await new Promise(res => setTimeout(res, 500)); }
+    if (it) ok = await zzz_vi_reply(it, o.t, o.p);
+    else { zzz6f2_show_toast('VI LINE: that message is not in your notifications any more - the line went to your VI record.', 'warn'); ok = await zzz_vi_post(o.t, o.p, ''); }
+  } else ok = await zzz_vi_post(o.t, o.p, o.k);
   zzz_busy_set(100); zzz_busy_end();
   if (ok) setTimeout(zzz_vi_back, 700);
 }
@@ -53037,7 +53091,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 184;
+const ZZZ14B17_APP_LATEST = 185;
 function zzz14b17_app_code() {
 
   try {
