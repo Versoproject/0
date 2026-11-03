@@ -6938,6 +6938,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-vkb-a1 .zzz-vkb-symname { display: block; font-size: 7px; line-height: 1; letter-spacing: .02em; color: #D4AF37; margin-top: 1px; }   
   .zzz-vkb-ctrlkey:not(:disabled) { color: #C8CCD2; }
   .zzz-vkb-a1 { font-size: 11px; letter-spacing: -.02em; flex: 0 0 calc((100% - 24px) / 8.8); } 
+  .zzz-vkb-mic.is-on { color: #fff !important; background: #c0392b !important; }   
   .zzz-vkb-mic:disabled {
     color: #52525b;
     cursor: not-allowed;
@@ -48042,7 +48043,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-03 23:46';
+const VERSO_BUILD = '2026-11-04 00:15';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -52802,9 +52803,30 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       ck.title = 'Ctrl + T = TEXT REPAIR exception · Ctrl + space = plain space · hold 1.5 s = Ctrl stays ON';
       paintCtrl();
     }
-    const mic = ctrlKey(rc, ZZZ_VKB_MIC_SVG, () => {}, 'zzz-vkb-mic');
-    mic.disabled = true;
-    mic.title = isSecret ? 'Voice input is off for passwords and other secrets' : 'Voice input - coming later (in the Verso app MIC = Google voice typing, EXTERNAL)';
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const mic = ctrlKey(rc, ZZZ_VKB_MIC_SVG, () => {
+      if (isSecret || !SR) return;
+      try {
+        if (window.zzzVkbRec) { window.zzzVkbRec.stop(); return; }
+        let warned = false; try { warned = localStorage.getItem('zzz_vkb_mic_ext') === '1'; } catch (e) {}
+        if (!warned) { zzz6f2_show_toast('EXTERNAL: voice input goes to ' + (/Edg\//.test(navigator.userAgent) ? 'Microsoft (Edge)' : 'Google (Chrome)') + ' for recognition - outside Verso. Tap MIC again to start.', 'warn'); try { localStorage.setItem('zzz_vkb_mic_ext', '1'); } catch (e) {} return; }
+        const rec = new SR();
+        rec.lang = ({ sk: 'sk-SK', en: 'en-US', uk: 'uk-UA', es: 'es-ES', de: 'de-DE', it: 'it-IT', fr: 'fr-FR', ru: 'ru-RU', zh: 'zh-CN', hi: 'hi-IN' })[kbLang] || 'sk-SK';
+        rec.interimResults = false; rec.maxAlternatives = 1; rec.continuous = false;
+        rec.onresult = (ev) => {
+          let t = ''; for (let i = ev.resultIndex; i < ev.results.length; i++) if (ev.results[i].isFinal) t += ev.results[i][0].transcript;
+          t = String(t || '').trim(); if (!t) return;
+          const prev = String(target.value || target.textContent || '');
+          zzz_vkb_text_insert(target, (prev && !/\s$/.test(prev) ? ' ' : '') + t);
+        };
+        rec.onerror = (ev) => { const er = ev && ev.error; if (er && er !== 'no-speech' && er !== 'aborted') zzz_user_error(er === 'not-allowed' ? 'Microphone not allowed - allow it for this site in the browser.' : 'Voice input did not work - try again.', new Error('speech ' + er), '[Zzz14-B11:VKB-MIC-WEB]'); };
+        rec.onend = () => { window.zzzVkbRec = null; mic.classList.remove('is-on'); };
+        window.zzzVkbRec = rec; mic.classList.add('is-on'); rec.start();
+      } catch (e) { window.zzzVkbRec = null; mic.classList.remove('is-on'); zzz_user_error('Voice input did not work - try again.', e, '[Zzz14-B11:VKB-MIC-WEB]'); }
+    }, 'zzz-vkb-mic');
+    mic.disabled = isSecret || !SR;
+    mic.title = isSecret ? 'Voice input is off for passwords and other secrets' : (SR ? 'MIC: voice input - EXTERNAL (the browser sends your voice to ' + (/Edg\//.test(navigator.userAgent) ? 'Microsoft' : 'Google') + ')' : 'Voice input is not available in this browser');
     mic.setAttribute('aria-label', mic.title);
     if (isText) {
 
