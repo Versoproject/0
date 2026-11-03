@@ -7063,6 +7063,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-vi-line button.is-off { border-color: #6B7280; color: #9CA3AF; }
   .zzz-vi-line .zzz-vi-prio { border: 0; color: #fff; }
   .zzz-vi-line .zzz-vi-prio.p-open { background: #2E7D32; } .zzz-vi-line .zzz-vi-prio.p-attention { background: #E07B00; } .zzz-vi-line .zzz-vi-prio.p-urgent { background: #C0392B; }
+  .zzz-vi-line .zzz-vi-pk { border-color: #2DD4BF; color: #2DD4BF; } .zzz-vi-line .zzz-vi-pk.is-on { background: #2DD4BF; color: #000; }
+  .zzz-vi-pklist { flex-wrap: wrap; } .zzz-vi-pklist button { border-color: #2DD4BF; color: #2DD4BF; } .zzz-vi-pklist button.is-on { background: #2DD4BF; color: #000; }
   .zzz-vi-line select { flex: 0 1 auto; max-width: 74px; min-width: 0; border: 1.5px solid #D4AF37; border-radius: 12px; background: #0f0f0f; color: #D4AF37; font-size: 11px; padding: 3px 2px; }
   .zzz-vi-line input { flex: 1 1 60px; min-width: 0; border: 1px solid #D4AF37; border-radius: 10px; background: #0e0e0e; color: #fff; padding: 6px; font-size: 14px; }
   .zzz-vi-line .zzz-vi-rp { border-color: #D4AF37; color: #D4AF37; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
@@ -19320,6 +19322,12 @@ function zzz1cn_open_tags(host, entryKey, onChange) {
 }
 
 function zzz1cn_private_ok(entryKey) {
+
+  try {
+    const row = (typeof submittedEntriesFullCache !== 'undefined' && submittedEntriesFullCache[String(entryKey)]) || null;
+    const me = zzz10v1_normalize(String(zzz0r1_get_current_username() || '').trim());
+    if (row && me && zzz10v1_normalize(String(row.username || '').trim()) === me) return true;
+  } catch (e) {}
   return zzz1cn_setup_allows(zzz1cn_setup_get(entryKey).private, entryKey, 'private');
 }
 
@@ -47960,7 +47968,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-03 14:04';
+const VERSO_BUILD = '2026-11-03 14:31';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -49639,7 +49647,7 @@ async function zzz_vi_entry(create) {
   try {
     const { data } = await sb.from('verso_entries').select('*').eq('is_trashed', false).ilike('username', me).order('entry_id', { ascending: true });
     const row = (data || []).find(r => String(zzz_parse_fields_json(r).r3 || '').trim().toLowerCase() === 'vi');
-    if (row) { zzzVi.entry = row; zzzVi.of = me; return row; }
+    if (row) { zzzVi.entry = row; zzzVi.of = me; try { submittedEntriesFullCache[row.entry_id] = row; } catch (e) {} return row; }
   } catch (e) {}
   if (!create) return null;
   const at = await zzz6f2_get_next_entry_id_atomic();
@@ -49725,14 +49733,23 @@ function zzz_vi_line_el() {
   const paintPr = () => { const p = zzz_vi_get('prio', 'open'); pr.textContent = p === 'urgent' ? 'URG' : (p === 'attention' ? 'ATT' : 'OPEN'); pr.className = 'zzz-vi-prio p-' + p; };
   paintPr(); pr.title = 'Priority: OPEN → ATTENTION → URGENT';
   pr.addEventListener('click', () => { const p = zzz_vi_get('prio', 'open'); zzz_vi_put('prio', PR[(PR.indexOf(p) + 1 + 3) % 3]); paintPr(); });
-  const pk = document.createElement('select'); pk.title = 'PACK: only its members see the line (none = private)';
-  const fill = () => {
-    const cur = zzz_vi_get('pack', ''); pk.innerHTML = '';
-    const o0 = document.createElement('option'); o0.value = ''; o0.textContent = '🔒 me'; pk.appendChild(o0);
-    (zzz5w5cm_tag_packs() || []).forEach(p => { const o = document.createElement('option'); o.value = p.tag; o.textContent = p.tag; pk.appendChild(o); });
-    pk.value = Array.from(pk.options).some(o => o.value === cur) ? cur : '';
-  };
-  fill(); pk.addEventListener('focus', fill); pk.addEventListener('change', () => zzz_vi_put('pack', pk.value));
+
+  const pk = document.createElement('button'); pk.type = 'button'; pk.className = 'zzz-vi-pk'; pk.title = 'PACKS: only its members see the line (none = private) · tap = next · hold = list';
+  const names = () => [''].concat((zzz5w5cm_tag_packs() || []).map(p => String(p.tag)));
+  const paintPk = () => { const v = zzz_vi_get('pack', ''); pk.textContent = v ? v.slice(0, 3).toUpperCase() : 'PACKS'; pk.classList.toggle('is-on', !!v); };
+  let pkHeld = false, pkT = 0;
+  pk.addEventListener('pointerdown', () => { pkHeld = false; clearTimeout(pkT); pkT = setTimeout(() => {
+    pkHeld = true; const l = names(); if (l.length < 2) { zzz6f2_show_toast('No packs yet - give several contacts one tag in MEMBERS.', 'info'); return; }
+    let box = row.nextElementSibling && row.nextElementSibling.classList.contains('zzz-vi-pklist') ? row.nextElementSibling : null;
+    if (box) { box.remove(); return; }
+    box = document.createElement('div'); box.className = 'zzz-vi-line zzz-vi-pklist';
+    l.forEach(n => { const b = document.createElement('button'); b.type = 'button'; b.textContent = n || '🔒 me'; if (n === zzz_vi_get('pack', '')) b.className = 'is-on';
+      b.addEventListener('click', () => { zzz_vi_put('pack', n); paintPk(); box.remove(); }); box.appendChild(b); });
+    row.after(box); }, 900); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => pk.addEventListener(ev, () => clearTimeout(pkT)));
+  pk.addEventListener('click', () => { if (pkHeld) return; const l = names(); if (l.length < 2) { zzz6f2_show_toast('No packs yet - give several contacts one tag in MEMBERS.', 'info'); return; }
+    const i = l.indexOf(zzz_vi_get('pack', '')); zzz_vi_put('pack', l[(i + 1) % l.length]); paintPk(); });
+  paintPk();
 
   const rp = document.createElement('button'); rp.type = 'button'; rp.className = 'zzz-vi-rp'; rp.title = 'Answer the message in the NOTIF LINE · tap = not to it';
   let rpIt = null, rpDrop = '';
@@ -49750,7 +49767,7 @@ function zzz_vi_line_el() {
   const go = document.createElement('button'); go.type = 'button'; go.className = 'zzz-vi-go'; go.textContent = '➤'; go.title = 'Send into your VI record';
   let busy = false;
   const send = async () => { if (busy) return; busy = true; go.disabled = true;
-    try { const ok = rpIt ? await zzz_vi_reply(rpIt, inp.value, zzz_vi_get('prio', 'open')) : await zzz_vi_post(inp.value, zzz_vi_get('prio', 'open'), pk.value);
+    try { const ok = rpIt ? await zzz_vi_reply(rpIt, inp.value, zzz_vi_get('prio', 'open')) : await zzz_vi_post(inp.value, zzz_vi_get('prio', 'open'), zzz_vi_get('pack', ''));
       if (ok) { inp.value = ''; zzz_vi_put('draft', ''); if (rpIt) { rpDrop = rpKey(rpIt); paintRp(); } } } finally { busy = false; go.disabled = false; } };
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
   go.addEventListener('click', send);
@@ -49774,15 +49791,20 @@ async function zzz_vi_send(b64) {
   zzz_busy_set(100); zzz_busy_end();
   if (ok) setTimeout(zzz_vi_back, 700);
 }
-async function zzz_vi_open() {
-  const e = await zzz_vi_entry(true);
-  if (!e) return;
-  try { zzz14cs_space_build(); } catch (x) {}
-  await zzz14cs_open_comm_by_entry(e.entry_id, { space: true });
+
+async function zzz_vi_open(tool) {
+  try { zzz14cs_space_build(); zzz14cs_space_open(true, true); } catch (x) { zzz_user_error('Could not open COMM SPACE - tap its button.', x, '[Zzz14-VI:OPEN-COMM]'); return; }
+  const sel = { alarm: '.zzz1cn-clock', tr: '.zzz23tr-tog', max: '.zzz1cn-max-btn' }[String(tool || '')];
+  if (!sel) return;
+  for (let i = 0; i < 20; i++) {
+    const b = document.querySelector('.zzz14cs-feed-cn ' + sel) || document.querySelector('.zzz14cs-feed-comp ' + sel);
+    if (b) { try { b.click(); } catch (e) {} return; }
+    await new Promise(r => setTimeout(r, 300));
+  }
 }
 function zzz_vi_hash(tries) {
   const h = String(location.hash || '');
-  const snd = h.match(/^#vi-send=([A-Za-z0-9_-]{1,8000})$/), op = /^#vi-open$/.test(h);
+  const snd = h.match(/^#vi-send=([A-Za-z0-9_-]{1,8000})$/), opm = h.match(/^#vi-open(?:=(alarm|tr|max))?$/), op = !!opm;
   if (!snd && !op) return;
   if (typeof zzz6f7_isLoggedIn === 'undefined' || !zzz6f7_isLoggedIn || !zzz_media_me()) {
     if ((tries || 0) < 60) setTimeout(() => zzz_vi_hash((tries || 0) + 1), 500);
@@ -49790,7 +49812,7 @@ function zzz_vi_hash(tries) {
     return;
   }
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
-  if (snd) zzz_vi_send(snd[1]); else { zzz_busy_end(); zzz_vi_open(); }
+  if (snd) zzz_vi_send(snd[1]); else { zzz_busy_end(); zzz_vi_open(opm[1] || ''); }
 }
 if (/^#vi-send=/.test(String(location.hash || ''))) { try { zzz_busy_start('VI', 10); } catch (e) {} }
 window.addEventListener('hashchange', () => zzz_vi_hash(0));
@@ -50752,7 +50774,7 @@ async function zzz_media_entry(create) {
   try {
     const { data } = await sb.from('verso_entries').select('*').eq('is_trashed', false).ilike('username', me).order('entry_id', { ascending: true });
     const row = (data || []).find(r => String(zzz_parse_fields_json(r).r3 || '').trim().toLowerCase() === 'media');
-    if (row) { zzzMedia.entry = row; zzzMedia.entryOf = me; return row; }
+    if (row) { zzzMedia.entry = row; zzzMedia.entryOf = me; try { submittedEntriesFullCache[row.entry_id] = row; } catch (e) {} return row; }
   } catch (e) {}
   if (!create) return null;
   const at = await zzz6f2_get_next_entry_id_atomic();
@@ -53116,7 +53138,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 186;
+const ZZZ14B17_APP_LATEST = 187;
 function zzz14b17_app_code() {
 
   try {
