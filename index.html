@@ -9784,6 +9784,14 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz14cs-feed-line { display: flex; gap: 4px; align-items: stretch; }
   .zzz14cs-feed-text { flex: 1 1 auto; min-width: 0; resize: vertical; background: #fff; color: #222; border: 1px solid #D4AF37; border-radius: 8px; padding: 4px 6px; font-size: 14px; }
   .zzz14cs-feed-send { flex: 0 0 auto; background: #D4AF37; color: #111; border: 0; border-radius: 8px; font-weight: 800; padding: 0 12px; }
+  
+  .zzz14cs-feed-chips { display: flex; gap: 10px; align-items: center; margin: 2px 0 4px; color: #ddd; font-size: 12px; }
+  .zzz14cs-feed-chips .zzz5w7-inline-priv { display: inline-flex; align-items: center; gap: 4px; color: #ddd; }
+  .zzz14cs-feed-cn { margin-bottom: 2px; }
+  .zzz14cs-feed-cn .zzz1r17b-notes-area { width: 100%; height: 100%; min-height: 0; resize: none; background: #fff; color: #222; border: 1px dashed #999;
+    border-radius: 8px; padding: 6px 8px; font-size: 15px; box-sizing: border-box; flex: 1 1 auto; }
+  
+  .zzz5w5cm-ccl-mini.is-off { background: #D4AF37; color: #111; }
   .zzz14cs-feed.is-hidden .zzz14cs-feed-title::after { content: " \25B8"; }
   
   .zzz5w5cm-ccl-mini.zzz14cs-att { cursor: pointer; background: #111; color: #D4AF37; padding: 0; font-family: inherit; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
@@ -31972,6 +31980,16 @@ function zzz5w5cm_build_ccl(key, rows, opts) {
   mini.className = 'zzz5w5cm-ccl-mini';
   mini.textContent = 'PRESET';
   mini.title = 'Comm command line of this tab - the row below is a permanent filter';
+
+  const hideKey = 'verso.ccl.hide.' + key;
+  let rowsHidden = false; try { rowsHidden = localStorage.getItem(hideKey) === '1'; } catch (e) {}
+  const paintHide = () => {
+    mini.classList.toggle('is-off', rowsHidden);
+    mini.title = rowsHidden ? 'PRESET - rows hidden, tap to show them' : 'PRESET - tap to hide the rows of this tab';
+    body.style.display = rowsHidden ? 'none' : '';
+  };
+  mini.style.cursor = 'pointer';
+  mini.addEventListener('click', () => { rowsHidden = !rowsHidden; try { localStorage.setItem(hideKey, rowsHidden ? '1' : '0'); } catch (e) {} paintHide(); });
   rl.appendChild(mini);
   ZZZ5W5CM_CCL_COLS.forEach(c => {
     const lab = document.createElement('span');
@@ -32014,6 +32032,7 @@ function zzz5w5cm_build_ccl(key, rows, opts) {
     paintBody();
   });
   box.appendChild(cl);
+  box.appendChild(body);
 
   if (opts && typeof opts.afterCl === 'function') { try { const x = opts.afterCl(); if (x) box.appendChild(x); } catch (e) {} }
 
@@ -32185,7 +32204,7 @@ function zzz5w5cm_build_ccl(key, rows, opts) {
     });
   }
   paintBody();
-  box.appendChild(body);
+  paintHide();
   return box;
 }
 
@@ -35204,7 +35223,7 @@ function zzz14cs_feed_row(it, wrap) {
   r.title = `${it.prio.toUpperCase()} · tap = reply to this (and it is read), ✉ / swipe right = open chat and keep, swipe left = SHIFT, hold = read aloud + SHIFTED`;
   r.addEventListener('click', () => {
     if (r._zzz3dSwiped) return;
-    zzz14csFeedSel = Object.assign({}, it.raw || {});
+    zzz14csFeedSel = Object.assign({}, it.raw || {}); zzz14csFeedNum = null;
     zzz14cs_feed_read(it, r);
     zzz14cs_feed_paint(wrap, true);
     const ta = wrap.querySelector('.zzz14cs-feed-comp textarea');
@@ -35245,44 +35264,102 @@ function zzz14cs_feed_target_paint(comp, items) {
   const lab = (typeof zzz5w7_label_of === 'function') ? zzz5w7_label_of(n) : (n.note_number || '');
   const pr = zzz5w8_project_of(String(n.entry_key || ''));
   tg.textContent = `→ #${n.entry_key}${pr ? ' ' + pr : ''} · reply to #${lab}${n.username ? ' ' + n.username : ''}${zzz14csFeedSel ? '' : ' (newest)'}`;
-  tg.classList.add('is-on');
+  tg.classList.add('is-on');  if (typeof comp._zzzPaintNum === 'function') comp._zzzPaintNum();
 }
+
+let zzz14csFeedNum = null;
 function zzz14cs_feed_composer(comp, items) {
   const keepText = (comp.querySelector('textarea') || {}).value || '';
   comp.innerHTML = '';
   const tg = document.createElement('div'); tg.className = 'zzz14cs-feed-target';
   tg.title = 'Where the reply goes - tap a notification above to change it';
   comp.appendChild(tg);
-  const row = document.createElement('div'); row.className = 'zzz14cs-feed-line';
-  const prio = zzz1cn_prio_control(zzz14csFeedPrio, (v) => { zzz14csFeedPrio = v; });
-  row.appendChild(prio.el);
-  const ta = document.createElement('textarea'); ta.rows = 1; ta.className = 'zzz14cs-feed-text';
-  ta.placeholder = 'chatnote'; ta.value = keepText;
-  row.appendChild(ta);
-  const send = document.createElement('button'); send.type = 'button'; send.className = 'zzz14cs-feed-send'; send.textContent = 'ENTER';
-  send.addEventListener('mousedown', (e) => e.preventDefault());
-  let busy = false;
-  send.addEventListener('click', async () => {
+
+  const chips = document.createElement('div'); chips.className = 'zzz14cs-feed-chips';
+  const prio = zzz1cn_prio_control(zzz14csFeedPrio, (v) => { zzz14csFeedPrio = v; prioTx.textContent = v || 'priority'; });
+  const prioWrap = document.createElement('label'); prioWrap.className = 'zzz5w7-inline-priv zzz5w7-inline-prio';
+  const prioTx = document.createElement('span'); prioTx.textContent = zzz14csFeedPrio || 'priority';
+  prioWrap.append(prio.el, prioTx);
+  const privWrap = document.createElement('label'); privWrap.className = 'zzz5w7-inline-priv';
+  const privChk = document.createElement('input'); privChk.type = 'checkbox'; privChk.className = 'zzz1cn-note-privchk';
+  privChk.title = 'Checked = private note (only you see it)';
+  const privTx = document.createElement('span'); privTx.textContent = 'privacy';
+  privWrap.append(privChk, privTx);
+  chips.append(prioWrap, privWrap);
+  comp.appendChild(chips);
+
+  const row = document.createElement('div'); row.className = 'zzz1cn-row zzz14cs-feed-cn';
+  const main = document.createElement('div'); main.className = 'zzz1cn-rowmain';
+  const ta = document.createElement('textarea'); ta.className = 'zzz1r17b-notes-area zzz14cs-feed-text';
+  ta.placeholder = 'Chat-Notes...'; ta.value = keepText;
+  main.appendChild(ta); row.appendChild(main);
+  const side = document.createElement('div'); side.className = 'zzz1cn-rowside';
+  const tRow = document.createElement('div'); tRow.className = 'zzz1cn-target-row';
+  const num = document.createElement('input'); num.type = 'text'; num.inputMode = 'numeric'; num.className = 'zzz1cn-target'; num.placeholder = '#';
+  num.setAttribute('data-zzz-nodraft', '1');
+  num.title = 'Reply to # (from the tapped notification) - type another # or × = new chat #';
+  const numX = document.createElement('button'); numX.type = 'button'; numX.className = 'zzz1cn-target-x'; numX.textContent = '×';
+  numX.title = 'New chat # (not a reply)';
+  tRow.append(num, numX);
+  const nmWrap = document.createElement('div'); nmWrap.className = 'zzz1cn-target-name-wrap';
+  const nm = document.createElement('input'); nm.type = 'text'; nm.className = 'zzz1cn-target-name'; nm.maxLength = 60; nm.setAttribute('data-zzz-nodraft', '1');
+  nmWrap.appendChild(nm);
+  const send = document.createElement('button'); send.type = 'button'; send.className = 'zzz1cn-save-btn';
+  send.innerHTML = '<span>ENTER</span><span>CHATNOTE</span>';
+  send.title = 'Tap = into the chat of the selected notification / hold 1-2 s = SAVE NOTE (into the chat and Notes)';
+  side.append(tRow, nmWrap, send);
+  row.appendChild(side);
+  comp.appendChild(row);
+
+  const paintNum = () => {
+    const n = zzz14cs_feed_target(zzz14cs_feed_items(zzz14cs_feed_prefs()));
+    const want = zzz14csFeedNum === null ? String((n && n.note_number) || '') : zzz14csFeedNum;
+    if (document.activeElement !== num && num.value !== want) num.value = want;
+    const locked = !!String(num.value).trim();
+    const tn = parseInt(num.value, 10) || 0;
+    let thread = '';
+    if (locked && n && Number(n.note_number) === tn) thread = String(n.note_name || '');
+    nm.readOnly = locked; nm.classList.toggle('is-locked', locked); nm.classList.toggle('is-open', !locked);
+    nm.placeholder = locked ? '–' : 'NAME';
+    if (locked && document.activeElement !== nm) nm.value = thread;
+    num.classList.toggle('is-set', locked);
+  };
+  comp._zzzPaintNum = paintNum;
+  num.addEventListener('input', () => { zzz14csFeedNum = String(num.value || '').replace(/[^0-9]/g, ''); if (num.value !== zzz14csFeedNum) num.value = zzz14csFeedNum; paintNum(); });
+  numX.addEventListener('click', () => { zzz14csFeedNum = ''; num.value = ''; nm.value = ''; paintNum(); try { ta.focus({ preventScroll: true }); } catch (e) {} });
+  let busy = false, held = false, holdT = null;
+  const go = async (save) => {
     if (busy) return;
     const text = String(ta.value || '').trim();
     const n = zzz14cs_feed_target(zzz14cs_feed_items(zzz14cs_feed_prefs()));
     if (!text) { zzz6f2_show_toast('Write something first.', 'warn'); return; }
-    if (!n || !n.entry_key) { zzz6f2_show_toast('Tap a notification first - the reply goes to its chat.', 'warn'); return; }
+    if (!n || !n.entry_key) { zzz6f2_show_toast('Tap a notification first - the note goes to its chat.', 'warn'); return; }
+    const ek = String(n.entry_key);
+    const tn = parseInt(num.value, 10) || 0;
+    const priv = !!privChk.checked;
+    if (priv && typeof zzz1cn_private_ok === 'function' && !zzz1cn_private_ok(ek)) { zzz6f2_show_toast('Private notes are off in this record - uncheck privacy.', 'warn'); return; }
     busy = true; send.disabled = true;
     try {
       const mOnly = zzz6f58_names(text, true);
-      const saved = await zzz1cn_add(String(n.entry_key), text, false, n.note_number ? { base: Number(n.note_number) } : null, '', false, zzz1cn_prio_level(zzz14csFeedPrio) || zzz56_prio_mode(String(n.entry_key)), mOnly);
+      const name = String(nm.value || '').trim();
+      const saved = await zzz1cn_add(ek, text, priv, tn ? { base: tn } : null, name, !!save, zzz1cn_prio_level(zzz14csFeedPrio) || zzz56_prio_mode(ek), mOnly);
       if (saved) {
-        zzz6f2_show_toast(`Chatnote #${zzz5w7_label_of(saved)} sent to #${n.entry_key}.`);
+        zzz6f2_show_toast((save ? 'Note saved' : 'Chatnote') + ` #${zzz5w7_label_of(saved)} → #${ek}.`);
         zzzLastActAt = Date.now();
-        ta.value = ''; zzz14csFeedPrio = ''; prio.set('');
+        ta.value = ''; zzz14csFeedPrio = ''; prio.set(''); prioTx.textContent = 'priority'; privChk.checked = false;
+        zzz14csFeedNum = null; paintNum();
       }
     } finally { busy = false; send.disabled = false; }
-  });
-  row.appendChild(send);
+  };
+  send.addEventListener('mousedown', (e) => e.preventDefault());
+  try { zzz_bind_hold_selection_guard(send); } catch (e) {}
+  send.addEventListener('pointerdown', () => { held = false; clearTimeout(holdT); holdT = setTimeout(() => { held = true; try { navigator.vibrate && navigator.vibrate(15); } catch (e) {} go(true); }, 1000); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => send.addEventListener(t, () => clearTimeout(holdT)));
+  send.addEventListener('click', () => { if (held) { held = false; return; } go(false); });
+  ta._vkbOk = send;
   zzz_enter_sends(ta, send);
-  comp.appendChild(row);
   zzz14cs_feed_target_paint(comp, items);
+  paintNum();
 }
 
 function zzz14cs_space_render() {
@@ -47811,7 +47888,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-03 02:53';
+const VERSO_BUILD = '2026-11-03 04:09';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
