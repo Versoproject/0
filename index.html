@@ -7042,6 +7042,11 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-row.is-silver > div { color: #8f8f8f; }
   .zzz-media-row.is-pls > div:first-child { font-size: 9px; }
   .zzz-media-paste, .zzz-media-tools { display: flex; gap: 5px; margin-bottom: 6px; }
+  .zzz-media-tagbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 2px 0 6px; }   
+  .zzz-media-tagbar-l { color: #D4AF37; font-size: 10px; font-weight: 800; letter-spacing: .05em; }
+  .zzz-media-tagchip { border: 1px solid #D4AF37; background: #171717; color: #D4AF37; border-radius: 10px; padding: 2px 8px; font-size: 11px; }
+  .zzz-media-tagchip.is-on { background: #D4AF37; color: #111; font-weight: 700; }
+  .zzz-media-tagchip.is-clear { border-color: #888; color: #bbb; }
   .zzz-media-paste input { flex: 1; min-width: 0; border: 1.5px dashed #D4AF37; border-radius: 8px; background: #0f0f0f; color: #eee; padding: 6px; }
   .zzz-media-btn { border: 1.5px solid #D4AF37; border-radius: 14px; background: transparent; color: #D4AF37; font-weight: 700; padding: 4px 10px; font-size: 11px; }
   .zzz-media-btn.is-on { background: #D4AF37; color: #171717; }
@@ -47799,7 +47804,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-03 01:38';
+const VERSO_BUILD = '2026-11-03 02:14';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -50392,7 +50397,7 @@ async function zzz_media_load() {
     (data || []).filter(n => n.note_part && n.note_text === 'verso:state').forEach(n => { states[n.note_number] = n; });
     const items = (data || []).filter(n => !n.note_part).map(n => zzz_media_item(n, states[n.note_number]));
     zzzMedia.plsDefs = items.filter(x => x.plsDef && !x.trash);
-    zzzMedia.all = items.filter(x => !x.plsDef && /^https?:\/\//i.test(x.link));
+    zzzMedia.all = items.filter(x => !x.plsDef && (/^https?:\/\//i.test(x.link) || /^verso-file:/.test(x.link)));
 
     for (const x of zzzMedia.all) {
       const w = zzz_media_tagw(x.tags);
@@ -50642,7 +50647,30 @@ function zzz_media_bind_drag(cellEl, r, it, l, redraw) {
   });
 }
 
-function zzz_media_tablist() { const l = zzz_media_tablist_raw(); return zzzMedia.tab === 'TRASH' ? l : zzz_media_order_apply(l); }
+function zzz_media_tablist() {
+  let l = zzz_media_tablist_raw();
+  if (zzzMedia.tab !== 'TRASH') l = zzz_media_order_apply(l);
+  const f = zzzMedia.tagFilter;
+  if (f && f.size) l = l.filter(x => { const w = zzz_media_tagw(x.tags); return Array.from(f).every(t => w.indexOf(t) >= 0); });
+  return l;
+}
+
+function zzz_media_tag_bar(list, redraw) {
+  const f = zzzMedia.tagFilter = zzzMedia.tagFilter || new Set();
+  const own = String(zzzMedia.tab || '').toLowerCase(), cnt = new Map();
+  zzz_media_tablist_raw().forEach(x => zzz_media_tagw(x.tags).forEach(t => { if (t === 'actual' || t === 'trash' || t.indexOf('pls:') === 0 || t === own || t + 's' === own || t === own.slice(0, -1)) return; cnt.set(t, (cnt.get(t) || 0) + 1); }));
+  f.forEach(t => { if (!cnt.has(t)) cnt.set(t, 0); });
+  if (!cnt.size) return;
+  const bar = document.createElement('div'); bar.className = 'zzz-media-tagbar';
+  const lab = document.createElement('span'); lab.className = 'zzz-media-tagbar-l'; lab.textContent = 'TAGS:'; bar.appendChild(lab);
+  Array.from(cnt.keys()).sort().forEach(t => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-tagchip' + (f.has(t) ? ' is-on' : ''); b.textContent = t + ' ' + cnt.get(t);
+    b.addEventListener('click', () => { if (f.has(t)) f.delete(t); else f.add(t); redraw(); });
+    bar.appendChild(b);
+  });
+  if (f.size) { const c = document.createElement('button'); c.type = 'button'; c.className = 'zzz-media-tagchip is-clear'; c.textContent = '\u2715 ' + f.size; c.title = 'All tags off'; c.addEventListener('click', () => { f.clear(); redraw(); }); bar.appendChild(c); }
+  list.appendChild(bar);
+}
 function zzz_media_tablist_raw() {
   if (zzzMedia.tab === 'ACTUAL') {
     const h = zzz_media_hist(), pos = new Map(h.map((x, i) => [x.link, i]));
@@ -50743,7 +50771,7 @@ function zzz_media_play(it, queue) {
   } else {
     const v = document.createElement('video');
     v.controls = true; v.autoplay = true; v.playsInline = true; v.className = 'zzz-media-video';
-    if (off) {
+    if (off || /^verso-file:/.test(it.link)) {
       zzz_media_file_get(it.link).then(b => { if (!b) { zzz_media_next(1, true, true); return; } v.src = URL.createObjectURL(b); try { const pr = v.play(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} });
     } else v.src = it.link;
     v.addEventListener('ended', () => zzz_media_next(1, true));
@@ -50943,7 +50971,10 @@ async function zzz_media_open() {
     const it = await zzz_media_add(u, '', want.join(' '));
     if (it) { inp.value = ''; zzz6f2_show_toast('Added as #' + it.num + ' (' + want.join(' ') + ') - hold the row = name / tags.', 'info'); draw(); }
   });
-  paste.append(inp, play, add); w.appendChild(paste);
+
+  const addF = document.createElement('button'); addF.type = 'button'; addF.className = 'zzz-media-btn'; addF.textContent = '+ FILE'; addF.title = 'A file from this phone / computer as its own row';
+  addF.addEventListener('click', () => zzz_media_add_file(draw));
+  paste.append(inp, play, add, addF); w.appendChild(paste);
   const place = document.createElement('div'); place.className = 'zzz-media-place'; w.appendChild(place);
   const tabs = document.createElement('div'); tabs.className = 'zzz-media-tabs'; w.appendChild(tabs);
   const tools = document.createElement('div'); tools.className = 'zzz-media-tools';
@@ -50972,7 +51003,7 @@ async function zzz_media_open() {
     place.textContent = ent ? '📍 ALL MEDIA #' + ent.entry_id + ' · hold a row = name / tags / file · attach anywhere (placements)' : 'ALL MEDIA is created with your first link (+ ADD or PLAY).';
     const trashN = (zzzMedia.all || []).filter(x => x.trash).length;
     if (zzzMedia.tab === 'TRASH' && !trashN) zzzMedia.tab = 'ACTUAL';
-    ZZZ_MEDIA_TABS.concat(trashN ? ['TRASH'] : []).forEach(t => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-tab' + (t === zzzMedia.tab ? ' is-on' : ''); b.textContent = t; b.addEventListener('click', () => { zzzMedia.tab = t; zzzMedia.pls = ''; draw(); }); tabs.appendChild(b); });
+    ZZZ_MEDIA_TABS.concat(trashN ? ['TRASH'] : []).forEach(t => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-tab' + (t === zzzMedia.tab ? ' is-on' : ''); b.textContent = t; b.addEventListener('click', () => { zzzMedia.tab = t; zzzMedia.pls = ''; if (zzzMedia.tagFilter) zzzMedia.tagFilter.clear(); draw(); }); tabs.appendChild(b); });
     const actual = zzzMedia.tab === 'ACTUAL', trashTab = zzzMedia.tab === 'TRASH';
     const plsView = !actual && !trashTab && zzzMedia.view === 'pls';
     viewB.style.display = actual || trashTab ? 'none' : '';
@@ -51017,6 +51048,7 @@ async function zzz_media_open() {
       zzz_media_paint();
       return;
     }
+    if (!trashTab) zzz_media_tag_bar(list, draw);
     const lab = document.createElement('div'); lab.className = 'zzz-media-row is-lab';
     ['#', 'NAME', 'TAGS', 'LINK', '▶︎', '🔗'].forEach(c => cell(lab, c));
     list.appendChild(lab);
@@ -51032,8 +51064,9 @@ async function zzz_media_open() {
 
       cell(r, (it.pub ? '\uD83C\uDF10' : '\uD83D\uDD12') + (it.num ? String(it.num) : '-'));
       cell(r, it.name || '-');
-      cell(r, zzz_media_tagw(it.tags).filter(t => t !== 'actual').join(' ') || '-');
-      cell(r, (it.link || '-').replace(/^https?:\/\/(www\.)?/, ''));
+
+      { const tc = cell(r, zzz_media_tagw(it.tags).filter(t => t !== 'actual').join(' ') || '-'); if (it.id && !trashTab) { tc.title = 'Tap = edit the tags'; tc.addEventListener('click', (e) => { e.stopPropagation(); if (r._zzzSwiped) return; zzz_media_edit(it, draw); }); } }
+      cell(r, /^verso-file:/.test(it.link || '') ? '\uD83D\uDCC1 file' : (it.link || '-').replace(/^https?:\/\/(www\.)?/, ''));
       if (!trashTab && !zzzMedia.selecting) zzz_media_bind_drag(r.firstChild, r, it, l, draw);
       if (it.id) zzz_bind_long_press(r, 700, () => { r._zzzSwiped = true; setTimeout(() => { r._zzzSwiped = false; }, 700); zzz_media_edit(it, draw); });
       const pb = cell(r, '▶︎'); pb.className = 'zzz-media-pl';
@@ -51135,6 +51168,8 @@ function zzz_media_edit(it, redraw) {
 
 function zzz_media_hash() {
   const h = String(location.hash || '');
+  const filed = h.match(/^#media-filed=([A-Za-z0-9_-]+)$/);
+  if (filed) { try { history.replaceState(null, '', location.pathname + location.search + '#media'); } catch (e) {} if (!document.getElementById('zzzMediaWin')) zzz_media_open(); zzz_media_filed(filed[1]); return; }
   const show = h.match(/^#media-show=(.+)$/i);
   if (show) {
     let link = ''; try { link = decodeURIComponent(show[1]); } catch (e) {}
@@ -51280,6 +51315,75 @@ async function zzz_media_actual_in() {
   } catch (e) {} finally { zzzMaBusy = false; }
 }
 setInterval(() => { try { if (document.visibilityState === 'visible') zzz_media_actual_in(); } catch (e) {} }, 5000);
+async function zzz_media_add_file(redraw) {
+  const tabTag = zzzMedia.tab === 'ACTUAL' || zzzMedia.tab === 'TRASH' ? 'actual' : zzzMedia.tab.toLowerCase();
+  const want = [tabTag].concat(zzzMedia.pls ? ['pls:' + zzzMedia.pls.toLowerCase()] : []);
+  const link = 'verso-file:' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
+  const mk = async (name, kind) => {
+    const e = await zzz_media_entry(true); if (!e) return null;
+    const tags = want.concat(kind && want.indexOf(kind) < 0 ? [kind] : []).join(' ');
+    const n = await zzz1cn_add(String(e.entry_id), link, true, null, String(name || 'phone file').slice(0, 60), true, false, [], tags);
+    if (!n) return null;
+    const it = zzz_media_item(Object.assign({ note_text: link, note_name: name || 'phone file', note_tags: tags }, n));
+    zzzMedia.all = (zzzMedia.all || []).concat([it]); zzzMedia.list = zzzMedia.all.filter(x => !x.trash);
+    return it;
+  };
+  if (zzz_media_native()) {
+    const it = await mk('phone file', '');
+    if (!it) return;
+    if (redraw) redraw();
+    zzz_native_go(zzz_media_intent('mediafilenew?l=' + encodeURIComponent(link)));
+    return;
+  }
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'audio/*,video/*';
+  inp.addEventListener('change', async () => {
+    const f = inp.files && inp.files[0]; if (!f) return;
+    const kind = /^audio\//.test(f.type || '') ? 'music' : /^video\//.test(f.type || '') ? 'video' : '';
+    const it = await mk(String(f.name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/_+/g, ' '), kind);
+    if (!it) return;
+    try { const db = await zzz_media_idb(); await new Promise((res, rej) => { const t = db.transaction('files', 'readwrite'); t.objectStore('files').put(f, zzz_media_fkey(link)); t.oncomplete = res; t.onerror = () => rej(t.error); }); zzzMediaFiles.add(link); }
+    catch (e) { zzz6f2_show_toast('The file could not be kept (browser storage full?).', 'warn'); }
+    zzz6f2_show_toast('Added #' + it.num + ' ' + it.name + ' (' + want.concat(kind ? [kind] : []).join(' ') + ') - the file stays in this browser.', 'info');
+    if (redraw) redraw();
+  });
+  inp.click();
+}
+
+let zzzMediaFromOutside = /^#media/i.test(String(location.hash || ''));
+(function zzz_media_back_watch() {
+  let had = false;
+  try {
+    new MutationObserver(() => {
+      const open = !!document.getElementById('zzzMediaWin');
+      if (open) { had = true; return; }
+      if (!had) return;
+      had = false;
+      if (!zzzMediaFromOutside) return;
+      zzzMediaFromOutside = false;
+      try { if (zzz14b17_in_app()) zzz_native_go(zzz_media_intent('backapp')); } catch (e) {}
+    }).observe(document.body || document.documentElement, { childList: true, subtree: false });
+  } catch (e) {}
+})();
+document.addEventListener('pointerdown', (e) => { try { if (zzzMediaFromOutside && !e.target.closest('#zzzMediaWin, .zzz-media-confirm, .zzz-media-stage, .zzz-vkb-panel, #zzzBusyScreen')) zzzMediaFromOutside = false; } catch (x) {} }, true);
+
+function zzz_media_filed(b64) {
+  try {
+    const s2 = b64.replace(/-/g, '+').replace(/_/g, '/'), bin = atob(s2 + '==='.slice((s2.length + 3) % 4));
+    const j = JSON.parse(new TextDecoder('utf-8').decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
+    if (!j || !/^verso-file:[a-z0-9]+$/.test(String(j.l || ''))) return;
+    const go = async () => {
+      if (!zzz_media_me()) { setTimeout(go, 1000); return; }
+      if (zzzMedia.loadedOf !== zzz_media_me()) await zzz_media_load();
+      const it = (zzzMedia.all || []).find(x => x.link === j.l); if (!it) return;
+      const kind = /^audio\//.test(String(j.m || '')) ? 'music' : /^video\//.test(String(j.m || '')) ? 'video' : '';
+      const w = zzz_media_tagw(it.tags);
+      await zzz_media_set_tags(it, kind && w.indexOf(kind) < 0 ? w.concat([kind]) : w, String(j.n || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/_+/g, ' ').slice(0, 60) || it.name);
+      zzz6f2_show_toast('Phone file added: ' + (j.n || 'file') + '.', 'info');
+      zzz_media_redraw();
+    };
+    go();
+  } catch (e) {}
+}
 async function zzz_media_add_link(link) {
   if (zzzMedia.loadedOf !== zzz_media_me()) await zzz_media_load();
   const had = zzz_media_line({ link });
@@ -52576,7 +52680,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 177;
+const ZZZ14B17_APP_LATEST = 180;
 function zzz14b17_app_code() {
 
   try {
