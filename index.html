@@ -24,10 +24,11 @@
     var keep = [], got = {};
     h.replace(/^#/, '').split('&').forEach(function (p) {
       var i = p.indexOf('='), k = i > 0 ? p.slice(0, i) : p, v = i > 0 ? p.slice(i + 1) : '';
-      if (k === 'vk' || k === 'did' || k === 'ns' || k === 'perm' || k === 'dn' || k === 'mk' || k === 'md' || k === 'notif-sync' || k === 'rx' || k === 'ab') got[k] = v; else if (p) keep.push(p);
+      if (k === 'vk' || k === 'did' || k === 'ns' || k === 'perm' || k === 'dn' || k === 'mk' || k === 'md' || k === 'notif-sync' || k === 'rx' || k === 'ab' || k === 'ma') got[k] = v; else if (p) keep.push(p);
     });
 
     if (got['notif-sync'] && got['notif-sync'].length < 12000 && /^[A-Za-z0-9_-]+$/.test(got['notif-sync'])) localStorage.setItem('verso_notif_sync_in', got['notif-sync']);
+    if (got.ma && got.ma.length < 16000 && /^[A-Za-z0-9_-]+$/.test(got.ma)) localStorage.setItem('verso_media_actual_in', got.ma);
     if (got.rx && got.rx.length < 12000 && /^[A-Za-z0-9_-]+$/.test(got.rx)) localStorage.setItem('verso_repair_ops_in', got.rx);
     try { var ab0 = decodeURIComponent(got.ab || ''); if (/^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(ab0)) localStorage.setItem('verso_app_built', ab0); } catch (e3) {}
     if (/^[0-9a-f]{64}$/.test(got.vk || '')) localStorage.setItem('verso_cmd_key', got.vk);
@@ -7074,7 +7075,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-row.is-sw-keep > div { border-color: #16a34a; background: #dcfce7; }
   .zzz-media-row.is-sw-shift > div { border-color: #F97316; background: #ffedd5; }
   .zzz-media-empty { color: #a1a1aa; font-size: 11px; padding: 6px 2px; }
-  .zzz-media-confirm { position: fixed; inset: 0; z-index: 2147483002; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; }
+  
+  .zzz-media-confirm { position: fixed; inset: 0; z-index: 2147483004; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; }
   .zzz-media-confirm-box { background: #171717; border: 2px solid #D4AF37; border-radius: 12px; padding: 14px; color: #fff; max-width: 320px; font-size: 13px; }
   .zzz-media-confirm-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
   .zzz-media-confirm-text { white-space: pre-line; max-height: 60vh; overflow-y: auto; } 
@@ -39298,7 +39300,7 @@ async function zzz_native_launch(url) {
 
 function zzz_native_cmd_able(url) {
   try {
-    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user)\b/.test(String(url || 'intent://quick/quiet'))
+    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual)\b/.test(String(url || 'intent://quick/quiet'))
       && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator;
   } catch (e) { return false; }
 }
@@ -47797,7 +47799,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-03 01:15';
+const VERSO_BUILD = '2026-11-03 01:33';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -51200,6 +51202,32 @@ async function zzz_media_show(link) {
     else zzz6f2_show_toast('This link is not in ALL MEDIA yet - + LINK adds it.', 'info');
   }, 150);
 }
+
+let zzzMaBusy = false;
+async function zzz_media_actual_in() {
+  if (zzzMaBusy || !zzz_media_me()) return;
+  let raw = ''; try { raw = localStorage.getItem('verso_media_actual_in') || ''; } catch (e) {}
+  if (!raw) return;
+  zzzMaBusy = true;
+  try {
+    let list = [];
+    try { const s2 = raw.replace(/-/g, '+').replace(/_/g, '/'), bin = atob(s2 + '==='.slice((s2.length + 3) % 4)); list = JSON.parse(new TextDecoder('utf-8').decode(Uint8Array.from(bin, c => c.charCodeAt(0)))) || []; } catch (e) { list = []; }
+    try { localStorage.removeItem('verso_media_actual_in'); } catch (e) {}
+    list = list.filter(o => o && /^https?:\/\//i.test(String(o.u || '')) && Number(o.t) > 0).slice(-50);
+    if (!list.length) return;
+    if (zzzMedia.loadedOf !== zzz_media_me()) await zzz_media_load();
+    let n = 0, upto = 0;
+    for (const o of list) {
+      upto = Math.max(upto, Number(o.t));
+      const link = zzz_media_norm(o.u), had = zzz_media_line({ link });
+      try { if (had) await zzz_media_toggle_tag(had, 'actual', true); else await zzz_media_add(link, '', 'actual'); zzz_media_hist_add({ link }); n++; } catch (e) {}
+    }
+    if (n) { zzz6f2_show_toast('PAGE MODE: ' + n + (n === 1 ? ' page' : ' pages') + ' added to ACTUAL.', 'info'); zzz_media_redraw(); }
+    const url = 'intent://quick/mediaactual?upto=' + Math.floor(upto);
+    if (zzz_native_cmd_able(url)) zzz_native_cmd(await zzz_cmd_sign(url));
+  } catch (e) {} finally { zzzMaBusy = false; }
+}
+setInterval(() => { try { if (document.visibilityState === 'visible') zzz_media_actual_in(); } catch (e) {} }, 5000);
 async function zzz_media_add_link(link) {
   if (zzzMedia.loadedOf !== zzz_media_me()) await zzz_media_load();
   const had = zzz_media_line({ link });
@@ -52496,7 +52524,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 176;
+const ZZZ14B17_APP_LATEST = 177;
 function zzz14b17_app_code() {
 
   try {
