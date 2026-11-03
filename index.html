@@ -48044,7 +48044,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-04 00:18';
+const VERSO_BUILD = '2026-11-04 00:21';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -51126,9 +51126,23 @@ function zzz_media_copy(items) {
   try { navigator.clipboard.writeText(txt); if (typeof zzz_clip_remember === 'function') zzz_clip_remember(txt); } catch (e) {}
   zzz6f2_show_toast(items.length === 1 ? 'Link copied.' : items.length + ' links copied.', 'info');
 }
+
+function zzz_media_where_save() { try { localStorage.setItem(zzz_ukey('zzz_media_where'), JSON.stringify({ tab: zzzMedia.tab || 'ACTUAL', pls: zzzMedia.pls || '' })); } catch (e) {} }
+function zzz_media_where_tags() {
+  let w = null; try { w = JSON.parse(localStorage.getItem(zzz_ukey('zzz_media_where')) || 'null'); } catch (e) { w = null; }
+  const out = ['actual'];
+  if (w && w.tab && w.tab !== 'ACTUAL' && w.tab !== 'TRASH') out.push(String(w.tab).toLowerCase());
+  if (w && w.pls) out.push('pls:' + String(w.pls).toLowerCase());
+  return out;
+}
+async function zzz_media_tag_where(l) {
+  if (!l) return false;
+  const w = zzz_media_tagw(l.tags).filter(t => t !== 'trash'), more = zzz_media_where_tags().filter(t => w.indexOf(t) < 0);
+  return more.length ? zzz_media_set_tags(l, w.concat(more)) : true;
+}
 function zzz_media_line(it) { if (!it || !it.link) return null; const n = zzz_media_norm(it.link); return (zzzMedia.all || []).find(x => x.link === n) || null; }
 async function zzz_media_toggle_tag(it, tag, on) {
-  let l = zzz_media_line(it) || await zzz_media_add(it.link, it.name || '', 'actual');
+  let l = zzz_media_line(it) || await zzz_media_add(it.link, it.name || '', zzz_media_where_tags().join(' '));
   if (!l) return false;
   const w = zzz_media_tagw(l.tags).filter(x => x !== tag);
   if (on) w.push(tag);
@@ -51142,7 +51156,7 @@ function zzz_media_hist_add(it) {
   h.unshift({ link: it.link, t: Date.now() });
   try { localStorage.setItem(zzz_ukey('zzz_media_hist'), JSON.stringify(h.slice(0, 200))); } catch (e) {}
   const l = zzz_media_line(it);
-  if (!l) zzz_media_add(it.link, it.name || '', 'actual').then(() => zzz_media_redraw());
+  if (!l) zzz_media_add(it.link, it.name || '', zzz_media_where_tags().join(' ')).then(() => zzz_media_redraw());
   else if (zzz_media_tagw(l.tags).indexOf('actual') < 0) zzz_media_set_tags(l, zzz_media_tagw(l.tags).concat(['actual'])).then(() => zzz_media_redraw());
 }
 function zzz_media_redraw() { const w = document.getElementById('zzzMediaWin'); if (w && w._draw) w._draw(); }
@@ -51660,6 +51674,7 @@ async function zzz_media_open() {
   const cell = (r, txt) => { const d = document.createElement('div'); d.textContent = txt; r.appendChild(d); return d; };
   const draw = () => {
     tabs.innerHTML = '';
+    zzz_media_where_save();
     const ent = zzzMedia.entry;
     place.textContent = ent ? '📍 ALL MEDIA #' + ent.entry_id + ' · hold a row = name / tags / file · attach anywhere (placements)' : 'ALL MEDIA is created with your first link (+ ADD or PLAY).';
     const trashN = (zzzMedia.all || []).filter(x => x.trash).length;
@@ -51852,7 +51867,8 @@ function zzz_media_hash() {
   if (add) {
     let link = ''; try { link = decodeURIComponent(add[1]); } catch (e) {}
     try { history.replaceState(null, '', location.pathname + location.search + '#media'); } catch (e) {}
-    zzzMedia.tab = 'ACTUAL';
+
+    try { const w0 = JSON.parse(localStorage.getItem(zzz_ukey('zzz_media_where')) || 'null'); zzzMedia.tab = (w0 && w0.tab) || 'ACTUAL'; zzzMedia.pls = (w0 && w0.pls) || ''; } catch (e) { zzzMedia.tab = 'ACTUAL'; }
     const quiet = /&quiet=1/.test(h);
     try { if (quiet) history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
     const go = () => { if (!zzz_media_me()) { setTimeout(go, 1000); return; } if (!quiet && !document.getElementById('zzzMediaWin')) zzz_media_open(); if (/^https?:\/\//i.test(link)) zzz_media_add_link(link); };
@@ -51971,7 +51987,7 @@ async function zzz_media_actual_in() {
     for (const o of list) {
       upto = Math.max(upto, Number(o.t));
       const link = zzz_media_norm(o.u), had = zzz_media_line({ link });
-      try { if (had) await zzz_media_toggle_tag(had, 'actual', true); else await zzz_media_add(link, '', 'actual'); zzz_media_hist_add({ link }); n++; } catch (e) {}
+      try { if (had) await zzz_media_tag_where(had); else await zzz_media_add(link, '', zzz_media_where_tags().join(' ')); zzz_media_hist_add({ link }); n++; } catch (e) {}
     }
     if (n) { zzz6f2_show_toast('PAGE MODE: ' + n + (n === 1 ? ' page' : ' pages') + ' added to ACTUAL.', 'info'); zzz_media_redraw(); }
     const url = 'intent://quick/mediaactual?upto=' + Math.floor(upto);
@@ -52051,8 +52067,9 @@ function zzz_media_filed(b64) {
 async function zzz_media_add_link(link) {
   if (zzzMedia.loadedOf !== zzz_media_me()) await zzz_media_load();
   const had = zzz_media_line({ link });
-  const it = had ? await (zzz_media_toggle_tag(had, 'actual', true).then(() => had)) : await zzz_media_add(link, '', 'actual');
-  if (it) { zzz6f2_show_toast((had ? 'Already in ALL MEDIA · #' : 'Added to ALL MEDIA · #') + it.num + ' (ACTUAL)', 'info'); zzz_media_redraw(); }
+  const tw = zzz_media_where_tags();
+  const it = had ? await (zzz_media_tag_where(had).then(() => had)) : await zzz_media_add(link, '', tw.join(' '));
+  if (it) { zzz6f2_show_toast((had ? 'Already in ALL MEDIA · #' : 'Added to ALL MEDIA · #') + it.num + ' (' + tw.join(' ').toUpperCase() + ')', 'info'); zzz_media_redraw(); }
 }
 function zzz_vkb_now_text() {
   if (zzzMedia.loaded) return '\u2913 ' + zzzMedia.loaded.replace(/^https?:\/\/(www\.)?/, '') + '  \u00b7  \u25B6 = play';
