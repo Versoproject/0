@@ -48044,7 +48044,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-04 00:22';
+const VERSO_BUILD = '2026-11-04 00:23';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -50856,7 +50856,9 @@ function zzz_media_me() { return String((typeof zzz0r1_get_current_username === 
 function zzz_media_tagw(tags) { return String(tags || '').toLowerCase().split(/[\s,;]+/).filter(Boolean); }
 
 function zzz_media_norm(link) {
-  const raw = String(link || '').trim().split(/\s+/)[0] || '';
+
+  let raw = String(link || '').trim().split(/\s+/)[0] || '';
+  raw = raw.replace(/[&?](vk|did|ns|perm|dn|mk|md|rx|ab|ma|notif-sync|quiet)=.*$/i, '');
   let u; try { u = new URL(raw); } catch (e) { return raw; }
   if (!/^https?:$/.test(u.protocol)) return raw;
   u.protocol = 'https:';
@@ -51004,6 +51006,12 @@ async function zzz_media_load() {
       const upd = { note_tags: w.filter(t => t !== 'seen' && t !== 'later').join(' ') || null };
       if (w.indexOf('seen') >= 0) upd.note_status = 'done';
       try { const { error } = await sb.from('verso_chat_notes').update(upd).eq('id', x.id); if (!error) { x.note.note_tags = upd.note_tags; if (upd.note_status) { x.note.note_status = 'done'; x.seen = true; } x.tags = String(upd.note_tags || ''); x.tag = x.tags.toUpperCase(); } } catch (e) {}
+    }
+
+    for (const x of zzzMedia.all) {
+      const raw = String((x.note && x.note.note_text) || '');
+      if (!/[&?](vk|did|ns|perm|dn)=/i.test(raw) || !/^https?:\/\//i.test(x.link)) continue;
+      try { const { error } = await sb.from('verso_chat_notes').update({ note_text: x.link }).eq('id', x.id); if (!error && x.note) x.note.note_text = x.link; } catch (e) {}
     }
 
     const groups = new Map();
@@ -52057,8 +52065,14 @@ function zzz_media_filed(b64) {
       const it = (zzzMedia.all || []).find(x => x.link === j.l); if (!it) return;
       const kind = /^audio\//.test(String(j.m || '')) ? 'music' : /^video\//.test(String(j.m || '')) ? 'video' : '';
       const w = zzz_media_tagw(it.tags);
-      await zzz_media_set_tags(it, kind && w.indexOf(kind) < 0 ? w.concat([kind]) : w, String(j.n || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/_+/g, ' ').slice(0, 60) || it.name);
-      zzz6f2_show_toast('Phone file added: ' + (j.n || 'file') + '.', 'info');
+      const fname = String(j.n || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/_+/g, ' ').slice(0, 60) || it.name;
+
+      const same = (zzzMedia.all || []).filter(x => x !== it && !x.trash && /^verso-file:/.test(x.link) && fname && String(x.name || '').toLowerCase() === fname.toLowerCase());
+      const tags = Array.from(new Set(w.concat(kind ? [kind] : []).concat(same.flatMap(x => zzz_media_tagw(x.tags))).filter(t => t !== 'trash')));
+      await zzz_media_set_tags(it, tags, fname);
+      if (same.some(x => x.seen) && !it.seen) { try { await zzz_media_mark_read(it); } catch (e) {} }
+      for (const x of same) { try { await zzz_media_set_tags(x, zzz_media_tagw(x.tags).concat(['trash'])); } catch (e) {} }
+      zzz6f2_show_toast(same.length ? 'This file was already in your list - it stays ONE line' + (same.some(x => x.seen) ? ' (READ).' : '.') : 'Phone file added: ' + (j.n || 'file') + '.', 'info');
       zzz_media_redraw();
     };
     go();
@@ -52069,7 +52083,7 @@ async function zzz_media_add_link(link) {
   const had = zzz_media_line({ link });
   const tw = zzz_media_where_tags();
   const it = had ? await (zzz_media_tag_where(had).then(() => had)) : await zzz_media_add(link, '', tw.join(' '));
-  if (it) { zzz6f2_show_toast((had ? 'Already in ALL MEDIA · #' : 'Added to ALL MEDIA · #') + it.num + ' (' + tw.join(' ').toUpperCase() + ')', 'info'); zzz_media_redraw(); }
+  if (it) { zzz6f2_show_toast((had ? 'Already in ALL MEDIA · #' : 'Added to ALL MEDIA · #') + it.num + (had && had.seen ? ' · READ' : '') + ' (' + tw.join(' ').toUpperCase() + ')', 'info'); zzz_media_redraw(); }
 }
 function zzz_vkb_now_text() {
   if (zzzMedia.loaded) return '\u2913 ' + zzzMedia.loaded.replace(/^https?:\/\/(www\.)?/, '') + '  \u00b7  \u25B6 = play';
