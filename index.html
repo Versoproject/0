@@ -7042,6 +7042,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-row.is-silver > div { color: #8f8f8f; }
   .zzz-media-row.is-pls > div:first-child { font-size: 9px; }
   .zzz-media-paste, .zzz-media-tools { display: flex; gap: 5px; margin-bottom: 6px; }
+  .zzz-media-diss { max-width: 560px; width: calc(100vw - 28px); }   
+  .zzz-media-diss-t { color: #D4AF37; font-weight: 800; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .zzz-media-diss-s { color: #9ca3af; font-size: 11px; margin-bottom: 6px; }
+  .zzz-media-diss-l { max-height: 45vh; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; margin-bottom: 6px; }
+  .zzz-media-diss-r { background: #222; border: 1px solid #3a3a3a; border-radius: 8px; padding: 5px 7px; color: #eee; font-size: 13px; }
+  .zzz-media-diss-r b { color: #D4AF37; font-size: 12px; } .zzz-media-diss-r small { color: #888; font-size: 10px; }
+  .zzz-media-diss-in { width: 100%; box-sizing: border-box; background: #111; color: #fff; border: 1px solid #D4AF37; border-radius: 8px; padding: 6px; font-size: 14px; margin-bottom: 6px; }
   .zzz-media-tagbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 2px 0 6px; }   
   .zzz-media-tagbar-l { color: #D4AF37; font-size: 10px; font-weight: 800; letter-spacing: .05em; }
   .zzz-media-tagchip { border: 1px solid #D4AF37; background: #171717; color: #D4AF37; border-radius: 10px; padding: 2px 8px; font-size: 11px; }
@@ -47804,7 +47811,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-03 02:14';
+const VERSO_BUILD = '2026-11-03 02:53';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -50396,6 +50403,9 @@ async function zzz_media_load() {
     const states = {};
     (data || []).filter(n => n.note_part && n.note_text === 'verso:state').forEach(n => { states[n.note_number] = n; });
     const items = (data || []).filter(n => !n.note_part).map(n => zzz_media_item(n, states[n.note_number]));
+
+    zzzMedia.diss = {};
+    (data || []).filter(n => n.note_part && n.note_text !== 'verso:state').forEach(n => { (zzzMedia.diss[n.note_number] = zzzMedia.diss[n.note_number] || []).push(n); });
     zzzMedia.plsDefs = items.filter(x => x.plsDef && !x.trash);
     zzzMedia.all = items.filter(x => !x.plsDef && (/^https?:\/\//i.test(x.link) || /^verso-file:/.test(x.link)));
 
@@ -50872,6 +50882,48 @@ function zzz_verso_confirm(text, yes) {
     row.append(y, n); b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
   });
 }
+
+function zzz_media_diss(it, redraw) {
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm';
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzz-media-diss';
+  const t = document.createElement('div'); t.className = 'zzz-media-diss-t'; t.textContent = 'DISS \u00b7 #' + it.num + ' ' + zzz_media_title(it); b.appendChild(t);
+  const sub = document.createElement('div'); sub.className = 'zzz-media-diss-s';
+  sub.textContent = it.pub ? '\uD83C\uDF10 PUBLIC line - everybody who sees it reads the comments' : '\uD83D\uDD12 PRIVATE line - the comments are only yours';
+  b.appendChild(sub);
+  const list = document.createElement('div'); list.className = 'zzz-media-diss-l'; b.appendChild(list);
+  const paint = () => {
+    list.innerHTML = '';
+    const ns = ((zzzMedia.diss || {})[it.num] || []).slice().sort((a, c) => String(a.created_at || '').localeCompare(String(c.created_at || '')));
+    if (!ns.length) { const e = document.createElement('div'); e.className = 'zzz-media-empty'; e.textContent = 'No comment yet - write the first one below.'; list.appendChild(e); }
+    ns.forEach(n => {
+      const row = document.createElement('div'); row.className = 'zzz-media-diss-r';
+      const who = document.createElement('b'); who.textContent = String(n.username || '') + ' ';
+      const when = document.createElement('small'); try { when.textContent = zzz1cn_time_label_chat(n); } catch (e) {}
+      const tx = document.createElement('div'); tx.textContent = String(n.note_text || '');
+      row.append(who, when, tx); list.appendChild(row);
+    });
+    list.scrollTop = list.scrollHeight;
+  };
+  paint();
+  const ta = document.createElement('textarea'); ta.className = 'zzz-media-diss-in'; ta.rows = 2; ta.placeholder = 'your comment…'; b.appendChild(ta);
+  const rowB = document.createElement('div'); rowB.className = 'zzz-media-confirm-row'; rowB.style.flexWrap = 'wrap';
+  const btn = (label, cls, fn) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn' + (cls ? ' ' + cls : ''); x.textContent = label; x.addEventListener('click', fn); rowB.appendChild(x); return x; };
+  if (/^https?:\/\//i.test(it.link || '')) btn('\uD83D\uDCAC ON THE WEB', '', () => zzz_media_open_web(it.link)).title = 'The medium\'s own page (YouTube, Instagram…) with its own comments - external';
+  btn('CLOSE', '', () => { o.remove(); if (redraw) redraw(); });
+  const send = btn('SEND', 'is-on', async () => {
+    const txt = ta.value.trim(); if (!txt) return;
+    const e = zzzMedia.entry || await zzz_media_entry(true); if (!e) return;
+    send.disabled = true;
+    try {
+      const n = await zzz1cn_add(String(e.entry_id), txt, !it.pub, { base: it.num }, '', true, false, [], '');
+      if (n) { ((zzzMedia.diss = zzzMedia.diss || {})[it.num] = zzzMedia.diss[it.num] || []).push(Object.assign({ username: zzz_media_me(), note_text: txt, created_at: new Date().toISOString() }, n)); ta.value = ''; paint(); }
+    } finally { send.disabled = false; }
+  });
+  b.appendChild(rowB); o.appendChild(b); document.body.appendChild(o);
+  o.addEventListener('click', (ev) => { if (ev.target === o) { o.remove(); if (redraw) redraw(); } });
+  setTimeout(() => { try { ta.focus(); } catch (e) {} }, 60);
+}
+
 function zzz_media_confirm(text, yes, fn) { zzz_verso_confirm(text, yes).then((ok) => { if (ok) fn(); }); }
 
 function zzz_verso_prompt(text, value, yes) {
@@ -51063,7 +51115,10 @@ async function zzz_media_open() {
       r.title = 'Swipe right = READ (stays) · swipe left = SHIFTED (later) · hold = name / tags / file';
 
       cell(r, (it.pub ? '\uD83C\uDF10' : '\uD83D\uDD12') + (it.num ? String(it.num) : '-'));
-      cell(r, it.name || '-');
+
+      { const nd = it.num && zzzMedia.diss && zzzMedia.diss[it.num] ? zzzMedia.diss[it.num].length : 0;
+        const nc = cell(r, (nd ? '\uD83D\uDCAC' + nd + ' ' : '') + (it.name || '-'));
+        if (it.id && !trashTab) { nc.title = 'Tap = DISS: your comments / discussion of this medium'; nc.addEventListener('click', (e) => { e.stopPropagation(); if (r._zzzSwiped) return; zzz_media_diss(it, draw); }); } }
 
       { const tc = cell(r, zzz_media_tagw(it.tags).filter(t => t !== 'actual').join(' ') || '-'); if (it.id && !trashTab) { tc.title = 'Tap = edit the tags'; tc.addEventListener('click', (e) => { e.stopPropagation(); if (r._zzzSwiped) return; zzz_media_edit(it, draw); }); } }
       cell(r, /^verso-file:/.test(it.link || '') ? '\uD83D\uDCC1 file' : (it.link || '-').replace(/^https?:\/\/(www\.)?/, ''));
