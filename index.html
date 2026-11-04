@@ -7161,6 +7161,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   
   .zzz-media-row.is-locked > div { background: #e5e5e5 !important; color: #9a9a9a !important; border-color: #bdbdbd !important; }
   .zzz-media-row.is-folder > div { background: #fff7d6; font-weight: 700; }
+  .zzz-media-row:not(.is-lab) { touch-action: pan-y; }   
   .zzz-media-row .zzz-media-name-inp { width: 100%; border: none; background: transparent; font: inherit; color: #111; padding: 0; outline: none; }
   .zzz-media-row .zzz-media-dc { font-size: 9px; padding: 4px 2px; }
   .zzz-media-tagchips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
@@ -48462,7 +48463,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-04 22:01';
+const VERSO_BUILD = '2026-11-04 22:09';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -51510,14 +51511,43 @@ function zzz_media_item(n, st) {
     plsDef: /^playlist:/i.test(String(n.note_text || '')) ? String(n.note_text).replace(/^playlist:\s*/i, '').trim() : '' };
 }
 
-async function zzz_media_mark_read(it) {
+let zzzMediaRead = null, zzzMediaReadT = 0;
+function zzz_media_read_key(link) { let h = 0x811c9dc5; const s2 = String(zzz_media_norm(String(link || ''))); for (let i = 0; i < s2.length; i++) { h ^= s2.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); }
+function zzz_media_read_set() { if (!zzzMediaRead || zzzMediaRead._k !== zzz_ukey('zzz_media_read')) { let a = []; try { a = JSON.parse(localStorage.getItem(zzz_ukey('zzz_media_read')) || '[]') || []; } catch (e) { a = []; } zzzMediaRead = new Set(a); zzzMediaRead._k = zzz_ukey('zzz_media_read'); } return zzzMediaRead; }
+function zzz_media_read_has(link) { return !!link && zzz_media_read_set().has(zzz_media_read_key(link)); }
+function zzz_media_read_add(link) {
+  if (!link || !zzz_media_me()) return;
+  const set = zzz_media_read_set(), k = zzz_media_read_key(link); if (set.has(k)) return; set.add(k);
+  const arr = Array.from(set).slice(-900);
+  try { localStorage.setItem(zzz_ukey('zzz_media_read'), JSON.stringify(arr)); } catch (e) {}
+  clearTimeout(zzzMediaReadT);
+  zzzMediaReadT = setTimeout(async () => {
+    const u = typeof zzz_dev_me === 'function' ? zzz_dev_me() : ''; if (!u || typeof sb === 'undefined' || !sb) return;
+    try { const { error } = await sb.from('verso_user_settings').upsert({ username: u, runtime: 'web', module: 'media_read', prefs: { h: arr, t: Date.now() } }, { onConflict: 'username,runtime,module' }); if (error) throw error; }
+    catch (e) { zzz_user_error('READ is kept on this phone, but could not be saved for your account - check the connection.', e, '[Zzz14-B17:MEDIA-READ-MEMORY]'); }
+  }, 1500);
+}
+async function zzz_media_read_pull() {
+  const u = typeof zzz_dev_me === 'function' ? zzz_dev_me() : ''; if (!u || typeof sb === 'undefined' || !sb) return;
+  try { const { data } = await sb.from('verso_user_settings').select('prefs').eq('username', u).eq('runtime', 'web').eq('module', 'media_read').limit(1);
+    const h = data && data[0] && data[0].prefs && data[0].prefs.h; if (Array.isArray(h)) { const set = zzz_media_read_set(); h.forEach(x => set.add(String(x))); try { localStorage.setItem(zzz_ukey('zzz_media_read'), JSON.stringify(Array.from(set).slice(-900))); } catch (e) {} }
+
+    for (const it of (zzzMedia.list || [])) { if (!it.seen && it.link && zzz_media_read_has(it.link)) { try { await zzz_media_mark_read(it, true); } catch (e) {} } }
+  } catch (e) {}
+}
+
+function zzz_media_finished(it) {
+  try { if (!it || !it.link || !zzz_media_me()) return; zzz_media_read_add(it.link); const line = it.id ? it : zzz_media_line(it); if (line && line.id && !line.seen) zzz_media_mark_read(line, true).then(() => zzz_media_redraw()); } catch (e) {}
+}
+async function zzz_media_mark_read(it, quiet) {
   if (!it || !it.id) return false;
-  if (it.seen) { zzz6f2_show_toast('#' + it.num + ' is READ already (stays).', 'info'); return false; }
+  if (it.seen) { if (!quiet) zzz6f2_show_toast('#' + it.num + ' is READ already (stays).', 'info'); return false; }
   try {
     if (it.pub) { const st = await zzz_media_state(it); if (!st) throw new Error('state note'); const { error } = await sb.from('verso_chat_notes').update({ note_status: 'done' }).eq('id', st.id); if (error) throw error; st.note_status = 'done'; }
     else { const { error } = await sb.from('verso_chat_notes').update({ note_status: 'done' }).eq('id', it.id); if (error) throw error; if (it.note) it.note.note_status = 'done'; }
   } catch (e) { zzz_user_error('READ not saved - check the connection and try again.', e, '[Zzz14-B17:MEDIA-READ]'); return false; }
   it.seen = true;
+  try { zzz_media_read_add(it.link); } catch (e) {}
   zzz6f2_show_toast('READ \u00b7 #' + it.num + ' ' + zzz_media_title(it), 'info');
   return true;
 }
@@ -51586,6 +51616,7 @@ async function zzz_media_entry(create) {
 async function zzz_media_load() {
   zzzMedia.loadedOf = zzz_media_me();
   zzz_media_order_pull();
+  zzz_media_read_pull();
   const e = await zzz_media_entry(false);
   if (!e) { zzzMedia.all = []; zzzMedia.list = []; return; }
   try {
@@ -51660,6 +51691,7 @@ async function zzz_media_add(link, name, tags) {
   const it = zzz_media_item(Object.assign({ note_text: link, note_name: name || '', note_tags: tags || '' }, n));
   zzzMedia.all = (zzzMedia.all || []).concat([it]); zzzMedia.list = zzzMedia.all.filter(x => !x.trash);
   if (!it.name) zzz_media_autoname(it);
+  if (zzz_media_read_has(link)) zzz_media_mark_read(it, true);
   return it;
 }
 async function zzz_media_set_tags(it, words, name) {
@@ -51870,6 +51902,8 @@ function zzz_media_bind_drag(cellEl, r, it, l, redraw) {
 function zzz_media_tablist() {
   let l = zzz_media_tablist_raw();
   if (zzzMedia.tab !== 'TRASH') l = zzz_media_order_apply(l);
+
+  if (zzzMedia.readF === 'read') l = l.filter(x => x.seen); else if (zzzMedia.readF === 'unread') l = l.filter(x => !x.seen);
   const f = zzzMedia.tagFilter;
 
   if (f && f.size) l = l.filter(x => { const w = zzz_media_tagw(x.tags); const arr = Array.from(f); return zzzMedia.tagAny ? arr.some(t => w.indexOf(t) >= 0) : arr.every(t => w.indexOf(t) >= 0); });
@@ -51890,6 +51924,8 @@ function zzz_media_tag_bar(list, redraw) {
   let qt = 0;
   q.addEventListener('input', () => { clearTimeout(qt); qt = setTimeout(() => { const pos = q.selectionStart; zzzMedia.tagQ = q.value; redraw(); const n = document.querySelector('#zzzMediaWin .zzz-media-tagq'); if (n) { try { n.focus({ preventScroll: true }); n.setSelectionRange(pos, pos); } catch (e) {} } }, 350); });
   bar.appendChild(q);
+  [['read', '\u2713 READ'], ['unread', '\u25CB UNREAD']].forEach(([k, lbl]) => { const rb = document.createElement('button'); rb.type = 'button'; rb.className = 'zzz-media-tagchip' + (zzzMedia.readF === k ? ' is-on' : ''); rb.textContent = lbl;
+    rb.addEventListener('click', () => { zzzMedia.readF = zzzMedia.readF === k ? '' : k; redraw(); }); bar.appendChild(rb); });
   if (cnt.size) {
     const mode = document.createElement('button'); mode.type = 'button'; mode.className = 'zzz-media-tagchip is-mode'; mode.textContent = zzzMedia.tagAny ? 'ANY' : 'ALL';
     mode.title = 'ALL = rows with every chosen tag · ANY = rows with at least one'; mode.addEventListener('click', () => { zzzMedia.tagAny = !zzzMedia.tagAny; redraw(); });
@@ -52069,7 +52105,7 @@ function zzz_media_play(it, queue) {
     if (off || /^verso-file:/.test(it.link)) {
       zzz_media_file_get(it.link).then(b => { if (!b) { zzz_media_next(1, true, true); return; } v.src = URL.createObjectURL(b); try { const pr = v.play(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} });
     } else v.src = it.link;
-    v.addEventListener('ended', () => zzz_media_next(1, true));
+    v.addEventListener('ended', () => { zzz_media_finished(it); zzz_media_next(1, true); });
     v.addEventListener('error', () => zzz_media_next(1, true, true));
     v.addEventListener('playing', () => { zzzMedia.skips = 0; zzz_media_paint(); });
     v.addEventListener('pause', zzz_media_paint);
@@ -52144,7 +52180,7 @@ window.addEventListener('message', (e) => {
 
   if (d.info && typeof d.info.currentTime === 'number') zzzMedia.ytTime = d.info.currentTime;
   if (typeof ps === 'number' && ps !== zzzMedia.ytState) { zzzMedia.ytState = ps; zzz_media_paint(); try { zzz_media_kb_redraw(); } catch (x) {} }
-  if (ps === 0) zzz_media_next(1, true);
+  if (ps === 0) { zzz_media_finished(zzzMedia.cur); zzz_media_next(1, true); }
 });
 function zzz_media_paint() {
   document.querySelectorAll('.zzz-vkb-now-t, .zzz-media-now').forEach(n => { n.textContent = zzz_vkb_now_text(); });
@@ -52460,7 +52496,7 @@ async function zzz_media_open() {
       { const nd = it.num && zzzMedia.diss && zzzMedia.diss[it.num] ? zzzMedia.diss[it.num].length : 0;
 
         const nc = cell(r, it.name || zzz_media_link_name(it.link) || '-');
-        if (it.id && !trashTab) { nc.title = 'Tap = write the name'; nc.addEventListener('click', (e) => { e.stopPropagation(); if (r._zzzSwiped || nc.querySelector('input')) return;
+        if (it.id && !trashTab && zzz_media_is_owner(it)) { nc.title = 'Tap = write the name'; nc.addEventListener('click', (e) => { e.stopPropagation(); if (r._zzzSwiped || nc.querySelector('input')) return;
           const inp = document.createElement('input'); inp.type = 'text'; inp.maxLength = 60; inp.value = it.name || ''; inp.placeholder = zzz_media_link_name(it.link) || 'name';
           inp.className = 'zzz-media-name-inp'; inp.setAttribute('enterkeyhint', 'done'); nc.textContent = ''; nc.appendChild(inp); setTimeout(() => { try { inp.focus(); } catch (x) {} }, 20);
           let done = false; const save = async () => { if (done) return; done = true; const v = inp.value.trim(); if (v !== (it.name || '')) await zzz_media_set_tags(it, zzz_media_tagw(it.tags), v); draw(); };
@@ -52530,7 +52566,9 @@ async function zzz_media_open() {
   try { await zzz_media_load(); zzz_busy_set(75, 'phone files'); await zzz_media_files_load(); zzz_busy_set(95, 'list'); } finally { draw(); zzz_busy_end(); }
 }
 
+function zzz_media_is_owner(it) { const u = it && it.note && it.note.username; return !u || String(u).toLowerCase() === String(zzz_media_me() || '').toLowerCase(); }
 function zzz_media_edit(it, redraw) {
+  if (!zzz_media_is_owner(it)) { zzz6f2_show_toast('Only the owner (' + it.note.username + ') can change this medium. ' + (it.name || zzz_media_link_name(it.link) || '') + ' · ' + zzz_media_tags_shown(it), 'info'); return; }
   const o = document.createElement('div'); o.className = 'zzz-media-confirm';
   const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzz-media-edit';
   const t = document.createElement('div'); t.style.cssText = 'color:#D4AF37;font-weight:800;'; t.textContent = 'ALL MEDIA \u00b7 #' + it.num; b.appendChild(t);
