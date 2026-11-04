@@ -7104,6 +7104,11 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-vi-win-q { flex: 1 1 auto; min-width: 0; min-height: 40px; background: #0b0b0b; color: #fff; border: 2px solid #D4AF37; border-radius: 12px; padding: 0 10px; font-size: 15px; }
   .zzz-vi-win-qx { flex: 0 0 40px; min-height: 40px; background: #151515; color: #D4AF37; border: 2px solid #D4AF37; border-radius: 12px; font-size: 18px; }
   .zzz-vi-win-found { flex: 0 0 auto; max-height: 40vh; overflow-y: auto; }
+  .zzz-vi-win-pack { flex: 0 0 auto; min-height: 40px; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 2px solid #14B8A6; border-radius: 12px; background: #151515; color: #14B8A6; font-weight: 800; font-size: 12px; padding: 0 8px; }
+  .zzz-vi-win-pack.is-on { background: #14B8A6; color: #111; }
+  .zzz-vi-win-packs { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0; }
+  .zzz-vi-win-packs button { min-height: 40px; border: 2px solid #14B8A6; border-radius: 12px; background: #151515; color: #14B8A6; font-weight: 700; font-size: 13px; padding: 0 10px; }
+  .zzz-vi-win-packs button.is-on { background: #14B8A6; color: #111; }
   .zzz-vi-win-found:empty { display: none; }
   .zzz-vi-win-hitrow { display: flex; gap: 6px; margin-top: 6px; }
   .zzz-vi-win-hit { flex: 1 1 auto; min-width: 0; min-height: 40px; text-align: left; background: #151515; color: #fff; border: 1px solid #555; border-radius: 10px; padding: 4px 10px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -48070,7 +48075,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-04 03:55';
+const VERSO_BUILD = '2026-11-04 09:11';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -49865,11 +49870,26 @@ async function zzz_vi_win_open() {
   const q = document.createElement('input'); q.type = 'text'; q.className = 'zzz-vi-win-q'; q.setAttribute('enterkeyhint', 'search'); q.placeholder = 'EN, name, tag…'; q.autocomplete = 'off';
   const qx = document.createElement('button'); qx.type = 'button'; qx.className = 'zzz-vi-win-qx'; qx.textContent = '\u00d7'; qx.title = 'Clear';
   const found = document.createElement('div'); found.className = 'zzz-vi-win-found';
-  cmd.append(cmdMode, q, qx);
+
+  const packB = document.createElement('button'); packB.type = 'button'; packB.className = 'zzz-vi-win-pack';
+  const paintPack = () => { const pk = zzz_vi_get('findpack', ''); packB.textContent = pk ? 'PACK ' + pk.slice(0, 10) : 'PACK'; packB.classList.toggle('is-on', !!pk); };
+  paintPack(); packB.title = 'Find only records with the people of a pack';
+  packB.addEventListener('click', () => {
+    found.innerHTML = '';
+    const packs = (typeof zzz5w5cm_tag_packs === 'function' ? zzz5w5cm_tag_packs() : []) || [];
+    const row = document.createElement('div'); row.className = 'zzz-vi-win-packs';
+    const pick = (tag) => { zzz_vi_put('findpack', tag); paintPack(); zzz_vi_find_render(q.value, found); };
+    const mk = (label, tag, on) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; if (on) b.className = 'is-on'; b.addEventListener('click', () => pick(tag)); row.appendChild(b); };
+    mk('NO PACK', '', !zzz_vi_get('findpack', ''));
+    packs.forEach(pk => mk(pk.tag + ' · ' + pk.names.length, pk.tag, zzz10v1_normalize(pk.tag) === zzz10v1_normalize(zzz_vi_get('findpack', ''))));
+    if (!packs.length) { const n = document.createElement('span'); n.className = 'zzz-vi-win-hint'; n.textContent = ' no packs yet - tag 2+ contacts with the same word'; row.appendChild(n); }
+    found.appendChild(row);
+  });
+  cmd.append(cmdMode, packB, q, qx);
   let qt = 0;
   q.addEventListener('input', () => { clearTimeout(qt); qt = setTimeout(() => zzz_vi_find_render(q.value, found), 180); });
   q.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); const b = found.querySelector('.zzz-vi-win-hit'); if (b) b.click(); } });
-  qx.addEventListener('click', () => { q.value = ''; found.innerHTML = ''; q.focus(); });
+  qx.addEventListener('click', () => { q.value = ''; zzz_vi_put('findpack', ''); paintPack(); found.innerHTML = ''; q.focus(); });
   const space = document.createElement('div'); space.className = 'zzz-vi-win-space';
   const chat = document.createElement('div'); chat.className = 'zzz-vi-win-chat';
   const home = document.createElement('div'); home.className = 'zzz-vi-win-home';
@@ -49970,14 +49990,20 @@ async function zzz_vi_find_rows() {
 async function zzz_vi_find_render(text, box) {
   const words = zzz10v1_normalize(String(text || '')).split(/\s+/).filter(Boolean);
   box.innerHTML = '';
-  if (!words.length) return;
+
+  const pkTag = zzz_vi_get('findpack', '');
+  const pk = pkTag ? ((typeof zzz5w5cm_tag_packs === 'function' ? zzz5w5cm_tag_packs() : []) || []).find(x => zzz10v1_normalize(x.tag) === zzz10v1_normalize(pkTag)) : null;
+  const pkNames = pk ? pk.names.map(n => zzz10v1_normalize(n)) : [];
+  if (!words.length && !pkNames.length) return;
   const rows = await zzz_vi_find_rows();
   const hits = rows.map(r => {
     const f = zzz_parse_fields_json(r) || {};
     const hay = zzz10v1_normalize(['#' + r.entry_id, r.entry_id, f.r2, f.r3, f.r5, f.r9, f.tags, f.r8].filter(Boolean).join(' '));
-    return { r, f, ok: words.every(wd => hay.indexOf(wd.replace(/^#/, '')) >= 0 || (wd.charAt(0) === '#' && String(r.entry_id) === wd.slice(1))) };
+    const ppl = zzz10v1_normalize([f.r17, f.r18, f.r4].filter(Boolean).join(' ')).split(/[\s,;&@]+/).filter(Boolean);
+    const inPack = !pkNames.length || pkNames.some(n => ppl.indexOf(n) >= 0);
+    return { r, f, ok: inPack && words.every(wd => hay.indexOf(wd.replace(/^#/, '')) >= 0 || (wd.charAt(0) === '#' && String(r.entry_id) === wd.slice(1))) };
   }).filter(x => x.ok).slice(0, 12);
-  if (!hits.length) { const n = document.createElement('div'); n.className = 'zzz-vi-win-bot'; n.textContent = 'No record of yours fits „' + String(text).trim().slice(0, 40) + '“.'; box.appendChild(n); return; }
+  if (!hits.length) { const n = document.createElement('div'); n.className = 'zzz-vi-win-bot'; n.textContent = 'No record of yours fits' + (String(text).trim() ? ' „' + String(text).trim().slice(0, 40) + '“' : '') + (pk ? ' with pack ' + pk.tag : '') + '.'; box.appendChild(n); return; }
   const homeNo = Number(zzz_vi_get('home', '')) || 0;
   const pinned = zzz5w5cm_tab_list(ZZZ_VI_SPACE_KEY).map(it => Number(it.sourceEntryId));
   hits.forEach(({ r, f }) => {
