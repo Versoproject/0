@@ -48452,7 +48452,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-04 20:27';
+const VERSO_BUILD = '2026-11-04 21:16';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -51284,7 +51284,7 @@ function zzz_vkb_nav(t, dir, extend) {
   try { t.dispatchEvent(new Event('select', { bubbles: true })); } catch (e) {}
 }
 
-const ZZZ_MEDIA_TABS = ['ACTUAL', 'STREAMS', 'REELS', 'MUSIC', 'VIDEO', 'MOVIES', 'NETWORKS', 'RADIOS', 'PODCASTS', 'LIVE'];
+const ZZZ_MEDIA_TABS = ['ACTUAL', 'STREAMS', 'REELS', 'MUSIC', 'VIDEO', 'MOVIES', 'NETWORKS', 'RADIOS', 'PODCASTS', 'LIVE', 'DOCUMENTS', 'PHOTOS', 'PRIVATE'];
 const zzzMedia = { view: 'rows', plsDefs: [], list: [], tab: 'ACTUAL', pls: '', queue: [], cur: null, sel: new Set(), selecting: false, skips: 0, nat: false, natPlaying: false };
 
 const ZZZ_MEDIA_NATIVE_MIN = 72;
@@ -51337,8 +51337,9 @@ function zzz_media_offline() { try { return localStorage.getItem(zzz_ukey('zzz_m
 function zzz_media_set_offline(on) {
   try { localStorage.setItem(zzz_ukey('zzz_media_offline'), on ? '1' : '0'); } catch (e) {}
   if (zzz_media_native()) { try { zzz_native_go(zzz_media_intent('mediamode?off=' + (on ? 1 : 0))); } catch (e) {} }
-  zzz6f2_show_toast(on ? 'VERSO MEDIA: OFFLINE - only files chosen with 📁 play.' : 'VERSO MEDIA: ONLINE - the links play.', 'info');
+  zzz6f2_show_toast(on ? 'VERSO MEDIA: OFFLINE - the list shows only files on this phone / browser.' : 'VERSO MEDIA: ONLINE - the list shows only web links.', 'info');
   document.querySelectorAll('.zzz-media-mode').forEach(b => { b.textContent = on ? 'OFFLINE' : 'ONLINE'; b.classList.toggle('is-off', on); });
+  try { zzz_media_redraw(); } catch (e) {}
   zzz_media_paint();
 }
 function zzz_media_idb() {
@@ -51622,7 +51623,7 @@ async function zzz_media_load() {
   (async () => { for (const x of zzzMedia.list.filter(x => !x.name).slice(0, 12)) { try { await zzz_media_autoname(x); } catch (e) {} } })();
 }
 
-const ZZZ_MEDIA_TABWORDS = ['streams', 'reels', 'music', 'video', 'movies', 'networks', 'radios', 'podcasts', 'live'];
+const ZZZ_MEDIA_TABWORDS = ['streams', 'reels', 'music', 'video', 'movies', 'networks', 'radios', 'podcasts', 'live', 'documents', 'photos', 'private'];
 function zzz_media_autotag(link) {
   const l = String(link || '').toLowerCase();
   if (/music\.youtube\.|spotify\.com\/(track|album|playlist|artist)|soundcloud\.com|deezer\.com|music\.apple\.com|tidal\.com|bandcamp\.com/.test(l)) return 'music';
@@ -51923,14 +51924,25 @@ function zzz_media_attach_pick(items, done) {
   });
   row.append(cn, ok); b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
 }
+
+function zzz_media_locked(it) { return zzz_media_tagw(it.tags).indexOf('private') >= 0 || zzz_media_in_tab(it, 'PRIVATE'); }
+function zzz_media_quiet() { try { return typeof zzz16_quiet === 'function' && zzz16_quiet(); } catch (e) { return false; } }
+
+function zzz_media_mode_fits(it) {
+  const file = /^verso-file:/.test(it.link || '') || zzzMediaFiles.has(it.link);
+  const web = /^https?:\/\//i.test(it.link || '');
+  return zzz_media_offline() ? file : web;
+}
 function zzz_media_tablist_raw() {
-  if (zzzMedia.tab === 'ACTUAL') {
-    const h = zzz_media_hist(), pos = new Map(h.map((x, i) => [x.link, i]));
-    const l = zzzMedia.list.filter(x => pos.has(x.link) || zzz_media_tagw(x.tags).indexOf('actual') >= 0);
-    return l.sort((a, b) => (pos.has(a.link) ? pos.get(a.link) : 1e6 - a.id / 1e6) - (pos.has(b.link) ? pos.get(b.link) : 1e6 - b.id / 1e6));
-  }
   if (zzzMedia.tab === 'TRASH') return (zzzMedia.all || []).filter(x => x.trash);
-  const l = zzzMedia.list.filter(x => zzz_media_in_tab(x, zzzMedia.tab));
+  const q = zzz_media_quiet();
+  const base = zzzMedia.list.filter(x => zzz_media_mode_fits(x) && !(q && zzz_media_locked(x)));
+  if (zzzMedia.tab === 'ACTUAL') {
+
+    const h = zzz_media_hist(), seen = new Set(h.map(x => x.link));
+    return base.filter(x => seen.has(x.link) || zzz_media_tagw(x.tags).indexOf('actual') >= 0).sort((a, b) => (b.id || 0) - (a.id || 0));
+  }
+  const l = base.filter(x => zzz_media_in_tab(x, zzzMedia.tab));
   return zzzMedia.pls ? l.filter(x => x.pls.some(p => p.toLowerCase() === zzzMedia.pls.toLowerCase())) : l;
 }
 function zzz_media_playlists() {
@@ -52339,7 +52351,8 @@ async function zzz_media_open() {
     place.textContent = ent ? '📍 ALL MEDIA #' + ent.entry_id + ' · hold a row = name / tags / file · attach anywhere (placements)' : 'ALL MEDIA is created with your first link (+ ADD or PLAY).';
     const trashN = (zzzMedia.all || []).filter(x => x.trash).length;
     if (zzzMedia.tab === 'TRASH' && !trashN) zzzMedia.tab = 'ACTUAL';
-    ZZZ_MEDIA_TABS.concat(trashN ? ['TRASH'] : []).forEach(t => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-tab' + (t === zzzMedia.tab ? ' is-on' : ''); b.textContent = t; b.addEventListener('click', () => { zzzMedia.tab = t; zzzMedia.pls = ''; if (zzzMedia.tagFilter) zzzMedia.tagFilter.clear(); draw(); }); tabs.appendChild(b); });
+    if (zzzMedia.tab === 'PRIVATE' && zzz_media_quiet()) zzzMedia.tab = 'ACTUAL';
+    ZZZ_MEDIA_TABS.filter(t => !(t === 'PRIVATE' && zzz_media_quiet())).concat(trashN ? ['TRASH'] : []).forEach(t => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-tab' + (t === zzzMedia.tab ? ' is-on' : ''); b.textContent = t; b.addEventListener('click', () => { zzzMedia.tab = t; zzzMedia.pls = ''; if (zzzMedia.tagFilter) zzzMedia.tagFilter.clear(); draw(); }); tabs.appendChild(b); });
     const actual = zzzMedia.tab === 'ACTUAL', trashTab = zzzMedia.tab === 'TRASH';
     const plsView = !actual && !trashTab && zzzMedia.view === 'pls';
     viewB.style.display = actual || trashTab ? 'none' : '';
