@@ -18,6 +18,10 @@
 
 <script>
 
+(function () { try { if (/^#(vi-open|vi-send=|media(?!-add)|commspace)/i.test(String(location.hash || ''))) { document.documentElement.classList.add('zzz-start-cover'); setTimeout(function () { document.documentElement.classList.remove('zzz-start-cover'); }, 15000); } } catch (e) {} })();
+</script>
+<script>
+
 (function () {
   try {
     var h = String(location.hash || ''); if (h.indexOf('vk=') < 0 && h.indexOf('notif-sync=') < 0) return;
@@ -133,6 +137,7 @@
   #zzzUpdScreen .zzzupd-c { position: absolute; bottom: 18px; color: #6b6b6b; font: 12px monospace; }
   #zzzUpdScreen .zzzupd-go { margin-top: 10px; padding: 14px 26px; border-radius: 22px; background: #D4AF37; color: #171717; font: 700 16px/1 system-ui, sans-serif; text-decoration: none; }   
   @keyframes zzzupd-spin { to { transform: rotate(360deg); } }
+  html.zzz-start-cover::after { content: ''; position: fixed; inset: 0; z-index: 2147483644; background: #171717; }   
   #zzzBusyScreen { position: fixed; inset: 0; z-index: 2147483645; background: rgba(23,23,23,.96); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; touch-action: none; user-select: none; -webkit-user-select: none; }   
   #zzzBusyScreen .zzzupd-logo { position: relative; width: 120px; height: 120px; display: flex; align-items: center; justify-content: center; }
   #zzzBusyScreen .zzzupd-chain { animation: zzzupd-spin 3.2s linear infinite; }
@@ -12123,10 +12128,11 @@ function zzz14cs_hash_check(tries) {
   if (location.hash !== '#commspace') return;
   if (typeof zzz6f7_isLoggedIn === 'undefined' || !zzz6f7_isLoggedIn || typeof zzz14cs_space_open !== 'function') {
     if ((tries || 0) < 40) setTimeout(() => zzz14cs_hash_check((tries || 0) + 1), 500);
+    else zzz_busy_end();
     return;
   }
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
-  try { zzz14cs_space_build(); zzz14cs_space_open(true, true); zzz_outside_back_arm(); } catch (e) { zzz_user_error('Could not open COMM SPACE - tap its button.', e, '[Zzz14-CS:ALWAYS-COMM]'); }
+  try { zzz14cs_space_build(); zzz14cs_space_open(true, true); zzz_outside_back_arm(); zzz_busy_ready(); } catch (e) { zzz_busy_end(); zzz_user_error('Could not open COMM SPACE - tap its button.', e, '[Zzz14-CS:ALWAYS-COMM]'); }
 }
 window.addEventListener('hashchange', () => zzz14cs_hash_check(0));
 
@@ -48172,7 +48178,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-04 13:18';
+const VERSO_BUILD = '2026-11-04 13:32';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -48289,7 +48295,8 @@ function zzz_upd_screen(kind) {
 let zzzBusy = null;
 function zzz_busy_start(title, now) {
   try {
-    zzz_busy_end();
+    if (document.documentElement.classList.contains('zzz-start-cover')) now = true;
+    zzz_busy_end(true);
     const b = { title: title || 'Verso', pct: 0, text: '', el: null, t0: Date.now() };
     zzzBusy = b;
     const show = () => {
@@ -48310,13 +48317,33 @@ function zzz_busy_paint() {
   b.el.querySelector('.zzzupd-s').textContent = (b.text ? b.text + ' · ' : '') + b.pct + ' %';
   b.el.querySelector('.zzzbusy-bar i').style.width = b.pct + '%';
 }
-function zzz_busy_end() {
+function zzz_busy_end(keepCover) {
+  if (!keepCover) try { document.documentElement.classList.remove('zzz-start-cover'); } catch (e) {}
   const b = zzzBusy; zzzBusy = null; if (!b) return;
   clearTimeout(b.timer); clearTimeout(b.stop);
   if (b.el) { b.pct = 100; try { b.el.querySelector('.zzzupd-s').textContent = '100 %'; b.el.querySelector('.zzzbusy-bar i').style.width = '100%'; } catch (e) {} setTimeout(() => { try { b.el.remove(); } catch (e) {} }, 180); }
 }
 
 try { if (/^#media\b/i.test(String(location.hash || ''))) setTimeout(() => { if (!document.getElementById('zzzMediaWin')) { zzz_busy_start('VERSO MEDIA CENTER', true); zzz_busy_set(5, 'starting Verso'); } }, 0); } catch (e) {}
+
+function zzz_busy_for_hash() {
+  const h = String(location.hash || '');
+  if (/^#(vi-open|vi-send=)/.test(h)) zzz_busy_start('VI', true);
+  else if (h === '#commspace') zzz_busy_start('COMM SPACE', true);
+  else return;
+
+  setTimeout(() => { try { if (typeof zzz6f7_isLoggedIn === 'undefined' || !zzz6f7_isLoggedIn) zzz_busy_end(); } catch (e) {} }, 4000);
+}
+try { setTimeout(zzz_busy_for_hash, 0); } catch (e) {}
+window.addEventListener('hashchange', zzz_busy_for_hash, true);
+async function zzz_busy_ready(maxMs) {
+  const t0 = Date.now();
+  const loading = () => { const d = document.querySelector('.zzz3-0-dashboard-empty'); return !!d && d.offsetParent !== null; };
+  zzz_busy_set(85, 'opening');
+  while (Date.now() - t0 < (maxMs || 5000) && loading()) await new Promise(r => setTimeout(r, 150));
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  zzz_busy_end();
+}
 
 function zzz_upd_versions() {
   let app = 0, toApp = 0, web = '', toWeb = '';
@@ -50244,13 +50271,15 @@ async function zzz_vi_send(b64) {
     if (it) ok = await zzz_vi_reply(it, o.t, o.p);
     else { zzz6f2_show_toast('VI LINE: that message is not in your notifications any more - the line went to your VI record.', 'warn'); ok = await zzz_vi_post(o.t, o.p, ''); }
   } else ok = await zzz_vi_post(o.t, o.p, o.k);
-  zzz_busy_set(100); zzz_busy_end();
-  if (ok) setTimeout(zzz_vi_back, 700);
+  zzz_busy_set(100);
+
+  if (ok && zzz14b17_in_app()) { zzz_busy_set(100, 'sent'); setTimeout(zzz_vi_back, 250); setTimeout(() => zzz_busy_end(), 2500); }
+  else { zzz_busy_end(); if (ok) setTimeout(zzz_vi_back, 700); }
 }
 
 async function zzz_vi_open(tool, noTarget, mode) {
 
-  if (noTarget && mode !== 'off' && !tool) { zzz_vi_win_open(); return; }
+  if (noTarget && mode !== 'off' && !tool) { await zzz_vi_win_open(); return; }
   try { zzz14cs_space_build(); zzz14cs_space_open(true, true); } catch (x) { zzz_user_error('Could not open COMM SPACE - tap its button.', x, '[Zzz14-VI:OPEN-COMM]'); return; }
   const sel = { alarm: '.zzz1cn-clock', tr: '.zzz23tr-tog', max: '.zzz1cn-max-btn' }[String(tool || '')];
   if (!sel) return;
@@ -50271,7 +50300,8 @@ function zzz_vi_hash(tries) {
   }
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
   if (opm && opm[3]) zzz_vi_put('mode', opm[3]);
-  if (snd) zzz_vi_send(snd[1]); else { zzz_busy_end(); zzz_outside_back_arm(); zzz_vi_open(opm[1] || '', opm[2] === '1', opm[3] || zzz_vi_get('mode', 'standby')); }
+  if (snd) zzz_vi_send(snd[1]);
+  else { zzz_outside_back_arm(); Promise.resolve(zzz_vi_open(opm[1] || '', opm[2] === '1', opm[3] || zzz_vi_get('mode', 'standby'))).catch(() => {}).then(() => zzz_busy_ready()); }
 }
 
 let zzzOutsideBack = false;
@@ -50291,7 +50321,6 @@ window.addEventListener('popstate', () => {
 document.addEventListener('pointerdown', (e) => {
   try { if (zzzOutsideBack && !e.target.closest('.zzz-vi-win, #zzz14csSpace, #zzzMediaWin, .zzz1r17b-comm-window, .zzz-media-confirm, .zzz-vkb-panel, .entry-modal-overlay, #zzzBusyScreen')) zzzOutsideBack = false; } catch (x) {}
 }, true);
-if (/^#vi-send=/.test(String(location.hash || ''))) { try { zzz_busy_start('VI', 10); } catch (e) {} }
 window.addEventListener('hashchange', () => zzz_vi_hash(0));
 window.addEventListener('load', () => setTimeout(() => zzz_vi_hash(0), 900));
 
