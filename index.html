@@ -7041,6 +7041,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-bar button.is-wide { flex: 1.6 1 0; font-size: 11px; }
   .zzz-media-listhead { display: flex; align-items: center; gap: 5px; margin: 2px 0 4px; }
   .zzz-media-listhead .zzz-media-sub { flex: 1; margin: 0; }
+  
+  .zzz-media-listhead { flex-wrap: wrap; }
+  .zzz-media-listhead .zzz-media-sub { min-width: 150px; }
+  .zzz-media-listhead .zzz-media-tools { flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
   .zzz-media-fs { position: absolute; right: 4px; bottom: 4px; z-index: 2; border: 1px solid #D4AF37; border-radius: 6px; background: rgba(0,0,0,.6); color: #D4AF37; font-size: 14px; line-height: 1; padding: 3px 5px; }
   .zzz-media-slot { height: 0; }
   .zzz-media-slot.is-playing { height: 30vh; margin-bottom: 4px; }
@@ -7065,6 +7069,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-diss-in { width: 100%; box-sizing: border-box; background: #111; color: #fff; border: 1px solid #D4AF37; border-radius: 8px; padding: 6px; font-size: 14px; margin-bottom: 6px; }
   .zzz-media-tagbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 2px 0 6px; }   
   .zzz-media-tagbar-l { color: #D4AF37; font-size: 10px; font-weight: 800; letter-spacing: .05em; }
+  .zzz-media-tagq { flex: 1 1 140px; min-width: 0; border: 1.5px dashed #D4AF37; border-radius: 10px; background: #0f0f0f; color: #fff; padding: 4px 8px; font-size: 13px; box-sizing: border-box; }   
+  .zzz-media-tagchip.is-mode { background: #D4AF37; color: #111; font-weight: 800; }
   .zzz-media-tagchip { border: 1px solid #D4AF37; background: #171717; color: #D4AF37; border-radius: 10px; padding: 2px 8px; font-size: 11px; }
   .zzz-media-tagchip.is-on { background: #D4AF37; color: #111; font-weight: 700; }
   .zzz-media-tagchip.is-clear { border-color: #888; color: #bbb; }
@@ -48044,7 +48050,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-04 00:29';
+const VERSO_BUILD = '2026-11-04 03:05';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -51272,7 +51278,11 @@ function zzz_media_tablist() {
   let l = zzz_media_tablist_raw();
   if (zzzMedia.tab !== 'TRASH') l = zzz_media_order_apply(l);
   const f = zzzMedia.tagFilter;
-  if (f && f.size) l = l.filter(x => { const w = zzz_media_tagw(x.tags); return Array.from(f).every(t => w.indexOf(t) >= 0); });
+
+  if (f && f.size) l = l.filter(x => { const w = zzz_media_tagw(x.tags); const arr = Array.from(f); return zzzMedia.tagAny ? arr.some(t => w.indexOf(t) >= 0) : arr.every(t => w.indexOf(t) >= 0); });
+
+  const q = String(zzzMedia.tagQ || '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (q.length) l = l.filter(x => { const hay = (x.tags + ' ' + (x.name || '') + ' ' + (x.link || '')).toLowerCase(); return q.every(t => hay.indexOf(t) >= 0); });
   return l;
 }
 
@@ -51281,9 +51291,17 @@ function zzz_media_tag_bar(list, redraw) {
   const own = String(zzzMedia.tab || '').toLowerCase(), cnt = new Map();
   zzz_media_tablist_raw().forEach(x => zzz_media_tagw(x.tags).forEach(t => { if (t === 'actual' || t === 'trash' || t.indexOf('pls:') === 0 || t === own || t + 's' === own || t === own.slice(0, -1)) return; cnt.set(t, (cnt.get(t) || 0) + 1); }));
   f.forEach(t => { if (!cnt.has(t)) cnt.set(t, 0); });
-  if (!cnt.size) return;
   const bar = document.createElement('div'); bar.className = 'zzz-media-tagbar';
-  const lab = document.createElement('span'); lab.className = 'zzz-media-tagbar-l'; lab.textContent = 'TAGS:'; bar.appendChild(lab);
+  const lab = document.createElement('span'); lab.className = 'zzz-media-tagbar-l'; lab.textContent = 'TAG BAR'; bar.appendChild(lab);
+  const q = document.createElement('input'); q.type = 'text'; q.className = 'zzz-media-tagq'; q.placeholder = 'search tags / name / link…'; q.value = zzzMedia.tagQ || '';
+  let qt = 0;
+  q.addEventListener('input', () => { clearTimeout(qt); qt = setTimeout(() => { const pos = q.selectionStart; zzzMedia.tagQ = q.value; redraw(); const n = document.querySelector('#zzzMediaWin .zzz-media-tagq'); if (n) { try { n.focus({ preventScroll: true }); n.setSelectionRange(pos, pos); } catch (e) {} } }, 350); });
+  bar.appendChild(q);
+  if (cnt.size) {
+    const mode = document.createElement('button'); mode.type = 'button'; mode.className = 'zzz-media-tagchip is-mode'; mode.textContent = zzzMedia.tagAny ? 'ANY' : 'ALL';
+    mode.title = 'ALL = rows with every chosen tag · ANY = rows with at least one'; mode.addEventListener('click', () => { zzzMedia.tagAny = !zzzMedia.tagAny; redraw(); });
+    bar.appendChild(mode);
+  }
   Array.from(cnt.keys()).sort().forEach(t => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-tagchip' + (f.has(t) ? ' is-on' : ''); b.textContent = t + ' ' + cnt.get(t);
     b.addEventListener('click', () => { if (f.has(t)) f.delete(t); else f.add(t); redraw(); });
@@ -51291,6 +51309,37 @@ function zzz_media_tag_bar(list, redraw) {
   });
   if (f.size) { const c = document.createElement('button'); c.type = 'button'; c.className = 'zzz-media-tagchip is-clear'; c.textContent = '\u2715 ' + f.size; c.title = 'All tags off'; c.addEventListener('click', () => { f.clear(); redraw(); }); bar.appendChild(c); }
   list.appendChild(bar);
+}
+
+function zzz_media_attach_pick(items, done) {
+  if (!items.length) { zzz6f2_show_toast('Mark rows first (SELECT), then → TAB · TAG.', 'info'); return; }
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm is-prompt';
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box is-prompt';
+  const t = document.createElement('div'); t.style.cssText = 'color:#D4AF37;font-weight:800;margin-bottom:6px;'; t.textContent = '\u2192 TAB \u00b7 TAG \u00b7 ' + items.length + (items.length === 1 ? ' row' : ' rows'); b.appendChild(t);
+  const pick = new Set();
+  const sec = (title) => { const h = document.createElement('div'); h.style.cssText = 'color:#9CA3AF;font-size:11px;margin:6px 0 3px;'; h.textContent = title; b.appendChild(h); const r = document.createElement('div'); r.className = 'zzz-media-tagbar'; b.appendChild(r); return r; };
+  const chip = (row, label, words) => { const c = document.createElement('button'); c.type = 'button'; c.className = 'zzz-media-tagchip'; c.textContent = label; const k = words.join(' ');
+    c.addEventListener('click', () => { if (pick.has(k)) pick.delete(k); else pick.add(k); c.classList.toggle('is-on', pick.has(k)); }); row.appendChild(c); };
+  const rt = sec('TABS');
+  ZZZ_MEDIA_TABS.filter(x => x !== 'ACTUAL').forEach(tb => chip(rt, tb, [tb.toLowerCase()]));
+  const pls = new Map();
+  (zzzMedia.plsDefs || []).forEach(d => { const tab = ZZZ_MEDIA_TABS.find(tb => tb !== 'ACTUAL' && zzz_media_in_tab(d, tb)) || ''; pls.set(d.plsDef.toLowerCase(), { name: d.plsDef, tab }); });
+  (zzzMedia.list || []).forEach(x => x.pls.forEach(n => { if (!pls.has(n.toLowerCase())) pls.set(n.toLowerCase(), { name: n, tab: ZZZ_MEDIA_TABS.find(tb => tb !== 'ACTUAL' && zzz_media_in_tab(x, tb)) || '' }); }));
+  if (pls.size) { const rp = sec('PLAYLISTS'); Array.from(pls.values()).sort((a, c) => a.name.localeCompare(c.name)).forEach(p => chip(rp, '\u2605 ' + p.name + (p.tab ? ' \u00b7 ' + p.tab : ''), ['pls:' + p.name.toLowerCase()].concat(p.tab ? [p.tab.toLowerCase()] : []))); }
+  const h2 = document.createElement('div'); h2.style.cssText = 'color:#9CA3AF;font-size:11px;margin:6px 0 3px;'; h2.textContent = 'OWN TAGS (space between)'; b.appendChild(h2);
+  const inp = document.createElement('input'); inp.type = 'text'; inp.className = 'zzz-media-tagq'; inp.style.width = '100%'; inp.placeholder = 'e.g. japan cars'; b.appendChild(inp);
+  const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
+  const cn = document.createElement('button'); cn.type = 'button'; cn.className = 'zzz-media-btn'; cn.textContent = 'CANCEL'; cn.addEventListener('click', () => o.remove());
+  const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'zzz-media-btn is-on'; ok.textContent = 'ADD';
+  ok.addEventListener('click', async () => {
+    const add = Array.from(new Set(Array.from(pick).join(' ').split(/\s+/).concat(String(inp.value || '').toLowerCase().split(/[\s,;]+/)).map(x => x.trim()).filter(x => x && x !== 'trash')));
+    if (!add.length) { zzz6f2_show_toast('Choose a tab, a playlist or write a tag.', 'info'); return; }
+    o.remove(); let n = 0;
+    for (const it of items) { const w = zzz_media_tagw(it.tags); const more = add.filter(x => w.indexOf(x) < 0); if (!more.length) { n++; continue; } if (await zzz_media_set_tags(it, w.concat(more))) n++; }
+    zzz6f2_show_toast(n + (n === 1 ? ' row' : ' rows') + ' \u2192 ' + add.join(' ').toUpperCase(), 'info');
+    if (done) done();
+  });
+  row.append(cn, ok); b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
 }
 function zzz_media_tablist_raw() {
   if (zzzMedia.tab === 'ACTUAL') {
@@ -51677,7 +51726,9 @@ async function zzz_media_open() {
 
   const allB = document.createElement('button'); allB.type = 'button'; allB.className = 'zzz-media-btn'; allB.textContent = '\u25B6 ALL'; allB.title = 'Play this list from the top';
   allB.addEventListener('click', () => { const l = zzz_media_tablist().filter(x => x.link); if (!l.length) { zzz6f2_show_toast('Nothing to play in this list yet.', 'info'); return; } zzz_media_play(l[0], l); });
-  tools.append(allB, viewB, selB, pubB, prvB, cpyB, delB);
+  const tabB = document.createElement('button'); tabB.type = 'button'; tabB.className = 'zzz-media-btn'; tabB.textContent = '\u2192 TAB \u00b7 TAG';
+  tabB.title = 'Marked rows → other tabs, playlists or own tags'; tabB.addEventListener('click', () => zzz_media_attach_pick(selItems(), () => { zzzMedia.sel.clear(); zzzMedia.selecting = false; zzz_media_redraw(); }));
+  tools.append(allB, viewB, selB, tabB, pubB, prvB, cpyB, delB);
   const list = document.createElement('div'); list.className = 'zzz-media-list'; w.appendChild(list);
   const cell = (r, txt) => { const d = document.createElement('div'); d.textContent = txt; r.appendChild(d); return d; };
   const draw = () => {
@@ -51697,7 +51748,7 @@ async function zzz_media_open() {
 
     selB.style.display = delB.style.display = trashTab ? 'none' : '';
     allB.style.display = trashTab || (plsView && !zzzMedia.pls) ? 'none' : '';
-    pubB.style.display = prvB.style.display = cpyB.style.display = zzzMedia.selecting && zzzMedia.sel.size ? '' : 'none';
+    pubB.style.display = prvB.style.display = cpyB.style.display = tabB.style.display = zzzMedia.selecting && zzzMedia.sel.size ? '' : 'none';
     selB.classList.toggle('is-on', zzzMedia.selecting);
     { const nSel = plsView && !zzzMedia.pls ? (zzzMedia.selPls ? zzzMedia.selPls.size : 0) : zzzMedia.sel.size;
       delB.classList.toggle('is-red', nSel > 0); delB.textContent = nSel ? 'DELETE ' + nSel : 'DELETE'; }
