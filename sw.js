@@ -72,8 +72,22 @@ async function versoSwNavigate(req) {
     const target = await versoSwTarget(await versoSwWeb(), netBuild);
     if (target) {
       const good = await versoSwGood();
+      if (good && good.build && good.build === target) return good.res;
 
-      if (good && good.build && good.build !== netBuild && (target.startsWith('not:') || good.build === target || good.build < netBuild)) return good.res;
+      if (!target.startsWith('not:')) {
+        try {
+          const sr = await fetch('./index-stable.html', { cache: 'no-store' });
+          if (sr.ok) {
+            const sh = await sr.text();
+            if (versoSwBuildOf(sh) === target) {
+              caches.open(VERSO_SW_CACHE).then((c) => c.put('./', new Response(sh, { headers: { 'Content-Type': 'text/html; charset=utf-8' } }))).catch(() => {});
+              return new Response(sh, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+            }
+          }
+        } catch (e) {   }
+      }
+
+      if (good && good.build && good.build !== netBuild && (target.startsWith('not:') || good.build < netBuild)) return good.res;
     }
     caches.open(VERSO_SW_CACHE).then((c) => c.put('./', new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } }))).catch(() => {});
     return new Response(html, { status: res.status, headers: res.headers });
