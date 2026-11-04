@@ -9853,6 +9853,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   
   .zzz1r17b-comm-window.zzz1cn-reading > .zzz1cn-feed ~ * { display: none !important; }
   
+  .zzz1r17b-comm-window.zzz1cn-reading .zzz1cn-feed::after { content: ''; display: block; height: 38vh; pointer-events: none; }
+  
   .zzz1cn-read-flash { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: #16a34a; color: #fff; font-weight: 800; font-size: 11px; padding: 1px 8px; border-radius: 8px; pointer-events: none; z-index: 3; }
   .zzz1cn-read-on { position: relative; outline: 1px solid #16a34a; }
   
@@ -38891,6 +38893,39 @@ document.addEventListener('selectionchange', () => {
   }, 120);
 });
 
+(function zzz1cn_sel_edge() {
+  let anim = 0, lastKick = 0;
+  const glide = (feed, dist) => {
+    cancelAnimationFrame(anim);
+    const start = feed.scrollTop, t0 = performance.now(), dur = Math.max(300, 2 * Math.abs(dist) / ZZZ1CN_SEL_SCROLL_MAX * 1000);
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / dur);
+      feed.scrollTop = start + dist * (1 - Math.pow(1 - k, 2));
+      if (k < 1) anim = requestAnimationFrame(step);
+    };
+    anim = requestAnimationFrame(step);
+  };
+  document.addEventListener('selectionchange', () => {
+    try {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.rangeCount || !sel.focusNode) return;
+      const fe = sel.focusNode.nodeType === 1 ? sel.focusNode : sel.focusNode.parentElement;
+      const feed = fe && fe.closest('.zzz1cn-feed');
+      if (!feed || feed.scrollHeight <= feed.clientHeight + 2) return;
+      const now = performance.now();
+      if (now - lastKick < 450) return;
+      const r = document.createRange();
+      r.setStart(sel.focusNode, sel.focusOffset); r.setEnd(sel.focusNode, sel.focusOffset);
+      let rc = r.getClientRects()[0] || r.getBoundingClientRect();
+      if (!rc || (!rc.top && !rc.bottom)) rc = fe.getBoundingClientRect();
+      const fr = feed.getBoundingClientRect();
+      const zone = 56, dist = Math.round(feed.clientHeight * 0.4);
+      if (rc.bottom > fr.bottom - zone && feed.scrollTop + feed.clientHeight < feed.scrollHeight - 1) { lastKick = now; glide(feed, dist); }
+      else if (rc.top < fr.top + zone && feed.scrollTop > 0) { lastKick = now; glide(feed, -Math.min(dist, feed.scrollTop)); }
+    } catch (e) {   }
+  });
+})();
+
 const zzz1cnReads = {};
 async function zzz1cn_reads_paint(feed, entryKey) {
   try {
@@ -48204,7 +48239,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-04 15:17';
+const VERSO_BUILD = '2026-11-04 16:30';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
