@@ -9853,6 +9853,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   
   .zzz1r17b-comm-window.zzz1cn-reading > .zzz1cn-feed ~ * { display: none !important; }
   
+  
+  .zzz1cn-note.zzz6x-pack { box-shadow: inset 0 0 0 2px #40c2b0; border-radius: 8px; }
+  .zzz6x-pack-chip { color: #7fe3d4 !important; border: 1px solid #40c2b0; border-radius: 8px; padding: 0 6px; cursor: pointer; font-weight: 700; }
+  .zzz6x-pick { position: fixed; z-index: 100000; background: #0b0b0b; border: 2px solid #D4AF37; border-radius: 10px; max-height: 40vh; overflow-y: auto; min-width: 180px; max-width: 92vw; box-shadow: 0 6px 18px rgba(0,0,0,.6); }
+  .zzz6x-pick button { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid #262626; color: #fff; padding: 9px 12px; font-size: 15px; }
+  .zzz6x-pick button small { color: #9ca3af; margin-left: 6px; }
   .zzz1r17b-comm-window.zzz1cn-reading .zzz1cn-feed::after { content: ''; display: block; height: 38vh; pointer-events: none; }
   
   .zzz1cn-read-flash { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: #16a34a; color: #fff; font-weight: 800; font-size: 11px; padding: 1px 8px; border-radius: 8px; pointer-events: none; z-index: 3; }
@@ -18280,6 +18286,12 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     { ms: 3000, fn: () => zzz1cn_open_list(cnEntryKey, cnSave) }
   ]);
 
+  cnFeed.addEventListener('zzz6x-pack-chip', (e) => {
+    const num = String((e && e.detail && e.detail.num) || '');
+    const root = (cnFeedNotes || []).find(x => String(Number(x.note_number) || 0) === num && !String(x.note_part || ''));
+    if (!root) return;
+    e.target.dispatchEvent(new CustomEvent('zzz1cn-reply-chip', { bubbles: true, detail: { num, id: String(root.id), label: zzz5w7_label_of(root) } }));
+  });
   cnFeed.addEventListener('zzz1cn-reply-chip', (e) => {
     const d = (e && e.detail) || {};
     const id = String(d.id || '');
@@ -36853,6 +36865,23 @@ async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, i
 
   const parentN = (base && Number(replyToId) > 0) ? existing.find(n => String(n.id) === String(replyToId) && Number(n.note_number) === base) : null;
   const notePart = base ? zzz5w7_next_letter(existing, base, parentN ? String(parentN.note_part || '') : '') : '';
+
+  {
+    const brRoot = base ? existing.find(x => Number(x.note_number) === base && !String(x.note_part || '')) : null;
+    const brPar = Number(replyToId) > 0 ? existing.find(x => String(x.id) === String(replyToId)) : null;
+    const brSrc = [brPar, brRoot].find(x => x && String(x.note_to || '').trim());
+    if (brSrc) {
+      const meB = zzz10v1_normalize(username || '');
+      const circ = zzz56_uniq([brRoot && brRoot.username, brSrc.username].concat(String(brSrc.note_to || '').split(','))
+        .map(x => String(x || '').trim()).filter(Boolean)).filter(x => zzz10v1_normalize(x) !== meB);
+      const owner = zzz10v1_normalize((brRoot || brSrc).username || '') === meB;
+      const extra = (noteTo || []).filter(x => zzz10v1_normalize(x) !== meB && !circ.some(c => zzz10v1_normalize(c) === zzz10v1_normalize(x)));
+      if (extra.length && !owner) zzz6f2_show_toast(`🔒 This PACKS branch stays with its people - only its owner adds people (${extra.join(', ')} left out).`, 'warn', 8000);
+      noteTo = circ.concat(owner ? extra : []);
+      if (!noteTo.length) noteTo = [username];
+      noteFor = ''; isPrivate = false;
+    }
+  }
   const row = { entry_key: String(entryKey), username, note_number: nextNumber, note_part: notePart,
     note_name: String(noteName || '').trim().slice(0, 60), note_text: clean, is_private: !!isPrivate,
 
@@ -37667,11 +37696,18 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
 
   const toLab = String(note.note_to || '').trim();
   if (toLab) {
+
     const onlyEl = document.createElement('span');
-    onlyEl.className = 'zzz6f58-only';
-    onlyEl.textContent = `only: ${toLab}`;
-    onlyEl.title = 'Addressed message - visible to you and to the named users';
+    onlyEl.className = 'zzz6f58-only zzz6x-pack-chip';
+    const ppl = zzz56_uniq([note.username].concat(toLab.split(',')).map(x => String(x || '').trim()).filter(Boolean));
+    onlyEl.textContent = `\u{1F512} PACKS \u00b7 ${ppl.join(', ')}`;
+    onlyEl.title = 'Private PACKS branch - only these people see it and its replies. Tap = show only this branch (tap again = whole chat)';
+    onlyEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onlyEl.dispatchEvent(new CustomEvent('zzz6x-pack-chip', { bubbles: true, detail: { num: String(Number(note.note_number) || 0) } }));
+    });
     headId.appendChild(onlyEl);
+    wrap.classList.add('zzz6x-pack');
   }
 
   const prLvl = zzz1cn_prio_of(note);
@@ -38930,47 +38966,115 @@ document.addEventListener('selectionchange', () => {
 })();
 
 (function zzz6x_mention_offer() {
-  let chip = null, hideT = 0;
+
+  let chip = null, hideT = 0, pick = null, loaded = false;
   const close = () => { clearTimeout(hideT); if (chip) { chip.remove(); chip = null; } };
+  const closePick = () => { if (pick) { pick.remove(); pick = null; } };
+  const N = (x) => zzz10v1_normalize(String(x || ''));
+  const me = () => N(zzz0r1_get_current_username() || '');
+  const ensure = () => {
+    if (loaded) return; loaded = true;
+    try { if (!(zzz5w5cmMyContacts || []).length && typeof zzz5w5cm_load_my_contacts === 'function') zzz5w5cm_load_my_contacts(); } catch (e) {}
+    try { if (!(zzz5w5cmMyGroups || []).length && typeof zzz5w5cm_load_my_groups === 'function') zzz5w5cm_load_my_groups(); } catch (e) {}
+  };
+  const inChat = (ctx) => (zzz56People[ctx] || []);
+
+  const peopleFor = (ctx, name) => {
+    const ppl = inChat(ctx);
+    const hit = ppl.find(x => N(x) === N(name));
+    if (hit) return [hit];
+    const grp = (typeof zzz5w5cm_group_expand === 'function') ? zzz5w5cm_group_expand(name) : null;
+    return grp ? ppl.filter(p => grp.some(g => N(g) === N(p))) : [];
+  };
+  const offer = (ta, ctx, label, who) => {
+    close();
+    const want = who.filter(x => N(x) && N(x) !== me());
+    const sel = zzz56_sel_get(ctx);
+    const missing = want.filter(x => !sel.some(y => N(y) === N(x)));
+    if (!want.length || (!missing.length && zzz56_priv_on(ctx))) return;
+    chip = document.createElement('button');
+    chip.type = 'button'; chip.className = 'zzz6x-offer';
+    chip.textContent = '+ PACKS · ' + label + (want.length > 1 ? ' (' + want.length + ')' : '');
+    const r = ta.getBoundingClientRect();
+    chip.style.cssText = 'position:fixed;z-index:100000;left:' + Math.max(8, Math.round(r.left + 6)) + 'px;top:' + Math.max(8, Math.round(r.top - 40)) + 'px;'
+      + 'background:#000;color:#D4AF37;border:2px solid #D4AF37;border-radius:14px;padding:5px 12px;font-weight:800;font-size:14px;';
+    chip.addEventListener('pointerdown', (ev) => ev.preventDefault());
+    chip.addEventListener('click', () => {
+      try {
+        missing.forEach(x => zzz56_sel_toggle(ctx, x));
+        if (!zzz56_priv_on(ctx) && String(ctx) === String(zzz56PrivCtx)) zzz56_priv_toggle();
+        else { try { zzz56_priv_refresh(); } catch (x) {} zzz6f2_show_toast('PACKS: ' + zzz56_sel_get(ctx).join(', ') + ' get your messages.', 'ok'); }
+      } catch (x) {}
+      close();
+    });
+    document.body.appendChild(chip);
+    hideT = setTimeout(close, 6000);
+  };
+  const candidates = (ctx, sign, q) => {
+    const qn = N(q);
+    const has = (txt) => !qn || N(txt).indexOf(qn) >= 0;
+    const out = [];
+    if (sign === '@') {
+      const ppl = inChat(ctx).map(n => ({ name: n, note: 'in this chat' }));
+      const cs = (zzz5w5cmMyContacts || []).map(c => ({ name: c.name, note: String(c.tags || '').trim() }));
+      ppl.concat(cs).forEach(c => {
+        if (!c.name || N(c.name) === me() || out.some(o => N(o.name) === N(c.name))) return;
+        if (has(c.name) || (c.note && c.note !== 'in this chat' && has(c.note))) out.push(c);
+      });
+    } else {
+      (zzz5w5cmMyGroups || []).forEach(g => { if (g.name && (has(g.name) || (g.tag && has(g.tag)))) out.push({ name: g.name, note: (g.priv ? 'private pack' : 'pack') + ' · ' + (g.members || []).length }); });
+      ((zzz5w5cmTeams && zzz5w5cmTeams.list) || []).forEach(t => { if (t.name && has(t.name) && !out.some(o => N(o.name) === N(t.name))) out.push({ name: t.name, note: 'team · ' + (t.people || []).length }); });
+    }
+    return out.slice(0, 8);
+  };
+  const showPick = (ta, ctx, sign, q, start) => {
+    closePick();
+    const list = candidates(ctx, sign, q);
+    if (!list.length) return;
+    pick = document.createElement('div'); pick.className = 'zzz6x-pick';
+    list.forEach(c => {
+      const b = document.createElement('button'); b.type = 'button';
+      b.textContent = sign + c.name;
+      if (c.note) { const sm = document.createElement('small'); sm.textContent = c.note; b.appendChild(sm); }
+      b.addEventListener('pointerdown', (ev) => ev.preventDefault());
+      b.addEventListener('click', () => {
+        const pos = ta.selectionStart || 0, v = ta.value;
+        const ins = sign + c.name + ' ';
+        ta.value = v.slice(0, start) + ins + v.slice(pos);
+        const np = start + ins.length;
+        try { ta.setSelectionRange(np, np); } catch (x) {}
+        try { ta.dispatchEvent(new Event('input', { bubbles: true })); } catch (x) {}
+        closePick();
+        offer(ta, ctx, c.name, peopleFor(ctx, c.name));
+      });
+      pick.appendChild(b);
+    });
+    const r = ta.getBoundingClientRect();
+    document.body.appendChild(pick);
+    const h = pick.offsetHeight;
+    pick.style.left = Math.max(8, Math.round(r.left + 4)) + 'px';
+    pick.style.top = Math.max(8, Math.round(r.top - h - 6)) + 'px';
+  };
   document.addEventListener('input', (e) => {
     try {
       const ta = e.target;
       if (!ta || ta.tagName !== 'TEXTAREA' || !ta.closest('.zzz1r17b-comm-window')) return;
-      if (e.inputType !== 'insertText' || !e.data || !/[\s,.;:!?)]/.test(e.data)) return;
+      if (e.inputType !== 'insertText' || !e.data) { closePick(); return; }
+      const ctx = String(zzz56PrivCtx || '');
+      if (!ctx) return;
       const before = ta.value.slice(0, ta.selectionStart || 0);
+
+      const w = before.match(/(^|[\s(\[{.,;:!?"'])([@&])([\p{L}\p{M}\p{N}_.\-]{0,40})$/u);
+      if (w) { ensure(); showPick(ta, ctx, w[2], w[3], before.length - w[2].length - w[3].length); return; }
+      closePick();
+
       const m = before.match(/(^|[\s(\[{.,;:!?"'])[@&]([\p{L}\p{M}\p{N}_.\-]{2,40})[\s,.;:!?)]$/u);
       if (!m) return;
       const name = m[2].replace(/[.\-]+$/, '');
-      const ctx = String(zzz56PrivCtx || '');
-      if (!ctx) return;
-      const n = zzz10v1_normalize(name);
-      if (n === zzz10v1_normalize(zzz0r1_get_current_username() || '')) return;
-      const ppl = (zzz56People[ctx] || []);
-      const hit = ppl.find(x => zzz10v1_normalize(x) === n);
-      close();
-      if (!hit) return;
-      const inSel = zzz56_sel_get(ctx).some(x => zzz10v1_normalize(x) === n);
-      if (inSel && zzz56_priv_on(ctx)) return;
-      chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'zzz6x-offer';
-      chip.textContent = '+ PACKS · ' + hit;
-      const r = ta.getBoundingClientRect();
-      chip.style.cssText = 'position:fixed;z-index:100000;left:' + Math.max(8, Math.round(r.left + 6)) + 'px;top:' + Math.max(8, Math.round(r.top - 40)) + 'px;'
-        + 'background:#000;color:#D4AF37;border:2px solid #D4AF37;border-radius:14px;padding:5px 12px;font-weight:800;font-size:14px;';
-      chip.addEventListener('pointerdown', (ev) => ev.preventDefault());
-      chip.addEventListener('click', () => {
-        try {
-          if (!zzz56_sel_get(ctx).some(x => zzz10v1_normalize(x) === n)) zzz56_sel_toggle(ctx, hit);
-          if (!zzz56_priv_on(ctx) && String(ctx) === String(zzz56PrivCtx)) zzz56_priv_toggle();
-          else { try { zzz56_priv_refresh(); } catch (x) {} zzz6f2_show_toast('PACKS: ' + zzz56_sel_get(ctx).join(', ') + ' get your messages.', 'ok'); }
-        } catch (x) {}
-        close();
-      });
-      document.body.appendChild(chip);
-      hideT = setTimeout(close, 6000);
+      offer(ta, ctx, name, peopleFor(ctx, name));
     } catch (x) {   }
   }, true);
+  document.addEventListener('focusout', (e) => { if (e.target && e.target.tagName === 'TEXTAREA') setTimeout(closePick, 150); }, true);
 })();
 
 const zzz1cnReads = {};
@@ -48286,7 +48390,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-04 16:47';
+const VERSO_BUILD = '2026-11-04 17:29';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
