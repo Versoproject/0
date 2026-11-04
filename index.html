@@ -18032,11 +18032,8 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
       else { const t = await zzz23tr_outgoing(cnEntryKey, raw); if (t) { body = t.text; cnTrOrig = { orig: t.orig, lang: t.lang }; } }
     }
 
-    const granted = zzz6f58_grant_access(mAt.concat(mOnly), cnGateKey);
+    const granted = [];
 
-    if (priv && mOnly.length) {
-      zzz6f2_show_toast('Privacy is ticked - this stays with you only, the named users will not see it.', 'warn');
-    }
     const privNow = !!priv;
 
     const cnReplyTo = (() => {
@@ -18044,7 +18041,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
       const a = cnFeedNotes.find(x => String(x.id) === String(cnOptionsAnchor));
       return a && Number(a.note_number) === Number(target) ? Number(a.id) : 0;
     })();
-    const saved = await zzz1cn_add(cnEntryKey, body, privNow, target ? { base: Number(target) } : null, name, !!toSaved, zzz1cn_prio_level(prio), mOnly, cnTaskTags, cnReplyTo, cnTrOrig);
+    const saved = await zzz1cn_add(cnEntryKey, body, privNow, target ? { base: Number(target) } : null, name, !!toSaved, zzz1cn_prio_level(prio), [], cnTaskTags, cnReplyTo, cnTrOrig);
     if (saved && cnTaskArmSnap && (String(cnTaskArmSnap.num || '').trim() || String(cnTaskArmSnap.amount || '').trim())) {
       try {
         let nid = saved.id, nno = saved.note_number;
@@ -34064,8 +34061,8 @@ function zzz5w5cm_open_members_window(anchorEl, names, recTag, entryKey) {
 
   const info = document.createElement('div');
   info.className = 'zzz5w5cm-added-info';
-  info.textContent = '@name = a message to that user, &name = a private message to that user. '
-    + 'Type the symbol in the message and tap any contact - the name goes right behind it.';
+  info.textContent = '@name / &name = only a mention in the text. Who gets a message is chosen by PACKS - '
+    + 'typing @name offers to add that person to PACKS.';
   body.appendChild(info);
 
   document.body.appendChild(win);
@@ -35534,7 +35531,7 @@ function zzz14cs_feed_composer(comp, items) {
           const t = await zzz23tr_outgoing(ek, text); if (t) { body = t.text; trOrig = { orig: t.orig, lang: t.lang }; }
         }
       } catch (e) {}
-      const saved = await zzz1cn_add(ek, body, priv, tn ? { base: tn } : null, name, !!save, zzz1cn_prio_level(zzz14csFeedPrio) || zzz56_prio_mode(ek), mOnly, null, 0, trOrig);
+      const saved = await zzz1cn_add(ek, body, priv, tn ? { base: tn } : null, name, !!save, zzz1cn_prio_level(zzz14csFeedPrio) || zzz56_prio_mode(ek), [], null, 0, trOrig);
       if (saved && zzz14csFeedRem) { const cfg = zzz14csFeedRem; zzz14csFeedRem = null; try { paintClock(); } catch (e) {} try { zzz5w8_insert_from_chat(cfg, ek, body, zzz14csFeedPrio, saved); } catch (e) {} }
       if (saved) {
         zzz6f2_show_toast((save ? 'Note saved' : 'Chatnote') + ` #${zzz5w7_label_of(saved)} → #${ek}.`);
@@ -36585,6 +36582,7 @@ function zzz1cn_promote_payload(entryId, n, noteNumber, notePart, noteText) {
   if (zzz1cn_opt_has('is_priority')) payload.is_priority = !!n.is_priority;
   if (zzz1cn_opt_has('note_priority')) payload.note_priority = zzz1cn_prio_level(n.note_priority || n.is_priority);
   if (zzz1cn_opt_has('note_to')) payload.note_to = String(n.note_to || '');
+  if (zzz1cn_opt_has('note_for') && n.note_for) payload.note_for = String(n.note_for);
   return payload;
 }
 async function zzz1cn_promote_draft(entryId) {
@@ -36736,7 +36734,7 @@ function zzz1cn_prio_control(initial, onChange) {
 }
 const ZZZ1CN_COLS_CORE = 'id, entry_key, username, note_number, note_part, note_name, note_text, is_private, is_project';
 
-const ZZZ1CN_COLS_OPT = ['note_status', 'is_saved', 'created_at', 'is_priority', 'note_to', 'note_priority', 'note_tags', 'note_hash', 'reply_to_id', 'note_orig', 'note_orig_lang'];
+const ZZZ1CN_COLS_OPT = ['note_status', 'is_saved', 'created_at', 'is_priority', 'note_to', 'note_priority', 'note_tags', 'note_hash', 'reply_to_id', 'note_orig', 'note_orig_lang', 'note_for'];
 let zzz1cnOptCols = null;
 function zzz1cn_opt_has(col) {
   return zzz1cnOptCols === null ? ZZZ1CN_COLS_OPT.indexOf(col) >= 0 : zzz1cnOptCols.indexOf(col) >= 0;
@@ -36799,11 +36797,11 @@ async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, i
   const username = (zzz0r1_get_current_username() || '').trim();
 
   const packOpen = (typeof zzz56_pack_open_members === 'function') ? zzz56_pack_open_members(entryKey) : null;
-  if (packOpen && !isSaved && String(text || '').trim()) {
+
+  let noteFor = '';
+  if (packOpen && !isSaved) {
     const meO = zzz10v1_normalize(username || '');
-    const pre = packOpen.filter(n => zzz10v1_normalize(n) !== meO && !new RegExp('[@&]' + String(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(text))
-      .map(n => '@' + n).join(' ');
-    if (pre) text = pre + ' ' + text;
+    noteFor = packOpen.map(n => zzz10v1_normalize(n)).filter(n => n && n !== meO).join(', ');
   }
   const clean = (text || '').trim();
   if (!clean) { zzz6f2_show_toast('The chatnote is empty.', 'warn'); return null; }
@@ -36861,7 +36859,8 @@ async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, i
     is_project: false, is_saved: !!isSaved,
     is_priority: !!zzz1cn_prio_level(isPriority), note_priority: zzz1cn_prio_level(isPriority),
 
-    note_to: (noteTo || []).map(x => zzz10v1_normalize(x)).filter(Boolean).join(', ') };
+    note_to: (noteTo || []).map(x => zzz10v1_normalize(x)).filter(Boolean).join(', '),
+    note_for: noteFor };
 
   const payload = { entry_key: row.entry_key, username: row.username, note_number: row.note_number, note_part: row.note_part, note_name: row.note_name, note_text: row.note_text, is_private: row.is_private };
 
@@ -36884,6 +36883,7 @@ async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, i
     if (zzz1cn_opt_has('note_to')) payload.note_to = row.note_to;
     else payload.is_private = true;
   }
+  if (row.note_for && zzz1cn_opt_has('note_for')) payload.note_for = row.note_for;
   if (zzz1cnTableAvailable) {
     try {
 
@@ -38560,17 +38560,20 @@ let zzz1cnNotifBusy = false;
 
 function zzz1cn_notif_names_me(note, meN) {
   if (!meN) return false;
-  const txt = String(note.note_text || '');
-  const all = zzz6f58_names(txt, false).concat(zzz6f58_names(txt, true));
-  if (all.some(n => zzz10v1_normalize(n) === meN)) return true;
 
-  return String(note.note_to || '').split(',').some(x => zzz10v1_normalize(x) === meN);
+  const cols = String(note.note_to || '') + ',' + String(note.note_for || '');
+  if (cols.split(',').some(x => zzz10v1_normalize(x) === meN)) return true;
+  if (zzz1cn_addr_legacy(note)) { const txt = String(note.note_text || ''); return zzz6f58_names(txt, false).concat(zzz6f58_names(txt, true)).some(n => zzz10v1_normalize(n) === meN); }
+  return false;
 }
 
+const ZZZ6X_ADDR_SINCE = Date.parse('2026-11-04T15:50:00Z');
+function zzz1cn_addr_legacy(note) { const t = Date.parse(note && note.created_at || ''); return !(t >= ZZZ6X_ADDR_SINCE); }
 function zzz1cn_notif_names_anyone(note) {
+  if ((String(note.note_to || '') + ',' + String(note.note_for || '')).split(',').some(x => String(x).trim())) return true;
+  if (!zzz1cn_addr_legacy(note)) return false;
   const txt = String(note.note_text || '');
-  if (zzz6f58_names(txt, false).length || zzz6f58_names(txt, true).length) return true;
-  return String(note.note_to || '').split(',').some(x => String(x).trim());
+  return !!(zzz6f58_names(txt, false).length || zzz6f58_names(txt, true).length);
 }
 
 async function zzz1cn_seen_load() {
@@ -38924,6 +38927,50 @@ document.addEventListener('selectionchange', () => {
       else if (rc.top < fr.top + zone && feed.scrollTop > 0) { lastKick = now; glide(feed, -Math.min(dist, feed.scrollTop)); }
     } catch (e) {   }
   });
+})();
+
+(function zzz6x_mention_offer() {
+  let chip = null, hideT = 0;
+  const close = () => { clearTimeout(hideT); if (chip) { chip.remove(); chip = null; } };
+  document.addEventListener('input', (e) => {
+    try {
+      const ta = e.target;
+      if (!ta || ta.tagName !== 'TEXTAREA' || !ta.closest('.zzz1r17b-comm-window')) return;
+      if (e.inputType !== 'insertText' || !e.data || !/[\s,.;:!?)]/.test(e.data)) return;
+      const before = ta.value.slice(0, ta.selectionStart || 0);
+      const m = before.match(/(^|[\s(\[{.,;:!?"'])[@&]([\p{L}\p{M}\p{N}_.\-]{2,40})[\s,.;:!?)]$/u);
+      if (!m) return;
+      const name = m[2].replace(/[.\-]+$/, '');
+      const ctx = String(zzz56PrivCtx || '');
+      if (!ctx) return;
+      const n = zzz10v1_normalize(name);
+      if (n === zzz10v1_normalize(zzz0r1_get_current_username() || '')) return;
+      const ppl = (zzz56People[ctx] || []);
+      const hit = ppl.find(x => zzz10v1_normalize(x) === n);
+      close();
+      if (!hit) return;
+      const inSel = zzz56_sel_get(ctx).some(x => zzz10v1_normalize(x) === n);
+      if (inSel && zzz56_priv_on(ctx)) return;
+      chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'zzz6x-offer';
+      chip.textContent = '+ PACKS · ' + hit;
+      const r = ta.getBoundingClientRect();
+      chip.style.cssText = 'position:fixed;z-index:100000;left:' + Math.max(8, Math.round(r.left + 6)) + 'px;top:' + Math.max(8, Math.round(r.top - 40)) + 'px;'
+        + 'background:#000;color:#D4AF37;border:2px solid #D4AF37;border-radius:14px;padding:5px 12px;font-weight:800;font-size:14px;';
+      chip.addEventListener('pointerdown', (ev) => ev.preventDefault());
+      chip.addEventListener('click', () => {
+        try {
+          if (!zzz56_sel_get(ctx).some(x => zzz10v1_normalize(x) === n)) zzz56_sel_toggle(ctx, hit);
+          if (!zzz56_priv_on(ctx) && String(ctx) === String(zzz56PrivCtx)) zzz56_priv_toggle();
+          else { try { zzz56_priv_refresh(); } catch (x) {} zzz6f2_show_toast('PACKS: ' + zzz56_sel_get(ctx).join(', ') + ' get your messages.', 'ok'); }
+        } catch (x) {}
+        close();
+      });
+      document.body.appendChild(chip);
+      hideT = setTimeout(close, 6000);
+    } catch (x) {   }
+  }, true);
 })();
 
 const zzz1cnReads = {};
@@ -44999,9 +45046,9 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     const mAt = zzz6f58_names(text, false);
     const mOnly = zzz6f58_names(text, true);
     const clean = text.trim();
-    zzz6f58_grant_access(mAt.concat(mOnly));
 
-    const saved = await zzz1cn_add(entryKey, clean, !!got.priv, { base }, got.name, !got.chat, zzz1cn_prio_level(got.prio), mOnly);
+    void mAt; void mOnly;
+    const saved = await zzz1cn_add(entryKey, clean, !!got.priv, { base }, got.name, !got.chat, zzz1cn_prio_level(got.prio), []);
 
     if (!saved) return;
 
@@ -48239,7 +48286,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-04 16:43';
+const VERSO_BUILD = '2026-11-04 16:47';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -52714,8 +52761,8 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
   chips.className = 'zzz-vkb-chips';
 
   const chipDefs = [
-    { t: '@', title: '@ - message to a user' },
-    { t: '&', title: '& - private message to a user' }
+    { t: '@', title: '@ - mention a user (typing it offers PACKS)' },
+    { t: '&', title: '& - mention a user (typing it offers PACKS)' }
   ];
 
   if (isText) chipDefs.push({ t: '\u{1F642}', emoji: true, title: 'Emoji - pick one' });
