@@ -18,7 +18,7 @@
 
 <script>
 
-(function () { try { if (/^#(vi-open|vi-send=|media(?!-add)|commspace)/i.test(String(location.hash || ''))) { document.documentElement.classList.add('zzz-start-cover'); setTimeout(function () { document.documentElement.classList.remove('zzz-start-cover'); }, 15000); } } catch (e) {} })();
+(function () { try { if (/^#(vi-open|vi-send=|media(?!-add)|commspace)/i.test(String(location.hash || '')) || /[?&]open=/.test(String(location.search || ''))) { document.documentElement.classList.add('zzz-start-cover'); setTimeout(function () { document.documentElement.classList.remove('zzz-start-cover'); }, 15000); } } catch (e) {} })();
 </script>
 <script>
 
@@ -39142,7 +39142,8 @@ function zzz16_active() { return zzz16_allowed() && zzz16_prefs().on && !!zzz6f7
     const m = ev.data || {};
     if (m.type === 'verso-open') {
       if (m.read) zzz16State.pendingRead = String(m.entry || '');
-      if (zzz16_open_entry(m.entry)) zzz16_read_pending();
+      zzz16State.openOutside = zzz_from_outside(false);
+      if (zzz16_open_entry(m.entry)) { zzz16_read_pending(); zzz16_open_done(); }
       else { zzz16State.pendingOpen = String(m.entry || ''); zzz16_try_pending_open(); }
     }
 
@@ -39152,7 +39153,7 @@ function zzz16_active() { return zzz16_allowed() && zzz16_prefs().on && !!zzz6f7
     const qs = new URLSearchParams(location.search);
     const q = qs.get('open');
     if (q) {
-      zzz16State.pendingOpen = q;
+      zzz16State.pendingOpen = q; zzz16State.openOutside = true;
       if (qs.get('read') === '1') zzz16State.pendingRead = q;
       history.replaceState(null, '', location.pathname);
       setTimeout(() => zzz16_try_pending_open(0), 1500);
@@ -40245,16 +40246,23 @@ function zzz16_open_entry(entry) {
   return false;
 }
 
+function zzz16_open_done() {
+  try { if (zzz16State.openOutside) zzz_outside_back_arm(); } catch (e) {}
+  zzz16State.openOutside = false;
+  try { if (zzzBusy || document.documentElement.classList.contains('zzz-start-cover')) zzz_busy_ready(); } catch (e) {}
+}
+
 function zzz16_try_pending_open(n) {
   if (!n) { if (zzz16State.opening) return; zzz16State.opening = true; }
   const again = () => setTimeout(() => zzz16_try_pending_open((n || 0) + 1), 1000);
   const done = () => { zzz16State.opening = false; };
   const k = zzz16State.pendingOpen;
   if (!k) return done();
-  if (!zzz6f7_isLoggedIn) { if ((n || 0) < 120) return again(); zzz16State.pendingOpen = ''; return done(); }
-  if (zzz16_open_entry(k)) { zzz16State.pendingOpen = ''; zzz16_read_pending(); return done(); }
+  if (!zzz6f7_isLoggedIn) { if ((n || 0) < 120) return again(); zzz16State.pendingOpen = ''; zzz_busy_end(); return done(); }
+  if (zzz16_open_entry(k)) { zzz16State.pendingOpen = ''; zzz16_read_pending(); zzz16_open_done(); return done(); }
   if ((n || 0) < 20) return again();
   zzz16State.pendingOpen = '';
+  zzz_busy_end();
   done();
   zzz6f2_show_toast(`Notification: record #${k} is not readable for you right now.`, 'warn');
 }
@@ -48178,7 +48186,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-04 13:32';
+const VERSO_BUILD = '2026-11-04 13:44';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -48330,6 +48338,7 @@ function zzz_busy_for_hash() {
   const h = String(location.hash || '');
   if (/^#(vi-open|vi-send=)/.test(h)) zzz_busy_start('VI', true);
   else if (h === '#commspace') zzz_busy_start('COMM SPACE', true);
+  else if (typeof zzz16State !== 'undefined' && zzz16State.pendingOpen && document.documentElement.classList.contains('zzz-start-cover')) zzz_busy_start('VERSO', true);
   else return;
 
   setTimeout(() => { try { if (typeof zzz6f7_isLoggedIn === 'undefined' || !zzz6f7_isLoggedIn) zzz_busy_end(); } catch (e) {} }, 4000);
@@ -50316,8 +50325,16 @@ window.addEventListener('popstate', () => {
   try { zzz_vi_win_close(); } catch (e) {}
   try { if (typeof zzz14cs_space_open === 'function' && zzz14csSpaceOpen) zzz14cs_space_open(false); } catch (e) {}
   try { zzzMediaFromOutside = false; const mw = document.getElementById('zzzMediaWin'); if (mw) mw.remove(); } catch (e) {}
+
+  try { document.querySelectorAll('.entry-modal-close').forEach(b => { if (zzz_back_present(b)) b.click(); }); } catch (e) {}
   try { zzz_native_go(zzz_media_intent('backapp')); } catch (e) {}
 });
+
+let zzzHiddenAt = 0;
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') zzzHiddenAt = Date.now(); });
+function zzz_from_outside(cold) {
+  return !!cold || document.visibilityState === 'hidden' || (zzzHiddenAt && Date.now() - zzzHiddenAt < 6000);
+}
 document.addEventListener('pointerdown', (e) => {
   try { if (zzzOutsideBack && !e.target.closest('.zzz-vi-win, #zzz14csSpace, #zzzMediaWin, .zzz1r17b-comm-window, .zzz-media-confirm, .zzz-vkb-panel, .entry-modal-overlay, #zzzBusyScreen')) zzzOutsideBack = false; } catch (x) {}
 }, true);
@@ -53772,7 +53789,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 207;
+const ZZZ14B17_APP_LATEST = 208;
 function zzz14b17_app_code() {
 
   try {
