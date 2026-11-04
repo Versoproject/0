@@ -9842,7 +9842,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   }
   .zzz5w5cm-ccl-mini.is-search { cursor: pointer; color: #ea8c00; border-color: #ea8c00; }
   
-  .zzz1cn-reads { font-size: 10px; color: #2e8b57; text-align: right; margin-top: 2px; opacity: .85; }
+  .zzz1cn-reads { font-size: 10px; color: #2e8b57; text-align: right; margin-top: 2px; opacity: .85; cursor: pointer; -webkit-user-select: none; user-select: none; }   
+  
+  .zzz1r17b-comm-window.zzz1cn-reading > .zzz1cn-feed ~ * { display: none !important; }
   
   .zzz1cn-read-flash { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: #16a34a; color: #fff; font-weight: 800; font-size: 11px; padding: 1px 8px; border-radius: 8px; pointer-events: none; z-index: 3; }
   .zzz1cn-read-on { position: relative; outline: 1px solid #16a34a; }
@@ -38850,6 +38852,21 @@ async function zzz1cn_reads_share_set(on) {
   } catch (e) { zzz_user_error('READ RECEIPTS not saved - check the connection and try again.', e, '[Zzz1-CN:READ-RECEIPT]'); }
 }
 
+let zzz1cnSelT = null;
+document.addEventListener('selectionchange', () => {
+  clearTimeout(zzz1cnSelT);
+  zzz1cnSelT = setTimeout(() => {
+    try {
+      const sel = window.getSelection();
+      const n = sel && !sel.isCollapsed && sel.rangeCount ? sel.anchorNode : null;
+      const feed = n ? (n.nodeType === 1 ? n : n.parentElement).closest('.zzz1cn-feed') : null;
+      const win = feed ? feed.closest('.zzz1r17b-comm-window') : null;
+      document.querySelectorAll('.zzz1r17b-comm-window.zzz1cn-reading').forEach(w => { if (w !== win) { w.classList.remove('zzz1cn-reading'); try { zzz1cn_fit_comm_window(w); } catch (e) {} } });
+      if (win && !win.classList.contains('zzz1cn-reading')) { win.classList.add('zzz1cn-reading'); try { zzz1cn_fit_comm_window(win); } catch (e) {} }
+    } catch (e) {}
+  }, 120);
+});
+
 const zzz1cnReads = {};
 async function zzz1cn_reads_paint(feed, entryKey) {
   try {
@@ -38868,9 +38885,17 @@ async function zzz1cn_reads_paint(feed, entryKey) {
       const list = by[el.dataset.zzz1cnId];
       let tag = el.querySelector(':scope > .zzz1cn-reads');
       if (!list || !list.length) { if (tag) tag.remove(); return; }
-      if (!tag) { tag = document.createElement('div'); tag.className = 'zzz1cn-reads'; el.appendChild(tag); }
-      tag.textContent = '\u2713 READ \u00b7 ' + list.sort((a, b) => Date.parse(a.read_at) - Date.parse(b.read_at))
-        .map(r => r.reader + ' ' + zzz5w8_fmt_time(Date.parse(r.read_at) || 0)).join(', ');
+
+      if (!tag) {
+        tag = document.createElement('div'); tag.className = 'zzz1cn-reads';
+        tag.title = 'Tap = when it was read';
+        tag.addEventListener('click', (ev) => { ev.stopPropagation(); tag._zzzWhen = !tag._zzzWhen; tag.textContent = tag._zzzWhen ? tag._zzzLong : tag._zzzShort; });
+        el.appendChild(tag);
+      }
+      const rs = list.sort((a, b) => Date.parse(a.read_at) - Date.parse(b.read_at));
+      tag._zzzShort = '\u2713 READ \u00b7 ' + rs.map(r => r.reader).join(', ');
+      tag._zzzLong = '\u2713 READ \u00b7 ' + rs.map(r => r.reader + ' ' + zzz5w8_fmt_time(Date.parse(r.read_at) || 0)).join(', ');
+      tag.textContent = tag._zzzWhen ? tag._zzzLong : tag._zzzShort;
     });
   } catch (e) {}
 }
@@ -48147,7 +48172,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-04 12:51';
+const VERSO_BUILD = '2026-11-04 13:05';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -53718,7 +53743,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 204;
+const ZZZ14B17_APP_LATEST = 205;
 function zzz14b17_app_code() {
 
   try {
