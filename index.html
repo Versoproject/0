@@ -47720,6 +47720,9 @@ async function zzz14b21_open_place(no) {
   const r10 = String(f.r10 || '');
   const slug = (/^place:(\S+)/.exec(r10) || [])[1] || '';
   const apps = (/\sapps=([a-z-]+)/.exec(r10) || [])[1] || '';
+
+  if (zzz_fn_is_fn(f) || zzz_fn_code(f)) { zzz_fn_run(zzz_fn_code(f)); return true; }
+  if (slug === 'functions') { zzz_fn_window(); return true; }
   const ws = ZZZ14B21_WS.find(w => w.slug === slug);
   if (ws) { open_zzz14b21_workspace(ws.slug); return true; }
   if (apps || slug === 'apps') { zzz_place_open('apps=' + (apps || 'verso')); return true; }
@@ -47772,6 +47775,67 @@ async function zzz14b21_link_check(pokus) {
 }
 window.addEventListener('hashchange', () => zzz14b21_link_check(0));
 window.addEventListener('load', () => setTimeout(() => zzz14b21_link_check(0), 1000));
+
+const ZZZ_FN = {
+  'vi-chat':    { label: 'VI CHAT',      run: () => zzz_vi_win_open() },
+  'alarm':      { label: 'ALARM MODULE', run: () => zzz_vi_open('alarm') },
+  'translator': { label: 'TRANSLATOR',   run: () => zzz_vi_open('tr') },
+  'new-cl':     { label: 'NEW CL',       run: () => zzz_vi_new_cl() },
+  'templates':  { label: 'TEMPLATES',    run: () => { const b = document.getElementById('versoTemplatesButton'); if (!b) throw new Error('no TEMPLATES button'); b.click(); } }
+};
+
+function zzz_fn_code(fields) { const m = /\sfn=([a-z0-9-]+)/.exec(String((fields && fields.r10) || '')); return m ? m[1] : ''; }
+function zzz_fn_is_fn(fields) { return /^function:/.test(String((fields && fields.r10) || '')); }
+function zzz_fn_run(code) {
+  const fn = ZZZ_FN[String(code || '')];
+  if (!fn) { zzz6f2_show_toast('This function is not in this version of Verso yet - update Verso.', 'warn'); return false; }
+  try { const r = fn.run(); if (r && typeof r.catch === 'function') r.catch(e => zzz_user_error(fn.label + ' did not open - try again.', e, '[Zzz14-B21:UI-FUNCTION-PLACE]')); }
+  catch (e) { zzz_user_error(fn.label + ' did not open - try again.', e, '[Zzz14-B21:UI-FUNCTION-PLACE]'); return false; }
+  return true;
+}
+
+async function zzz_fn_list() {
+  const { data, error } = await sb.from('verso_place_names').select('entry_id, slug, label').like('slug', 'functions/%').is('retired_at', null).order('entry_id');
+  if (error) throw error;
+  const ids = (data || []).map(r => r.entry_id);
+  if (!ids.length) return [];
+  const { data: ents, error: e2 } = await sb.from('verso_entries').select('entry_id, fields_json, is_trashed').in('entry_id', ids);
+  if (e2) throw e2;
+  const byId = {}; (ents || []).forEach(e => { if (!e.is_trashed) byId[e.entry_id] = zzz_parse_fields_json(e) || {}; });
+  return (data || []).filter(r => byId[r.entry_id]).map(r => ({ no: r.entry_id, slug: r.slug, name: r.label, code: zzz_fn_code(byId[r.entry_id]) }));
+}
+
+async function zzz_fn_pin(no, anchor) {
+  const row = await zzz6f29_fetch_entry_row(no);
+  if (!row) { zzz6f2_show_toast('#' + no + ' is not readable for you right now.', 'warn'); return; }
+  const el = anchor || document.body;
+  el.zzzRowData = row;
+  zzz14cs_open_pin_for_row(el);
+}
+
+async function zzz_fn_window() {
+  document.querySelectorAll('.zzz-fn-win').forEach(w => w.remove());
+  const w = document.createElement('div'); w.className = 'zzz5t0-tab-window zzz-fn-win';
+  const h = document.createElement('div'); h.className = 'zzz14cs-move-sect'; h.textContent = 'FUNCTIONS · verso:place=functions'; w.appendChild(h);
+  const note = document.createElement('div'); note.className = 'zzz14cs-move-note'; note.textContent = '▶ = start · 📌 = pin it into VI SPACE, a tab or a project'; w.appendChild(note);
+  const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz14cs-pin-do'; x.textContent = '×'; x.style.position = 'absolute'; x.style.top = '4px'; x.style.right = '4px';
+  x.addEventListener('click', () => w.remove()); w.appendChild(x);
+  w.style.top = '64px'; w.style.left = '8px'; w.style.right = '8px';
+  document.body.appendChild(w);
+  let list = [];
+  try { list = await zzz_fn_list(); } catch (e) { zzz_user_error('FUNCTIONS did not load - check the connection.', e, '[Zzz14-B21:UI-FUNCTION-PLACE]'); return; }
+  list.forEach(it => {
+    const row = document.createElement('div'); row.style.display = 'flex'; row.style.gap = '6px'; row.style.margin = '4px 0';
+    const run = document.createElement('button'); run.type = 'button'; run.className = 'zzz14cs-pin-pick'; run.style.flex = '1';
+    run.textContent = '▶ ' + it.name + ' · #' + it.no; run.title = 'verso:place=' + it.slug;
+    run.addEventListener('click', () => { w.remove(); zzz_fn_run(it.code); });
+    const pin = document.createElement('button'); pin.type = 'button'; pin.className = 'zzz14cs-pin-pick'; pin.textContent = '📌';
+    pin.title = 'Pin ' + it.name + ' (VI SPACE, a tab, a project …)';
+    pin.addEventListener('click', (ev) => { ev.stopPropagation(); zzz_fn_pin(it.no, pin); });
+    row.append(run, pin); w.appendChild(row);
+  });
+  if (!list.length) { const em = document.createElement('div'); em.className = 'zzz14cs-move-note'; em.textContent = 'No function places yet.'; w.appendChild(em); }
+}
 
 async function open_zzz14b21_workspace(slug) {
   const ws = ZZZ14B21_WS.find(w => w.slug === slug);
@@ -47978,9 +48042,15 @@ async function open_zzz14b21_workspace(slug) {
     const f = zzz14b21_fields(r);
     const row = document.createElement('div'); row.className = 'zzz14b21-row';
     const en = document.createElement('span'); en.className = 'zzz14b21-en'; en.textContent = '#' + r.entry_id;
-    en.addEventListener('click', () => { try { zzz6f29_open_entry_number_window(r.entry_id); } catch (e) {} });
     const tx = document.createElement('span'); tx.className = 'zzz14b21-txt';
-    tx.textContent = [f.r3, f.r9].filter(Boolean).join(' · ') || ('#' + r.entry_id);
+    const fnc = zzz_fn_is_fn(f) ? zzz_fn_code(f) : '';
+    if (fnc) {
+      en.textContent = '▶ #' + r.entry_id; tx.textContent = (f.r9 || fnc) + ' · function';
+      [en, tx].forEach(el => { el.style.cursor = 'pointer'; el.addEventListener('click', () => zzz_fn_run(fnc)); });
+    } else {
+      en.addEventListener('click', () => { try { zzz6f29_open_entry_number_window(r.entry_id); } catch (e) {} });
+      tx.textContent = [f.r3, f.r9].filter(Boolean).join(' · ') || ('#' + r.entry_id);
+    }
     const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz14b21-x'; x.textContent = '×';
     x.title = 'Take out of this tab (the record stays)';
     x.addEventListener('click', async () => {
@@ -48077,7 +48147,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-04 11:17';
+const VERSO_BUILD = '2026-11-04 11:31';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -49955,8 +50025,20 @@ async function zzz_vi_win_render() {
   st.appendChild(hint); space.appendChild(st);
   const chips = document.createElement('div'); chips.className = 'zzz-vi-win-rows';
   const homeNo = Number(zzz_vi_get('home', '')) || 0;
+
+  const fnB = document.createElement('button'); fnB.type = 'button'; fnB.className = 'zzz-vi-win-row'; fnB.textContent = '▶ FUNCTIONS';
+  fnB.title = 'Start a Verso function or pin it here (verso:place=functions)';
+  fnB.addEventListener('click', () => zzz_fn_window());
+  chips.appendChild(fnB);
   rowsRaw.filter(it => it.sourceEntryId).forEach(it => {
     const f = it.fields || {};
+    if (zzz_fn_is_fn(f)) {
+      const fb = document.createElement('button'); fb.type = 'button'; fb.className = 'zzz-vi-win-row';
+      fb.textContent = '▶ ' + (f.r9 || zzz_fn_code(f)); fb.title = '#' + it.sourceEntryId + ' · function';
+      fb.addEventListener('click', () => zzz_fn_run(zzz_fn_code(f)));
+      chips.appendChild(fb);
+      return;
+    }
     const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-vi-win-row' + (Number(it.sourceEntryId) === homeNo ? ' is-home' : '');
     b.textContent = '#' + it.sourceEntryId + (f.r3 ? ' ' + String(f.r3).slice(0, 24) : '');
     let t2 = 0, hl = false;
@@ -53636,7 +53718,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 200;
+const ZZZ14B17_APP_LATEST = 201;
 function zzz14b17_app_code() {
 
   try {
