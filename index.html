@@ -48571,7 +48571,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-05 15:47';
+const VERSO_BUILD = '2026-11-05 16:03';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -51548,6 +51548,15 @@ function zzz_media_b64(str) {
   for (let i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
+
+function zzz_media_mark_actual(it) {
+  try {
+    const line = it && (zzz_media_line(it) || (it.id ? it : null));
+    if (!line || !line.id || line.trash) return;
+    const w = zzz_media_tagw(line.tags); if (w.indexOf('actual') >= 0) return;
+    zzz_media_set_tags(line, w.concat(['actual'])).then(() => { try { zzz_media_actual_to_app(); } catch (e) {} });
+  } catch (e) {}
+}
 function zzz_media_play_native(it, l) {
   const q = (l && l.length ? l : [it]).filter(x => x.link && (zzz_media_offline() || !zzz_media_embed(x.link)));
   let i = Math.max(0, q.findIndex(x => x.link === it.link));
@@ -51556,6 +51565,7 @@ function zzz_media_play_native(it, l) {
   const st = document.getElementById('zzzMediaStage'); if (st) st.querySelectorAll('video, iframe').forEach(x => x.remove());
   zzzMedia.cur = it; zzzMedia.nat = true; zzzMedia.natPlaying = true;
   zzz_media_hist_add(it);
+  zzz_media_mark_actual(it);
   zzz_media_chip_started(it);
   zzz_native_go(zzz_media_intent('media?i=' + i + '&q=' + zzz_media_b64(json)));
   zzz_media_paint(); zzz_media_kb_redraw();
@@ -51822,26 +51832,15 @@ function zzz_media_bubble_paint() {
     const it = zzzMedia.cur ? (zzz_media_line({ link: zzzMedia.cur.link }) || null) : null;
     const pos = zzz_media_pos();
     let txt, n = 0;
-    if (zzzMedia.cur) { n = it ? ((zzzMedia.diss || {})[it.num] || []).length : 0; txt = '💬 ' + (pos === null ? (zzz_media_playing() ? '▶' : '❚❚') : zzz_media_fmt_time(pos)) + (n ? ' · ' + n : ''); b.title = 'DISS of „' + zzz_media_title(zzzMedia.cur) + '“ · tap again = back'; }
-    else { const k = zzz_media_el_key(zzzMedia.pls ? 'pls' : 'tab', zzzMedia.pls || zzzMedia.tab), el = (zzzMedia.els || {})[k]; n = el ? el.n : 0; txt = '💬 ' + (zzzMedia.pls ? zzzMedia.pls : zzzMedia.tab) + (n ? ' · ' + n : ''); b.title = 'Chat of ' + (zzzMedia.pls ? 'the playlist ' + zzzMedia.pls : 'the tab ' + zzzMedia.tab); }
+    if (zzzMedia.cur) { n = it ? ((zzzMedia.diss || {})[it.num] || []).length : 0; txt = '💬 ' + (pos === null ? (zzz_media_playing() ? '▶' : '❚❚') : zzz_media_fmt_time(pos)) + (n ? ' · ' + n : ''); b.title = 'Tap = play / stop · 2× tap = DISS of „' + zzz_media_title(zzzMedia.cur) + '“'; }
+    else { const k = zzz_media_el_key(zzzMedia.pls ? 'pls' : 'tab', zzzMedia.pls || zzzMedia.tab), el = (zzzMedia.els || {})[k]; n = el ? el.n : 0; txt = '💬 ' + (zzzMedia.pls ? zzzMedia.pls : zzzMedia.tab) + (n ? ' · ' + n : ''); b.title = 'Tap = play (ACTUAL first) · 2× tap = chat of ' + (zzzMedia.pls ? 'the playlist ' + zzzMedia.pls : 'the tab ' + zzzMedia.tab); }
     if (b.textContent !== txt) b.textContent = txt;
     b.classList.toggle('has', n > 0); b.classList.toggle('is-playing', !!zzzMedia.cur && zzz_media_playing());
   });
 }
 function zzz_media_diss_bubble() {
   const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-btn zzz-media-dissb';
-  b.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const open = document.querySelector('.zzz-media-confirm .zzz-media-diss');
-    if (open) { open.closest('.zzz-media-confirm').remove(); try { zzz_media_redraw(); } catch (x) {} return; }
-    if (zzzMedia.cur) {
-      const it = zzz_media_line({ link: zzzMedia.cur.link });
-      if (!it) { zzz6f2_show_toast('This medium is not in ALL MEDIA yet - + ADD it, then it has its DISS.', 'info'); return; }
-      zzz_media_diss(it, () => { try { zzz_media_redraw(); } catch (x) {} });
-      return;
-    }
-    zzz_media_el(zzzMedia.pls ? 'pls' : 'tab', zzzMedia.pls || zzzMedia.tab);
-  });
+  b.addEventListener('click', (e) => { e.stopPropagation(); zzz_media_btn_tap(); });
   const iv = setInterval(() => { if (!b.isConnected) { clearInterval(iv); return; } zzz_media_bubble_paint(); }, 1000);
   setTimeout(zzz_media_bubble_paint, 0);
   return b;
@@ -51852,10 +51851,35 @@ function zzz_media_chip_button() {
   let ht = 0, held = false;
   b.addEventListener('pointerdown', () => { held = false; clearTimeout(ht); ht = setTimeout(() => { held = true; try { navigator.vibrate && navigator.vibrate(20); } catch (e) {} zzz_media_chip_org(); }, 600); });
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => b.addEventListener(ev, () => clearTimeout(ht)));
-  b.addEventListener('click', (e) => { e.stopPropagation(); if (held) { held = false; return; } zzz_media_chip_tap(); });
+  b.addEventListener('click', (e) => { e.stopPropagation(); if (held) { held = false; return; } zzz_media_btn_tap(); });
   b.addEventListener('contextmenu', (e) => e.preventDefault());
   setTimeout(zzz_media_chip_paint, 0);
   return b;
+}
+
+let zzzMediaBtnT = 0;
+function zzz_media_btn_tap() {
+  const open = document.querySelector('.zzz-media-confirm .zzz-media-diss');
+  if (open) { clearTimeout(zzzMediaBtnT); zzzMediaBtnT = 0; open.closest('.zzz-media-confirm').remove(); try { zzz_media_redraw(); } catch (x) {} return; }
+  if (zzzMediaBtnT) { clearTimeout(zzzMediaBtnT); zzzMediaBtnT = 0; zzz_media_diss_now(); return; }
+  zzzMediaBtnT = setTimeout(() => {
+    zzzMediaBtnT = 0;
+    if (zzzMedia.cur) { zzz_media_toggle(); setTimeout(zzz_media_paint, 300); return; }
+    const o = zzz_media_chip_get();
+    if (o.cur || o.slots.length) { zzz_media_chip_tap(); return; }
+    const a = zzz_media_actual_of((zzzMedia.list || []).filter(x => !x.trash && !zzz_media_locked_now(x))).filter(x => x.link);
+    if (a.length) zzz_media_play(a[0], a); else zzz6f2_show_toast('Nothing to play yet - paste a link and ▶ PLAY.', 'info');
+  }, 300);
+}
+function zzz_media_diss_now(link) {
+  const l = link || (zzzMedia.cur && zzzMedia.cur.link);
+  if (l) {
+    const it = zzz_media_line({ link: l });
+    if (!it) { zzz6f2_show_toast('This medium is not in ALL MEDIA yet - + ADD it, then it has its DISS.', 'info'); return; }
+    zzz_media_diss(it, () => { try { zzz_media_redraw(); } catch (x) {} });
+    return;
+  }
+  zzz_media_el(zzzMedia.pls ? 'pls' : 'tab', zzzMedia.pls || zzzMedia.tab);
 }
 
 function zzz_media_chip_org() {
@@ -52728,6 +52752,7 @@ function zzz_media_play(it, queue) {
   st.querySelectorAll('video, iframe').forEach(x => x.remove());
   zzzMedia.cur = it;
   zzz_media_hist_add(it);
+  zzz_media_mark_actual(it);
   zzz_media_chip_started(it);
   const chipAt = zzzMedia.chipStart || 0; zzzMedia.chipStart = 0;
   let emb = off ? '' : zzz_media_embed(it.link);
@@ -53029,9 +53054,13 @@ async function zzz_media_open() {
 
   const readyPaint = () => { const ok = /^https?:\/\//i.test(inp.value.trim()); inp.classList.toggle('is-ready', ok); play.classList.toggle('is-ready', ok); add.classList.toggle('is-ready', ok); };
   inp.addEventListener('input', readyPaint); inp.addEventListener('change', readyPaint); inp.addEventListener('paste', () => setTimeout(readyPaint, 30));
+
   play.addEventListener('click', async () => {
-    let u = inp.value.trim();
-    if (!u) { try { if (navigator.clipboard && navigator.clipboard.readText) { const c = String(await navigator.clipboard.readText() || ''); const m = c.match(/https?:\/\/\S+/); if (m) u = m[0]; } } catch (e) {} if (u) { inp.value = u; readyPaint(); } }
+    let u = '';
+    try { if (navigator.clipboard && navigator.clipboard.readText) { const c = String(await navigator.clipboard.readText() || ''); const m = c.match(/https?:\/\/\S+/); if (m) u = m[0]; } } catch (e) {}
+    if (!u) { try { for (const x of zzz_clip_list()) { const m = String(x).match(/https?:\/\/\S+/); if (m) { u = m[0]; break; } } } catch (e) {} }
+    if (!u) u = inp.value.trim();
+    if (u && u !== inp.value.trim()) { inp.value = u; readyPaint(); }
     if (!/^https?:\/\//i.test(u)) { zzz6f2_show_toast('Paste a link that starts with https:// - then ▶ PLAY.', 'warn'); return; }
     const had = zzz_media_line({ link: u });
     zzz_media_play(had || { id: '', name: '', link: u, tag: '' }, had ? zzz_media_tablist().filter(x => x.link) : []);
@@ -53356,6 +53385,13 @@ function zzz_media_hash() {
     go(); return;
   }
 
+  const ds = h.match(/^#media-diss(?:=([^&]+))?/i);
+  if (ds) {
+    let link = ''; try { link = ds[1] ? zzz_media_norm(decodeURIComponent(ds[1])) : ''; } catch (e) {}
+    try { history.replaceState(null, '', location.pathname + location.search + '#media'); } catch (e) {}
+    const go = async () => { if (!zzz_media_me()) { setTimeout(go, 1000); return; } if (!document.getElementById('zzzMediaWin')) await zzz_media_open(); if (zzzMedia.loadedOf !== zzz_media_me()) await zzz_media_load(); zzz_media_diss_now(link || ''); };
+    go(); return;
+  }
   const sv = h.match(/^#media-save=([^&]+)/i);
   if (sv) {
     let link = ''; try { link = zzz_media_norm(decodeURIComponent(sv[1])); } catch (e) {}
@@ -54098,7 +54134,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       if (k._calc && zzz_vkbCalc.on) zzz_vkb_calc_input(k._calc);
       else if (ch === ' ') {
 
-        if (isText && !isSecret) { k._swX = e.clientX; k._swAt = Date.now(); try { k.setPointerCapture(e.pointerId); } catch (e2) {} clearTimeout(k._swBuzz); k._swBuzz = setTimeout(() => zzz_haptic_pulse(40), 450); }
+        if (isText && !isSecret) { k._swX = e.clientX; k._swAt = Date.now(); try { k.setPointerCapture(e.pointerId); } catch (e2) {} clearTimeout(k._swBuzz); k._swBuzz = setTimeout(() => { zzz_haptic_pulse(40); k._swBuzz = setTimeout(() => zzz_haptic_pulse(60), 1050); }, 450); }
         else typeSpace();
       } else if ((window.zzzVkbCtrlLock || window.zzzVkbCtrlHeld) && isText && !isSecret && ch.toLowerCase() === 't') {
 
@@ -54135,7 +54171,8 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
         const x0 = k._swX; k._swX = null; clearTimeout(k._swBuzz);
         if (e && e.type === 'pointerup') {
           if (!swipeSpace || Math.abs(e.clientX - x0) <= 30) {
-            if (Date.now() - (k._swAt || 0) >= 450) { zzzDiaLast = null; type(' '); spaceAt = 0; }
+            if (Date.now() - (k._swAt || 0) >= 1500) { try { zzz_vkb_hide(); } catch (e3) {} if (!document.getElementById('zzzMediaWin')) zzz_media_open(); }
+            else if (Date.now() - (k._swAt || 0) >= 450) { zzzDiaLast = null; type(' '); spaceAt = 0; }
             else typeSpace();
           } else if (Math.abs(e.clientX - x0) > 30) {
             const ix = kbCycle.indexOf(kbLang), dir = e.clientX > x0 ? 1 : -1;
@@ -54954,7 +54991,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 225;
+const ZZZ14B17_APP_LATEST = 227;
 function zzz14b17_app_code() {
 
   try {
