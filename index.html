@@ -10743,6 +10743,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-star { touch-action: none; }
   
   .zzz-media-dc.has-ring { position: relative; padding: 0 !important; touch-action: none; }
+  .zzz-media-dc.has-ring.is-open::after { content: '\1F310'; position: absolute; left: 1px; bottom: 0; font-size: 8px; }   
   .zzz-dring { position: relative; width: 34px; height: 30px; margin: 0 auto; display: block; pointer-events: none; }
   .zzz-dring > i { position: absolute; font-style: normal; font-size: 8px; line-height: 1; color: #d4d4d4; transform: translate(-50%, -50%); }
   .zzz-dring > i.on { color: #D4AF37; }
@@ -14231,6 +14232,7 @@ const ZZZ1CN_NOTIFY_KEYS = { owner: 'notify_owner', delegate: 'notify_delegate',
 
 const ZZZ1CN_SETUP_DEF = {
   contacts: 'owner', chats: 'owner', tags: 'owner', private: 'all', copy: 'all',
+  lines: 'private',
 
   blocked: 'owner',
   notify_owner: 'all', notify_delegate: 'all', notify_users: 'all'
@@ -14252,6 +14254,7 @@ function zzz1cn_setup_parse(raw) {
       return;
     }
     if (/^notify_(owner|delegate|users)$/.test(k)) { if (v === 'all' || v === 'mentions') out[k] = v; return; }
+    if (k === 'lines') { if (v === 'private' || v === 'open') out.lines = v; return; }
     if ((k === 'contacts' || k === 'chats' || k === 'tags' || k === 'private' || k === 'copy')
         && ZZZ1CN_LEVELS.indexOf(v) >= 0) out[k] = v;
   });
@@ -14260,7 +14263,7 @@ function zzz1cn_setup_parse(raw) {
 function zzz1cn_setup_build(s) {
   const v = Object.assign({}, ZZZ1CN_SETUP_DEF, s || {});
   return `contacts:${v.contacts}, chats:${v.chats}, tags:${v.tags}, private:${v.private}, copy:${v.copy}, `
-       + `notify_owner:${v.notify_owner}, notify_delegate:${v.notify_delegate}, notify_users:${v.notify_users}`;
+       + `notify_owner:${v.notify_owner}, notify_delegate:${v.notify_delegate}, notify_users:${v.notify_users}, lines:${v.lines === 'open' ? 'open' : 'private'}`;
 }
 
 function zzz1cn_role_of(entryKey, name) {
@@ -14626,6 +14629,18 @@ function zzz1cn_open_comm_setup(host, api) {
   head.appendChild(blockedBtn);
   head.appendChild(x);
   win.appendChild(head);
+
+  try { const key = api && api.key ? api.key() : ''; const own = api && api.isOwner ? api.isOwner() : false;
+    const rw = document.createElement('div'); rw.className = 'zzz1cn-setup-lines'; rw.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 0 8px;font-size:11px;color:#9CA3AF';
+    const lb = document.createElement('span'); lb.textContent = 'NEW LINES:'; lb.style.fontWeight = '800'; rw.appendChild(lb);
+    const cur = () => (api && api.setup ? (api.setup() || {}).lines : 'private') === 'open' ? 'open' : 'private';
+    const mk = (v, t) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-tagchip'; b.textContent = t; b.disabled = !own;
+      const paint = () => b.classList.toggle('is-on', cur() === v); paint();
+      b.addEventListener('click', (e) => { e.stopPropagation(); if (!own) return; Promise.resolve(zzz1cn_setup_set(key, { lines: v })).then(() => { rw.querySelectorAll('button').forEach(x => x._p && x._p()); }); setTimeout(() => rw.querySelectorAll('button').forEach(x => x._p && x._p()), 50); });
+      b._p = paint; rw.appendChild(b); };
+    mk('private', '\uD83D\uDD12 PRIVATE'); mk('open', '\uD83C\uDF10 OPEN \u00b7 REPLY / DISCUSS');
+    const nt = document.createElement('span'); nt.textContent = own ? '(others reply without being contacts; one line: hold its 💬)' : '(only the owner changes it)'; rw.appendChild(nt);
+    win.appendChild(rw); } catch (e) {}
 
   let setupLastTap = 0;
   head.title = 'Double tap = full screen / back';
@@ -48672,7 +48687,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-05 23:00';
+const VERSO_BUILD = '2026-11-05 23:18';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -52319,6 +52334,7 @@ async function zzz_media_add(link, name, tags) {
   if (!n) return null;
   const it = zzz_media_item(Object.assign({ note_text: link, note_name: name || '', note_tags: tags || '' }, n));
   zzzMedia.all = (zzzMedia.all || []).concat([it]); zzzMedia.list = zzzMedia.all.filter(x => !x.trash);
+  try { if ((zzz1cn_setup_get(String(e.entry_id)) || {}).lines === 'open') await zzz_media_set_public(it, true); } catch (x) {}
   if (!it.name) zzz_media_autoname(it);
   if (zzz_media_read_has(link)) zzz_media_mark_read(it, true);
   return it;
@@ -53726,7 +53742,15 @@ async function zzz_media_open() {
         const dc = cell(r, '\uD83D\uDCAC' + (nd ? nd : '')); dc.className = 'zzz-media-fb zzz-media-dc' + (nd ? ' has' : ''); dc.title = 'DISS: comments / discussion of this medium';
 
         if (it.id && /^\d+$/.test(String(it.id)) && !trashTab) { dc.classList.add('has-ring'); dc.textContent = ''; dc.dataset.zzzRing = String(it.id); dc._zzzNd = nd; zzz_media_ring_paint(dc);
-          zzz_stars_scale_bind(dc, it.id, { tapOpens: false }); dc.title = 'DISS · tap = comments · hold + slide = your rating'; }
+
+          { let ht = 0, held = false;
+            dc.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); held = false; clearTimeout(ht); ht = setTimeout(() => { held = true; zzz_haptic_pulse(25);
+              const on = !it.pub; zzz_media_set_public(it, on).then(ok => { if (ok) { zzz6f2_show_toast(on ? '\uD83C\uDF10 #' + it.num + ' REPLY / DISCUSS open - who sees ALL MEDIA may reply.' : '\uD83D\uDD12 #' + it.num + ' private again - only you.', 'ok'); draw(); } }); }, 650); });
+            ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => dc.addEventListener(ev, () => clearTimeout(ht)));
+            dc.addEventListener('contextmenu', (ev) => ev.preventDefault());
+            dc.addEventListener('click', (ev) => { if (held) { held = false; ev.stopPropagation(); ev.stopImmediatePropagation(); } }, true); }
+          if (it.pub) dc.classList.add('is-open');
+          dc.title = 'DISS · tap = comments · hold = REPLY / DISCUSS ' + (it.pub ? 'open (🌐) → private' : 'private → open (🌐)'); }
         dc.addEventListener('click', (e) => { e.stopPropagation(); if (it.id && !trashTab) zzz_media_diss(it, draw); }); }
       r.addEventListener('click', () => {
         if (r._zzzSwiped) return;
