@@ -7165,6 +7165,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-vi-win-send { flex: 0 0 96px; border: 2px solid #D4AF37; border-radius: 12px; background: #111; color: #D4AF37; font-weight: 800; font-size: 12px; line-height: 1.15; }
   .zzz-vi-line .zzz-vi-pk { border-color: #2DD4BF; color: #2DD4BF; } .zzz-vi-line .zzz-vi-pk.is-on { background: #2DD4BF; color: #000; }
   .zzz-vi-pklist { flex-wrap: wrap; } .zzz-vi-pklist button { border-color: #2DD4BF; color: #2DD4BF; } .zzz-vi-pklist button.is-on { background: #2DD4BF; color: #000; }
+  .zzz-vi-pklist .zzz-vi-pksec { width: 100%; color: #2DD4BF; font: 800 9px/1.4 system-ui, sans-serif; letter-spacing: .08em; margin-top: 2px; }   
   .zzz-vi-line select { flex: 0 1 auto; max-width: 74px; min-width: 0; border: 1.5px solid #D4AF37; border-radius: 12px; background: #0f0f0f; color: #D4AF37; font-size: 11px; padding: 3px 2px; }
   .zzz-vi-line input { flex: 1 1 60px; min-width: 0; border: 1px solid #D4AF37; border-radius: 10px; background: #0e0e0e; color: #fff; padding: 6px; font-size: 14px; }
   .zzz-vi-line .zzz-vi-rp { border-color: #D4AF37; color: #D4AF37; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
@@ -12272,6 +12273,15 @@ function zzz14cs_hash_check(tries) {
   try { zzz14cs_space_build(); zzz14cs_space_open(true, true); zzz_outside_back_arm(); zzz_busy_ready(); } catch (e) { zzz_busy_end(); zzz_user_error('Could not open COMM SPACE - tap its button.', e, '[Zzz14-CS:ALWAYS-COMM]'); }
 }
 window.addEventListener('hashchange', () => zzz14cs_hash_check(0));
+
+function zzz_contacts_hash_check(tries) {
+  if (location.hash !== '#contacts') return;
+  if (typeof zzz6f7_isLoggedIn === 'undefined' || !zzz6f7_isLoggedIn || typeof zzz1r17b_open_contacts_module !== 'function') { if ((tries || 0) < 40) setTimeout(() => zzz_contacts_hash_check((tries || 0) + 1), 500); return; }
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  try { zzz1r17b_open_contacts_module(false); zzz_outside_back_arm(); } catch (e) { zzz_user_error('Could not open CONTACTS - open it in COMM SPACE.', e, '[Zzz14-VI:PACKS-CONTACTS]'); }
+}
+window.addEventListener('hashchange', () => zzz_contacts_hash_check(0));
+window.addEventListener('load', () => zzz_contacts_hash_check(0));
 
 function zzz14cs_comm_guard() {
   try {
@@ -48657,7 +48667,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-05 22:25';
+const VERSO_BUILD = '2026-11-05 22:35';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -50438,11 +50448,13 @@ async function zzz_vi_post(text, prio, pack) {
   let to = [], pk = String(pack || '').trim();
   if (pk) {
 
-    const findPk = () => (zzz5w5cm_tag_packs() || []).find(x => zzz10v1_normalize(x.tag) === zzz10v1_normalize(pk));
+    const one = pk.charAt(0) === '@' ? zzz10v1_normalize(pk.slice(1)) : '';
+    const findPk = () => one ? ((zzz5w5cmMyContacts || []).some(c => zzz10v1_normalize(c.name) === one) ? { names: [(zzz5w5cmMyContacts || []).find(c => zzz10v1_normalize(c.name) === one).name] } : null)
+      : (zzz5w5cm_tag_packs() || []).find(x => zzz10v1_normalize(x.tag) === zzz10v1_normalize(pk));
     let p = findPk();
     if (!p) { try { await zzz5w5cm_load_my_contacts(); } catch (x) {} p = findPk(); }
     to = p ? p.names.slice() : [];
-    if (!to.length) { zzz6f2_show_toast('VI LINE: pack „' + pk + '“ is not in your contacts any more - nothing was sent.', 'warn'); return false; }
+    if (!to.length) { zzz6f2_show_toast('VI LINE: „' + (one ? pk.slice(1) : pk) + '“ is not in your CONTACTS any more - nothing was sent.', 'warn'); return false; }
   }
   try {
     const saved = await zzz1cn_add(String(e.entry_id), text, !to.length, null, '', true, zzz1cn_prio_level(String(prio || '')), to, 'vi');
@@ -50705,20 +50717,27 @@ function zzz_vi_line_el() {
   paintPr(); pr.title = 'Priority: OPEN → ATTENTION → URGENT';
   pr.addEventListener('click', () => { const p = zzz_vi_get('prio', 'open'); zzz_vi_put('prio', PR[(PR.indexOf(p) + 1 + 3) % 3]); paintPr(); });
 
-  const pk = document.createElement('button'); pk.type = 'button'; pk.className = 'zzz-vi-pk'; pk.title = 'PACKS: only its members see the line (none = private) · tap = next · hold = list';
-  const names = () => [''].concat((zzz5w5cm_tag_packs() || []).map(p => String(p.tag)));
-  const paintPk = () => { const v = zzz_vi_get('pack', ''); pk.textContent = v ? v.slice(0, 3).toUpperCase() : 'PACKS'; pk.classList.toggle('is-on', !!v); };
+  const pk = document.createElement('button'); pk.type = 'button'; pk.className = 'zzz-vi-pk'; pk.title = 'PACKS / CONTACTS: only they see the line (none = private) · tap = next · hold = list';
+  const names = () => [''].concat(zzz_vi_pack_choices().all);
+  const paintPk = () => { const v = zzz_vi_get('pack', ''); pk.textContent = v ? zzz_vi_pack_label(v) : 'PACKS'; pk.classList.toggle('is-on', !!v); };
   let pkHeld = false, pkT = 0;
   pk.addEventListener('pointerdown', () => { pkHeld = false; clearTimeout(pkT); pkT = setTimeout(() => {
-    pkHeld = true; const l = names(); if (l.length < 2) { zzz6f2_show_toast('No packs yet - give several contacts one tag in MEMBERS.', 'info'); return; }
+    pkHeld = true; const l = names(); if (l.length < 2) { zzz6f2_show_toast('No contacts yet - add them in CONTACTS (COMM SPACE).', 'info'); return; }
     let box = row.nextElementSibling && row.nextElementSibling.classList.contains('zzz-vi-pklist') ? row.nextElementSibling : null;
     if (box) { box.remove(); return; }
     box = document.createElement('div'); box.className = 'zzz-vi-line zzz-vi-pklist';
-    l.forEach(n => { const b = document.createElement('button'); b.type = 'button'; b.textContent = n || '🔒 me'; if (n === zzz_vi_get('pack', '')) b.className = 'is-on';
-      b.addEventListener('click', () => { zzz_vi_put('pack', n); paintPk(); box.remove(); }); box.appendChild(b); });
+    const ch = zzz_vi_pack_choices();
+    const sec = (t) => { const h = document.createElement('span'); h.className = 'zzz-vi-pksec'; h.textContent = t; box.appendChild(h); };
+    const add = (n, lab) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = lab; if (n === zzz_vi_get('pack', '')) b.className = 'is-on';
+      b.addEventListener('click', () => { zzz_vi_put('pack', n); paintPk(); box.remove(); }); box.appendChild(b); };
+    add('', '🔒 me');
+    if (ch.tags.length) { sec('PACKS'); ch.tags.forEach(n => add(n, n)); }
+    if (ch.ppl.length) { sec('CONTACTS'); ch.ppl.forEach(n => add(n, n.slice(1))); }
+    { const e = document.createElement('button'); e.type = 'button'; e.textContent = '\u270E CONTACTS'; e.title = 'Add / tag contacts in the CONTACTS module';
+      e.addEventListener('click', () => { box.remove(); try { zzz1r17b_open_contacts_module(false); } catch (x) {} }); box.appendChild(e); }
     row.after(box); }, 900); });
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => pk.addEventListener(ev, () => clearTimeout(pkT)));
-  pk.addEventListener('click', () => { if (pkHeld) return; const l = names(); if (l.length < 2) { zzz6f2_show_toast('No packs yet - give several contacts one tag in MEMBERS.', 'info'); return; }
+  pk.addEventListener('click', () => { if (pkHeld) return; const l = names(); if (l.length < 2) { zzz6f2_show_toast('No contacts yet - add them in CONTACTS (COMM SPACE).', 'info'); return; }
     const i = l.indexOf(zzz_vi_get('pack', '')); zzz_vi_put('pack', l[(i + 1) % l.length]); paintPk(); });
   paintPk();
 
@@ -50851,10 +50870,16 @@ window.addEventListener('hashchange', () => zzz_mdone_hash(0));
 window.addEventListener('load', () => setTimeout(() => zzz_mdone_hash(0), 900));
 window.addEventListener('load', () => setTimeout(() => zzz_alarm_hash(0), 900));
 
+function zzz_vi_pack_choices() {
+  const tags = (zzz5w5cm_tag_packs() || []).filter(p => (p.names || []).length > 1).map(p => String(p.tag));
+  const ppl = (zzz5w5cmMyContacts || []).map(c => String(c.name || '')).filter(Boolean).map(n => '@' + n);
+  return { tags, ppl, all: tags.concat(ppl) };
+}
+function zzz_vi_pack_label(v) { v = String(v || ''); return v.charAt(0) === '@' ? '@' + v.slice(1, 4).toUpperCase() : v.slice(0, 3).toUpperCase(); }
 async function zzz_vi_packs_to_app() {
   try {
     if (!zzz14b17_in_app() || zzz14b17_app_code() < ZZZ_VI_APP || !zzz_media_me()) return;
-    const names = (zzz5w5cm_tag_packs() || []).map(p => String(p.tag)).filter(n => n && n.length < 40).slice(0, 40);
+    const names = zzz_vi_pack_choices().all.filter(n => n && n.length < 40).slice(0, 80);
     const js = JSON.stringify(names), sig = zzz_media_me() + '|' + js;
     if (sig === zzzVi.packsSent || !(zzz5w5cmMyContacts || []).length) return;
     const b = btoa(unescape(encodeURIComponent(js))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -55431,7 +55456,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 235;
+const ZZZ14B17_APP_LATEST = 236;
 function zzz14b17_app_code() {
 
   try {
