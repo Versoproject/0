@@ -7164,6 +7164,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-row:not(.is-lab) { touch-action: pan-y; }   
   .zzz-media-row .zzz-media-name-inp { width: 100%; border: none; background: transparent; font: inherit; color: #111; padding: 0; outline: none; }
   .zzz-media-row .zzz-media-dc { font-size: 9px; padding: 4px 2px; }
+  .zzz-media-elc { padding: 1px 6px; min-height: 0; font-size: 10px; margin-left: 6px; vertical-align: middle; }   
+  .zzz-media-row > .zzz-media-elcell { padding: 0 !important; border: 0 !important; background: none !important; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .zzz-media-row .zzz-media-elc { margin: 0; padding: 2px 2px; font-size: 9px; width: 100%; letter-spacing: -.3px; }
+  .zzz-media-elc.has { border-color: #16a34a; color: #16a34a; }
   .zzz-media-tagchips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .zzz-media-tagchips .zzz-tchip { display: inline-flex; gap: 6px; align-items: center; border: 1.5px solid #D4AF37; border-radius: 999px; padding: 3px 10px; color: #D4AF37; font-size: 13px; }
   .zzz-media-tagchips .zzz-tchip.is-main { background: #D4AF37; color: #111; font-weight: 800; }
@@ -48463,7 +48467,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-04 23:58';
+const VERSO_BUILD = '2026-11-05 01:31';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -51595,13 +51599,77 @@ async function zzz_media_new_playlist(name, tabTag) {
 function zzz_media_open_web(link) {
   const a = document.createElement('a'); a.href = link; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove();
 }
+
+function zzz_media_el_key(kind, name) { return kind + ':' + String(name || '').trim().toLowerCase(); }
+function zzz_media_els_take(rows) {
+  const m = {};
+  (rows || []).slice().sort((a, b) => Number(a.entry_id) - Number(b.entry_id)).forEach(r => {
+    const f = zzz_parse_fields_json(r); const k = String(f.mkey || '').toLowerCase();
+    if (k && String(f.r3 || '').trim().toLowerCase() === 'media' && !r.is_trashed && !m[k]) m[k] = { id: Number(r.entry_id), n: (zzzMedia.els && zzzMedia.els[k] && zzzMedia.els[k].n) || 0 };
+  });
+  zzzMedia.els = m;
+  zzz_media_els_count();
+}
+async function zzz_media_els_count() {
+  const ids = Object.values(zzzMedia.els || {}).map(x => String(x.id));
+  if (!ids.length || typeof sb === 'undefined') return;
+  try {
+    const { data } = await sb.from('verso_chat_notes').select('entry_key').in('entry_key', ids).limit(5000);
+    const c = {}; (data || []).forEach(n => { c[n.entry_key] = (c[n.entry_key] || 0) + 1; });
+    let ch = false; Object.values(zzzMedia.els).forEach(x => { const v = c[String(x.id)] || 0; if (x.n !== v) { x.n = v; ch = true; } });
+    if (ch && document.getElementById('zzzMediaWin')) zzz_media_redraw();
+  } catch (e) {}
+}
+async function zzz_media_el(kind, name) {
+  const key = zzz_media_el_key(kind, name), me = zzz_media_me();
+  if (!me || !name || typeof sb === 'undefined') return;
+  let el = (zzzMedia.els || {})[key];
+  if (!el) {
+    const label = kind === 'pls' ? 'MEDIA › PLAYLIST › ' + name : 'MEDIA › ' + String(name).toUpperCase();
+    try { zzz_busy_start(label, true); } catch (e) {}
+    try {
+      const at = await zzz6f2_get_next_entry_id_atomic();
+      let id = at && at.success ? at.id : 0;
+      if (!id) id = zzz6f2_compute_next_entry_id(await zzz6f2_get_known_entries());
+      const fields = { r2: '', r3: 'media', r4: me, r5: 'media', r7: 'ano', r9: label, tags: 'media ' + (kind === 'pls' ? 'playlist' : 'tab'), mkey: key };
+      const payload = { entry_id: id, r1: '', fields_json: JSON.stringify(fields), entry_date: zzz6f14_format_today(), username: zzz0r1_get_current_username(), updated_at: new Date().toISOString(), zzz_session_id: zzz_sessionId };
+      const { error } = await sb.from('verso_entries').upsert(payload, { onConflict: 'entry_id' });
+      if (error) throw error;
+      try { submittedEntriesFullCache[id] = payload; } catch (e) {}
+
+      let keep = id;
+      try {
+        const { data } = await sb.from('verso_entries').select('entry_id, fields_json, is_trashed').eq('is_trashed', false).ilike('username', me).order('entry_id', { ascending: true });
+        const same = (data || []).filter(r => String(zzz_parse_fields_json(r).mkey || '').toLowerCase() === key);
+        if (same.length) keep = Number(same[0].entry_id);
+      } catch (e) {}
+      if (keep !== id) { try { await sb.from('verso_entries').update({ is_trashed: true, zzz_session_id: zzz_sessionId }).eq('entry_id', id); } catch (e) {} }
+      el = (zzzMedia.els = zzzMedia.els || {})[key] = { id: keep, n: 0 };
+      zzz6f2_show_toast(label + ': its own chat #' + keep + ' is ready.', 'info');
+    } catch (e) { try { zzz_busy_end(); } catch (_) {} zzz_user_error('The chat of this tab / playlist could not be made - check the connection and try again.', e, '[Zzz14-B17:MEDIA-TAB-EL]'); return; }
+  }
+
+  try { zzz_busy_start('CHAT #' + el.id, true); } catch (e) {}
+  const w = document.getElementById('zzzMediaWin'); if (w) { w.remove(); try { zzz_media_place(); } catch (e) {} }
+  try { await zzz_open_chat_entry(el.id); } finally { try { zzz_busy_end(); } catch (e) {} }
+}
+function zzz_media_el_chip(kind, name) {
+  const k = zzz_media_el_key(kind, name), el = (zzzMedia.els || {})[k], n = el ? el.n : 0;
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-btn zzz-media-elc' + (n ? ' has' : '');
+  b.textContent = '💬' + (n ? ' ' + n : ''); b.title = (kind === 'pls' ? 'Chat of the playlist ' : 'Chat of the tab ') + name + (el ? ' (#' + el.id + ')' : ' - made at the first tap');
+  b.addEventListener('click', (e) => { e.stopPropagation(); zzz_media_el(kind, name); });
+  return b;
+}
+
 async function zzz_media_entry(create) {
   const me = zzz_media_me();
   if (!me || typeof sb === 'undefined') return null;
   if (zzzMedia.entry && zzzMedia.entryOf === me) return zzzMedia.entry;
   try {
     const { data } = await sb.from('verso_entries').select('*').eq('is_trashed', false).ilike('username', me).order('entry_id', { ascending: true });
-    const row = (data || []).find(r => String(zzz_parse_fields_json(r).r3 || '').trim().toLowerCase() === 'media');
+
+    const row = (data || []).find(r => { const f = zzz_parse_fields_json(r); return String(f.r3 || '').trim().toLowerCase() === 'media' && !f.mkey; });
+    zzz_media_els_take(data || []);
     if (row) { zzzMedia.entry = row; zzzMedia.entryOf = me; try { submittedEntriesFullCache[row.entry_id] = row; } catch (e) {} return row; }
   } catch (e) {}
   if (!create) return null;
@@ -52458,6 +52526,8 @@ async function zzz_media_open() {
       : plsView ? (zzzMedia.pls ? '← ' + zzzMedia.pls.toUpperCase() : 'PLAYLISTS of ' + zzzMedia.tab) : 'ROWS of ' + zzzMedia.tab;
     if (plsView && zzzMedia.pls) { lt.style.cursor = 'pointer'; lt.addEventListener('click', () => { zzzMedia.pls = ''; draw(); }); }
     lhd.append(lt, tools); list.appendChild(lhd);
+
+    if (!trashTab) { try { lt.appendChild(zzzMedia.pls ? zzz_media_el_chip('pls', zzzMedia.pls) : zzz_media_el_chip('tab', zzzMedia.tab)); } catch (e) {} }
     if (plsView && !zzzMedia.pls) {
       const pls = zzz_media_playlists();
       if (!pls.length) { const e = document.createElement('div'); e.className = 'zzz-media-empty'; e.textContent = 'No playlist yet - type a name above and + ADD.'; list.appendChild(e); }
@@ -52471,6 +52541,7 @@ async function zzz_media_open() {
         const allPub = members.length && members.every(x => x.pub);
         const pp = cell(r, allPub ? '\uD83C\uDF10' : '\uD83D\uDD12'); pp.className = 'zzz-media-fb'; pp.title = 'Tap = the whole playlist ' + (allPub ? 'PRIVATE' : 'PUBLIC');
         pp.addEventListener('click', async (e) => { e.stopPropagation(); if (!members.length) return; let n = 0; for (const x of members) if (await zzz_media_set_public(x, !allPub)) n++; zzz6f2_show_toast('Playlist ' + pl.name + ': ' + n + (allPub ? ' private' : ' public'), 'info'); draw(); });
+        { const cc = cell(r, ''); cc.className = 'zzz-media-elcell'; cc.appendChild(zzz_media_el_chip('pls', pl.name)); }
         if (zzzMedia.selPls && zzzMedia.selPls.has(pl.name)) r.classList.add('is-sel');
         r.addEventListener('click', () => {
           if (zzzMedia.selecting) { zzzMedia.selPls = zzzMedia.selPls || new Set(); if (zzzMedia.selPls.has(pl.name)) zzzMedia.selPls.delete(pl.name); else zzzMedia.selPls.add(pl.name); draw(); return; }
@@ -52494,6 +52565,7 @@ async function zzz_media_open() {
         const r = document.createElement('div'); r.className = 'zzz-media-row is-folder is-gold';
         cell(r, '\uD83D\uDCC2'); cell(r, pl.name); cell(r, pl.items.length + (pl.items.length === 1 ? ' row' : ' rows'));
         const pb = cell(r, '\u25B6\uFE0E'); pb.className = 'zzz-media-pl'; cell(r, '\u203A');
+        { const cc = cell(r, ''); cc.className = 'zzz-media-elcell'; cc.appendChild(zzz_media_el_chip('pls', pl.name)); }
 
         { const def = (zzzMedia.plsDefs || []).find(d => d.plsDef.toLowerCase() === pl.name.toLowerCase()); const target = def || pl.items[0];
           if (target) zzz_media_bind_swipe(r, Object.assign({}, target, { name: '\uD83D\uDCC2 ' + pl.name }), draw); }
