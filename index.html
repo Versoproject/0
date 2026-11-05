@@ -48543,7 +48543,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-05 14:41';
+const VERSO_BUILD = '2026-11-05 14:47';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -51564,6 +51564,8 @@ function zzz_media_embed(u) {
     if (h === 'tiktok.com' && (m = x.pathname.match(/\/video\/(\d+)/))) return 'https://www.tiktok.com/embed/v2/' + m[1];
     if (h === 'facebook.com' || h === 'fb.watch') return 'https://www.facebook.com/plugins/video.php?autoplay=1&href=' + encodeURIComponent(u);
     if (h === 'open.spotify.com' && (m = x.pathname.match(/\/(track|album|playlist|episode|show)\/([^/?]+)/))) return 'https://open.spotify.com/embed/' + m[1] + '/' + m[2];
+
+    if ((h === 'soundcloud.com' || h === 'on.soundcloud.com') && x.pathname.length > 1) return 'https://w.soundcloud.com/player/?url=' + encodeURIComponent(u) + '&auto_play=true&visual=true&show_comments=false';
   } catch (e) {}
   return '';
 }
@@ -51889,6 +51891,12 @@ function zzz_media_shift_pick(it, done) {
 
   const pin = document.createElement('button'); pin.type = 'button'; pin.className = 'zzz-media-btn'; pin.textContent = '\uD83D\uDCCC CHIP';
   pin.addEventListener('click', () => { o.remove(); zzz_media_chip_pin(it); }); row.appendChild(pin);
+
+  const fw = zzz_media_tagw(it.tags), isFav = fw.indexOf('fav') >= 0;
+  const fav = document.createElement('button'); fav.type = 'button'; fav.className = 'zzz-media-btn' + (isFav ? ' is-on' : ''); fav.textContent = isFav ? '\u2665 UNFAV' : '\u2665 FAV';
+  fav.addEventListener('click', async () => { o.remove();
+    if (await zzz_media_set_tags(it, isFav ? fw.filter(t => t !== 'fav') : fw.concat(['fav']))) { zzz6f2_show_toast(isFav ? 'Out of \u2665 FAVS.' : 'In \u2665 FAVS of its tab.', 'info'); if (done) done(); }
+  }); row.appendChild(fav);
   const c = document.createElement('button'); c.type = 'button'; c.className = 'zzz-media-btn'; c.textContent = 'CANCEL'; c.addEventListener('click', () => o.remove()); row.appendChild(c);
   b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
 }
@@ -52435,7 +52443,7 @@ function zzz_media_link_name(link) {
 }
 
 function zzz_media_own_tags(it) {
-  const tabs = ZZZ_MEDIA_TABS.map(x => x.toLowerCase()).concat(['actual', 'trash', 'seen', 'later', 'private', 'playlist']);
+  const tabs = ZZZ_MEDIA_TABS.map(x => x.toLowerCase()).concat(['actual', 'trash', 'seen', 'later', 'private', 'playlist', 'fav']);
   return zzz_media_tagw(it.tags).filter(t => tabs.indexOf(t) < 0 && t.indexOf('pls:') !== 0);
 }
 function zzz_media_tags_shown(it) { const o = zzz_media_own_tags(it); return o.length ? o.join(' ') : ''; }
@@ -52455,6 +52463,7 @@ function zzz_media_tablist_raw() {
     return base.filter(x => seen.has(x.link) || zzz_media_tagw(x.tags).indexOf('actual') >= 0).sort((a, b) => (b.id || 0) - (a.id || 0));
   }
   const l = base.filter(x => zzz_media_in_tab(x, zzzMedia.tab));
+  if (zzzMedia.view === 'fav' && zzzMedia.tab !== 'TRASH') return l.filter(x => zzz_media_tagw(x.tags).indexOf('fav') >= 0);
   return zzzMedia.pls ? l.filter(x => x.pls.some(p => p.toLowerCase() === zzzMedia.pls.toLowerCase())) : l;
 }
 function zzz_media_playlists() {
@@ -52508,7 +52517,7 @@ function zzz_media_place() {
 function zzz_media_open_app(link) {
   let u; try { u = new URL(link); } catch (e) { return; }
   const pk = { 'instagram.com': 'com.instagram.android', 'youtube.com': 'com.google.android.youtube', 'youtu.be': 'com.google.android.youtube',
-    'tiktok.com': 'com.zhiliaoapp.musically', 'open.spotify.com': 'com.spotify.music', 'facebook.com': 'com.facebook.katana', 'vimeo.com': 'com.vimeo.android.videoapp' };
+    'tiktok.com': 'com.zhiliaoapp.musically', 'open.spotify.com': 'com.spotify.music', 'facebook.com': 'com.facebook.katana', 'vimeo.com': 'com.vimeo.android.videoapp', 'soundcloud.com': 'com.soundcloud.android', 'on.soundcloud.com': 'com.soundcloud.android' };
   const host = u.hostname.replace(/^(www|m)\./, '');
   const p = pk[host];
   const a = document.createElement('a');
@@ -52825,7 +52834,7 @@ async function zzz_media_open() {
       if (zzzMedia.view === 'pls' && !zzzMedia.pls && zzzMedia.tab !== 'ACTUAL') { const pl = await zzz_media_new_playlist(u, tabTag); if (pl) { inp.value = ''; draw(); } return; }
       zzz6f2_show_toast('Paste a link that starts with https://' + (zzzMedia.tab !== 'ACTUAL' ? ' - or switch to PLAYLISTS to make a playlist.' : ''), 'warn'); return;
     }
-    const want = [tabTag].concat(zzzMedia.pls ? ['pls:' + zzzMedia.pls.toLowerCase()] : []);
+    const want = [tabTag].concat(zzzMedia.pls ? ['pls:' + zzzMedia.pls.toLowerCase()] : []).concat(zzzMedia.view === 'fav' && zzzMedia.tab !== 'ACTUAL' ? ['fav'] : []);
     const had = zzz_media_line({ link: u });
     if (had) {
       const w0 = zzz_media_tagw(had.tags).filter(t => t !== 'trash');
@@ -52846,7 +52855,8 @@ async function zzz_media_open() {
   const tools = document.createElement('div'); tools.className = 'zzz-media-tools';
 
   const viewB = document.createElement('button'); viewB.type = 'button'; viewB.className = 'zzz-media-btn zzz-media-view';
-  viewB.addEventListener('click', () => { zzzMedia.view = zzzMedia.view === 'pls' ? 'rows' : 'pls'; zzzMedia.pls = ''; draw(); });
+
+  viewB.addEventListener('click', () => { zzzMedia.view = zzzMedia.view === 'rows' || !zzzMedia.view ? 'pls' : zzzMedia.view === 'pls' ? 'fav' : 'rows'; zzzMedia.pls = ''; draw(); });
   const selB = document.createElement('button'); selB.type = 'button'; selB.className = 'zzz-media-btn'; selB.textContent = 'SELECT';
   const delB = document.createElement('button'); delB.type = 'button'; delB.className = 'zzz-media-btn'; delB.textContent = 'DELETE';
 
@@ -52879,7 +52889,8 @@ async function zzz_media_open() {
     const plsView = !actual && !trashTab && zzzMedia.view === 'pls';
     viewB.style.display = actual || trashTab ? 'none' : '';
 
-    viewB.innerHTML = '<span' + (plsView ? '' : ' class="is-act"') + '>ROWS</span> \u21c4 <span' + (plsView ? ' class="is-act"' : '') + '>\u2605 PLAYLISTS</span>';
+    const favView = !actual && !trashTab && zzzMedia.view === 'fav';
+    viewB.innerHTML = '<span' + (plsView || favView ? '' : ' class="is-act"') + '>ROWS</span> \u21c4 <span' + (plsView ? ' class="is-act"' : '') + '>\u2605 PLAYLISTS</span> \u21c4 <span' + (favView ? ' class="is-act"' : '') + '>\u2665 FAVS</span>';
     viewB.classList.remove('is-on');
 
     selB.style.display = delB.style.display = trashTab ? 'none' : '';
@@ -52892,7 +52903,7 @@ async function zzz_media_open() {
     const lhd = document.createElement('div'); lhd.className = 'zzz-media-listhead';
     const lt = document.createElement('div'); lt.className = 'zzz-media-sub';
     lt.textContent = actual ? 'PLAYED LATELY · → read · ← later' : trashTab ? 'TRASH · tap = restore'
-      : plsView ? (zzzMedia.pls ? '← ' + zzzMedia.pls.toUpperCase() : 'PLAYLISTS of ' + zzzMedia.tab) : 'ROWS of ' + zzzMedia.tab;
+      : plsView ? (zzzMedia.pls ? '← ' + zzzMedia.pls.toUpperCase() : 'PLAYLISTS of ' + zzzMedia.tab) : favView ? '\u2665 FAVS of ' + zzzMedia.tab + ' · ← later = \u2665 FAV' : 'ROWS of ' + zzzMedia.tab;
     if (plsView && zzzMedia.pls) { lt.style.cursor = 'pointer'; lt.addEventListener('click', () => { zzzMedia.pls = ''; draw(); }); }
     lhd.append(lt, tools); list.appendChild(lhd);
 
@@ -53081,7 +53092,7 @@ function zzz_media_edit(it, redraw) {
   const sv = document.createElement('button'); sv.type = 'button'; sv.className = 'zzz-media-btn is-on'; sv.textContent = 'SAVE';
   const cn = document.createElement('button'); cn.type = 'button'; cn.className = 'zzz-media-btn'; cn.textContent = 'CANCEL';
   const words = (trash) => Array.from(on).concat(pl.value.split(',').map(x => x.trim().toLowerCase().replace(/\s+/g, '-')).filter(Boolean).map(x => 'pls:' + x))
-    .concat(ownArr.concat(zzz_media_tagw(ot.value))).concat(w.filter(x => x === 'seen' || x === 'later')).concat(trash ? ['trash'] : []);
+    .concat(ownArr.concat(zzz_media_tagw(ot.value))).concat(w.filter(x => x === 'seen' || x === 'later' || x === 'fav')).concat(trash ? ['trash'] : []);
   sv.addEventListener('click', async () => { if (await zzz_media_set_tags(it, words(it.trash), nm.value)) { o.remove(); if (redraw) redraw(); } });
   tr.addEventListener('click', async () => { if (await zzz_media_set_tags(it, words(!it.trash), nm.value)) { o.remove(); if (redraw) redraw(); } });
   cn.addEventListener('click', () => o.remove());
