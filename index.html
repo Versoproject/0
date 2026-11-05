@@ -7070,6 +7070,24 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-diss { max-width: 560px; width: calc(100vw - 28px); }   
   .zzz-media-diss-t { color: #D4AF37; font-weight: 800; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .zzz-media-diss-s { color: #9ca3af; font-size: 11px; margin-bottom: 6px; }
+  
+  .zzz-media-nowrow { display: flex; gap: 6px; align-items: stretch; margin-bottom: 6px; }
+  .zzz-media-nowrow > .zzz-media-now { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
+  .zzz-media-chipb { flex: 0 0 auto; padding: 2px 8px; min-height: 0; font-size: 11px; white-space: nowrap; }
+  .zzz-media-chipb.has { border-color: #D4AF37; background: #D4AF37; color: #000; }
+  .zzz-media-org { max-width: 420px; width: calc(100vw - 28px); max-height: 82vh; display: flex; flex-direction: column; }
+  .zzz-media-org-l { overflow-y: auto; max-height: 55vh; }
+  .zzz-media-org-r { display: flex; align-items: center; gap: 4px; padding: 4px 0; border-bottom: 1px solid #2a2a2a; }
+  .zzz-media-org-r .zzz-media-btn { padding: 2px 7px; min-height: 0; font-size: 11px; }
+  .zzz-media-org-r.is-cur { color: #D4AF37; }
+  .zzz-media-org-r.is-fm { cursor: pointer; padding: 7px 2px; }
+  .zzz-media-org-r.is-fm:active { background: #2a2a2a; }
+  .zzz-media-org-n { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .zzz-media-org-t { color: #9ca3af; font-size: 11px; white-space: nowrap; }
+  .zzz-media-org-tab { color: #D4AF37; font-size: 10px; font-weight: 800; white-space: nowrap; }
+  .zzz-media-org-i { width: 22px; text-align: center; flex: 0 0 auto; }
+  .zzz-media-org-path { color: #D4AF37; font-size: 12px; font-weight: 700; margin: 2px 0 6px; }
+  .zzz-media-org-path > span { cursor: pointer; }
   .zzz-media-diss-l { max-height: 45vh; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; margin-bottom: 6px; }
   .zzz-media-diss-r { background: #222; border: 1px solid #3a3a3a; border-radius: 8px; padding: 5px 7px; color: #eee; font-size: 13px; }
   .zzz-media-diss-r b { color: #D4AF37; font-size: 12px; } .zzz-media-diss-r small { color: #888; font-size: 10px; }
@@ -48471,7 +48489,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-05 02:03';
+const VERSO_BUILD = '2026-11-05 02:27';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -51420,6 +51438,7 @@ function zzz_media_play_native(it, l) {
   const st = document.getElementById('zzzMediaStage'); if (st) st.querySelectorAll('video, iframe').forEach(x => x.remove());
   zzzMedia.cur = it; zzzMedia.nat = true; zzzMedia.natPlaying = true;
   zzz_media_hist_add(it);
+  zzz_media_chip_started(it);
   zzz_native_go(zzz_media_intent('media?i=' + i + '&q=' + zzz_media_b64(json)));
   zzz_media_paint(); zzz_media_kb_redraw();
 }
@@ -51545,6 +51564,7 @@ async function zzz_media_read_pull() {
 }
 
 function zzz_media_finished(it) {
+  zzz_media_chip_done(it);
   try { if (!it || !it.link || !zzz_media_me()) return; zzz_media_read_add(it.link); const line = it.id ? it : zzz_media_line(it); if (line && line.id && !line.seen) zzz_media_mark_read(line, true).then(() => zzz_media_redraw()); } catch (e) {}
 }
 async function zzz_media_mark_read(it, quiet) {
@@ -51558,6 +51578,198 @@ async function zzz_media_mark_read(it, quiet) {
   try { zzz_media_read_add(it.link); } catch (e) {}
   zzz6f2_show_toast('READ \u00b7 #' + it.num + ' ' + zzz_media_title(it), 'info');
   return true;
+}
+
+let zzzMediaChip = null, zzzMediaChipT = 0, zzzMediaChipTick = 0;
+function zzz_media_chip_get() {
+  const k = zzz_ukey('zzz_media_chip');
+  if (!zzzMediaChip || zzzMediaChip._k !== k) {
+    let o = {}; try { o = JSON.parse(localStorage.getItem(k) || '{}') || {}; } catch (e) { o = {}; }
+    if (!Array.isArray(o.slots)) o.slots = [];
+    zzzMediaChip = o; Object.defineProperty(zzzMediaChip, '_k', { value: k, enumerable: false, writable: true });
+  }
+  return zzzMediaChip;
+}
+function zzz_media_chip_save(now) {
+  const o = zzz_media_chip_get(); o.t = Date.now();
+  try { localStorage.setItem(o._k, JSON.stringify(o)); } catch (e) {}
+  clearTimeout(zzzMediaChipT);
+  zzzMediaChipT = setTimeout(async () => {
+    const u = typeof zzz_dev_me === 'function' ? zzz_dev_me() : '';
+    if (!u || typeof sb === 'undefined' || !sb) return;
+    try { const { error } = await sb.from('verso_user_settings').upsert({ username: u, runtime: 'web', module: 'media_chip', prefs: JSON.parse(JSON.stringify(o)) }, { onConflict: 'username,runtime,module' }); if (error) throw error; }
+    catch (e) { zzz_user_error('MEDIA CHIP is kept on this phone, but could not be saved for your account - check the connection.', e, '[Zzz14-B17:MEDIA-CHIP]'); }
+  }, now ? 50 : 4000);
+}
+async function zzz_media_chip_pull() {
+  const u = typeof zzz_dev_me === 'function' ? zzz_dev_me() : '';
+  if (!u || typeof sb === 'undefined' || !sb) return;
+  try {
+    const { data } = await sb.from('verso_user_settings').select('prefs').eq('username', u).eq('runtime', 'web').eq('module', 'media_chip').limit(1);
+    const p = data && data[0] && data[0].prefs;
+    const o = zzz_media_chip_get();
+    if (p && typeof p === 'object' && Number(p.t || 0) > Number(o.t || 0)) {
+      zzzMediaChip = Object.assign({ slots: [] }, p); Object.defineProperty(zzzMediaChip, '_k', { value: o._k, enumerable: false, writable: true });
+      if (!Array.isArray(zzzMediaChip.slots)) zzzMediaChip.slots = [];
+      try { localStorage.setItem(o._k, JSON.stringify(zzzMediaChip)); } catch (e) {}
+      zzz_media_chip_paint();
+    }
+  } catch (e) {}
+}
+function zzz_media_chip_item(it) { return { link: it.link, name: zzz_media_title(it), id: it.id || '', tag: it.tag || '' }; }
+function zzz_media_chip_time() {
+  try {
+    if (zzzMedia.nat) return null;
+    const v = document.querySelector('#zzzMediaStage video'); if (v && isFinite(v.currentTime)) return Math.floor(v.currentTime);
+    if (zzz_media_yt() && typeof zzzMedia.ytTime === 'number') return Math.floor(zzzMedia.ytTime);
+  } catch (e) {}
+  return null;
+}
+
+function zzz_media_chip_started(it) {
+  try {
+    if (!it || !it.link) return;
+    const o = zzz_media_chip_get();
+    if (!(o.cur && o.cur.link === it.link) && zzzMedia.tab !== 'ACTUAL' && !zzzMedia.chipResuming) { o.cur = Object.assign(zzz_media_chip_item(it), { pos: 0, tab: zzzMedia.tab, pls: zzzMedia.pls || '' }); zzz_media_chip_save(); }
+    zzzMedia.chipResuming = false;
+    clearInterval(zzzMediaChipTick);
+    zzzMediaChipTick = setInterval(() => {
+      const c = zzz_media_chip_get().cur;
+      if (!c || !zzzMedia.cur || zzzMedia.cur.link !== c.link) { clearInterval(zzzMediaChipTick); return; }
+      const t = zzz_media_chip_time(); if (t !== null && t > 0 && Math.abs(t - (c.pos || 0)) >= 5) { c.pos = t; zzz_media_chip_save(); zzz_media_chip_paint(); }
+    }, 5000);
+    zzz_media_chip_paint();
+  } catch (e) {}
+}
+function zzz_media_chip_done(it) {
+  try {
+    const o = zzz_media_chip_get(); let ch = false;
+    if (o.cur && it && o.cur.link === it.link) { o.cur = null; ch = true; }
+    const n = o.slots.length; o.slots = o.slots.filter(s => !(it && s.link === it.link)); if (o.slots.length !== n) ch = true;
+    if (ch) { zzz_media_chip_save(); zzz_media_chip_paint(); }
+  } catch (e) {}
+}
+function zzz_media_fmt_time(s) { s = Math.max(0, Math.floor(s || 0)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); }
+function zzz_media_chip_play(e, pos) {
+  if (!e || !e.link) return;
+  if (!document.getElementById('zzzMediaWin')) zzz_media_open();
+  const line = (zzzMedia.all || []).find(x => x.link === e.link) || { id: e.id || '', name: e.name, link: e.link, tag: e.tag || '' };
+  if (line.id && zzz_media_locked_now(line)) { zzz6f2_show_toast('🔒 PRIVATE - locked while QUIET is on.', 'info'); return; }
+  zzzMedia.chipResuming = true;
+  zzzMedia.chipStart = pos > 3 ? pos : 0;
+  zzz_media_play(line, [line]);
+  if (zzzMedia.nat && zzzMedia.chipStart) { const ms = zzzMedia.chipStart * 1000; setTimeout(() => zzz_media_nat_cmd('seek:' + ms), 1500); }
+  if (zzzMedia.chipStart) zzz6f2_show_toast('⏯ ' + zzz_media_title(line) + ' · from ' + zzz_media_fmt_time(zzzMedia.chipStart), 'info');
+}
+function zzz_media_chip_tap() {
+  const o = zzz_media_chip_get();
+  if (o.cur) { zzz_media_chip_play(o.cur, o.cur.pos || 0); return; }
+  if (o.slots.length) { zzz_media_chip_play(o.slots[0], 0); return; }
+  zzz6f2_show_toast('MEDIA CHIP is empty - hold it to fill NEXT UP.', 'info');
+}
+function zzz_media_chip_tab_of(it) {
+  if (zzzMedia.tab && zzzMedia.tab !== 'ACTUAL' && zzzMedia.tab !== 'TRASH') return zzzMedia.tab;
+  return ZZZ_MEDIA_TABS.find(t => t !== 'ACTUAL' && zzz_media_in_tab(it, t)) || 'ACTUAL';
+}
+function zzz_media_chip_pin(it, tab) {
+  if (!it || !it.link) return;
+  tab = tab || zzz_media_chip_tab_of(it);
+  const o = zzz_media_chip_get();
+  const s = Object.assign(zzz_media_chip_item(it), { tab });
+  const i = o.slots.findIndex(x => x.tab === tab);
+  if (i >= 0) o.slots[i] = s; else o.slots.push(s);
+  zzz_media_chip_save(true); zzz_media_chip_paint();
+  zzz6f2_show_toast('📌 MEDIA CHIP · ' + tab + ': ' + s.name, 'info');
+}
+function zzz_media_chip_paint() {
+  const o = zzzMediaChip || zzz_media_chip_get();
+  document.querySelectorAll('.zzz-media-chipb').forEach(b => {
+    b.textContent = '⏯ MEDIA' + (o.cur ? ' · ' + zzz_media_fmt_time(o.cur.pos || 0) : (o.slots.length ? ' · ' + o.slots.length : ''));
+    b.classList.toggle('has', !!(o.cur || o.slots.length));
+    b.title = o.cur ? 'Tap = back to „' + o.cur.name + '“ at ' + zzz_media_fmt_time(o.cur.pos || 0) + ' · hold = organizer' : 'Tap = NEXT UP · hold = organizer (one slot per tab)';
+  });
+  const og = document.getElementById('zzzMediaChipOrg'); if (og && og._paint) og._paint();
+}
+function zzz_media_chip_button() {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-btn zzz-media-chipb';
+  let ht = 0, held = false;
+  b.addEventListener('pointerdown', () => { held = false; clearTimeout(ht); ht = setTimeout(() => { held = true; try { navigator.vibrate && navigator.vibrate(20); } catch (e) {} zzz_media_chip_org(); }, 600); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => b.addEventListener(ev, () => clearTimeout(ht)));
+  b.addEventListener('click', (e) => { e.stopPropagation(); if (held) { held = false; return; } zzz_media_chip_tap(); });
+  b.addEventListener('contextmenu', (e) => e.preventDefault());
+  setTimeout(zzz_media_chip_paint, 0);
+  return b;
+}
+
+function zzz_media_chip_org() {
+  const old = document.getElementById('zzzMediaChipOrg'); if (old) old.remove();
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm'; o.id = 'zzzMediaChipOrg';
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzz-media-org';
+  o.appendChild(b); document.body.appendChild(o);
+  o.addEventListener('click', (ev) => { if (ev.target === o) o.remove(); });
+  let path = null;
+  const btn = (host, label, cls, fn, title) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn' + (cls ? ' ' + cls : ''); x.textContent = label; if (title) x.title = title; x.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); host.appendChild(x); return x; };
+  const line = (cls) => { const r = document.createElement('div'); r.className = 'zzz-media-org-r' + (cls ? ' ' + cls : ''); b.appendChild(r); return r; };
+  const txt = (host, t, cls) => { const s = document.createElement('span'); s.className = cls || 'zzz-media-org-n'; s.textContent = t; host.appendChild(s); return s; };
+  const paint = () => {
+    const c = zzz_media_chip_get();
+    b.innerHTML = '';
+    const t = document.createElement('div'); t.className = 'zzz-media-diss-t'; b.appendChild(t);
+    if (!path) {
+      t.textContent = '⏯ MEDIA CHIP · ORGANIZER';
+      const h1 = document.createElement('div'); h1.className = 'zzz-media-diss-s'; h1.textContent = 'RESUME'; b.appendChild(h1);
+      if (c.cur) {
+        const r = line('is-cur'); txt(r, (c.cur.tab ? c.cur.tab + ' · ' : '') + c.cur.name);
+        txt(r, zzz_media_fmt_time(c.cur.pos || 0), 'zzz-media-org-t');
+        btn(r, '▶︎', 'is-on', () => { o.remove(); zzz_media_chip_play(c.cur, c.cur.pos || 0); }, 'Play from here');
+        btn(r, '✕', '', () => { c.cur = null; zzz_media_chip_save(true); zzz_media_chip_paint(); }, 'Forget');
+      } else { const e = document.createElement('div'); e.className = 'zzz-media-empty'; e.textContent = 'Nothing half-played - what you play outside ACTUAL waits here.'; b.appendChild(e); }
+      const h2 = document.createElement('div'); h2.className = 'zzz-media-diss-s'; h2.textContent = 'NEXT UP · one slot per tab'; b.appendChild(h2);
+      if (!c.slots.length) { const e = document.createElement('div'); e.className = 'zzz-media-empty'; e.textContent = 'Empty - + ADD, or 📌 CHIP in the LATER window of a row (swipe left).'; b.appendChild(e); }
+      c.slots.forEach((s, i) => {
+        const r = line(); txt(r, (i + 1) + '. ' + s.tab, 'zzz-media-org-tab'); txt(r, s.name);
+        btn(r, '▶︎', '', () => { o.remove(); zzz_media_chip_play(s, 0); }, 'Play');
+        btn(r, '↑', '', () => { if (i > 0) { c.slots.splice(i - 1, 0, c.slots.splice(i, 1)[0]); zzz_media_chip_save(true); zzz_media_chip_paint(); } }, 'Earlier');
+        btn(r, '↓', '', () => { if (i < c.slots.length - 1) { c.slots.splice(i + 1, 0, c.slots.splice(i, 1)[0]); zzz_media_chip_save(true); zzz_media_chip_paint(); } }, 'Later');
+        btn(r, '✕', '', () => { c.slots.splice(i, 1); zzz_media_chip_save(true); zzz_media_chip_paint(); }, 'Remove from NEXT UP');
+      });
+      const rb = document.createElement('div'); rb.className = 'zzz-media-confirm-row'; b.appendChild(rb);
+      btn(rb, '+ ADD', 'is-on', () => { path = { tab: '', pls: '' }; paint(); }, 'Browse your media like folders');
+      btn(rb, 'CLOSE', '', () => o.remove());
+      return;
+    }
+
+    const crumbs = document.createElement('div'); crumbs.className = 'zzz-media-org-path'; b.appendChild(crumbs);
+    const crumb = (label, fn) => { const x = document.createElement('span'); x.textContent = label; x.addEventListener('click', fn); crumbs.appendChild(x); };
+    t.textContent = '+ ADD TO NEXT UP';
+    crumb('MEDIA', () => { path = { tab: '', pls: '' }; paint(); });
+    if (path.tab) crumb(' › ' + path.tab, () => { path.pls = ''; paint(); });
+    if (path.pls) crumb(' › 📂 ' + path.pls, () => {});
+    const list = document.createElement('div'); list.className = 'zzz-media-org-l'; b.appendChild(list);
+    const all = (zzzMedia.all || []).filter(x => x.link && !x.plsDef && !zzz_media_tagw(x.tags).includes('trash') && !zzz_media_locked_now(x));
+    const row = (icon, name, meta, fn, cls) => { const r = document.createElement('div'); r.className = 'zzz-media-org-r is-fm' + (cls ? ' ' + cls : ''); txt(r, icon, 'zzz-media-org-i'); txt(r, name); if (meta) txt(r, meta, 'zzz-media-org-t'); r.addEventListener('click', fn); list.appendChild(r); return r; };
+    if (!path.tab) {
+      ZZZ_MEDIA_TABS.filter(tb => tb !== 'ACTUAL' && !(tb === 'PRIVATE' && zzz_media_quiet())).forEach(tb => {
+        const n = all.filter(x => zzz_media_in_tab(x, tb)).length;
+        const has = zzz_media_chip_get().slots.find(s => s.tab === tb);
+        row('📁', tb, n + (has ? ' · 📌' : ''), () => { path = { tab: tb, pls: '' }; paint(); });
+      });
+    } else {
+      let its = all.filter(x => zzz_media_in_tab(x, path.tab));
+      if (!path.pls) {
+        const pls = new Map(); its.forEach(x => (x.pls || []).forEach(p => { const k = String(p).toLowerCase(); if (!pls.has(k)) pls.set(k, { name: p, n: 0 }); pls.get(k).n++; }));
+        Array.from(pls.values()).forEach(p => row('📂', p.name, String(p.n), () => { path.pls = p.name; paint(); }, 'is-folder'));
+        its = its.filter(x => !(x.pls || []).length);
+      } else its = its.filter(x => (x.pls || []).some(p => String(p).toLowerCase() === path.pls.toLowerCase()));
+      if (!its.length && !list.children.length) { const e = document.createElement('div'); e.className = 'zzz-media-empty'; e.textContent = 'Nothing here.'; list.appendChild(e); }
+      its.forEach(x => row(x.seen ? '✓' : '🎵', zzz_media_title(x), '', () => { zzz_media_chip_pin(x, path.tab); path = null; paint(); }));
+    }
+    const rb = document.createElement('div'); rb.className = 'zzz-media-confirm-row'; b.appendChild(rb);
+    btn(rb, '← BACK', '', () => { if (path.pls) path.pls = ''; else if (path.tab) path.tab = ''; else path = null; paint(); });
+    btn(rb, 'CLOSE', '', () => o.remove());
+  };
+  o._paint = paint;
+  paint();
 }
 
 function zzz_media_shift_pick(it, done) {
@@ -51584,6 +51796,9 @@ function zzz_media_shift_pick(it, done) {
     zzz5w8_open_item_window(null, 'reminder', null, { kind: 'reminder', entry_id: ent ? Number(ent) : null, title: ('MEDIA · ' + zzz_media_title(it) + (/^https?:/i.test(it.link || '') ? ' · ' + it.link : '')).slice(0, 500), priority: 'open', note_id: it.id ? Number(it.id) : null });
   } catch (e) { zzz_user_error('ALARM could not open - try again.', e, '[Zzz14-B17:MEDIA-SHIFT-ALARM]'); } });
   row.appendChild(al);
+
+  const pin = document.createElement('button'); pin.type = 'button'; pin.className = 'zzz-media-btn'; pin.textContent = '\uD83D\uDCCC CHIP';
+  pin.addEventListener('click', () => { o.remove(); zzz_media_chip_pin(it); }); row.appendChild(pin);
   const c = document.createElement('button'); c.type = 'button'; c.className = 'zzz-media-btn'; c.textContent = 'CANCEL'; c.addEventListener('click', () => o.remove()); row.appendChild(c);
   b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
 }
@@ -51696,6 +51911,7 @@ async function zzz_media_load() {
   zzzMedia.loadedOf = zzz_media_me();
   zzz_media_order_pull();
   zzz_media_read_pull();
+  zzz_media_chip_pull();
   const e = await zzz_media_entry(false);
   if (!e) { zzzMedia.all = []; zzzMedia.list = []; return; }
   try {
@@ -52178,7 +52394,10 @@ function zzz_media_play(it, queue) {
   st.querySelectorAll('video, iframe').forEach(x => x.remove());
   zzzMedia.cur = it;
   zzz_media_hist_add(it);
-  const emb = off ? '' : zzz_media_embed(it.link);
+  zzz_media_chip_started(it);
+  const chipAt = zzzMedia.chipStart || 0; zzzMedia.chipStart = 0;
+  let emb = off ? '' : zzz_media_embed(it.link);
+  if (emb && chipAt && /youtube/.test(emb)) emb += '&start=' + chipAt;
 
   zzz_media_ext_mark(st, off ? '' : it.link);
   if (emb) {
@@ -52196,6 +52415,7 @@ function zzz_media_play(it, queue) {
     if (off || /^verso-file:/.test(it.link)) {
       zzz_media_file_get(it.link).then(b => { if (!b) { zzz_media_next(1, true, true); return; } v.src = URL.createObjectURL(b); try { const pr = v.play(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} });
     } else v.src = it.link;
+    if (chipAt) v.addEventListener('loadedmetadata', () => { try { if (chipAt < (v.duration || 1e9) - 2) v.currentTime = chipAt; } catch (e) {} }, { once: true });
     v.addEventListener('ended', () => { zzz_media_finished(it); zzz_media_next(1, true); });
     v.addEventListener('error', () => zzz_media_next(1, true, true));
     v.addEventListener('playing', () => { zzzMedia.skips = 0; zzz_media_paint(); });
@@ -52391,7 +52611,8 @@ async function zzz_media_open() {
   const hr = document.createElement('span'); hr.className = 'zzz-media-head-r'; hr.append(modeB, x);
   head.append(ttl, hr); w.appendChild(head);
   try { const vl = zzz_vi_line_el(); if (vl) w.appendChild(vl); } catch (e) {}
-  const nowL = document.createElement('div'); nowL.className = 'zzz-media-now'; w.appendChild(nowL);
+  const nowL = document.createElement('div'); nowL.className = 'zzz-media-now';
+  { const nr = document.createElement('div'); nr.className = 'zzz-media-nowrow'; nr.append(zzz_media_chip_button(), nowL); w.appendChild(nr); }
   const slot = document.createElement('div'); slot.className = 'zzz-media-slot'; w.appendChild(slot);
 
   { let last = ''; const iv = setInterval(() => {
@@ -52728,6 +52949,11 @@ function zzz_media_hash() {
   const h = String(location.hash || '');
 
   try { if (/^#media/i.test(h) && !zzzMediaFromOutside && zzz_from_outside(false)) { zzzMediaFromOutside = true; zzz_outside_back_arm(); } } catch (e) {}
+  if (/^#media-chip$/i.test(h)) {
+    try { history.replaceState(null, '', location.pathname + location.search + '#media'); } catch (e) {}
+    const go = () => { if (!zzz_media_me()) { setTimeout(go, 1000); return; } if (!document.getElementById('zzzMediaWin')) zzz_media_open(); setTimeout(zzz_media_chip_tap, 600); };
+    go(); return;
+  }
   const files = h.match(/^#media-files=([A-Za-z0-9_-]+)$/);
   if (files) { try { history.replaceState(null, '', location.pathname + location.search + '#media'); } catch (e) {} if (!document.getElementById('zzzMediaWin')) zzz_media_open(); zzz_media_files_in(files[1]); return; }
   const filed = h.match(/^#media-filed=([A-Za-z0-9_-]+)$/);
@@ -54329,7 +54555,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 217;
+const ZZZ14B17_APP_LATEST = 218;
 function zzz14b17_app_code() {
 
   try {
