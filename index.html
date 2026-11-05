@@ -10743,6 +10743,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-star { touch-action: none; }
   
   .zzz-media-dc.has-ring { position: relative; padding: 0 !important; touch-action: none; }
+  .zzz-media-rowheart { color: #ef4444; font-size: 13px; margin-right: 2px; cursor: pointer; padding: 0 2px; }   
+  .zzz-media-rowheart.is-on { text-shadow: 0 0 4px rgba(239,68,68,.6); }
   .zzz-media-dc.has-ring.is-open::after { content: '\1F310'; position: absolute; left: 1px; bottom: 0; font-size: 8px; }   
   .zzz-dring { position: relative; width: 34px; height: 30px; margin: 0 auto; display: block; pointer-events: none; }
   .zzz-dring > i { position: absolute; font-style: normal; font-size: 8px; line-height: 1; color: #d4d4d4; transform: translate(-50%, -50%); }
@@ -48687,7 +48689,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-05 23:18';
+const VERSO_BUILD = '2026-11-05 23:26';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -52853,8 +52855,11 @@ function zzz_media_tablist_raw() {
   const base = zzzMedia.list.filter(x => zzz_media_mode_fits(x));
   if (zzzMedia.tab === 'ACTUAL') return zzz_media_actual_of(base);
   const l = base.filter(x => zzz_media_in_tab(x, zzzMedia.tab));
-  if (zzzMedia.view === 'fav' && zzzMedia.tab !== 'TRASH') return l.filter(x => zzz_media_tagw(x.tags).indexOf('fav') >= 0);
-  return zzzMedia.pls ? l.filter(x => x.pls.some(p => p.toLowerCase() === zzzMedia.pls.toLowerCase())) : l;
+
+  const inPl = (x) => x.pls.some(p => p.toLowerCase() === String(zzzMedia.pls).toLowerCase());
+  if (zzzMedia.view === 'fav') return l.filter(x => (!zzzMedia.pls || inPl(x)) && zzz_media_tagw(x.tags).indexOf('fav') >= 0);
+  if (zzzMedia.view === 'pls') return zzzMedia.pls ? l.filter(inPl) : l;
+  return l;
 }
 function zzz_media_actual_of(base) {
   {
@@ -53576,7 +53581,7 @@ async function zzz_media_open() {
 
   const viewB = document.createElement('button'); viewB.type = 'button'; viewB.className = 'zzz-media-btn zzz-media-view';
 
-  viewB.addEventListener('click', () => { zzzMedia.view = zzzMedia.view === 'rows' || !zzzMedia.view ? 'pls' : zzzMedia.view === 'pls' ? 'fav' : 'rows'; zzzMedia.pls = ''; draw(); });
+  viewB.addEventListener('click', () => { zzzMedia.view = zzzMedia.view === 'rows' || !zzzMedia.view ? 'pls' : zzzMedia.view === 'pls' ? 'fav' : 'rows'; draw(); });
   const selB = document.createElement('button'); selB.type = 'button'; selB.className = 'zzz-media-btn'; selB.textContent = 'SELECT';
   const delB = document.createElement('button'); delB.type = 'button'; delB.className = 'zzz-media-btn'; delB.textContent = 'DELETE';
 
@@ -53630,10 +53635,10 @@ async function zzz_media_open() {
     const lhd = document.createElement('div'); lhd.className = 'zzz-media-listhead';
     const lt = document.createElement('div'); lt.className = 'zzz-media-sub';
 
-    const inPl = !!zzzMedia.pls, tabL = zzz_media_tab_label(zzzMedia.tab), viewL = plsView || inPl ? 'PLAYLISTS' : favView ? '\u2665 FAVS' : 'MEDIA';
+    const inPl = !!zzzMedia.pls && (plsView || favView), tabL = zzz_media_tab_label(zzzMedia.tab);
     lt.textContent = trashTab ? 'TRASH · tap = restore'
-      : (inPl ? '\u2190 ' : '') + '\uD83D\uDCC2 ' + tabL + ' \u203a ' + viewL + (inPl ? ' \u203a ' + zzzMedia.pls.toUpperCase() : '')
-        + (actual ? ' \u00b7 \u2192 read \u00b7 \u2190 later' : favView ? ' \u00b7 \u2190 later = \u2665 FAV' : '');
+      : (inPl ? '\u2190 ' : '') + '\uD83D\uDCC2 ' + tabL + ' \u203a ' + (inPl ? zzzMedia.pls.toUpperCase() : plsView ? 'PLAYLISTS' : favView ? 'ALL' : 'MEDIA')
+        + (favView ? ' \u203a \u2665 FAVS' : '') + (actual ? ' \u00b7 \u2192 read \u00b7 \u2190 later' : '');
     if (inPl) { lt.style.cursor = 'pointer'; lt.addEventListener('click', () => { zzzMedia.pls = ''; draw(); }); }
     lhd.append(lt, tools); list.appendChild(lhd);
 
@@ -53684,7 +53689,7 @@ async function zzz_media_open() {
 
     if (zzzMedia.minStar && !trashTab) { zzz_stars_want(l.map(x => x.id).filter(x => x != null)); l = l.filter(x => x.id != null && zzz_stars_avg(x.id) >= zzzMedia.minStar); }
 
-    if (!actual && !trashTab && !zzzMedia.pls && !(zzzMedia.tagFilter && zzzMedia.tagFilter.size)) {
+    if (!actual && !trashTab && !plsView && !favView && !(zzzMedia.tagFilter && zzzMedia.tagFilter.size)) {
       const pls = zzz_media_playlists().filter(pl => pl.items.length || pl.link);
       pls.forEach(pl => {
         const r = document.createElement('div'); r.className = 'zzz-media-row is-folder is-gold'; r.dataset.feedPls = pl.name;
@@ -53695,11 +53700,11 @@ async function zzz_media_open() {
 
         { const def = (zzzMedia.plsDefs || []).find(d => d.plsDef.toLowerCase() === pl.name.toLowerCase()); const target = def || pl.items[0];
           if (target) zzz_media_bind_swipe(r, Object.assign({}, target, { name: '\uD83D\uDCC2 ' + pl.name }), draw); }
-        r.addEventListener('click', () => { if (r._zzzSwiped) return; zzzMedia.pls = pl.name; draw(); });
+        r.addEventListener('click', () => { if (r._zzzSwiped) return; zzzMedia.pls = pl.name; zzzMedia.view = 'pls'; draw(); });
         pb.addEventListener('click', (e) => { e.stopPropagation(); const its = pl.items.filter(x => !zzz_media_locked_now(x)); if (pl.link) zzz_media_play({ id: '', name: pl.name, link: pl.link, tag: 'PLAYLIST' }, []); else if (its.length) zzz_media_play(its[0], its); });
         list.appendChild(r);
       });
-      if (pls.length) l = l.filter(x => !x.pls.length);
+
     }
     if (!l.length) { const e = document.createElement('div'); e.className = 'zzz-media-empty'; e.textContent = actual ? 'Nothing played yet - what you play shows here.' : 'Nothing here yet - paste a link + ADD.'; list.appendChild(e); }
     l.forEach(it => {
@@ -53713,7 +53718,14 @@ async function zzz_media_open() {
       r.title = 'Swipe right = READ (stays) · swipe left = SHIFTED (later) · hold + drag = move · 2× tap NAME / TAGS = name, tags, file';
 
       { const priv = zzz_media_locked(it); const fc = cell(r, (priv ? (lockedNow ? '\uD83D\uDD12' : '\uD83D\uDD13') : '\uD83C\uDF10') + (it.num ? String(it.num) : '-'));
-        if (priv) fc.title = lockedNow ? 'PRIVATE - locked (SAFETY REGIME on)' : 'PRIVATE - unlocked (SAFETY REGIME off)'; }
+        if (priv) fc.title = lockedNow ? 'PRIVATE - locked (SAFETY REGIME on)' : 'PRIVATE - unlocked (SAFETY REGIME off)';
+
+        if (it.id && !trashTab) { const fav = zzz_media_tagw(it.tags).indexOf('fav') >= 0; const hb = document.createElement('span'); hb.className = 'zzz-media-rowheart' + (fav ? ' is-on' : ''); hb.textContent = fav ? '\u2665' : '\u2661';
+          hb.title = fav ? '♥ - tap = off' : 'Tap = ♥ (for ♥ FAVS)';
+          hb.addEventListener('pointerdown', (e) => e.stopPropagation());
+          hb.addEventListener('click', async (e) => { e.stopPropagation(); zzz_haptic_pulse(10); const w = zzz_media_tagw(it.tags).filter(t => t !== 'fav'); if (!fav) w.push('fav');
+            if (await zzz_media_set_tags(it, w)) draw(); });
+          fc.prepend(hb); } }
 
       { const nd = it.num && zzzMedia.diss && zzzMedia.diss[it.num] ? zzzMedia.diss[it.num].length : 0;
 
