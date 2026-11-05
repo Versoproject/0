@@ -7182,8 +7182,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-row.is-locked > div { background: #e5e5e5 !important; color: #9a9a9a !important; border-color: #bdbdbd !important; }
   .zzz-media-row.is-folder > div { background: #fff7d6; font-weight: 700; }
   .zzz-media-row:not(.is-lab) { touch-action: pan-y; }   
-  .zzz-media-row .zzz-media-name-inp { width: 100%; border: none; background: transparent; font: inherit; color: #111; padding: 0; outline: none; }
-  .zzz-media-row .zzz-media-dc { font-size: 9px; padding: 4px 2px; }
+    .zzz-media-row .zzz-media-dc { font-size: 9px; padding: 4px 2px; }
   .zzz-media-elc { padding: 1px 6px; min-height: 0; font-size: 10px; margin-left: 6px; vertical-align: middle; }   
   .zzz-media-row > .zzz-media-elcell { padding: 0 !important; border: 0 !important; background: none !important; display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .zzz-media-row .zzz-media-elc { margin: 0; padding: 2px 2px; font-size: 9px; width: 100%; letter-spacing: -.3px; }
@@ -48544,7 +48543,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-05 13:55';
+const VERSO_BUILD = '2026-11-05 13:59';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -52186,6 +52185,7 @@ function zzz_media_bind_swipe(el, it, redraw) {
   el.addEventListener('pointerdown', (e) => { if (e.button > 0 || (e.target.closest && e.target.closest('.zzz-media-pl, .zzz-media-fb'))) return; x0 = e.clientX; y0 = e.clientY; dx = 0; moved = false; pid = e.pointerId; });
   el.addEventListener('pointermove', (e) => {
     if (x0 === null || e.pointerId !== pid) return;
+    if (el._zzzDrag) { x0 = null; el.style.transform = ''; el.classList.remove('is-sw-keep', 'is-sw-shift'); try { zzz3sw_label_hide(); } catch (_) {} return; }
     dx = e.clientX - x0;
     if (!moved && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(e.clientY - y0) * 1.5) { moved = true; try { el.setPointerCapture(pid); } catch (_) {} }
     if (!moved) return;
@@ -52290,6 +52290,38 @@ function zzz_media_bind_drag(cellEl, r, it, l, redraw) {
     };
     cellEl.addEventListener('pointermove', move); cellEl.addEventListener('pointerup', up); cellEl.addEventListener('pointercancel', up);
   });
+}
+
+function zzz_media_bind_rowdrag(r, it, redraw) {
+  if (!it.id) return;
+  let arm = 0, armed = false, y0 = 0, x0 = 0, dy = 0, top0 = 0;
+  const reset = () => { clearTimeout(arm); armed = false; r._zzzDrag = false; r.style.transform = ''; r.classList.remove('is-drag'); };
+  r.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1 || (e.target.closest && e.target.closest('.zzz-media-pl, .zzz-media-fb'))) return;
+    y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; dy = 0; armed = false;
+    clearTimeout(arm); arm = setTimeout(() => { armed = true; r._zzzDrag = true; top0 = r.getBoundingClientRect().top; try { zzz_haptic_pulse(25); } catch (x) {} r.classList.add('is-drag'); }, 450);
+  }, { passive: true });
+  r.addEventListener('touchmove', (e) => {
+    const t = e.touches[0]; if (!t) return;
+    if (!armed) { if (Math.abs(t.clientY - y0) > 10 || Math.abs(t.clientX - x0) > 10) clearTimeout(arm); return; }
+    if (e.cancelable) e.preventDefault();
+    dy = t.clientY - y0; r.style.transform = 'translateY(' + dy + 'px)';
+  }, { passive: false });
+  const end = () => {
+    clearTimeout(arm);
+    if (!armed) return;
+    const list = r.parentNode; const rows = list ? Array.from(list.querySelectorAll('.zzz-media-row[data-mid]')) : [];
+    const mid = top0 + r.offsetHeight / 2 + dy;
+    reset(); r._zzzSwiped = true; setTimeout(() => { r._zzzSwiped = false; }, 400);
+    if (Math.abs(dy) < 8 || !rows.length) return;
+    const order = rows.map(x => x.dataset.mid).filter(x => x !== String(it.id));
+    let at = order.length;
+    for (let i = 0; i < order.length; i++) { const el = rows.find(x => x.dataset.mid === order[i]); const b = el.getBoundingClientRect(); if (mid < b.top + b.height / 2) { at = i; break; } }
+    order.splice(at, 0, String(it.id));
+    zzz_media_order_save(zzz_media_okey(), order);
+    redraw();
+  };
+  r.addEventListener('touchend', end); r.addEventListener('touchcancel', () => { clearTimeout(arm); reset(); });
 }
 
 function zzz_media_tablist() {
@@ -52895,7 +52927,7 @@ async function zzz_media_open() {
       if (it.link) r.dataset.link = it.link;
       if (it.id) r.dataset.mid = String(it.id);
       zzz_media_bind_swipe(r, it, draw);
-      r.title = 'Swipe right = READ (stays) · swipe left = SHIFTED (later) · tap NAME = name · 2× tap TAGS = tags / file';
+      r.title = 'Swipe right = READ (stays) · swipe left = SHIFTED (later) · hold + drag = move · 2× tap NAME / TAGS = name, tags, file';
 
       { const priv = zzz_media_locked(it); const fc = cell(r, (priv ? (lockedNow ? '\uD83D\uDD12' : '\uD83D\uDD13') : '\uD83C\uDF10') + (it.num ? String(it.num) : '-'));
         if (priv) fc.title = lockedNow ? 'PRIVATE - locked (SAFETY REGIME on)' : 'PRIVATE - unlocked (SAFETY REGIME off)'; }
@@ -52903,16 +52935,14 @@ async function zzz_media_open() {
       { const nd = it.num && zzzMedia.diss && zzzMedia.diss[it.num] ? zzzMedia.diss[it.num].length : 0;
 
         const nc = cell(r, it.name || zzz_media_link_name(it.link) || '-');
-        if (it.id && !trashTab && zzz_media_is_owner(it)) { nc.title = 'Tap = write the name'; nc.addEventListener('click', (e) => { e.stopPropagation(); if (r._zzzSwiped || nc.querySelector('input')) return;
-          const inp = document.createElement('input'); inp.type = 'text'; inp.maxLength = 60; inp.value = it.name || ''; inp.placeholder = zzz_media_link_name(it.link) || 'name';
-          inp.className = 'zzz-media-name-inp'; inp.setAttribute('enterkeyhint', 'done'); nc.textContent = ''; nc.appendChild(inp); setTimeout(() => { try { inp.focus(); } catch (x) {} }, 20);
-          let done = false; const save = async () => { if (done) return; done = true; const v = inp.value.trim(); if (v !== (it.name || '')) await zzz_media_set_tags(it, zzz_media_tagw(it.tags), v); draw(); };
-          inp.addEventListener('click', (x) => x.stopPropagation()); inp.addEventListener('keydown', (x) => { if (x.key === 'Enter') { x.preventDefault(); save(); } if (x.key === 'Escape') { done = true; draw(); } }); inp.addEventListener('blur', save); }); } }
+
+        if (it.id && !trashTab) { nc.title = '2× tap = name / tags / file'; let n1 = 0;
+          nc.addEventListener('click', (e) => { e.stopPropagation(); if (r._zzzSwiped) return; const now = Date.now(); if (now - n1 < 400) { n1 = 0; zzz_media_edit(it, draw); } else { n1 = now; } }); } }
 
       { const tc = cell(r, zzz_media_tags_shown(it) || '-'); if (it.id && !trashTab) { tc.title = '2× tap = tags / info'; let t1 = 0;
         tc.addEventListener('click', (e) => { e.stopPropagation(); if (r._zzzSwiped) return; const now = Date.now(); if (now - t1 < 400) { t1 = 0; zzz_media_edit(it, draw); } else { t1 = now; } }); } }
 
-      if (!trashTab && !zzzMedia.selecting) zzz_media_bind_drag(r.firstChild, r, it, l, draw);
+      if (!trashTab && !zzzMedia.selecting) { zzz_media_bind_drag(r.firstChild, r, it, l, draw); zzz_media_bind_rowdrag(r, it, draw); }
       const pb = cell(r, lockedNow ? '\uD83D\uDD12' : '▶︎'); pb.className = 'zzz-media-pl';
 
       const hasFile = /^verso-file:/.test(it.link || '') || zzzMediaFiles.has(it.link);
