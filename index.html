@@ -8421,6 +8421,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz10-0:TAB-NAMES</span>
   <span class="module-tag">Zzz10-R4:ACCOUNT-NAME</span>
   <span class="module-tag">Zzz14-CS:HANDLE-EVERYWHERE</span>
+  <span class="module-tag">Zzz6-F48:PRESET-3S-EMPTY</span>
   <span class="module-tag">Zzz10-M5:VERSO-GATE</span>
   <span class="module-tag">Zzz10-M5:RECOVERY</span>
   <span class="module-tag">Zzz10-M5:ONLINE-RECOVERY</span>
@@ -22900,16 +22901,27 @@ function zzz6f48_apply_mini_visibility() {
 
 const ZZZ6F48_BACKUP_KEY = 'zzz6f48_mini_hidden_backup';
 
+// === [Zzz6-F48:PRESET-3S-EMPTY] Vrso 2026-11-07, doslovne: "podrz preset v crm co ukazuje definovane bunky... ma 3s podrzanim
+// ukazat definovane a opacne... na hlavnej stranke ti ide resp. celkovo". Gesto fungovalo, ale ked bol ulozeny MINI vyber
+// PRAZDNY (nic skryte), 3s prepinalo "ukaz vsetko" <-> "obnov prazdny MINI" - obrazovka sa vobec nezmenila. Teraz sa prazdny
+// MINI vyber nahradi predvolenym (vsetky nepevne bunky skryte), takze 3s vzdy viditelne prepne. | Vrso -> Claude AI | 2026-11-07 ===
+function zzz6f48_default_mini() { return zzz6f48_get_crm_fields().map(f => f.wrap); }
 function zzz6f48_reset_all() {
   const backupRaw = localStorage.getItem(ZZZ6F48_BACKUP_KEY);
+  let backup = null;
+  try { backup = backupRaw !== null ? JSON.parse(backupRaw) : null; } catch (e) { backup = null; }
   if (backupRaw !== null) {
-
-    localStorage.setItem(ZZZ6F48_STORAGE_KEY, backupRaw);
+    const restore = (Array.isArray(backup) && backup.length) ? backup : zzz6f48_default_mini();
+    zzz6f48_save_hidden_wraps(restore);
     localStorage.removeItem(ZZZ6F48_BACKUP_KEY);
     zzz6f48_apply_mini_visibility();
     zzz6f2_show_toast('MINI settings restored');
+  } else if (!zzz6f48_get_hidden_wraps().length) {
+    // MINI je prazdny = uz sa ukazuje vsetko -> prepni na predvoleny MINI (inak by sa nic nezmenilo)
+    zzz6f48_save_hidden_wraps(zzz6f48_default_mini());
+    zzz6f48_apply_mini_visibility();
+    zzz6f2_show_toast('MINI settings restored (default - only the main cells)');
   } else {
-
     localStorage.setItem(ZZZ6F48_BACKUP_KEY, JSON.stringify(zzz6f48_get_hidden_wraps()));
     zzz6f48_save_hidden_wraps([]);
     zzz6f48_apply_mini_visibility();
@@ -49105,7 +49117,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-07 14:45';
+const VERSO_BUILD = '2026-11-07 14:55';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
