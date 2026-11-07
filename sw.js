@@ -57,9 +57,7 @@ async function versoSwTarget(web, netBuild) {
   if (web.stable && web.build === netBuild && web.stable !== netBuild && !(web.stableAfter && Date.now() >= Date.parse(web.stableAfter))) return web.stable;
   return '';
 }
-// [Zzz-UPD:PROGRESS] Vrso 2026-11-07: novu verziu stiahla este stara stranka (s postupom na retazi) a ulozila ju do
-// 'verso-prefetch'. Pri reloade sa pouzije hned (max 3 min stara, jednorazovo) - ziadne druhe stahovanie, ziadna cierna
-// obrazovka. Dalej ide rovnaka logika ako pri sieti (stable/beta, bad build). | Vrso -> Claude AI | 2026-11-07
+
 async function versoSwTakePrefetch() {
   try {
     const c = await caches.open('verso-prefetch');
