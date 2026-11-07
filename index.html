@@ -8418,6 +8418,17 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz6-X:VERSO-ENTRY-DEFAULTS</span>
   <span class="module-tag">Zzz10-R2</span>
   <span class="module-tag">Zzz10-M2</span>
+  <span class="module-tag">Zzz10-0:TAB-NAMES</span>
+  <span class="module-tag">Zzz10-M5:VERSO-GATE</span>
+  <span class="module-tag">Zzz10-M5:RECOVERY</span>
+  <span class="module-tag">Zzz10-M5:ONLINE-RECOVERY</span>
+  <span class="module-tag">Zzz10-M5:USB-RECOVERY</span>
+  <span class="module-tag">Zzz10-M5:HYBRID-RECOVERY</span>
+  <span class="module-tag">Zzz10-M5:EXT-APP-LOGIN</span>
+  <span class="module-tag">Zzz10-M5:CONNECTED-APPS</span>
+  <span class="module-tag">Zzz10-M5:SECURITY-INFO</span>
+  <span class="module-tag">Zzz10-M5:PASSIVE-SECURITY-BOT</span>
+  <span class="module-tag">Zzz6-F3:HASH-CHAIN</span>
   <span class="module-tag">Zzz6-F36</span>
   <span class="module-tag">Zzz10-R1</span>
   <span class="module-tag">Zzz10-0</span>
@@ -47354,10 +47365,12 @@ async function zzz5t0_run_filter_search(isRetry = false) {
 })();
 
 const ZZZ10_0_TABS = [
-  { key: 'advanced-settings', label: 'Advanced Settings' },
+  // [Zzz10-0:TAB-NAMES] Vrso 2026-11-07: "v settings su uz iba setup a advanced setup. ak nie tak zapracuj nazvy tabov" -
+  // premenovane len popisky (kluce ostavaju, aby fungovali odkazy #settings=... a ulozeny stav) | Vrso -> Claude AI | 2026-11-07
+  { key: 'advanced-settings', label: 'Advanced setup' },
   { key: 'multi-verification', label: 'Multi Verification' },
   { key: 'restore', label: 'Restore' },
-  { key: 'settings', label: 'Settings' },
+  { key: 'settings', label: 'Setup' },
   { key: 'login-setup', label: 'Login setup' },
   { key: 'archive', label: 'Archive' },
 ];
@@ -47380,6 +47393,385 @@ function zzz_settings_hash() {
 }
 window.addEventListener('hashchange', zzz_settings_hash);
 document.addEventListener('DOMContentLoaded', () => setTimeout(zzz_settings_hash, 1500));
+// === [Zzz10-M5:VERSO-GATE] + [Zzz10-M5:RECOVERY] ADVANCED SETUP - brana Versa, recovery a bezpecnost na jednom mieste.
+// Vrso 2026-11-07, doslovne: "tuto cast nazvi recovery a vsetky budu v advanced settings pod recovery buttonom. kvazi aj
+// proces cize ostatne nastavenie si v advanced tak nastav, ako chces ohladom celeho verso nate alebo zasadnych bezpecnostnych
+// nastaveni... neskor settings zreorganizujem len pre info cize zatial len nech tam je co treba... aby som sa aspon vyznal
+// co k comu patri" a "v settings su uz iba setup a advanced setup. ak nie tak zapracuj nazvy tabov".
+// Obsah taba Advanced setup (zzz10m5_render_advanced_setup):
+//   [Zzz10-M5:RECOVERY]          tlacidlo RECOVERY -> kontextove okno s procesom obnovy uctu v troch cestach:
+//     [Zzz10-M5:ONLINE-RECOVERY]  e-mail + MV fraza - AKTIVNE (pouziva existujuci zzz_render_account_recovery, nic nove).
+//                                 Vrso: "online recovery bude zatial email...asi dost dlho lebo sa email znacne pouziva"
+//     [Zzz10-M5:USB-RECOVERY]     USB / NFC bezpecnostny kluc (FIDO2) - PRIPRAVENE: da sa pridat a odobrat, na obnovu sa este
+//                                 nepouziva. Vrso: "usb ako cisto offline recovery ale nechaj v settings odkial sa bude dat
+//                                 nahrat... nepotrebujem to realne este tak pouzivat"
+//     [Zzz10-M5:HYBRID-RECOVERY]  Verso telefonicke overovanie - LEN MIESTO, este bez technickeho riesenia. Vrso: "hybrid
+//                                 recovery bude verso telefonicke overovanie. tiez len pripravme v nastaveniach"
+//   [Zzz10-M5:CONNECTED-APPS]    appky prihlasene cez Versa (verso-gate) + DISCONNECT (odvolanie suhlasu)
+//   [Zzz10-M5:SECURITY-INFO]     strucny prehlad ochrany + kontrola retazca zaznamov (Zzz6-F3:HASH-CHAIN, verso_chain_verify)
+//   [Zzz10-M5:PASSIVE-SECURITY-BOT] miesto pre buduceho bota pouzivatela, bez uloh. Vrso: "predpriprav aj passive security
+//                                 bot sekciu aj ked zatial bez nejakych realnych uloh/nastaveni"
+// [Zzz10-M5:EXT-APP-LOGIN] suhlasove okno: externa appka otvori Verso s #gate&app_id=..&redirect_uri=..&code_challenge=..
+//   &scope=..&state=.. -> po prihlaseni okno ALLOW / DENY -> navrat do appky s jednorazovym kodom. Spatna adresa sa pouzije
+//   LEN ak je registrovana (server ju overi pri ALLOW; pri DENY ju overime z verejneho registra) - ziadny otvoreny presmerovac.
+// Serverova cast: Edge Function verso-gate + tabulky verso_gate_* / verso_recovery_keys (verso-gate-v1.sql).
+// | Vrso -> Claude AI | 2026-11-07 ===
+const ZZZ10M5_GATE_FN = `${SUPABASE_URL}/functions/v1/verso-gate`;
+
+async function zzz10m5_call(action, payload) {
+  const headers = { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY };
+  if (typeof zzz0auth_sessionToken === 'string' && zzz0auth_sessionToken) headers.Authorization = 'Bearer ' + zzz0auth_sessionToken;
+  const res = await fetch(ZZZ10M5_GATE_FN, { method: 'POST', headers, body: JSON.stringify(Object.assign({ action }, payload || {})) });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(body.error || ('HTTP ' + res.status)); e.detail = body.detail || ''; throw e; }
+  return body;
+}
+function zzz10m5_err_text(e) { return (e && e.message ? e.message : String(e)) + (e && e.detail ? ' (' + e.detail + ')' : ''); }
+
+function zzz10m5_css() {
+  if (document.getElementById('zzz10m5Css')) return;
+  const st = document.createElement('style');
+  st.id = 'zzz10m5Css';
+  st.textContent = `
+    .zzz10m5-box{width:100%;max-width:420px;box-sizing:border-box;margin:8px auto;padding:12px;border:1px solid rgba(255,255,255,.35);border-radius:8px;background:rgba(0,0,0,.55);color:#fff;font-size:14px;line-height:1.35}
+    .zzz10m5-box h3{margin:0 0 6px;font-size:15px;letter-spacing:.04em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .zzz10m5-intro{width:100%;max-width:420px;box-sizing:border-box;margin:8px auto 0;padding:8px 12px;border:1px solid #D4AF37;border-radius:8px;color:#D4AF37;font-size:12px;font-weight:700;line-height:1.35}
+    .zzz10m5-txt{font-size:13px;color:#d6d6d6;margin:4px 0 8px}
+    .zzz10m5-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid rgba(255,255,255,.12)}
+    .zzz10m5-row > div{min-width:0;overflow-wrap:anywhere}
+    .zzz10m5-row small{display:block;color:#a9a9a9;font-size:11px}
+    .zzz10m5-btn{min-width:64px;padding:7px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.5);background:#222;color:#fff;font-weight:700;font-size:13px;flex:0 0 auto}
+    .zzz10m5-btn:disabled{opacity:.45}
+    .zzz10m5-btn.is-gold{border-color:#D4AF37;color:#D4AF37}
+    .zzz10m5-btn.is-red{border-color:#dc2626;color:#fca5a5}
+    .zzz10m5-big{display:block;width:100%;margin-top:6px;padding:12px;border-radius:8px;border:2px solid #D4AF37;background:#171717;color:#D4AF37;font-weight:800;font-size:15px;letter-spacing:.06em}
+    .zzz10m5-badge{font-size:10px;font-weight:800;letter-spacing:.06em;padding:2px 7px;border-radius:999px;border:1px solid currentColor}
+    .zzz10m5-badge.is-on{color:#22C55E}.zzz10m5-badge.is-prep{color:#D4AF37}.zzz10m5-badge.is-soon{color:#9ca3af}
+    .zzz10m5-msg{margin-top:6px;font-size:12px;color:#d6d6d6;min-height:1em}
+    .zzz10m5-step{border:1px solid rgba(0,0,0,.18);border-radius:8px;padding:10px;margin:8px 0;background:#fff;color:#171717}
+    .zzz10m5-step h4{margin:0 0 4px;font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:#171717}
+    .zzz10m5-step .zzz10m5-txt{color:#333}
+    .zzz10m5-step .zzz10m5-row{border-top-color:rgba(0,0,0,.12)}
+    .zzz10m5-step .zzz10m5-row small{color:#555}
+    .zzz10m5-step .zzz10m5-btn{background:#fff;color:#171717;border-color:#171717}
+    .zzz10m5-step .zzz10m5-btn.is-gold{background:#171717;color:#D4AF37;border-color:#D4AF37}
+    .zzz10m5-step .zzz10m5-btn.is-red{background:#fff;color:#b91c1c;border-color:#b91c1c}
+    .zzz10m5-step .zzz10m5-msg{color:#333}
+    .zzz10m5-step .zzz10m5-badge.is-on{color:#15803d}.zzz10m5-step .zzz10m5-badge.is-prep{color:#a16207}.zzz10m5-step .zzz10m5-badge.is-soon{color:#6b7280}
+    .zzz10m5-note{font-size:12px;color:#333;margin:6px 2px 2px}
+    .zzz10m5-scope{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid rgba(0,0,0,.12);color:#171717;font-size:13px}
+    .zzz10m5-scope input{margin-top:2px}
+  `;
+  document.head.appendChild(st);
+}
+function zzz10m5_el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+function zzz10m5_badge(kind, text) { return zzz10m5_el('span', 'zzz10m5-badge is-' + kind, text); }
+function zzz10m5_date(iso) { try { return new Date(iso).toLocaleDateString(); } catch (e) { return ''; } }
+
+// --- tab ---------------------------------------------------------------------------------------------------------------
+function zzz10m5_render_advanced_setup(host) {
+  zzz10m5_css();
+  host.appendChild(zzz10m5_el('div', 'zzz10m5-intro',
+    'ADVANCED SETUP - recovery of your account, apps that log in with Verso, and how your account is protected. Parts marked PREPARED or SOON are ready places for what comes next.'));
+
+  // [Zzz10-M5:RECOVERY]
+  const rec = zzz10m5_el('div', 'zzz10m5-box');
+  const rh = zzz10m5_el('h3', '', 'RECOVERY');
+  rec.appendChild(rh);
+  rec.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'How you get back into your account if the password is lost, the phone is lost, or someone else got in. Three ways - online (e-mail) works now.'));
+  const rb = zzz10m5_el('button', 'zzz10m5-big', 'RECOVERY');
+  rb.type = 'button';
+  rb.addEventListener('click', () => zzz10m5_open_recovery_window());
+  rec.appendChild(rb);
+  host.appendChild(rec);
+
+  // [Zzz10-M5:CONNECTED-APPS]
+  const apps = zzz10m5_el('div', 'zzz10m5-box');
+  apps.appendChild(zzz10m5_el('h3', '', 'VERSO GATE - CONNECTED APPS'));
+  apps.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'Apps that log in with Verso. Your password never leaves Verso; an app gets only a private ID made just for it (your username only if you allowed it). DISCONNECT stops it at once.'));
+  const list = zzz10m5_el('div');
+  const amsg = zzz10m5_el('div', 'zzz10m5-msg', 'Loading...');
+  apps.appendChild(list); apps.appendChild(amsg);
+  host.appendChild(apps);
+  zzz10m5_load_connected_apps(list, amsg);
+
+  // [Zzz10-M5:SECURITY-INFO]
+  const sec = zzz10m5_el('div', 'zzz10m5-box');
+  sec.appendChild(zzz10m5_el('h3', '', 'HOW YOUR ACCOUNT IS PROTECTED'));
+  [
+    ['Login', 'password + this device; checked only on the Verso server'],
+    ['One device at a time', 'a second login elsewhere is refused while you are logged in - only RECOVERY overrides it'],
+    ['MV PHRASE', 'needed for recovery and for deleting - only you know it, it is never sent anywhere'],
+    ['Deleting / fundamental changes', 'password + MV PHRASE + one-time token'],
+  ].forEach(([a, b]) => { const r = zzz10m5_el('div', 'zzz10m5-row'); const d = zzz10m5_el('div', '', a); d.appendChild(zzz10m5_el('small', '', b)); r.appendChild(d); sec.appendChild(r); });
+  const cr = zzz10m5_el('div', 'zzz10m5-row');
+  const cd = zzz10m5_el('div', '', 'Record chain');
+  cd.appendChild(zzz10m5_el('small', '', 'every saved record is chained to the previous one - any later change would show here'));
+  const cb = zzz10m5_el('button', 'zzz10m5-btn is-gold', 'CHECK'); cb.type = 'button';
+  const cmsg = zzz10m5_el('div', 'zzz10m5-msg');
+  cb.addEventListener('click', async () => {
+    cb.disabled = true; cmsg.textContent = 'Checking...';
+    try {
+      const { data, error } = await sb.rpc('verso_chain_verify');
+      if (error) throw error;
+      const v = typeof data === 'string' ? JSON.parse(data) : data;
+      cmsg.textContent = v.ok
+        ? '✓ Intact - ' + v.chain_rows + ' records, nothing changed afterwards.'
+        : '⚠ Problem: ' + (v.broken_at_seq ? 'chain broken at #' + v.broken_at_seq : (v.entries_not_matching_chain + ' record(s) differ from the chain'));
+    } catch (e) { cmsg.textContent = 'Could not check: ' + zzz10m5_err_text(e); }
+    cb.disabled = false;
+  });
+  cr.appendChild(cd); cr.appendChild(cb); sec.appendChild(cr); sec.appendChild(cmsg);
+  host.appendChild(sec);
+
+  // [Zzz10-M5:PASSIVE-SECURITY-BOT]
+  const bot = zzz10m5_el('div', 'zzz10m5-box');
+  const bh = zzz10m5_el('h3', '', 'PASSIVE SECURITY BOT '); bh.appendChild(zzz10m5_badge('soon', 'SOON'));
+  bot.appendChild(bh);
+  bot.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'Your own Verso bot will quietly watch over its owner - for example whether the person using the logged-in device is really you. Prepared place only: no tasks or settings yet.'));
+  host.appendChild(bot);
+}
+
+async function zzz10m5_load_connected_apps(list, msg) {
+  list.innerHTML = '';
+  try {
+    const { grants } = await zzz10m5_call('grants');
+    if (!grants || !grants.length) { msg.textContent = 'No app is connected.'; return; }
+    msg.textContent = '';
+    grants.forEach((g) => {
+      const r = zzz10m5_el('div', 'zzz10m5-row');
+      const d = zzz10m5_el('div', '', g.name);
+      d.appendChild(zzz10m5_el('small', '', 'since ' + zzz10m5_date(g.granted_at) + ' · ' + (g.scopes || []).join(', ')));
+      const b = zzz10m5_el('button', 'zzz10m5-btn is-red', 'DISCONNECT'); b.type = 'button';
+      b.addEventListener('click', async () => {
+        if (!confirm('Disconnect ' + g.name + '? It loses access to your Verso identity at once.')) return;
+        b.disabled = true;
+        try { await zzz10m5_call('revoke', { grant_id: g.id }); zzz6f2_show_toast(g.name + ' disconnected.', 'info'); zzz10m5_load_connected_apps(list, msg); }
+        catch (e) { zzz_user_error('The app could not be disconnected - try again.', zzz10m5_err_text(e), '[Zzz10-M5:CONNECTED-APPS]'); b.disabled = false; }
+      });
+      r.appendChild(d); r.appendChild(b); list.appendChild(r);
+    });
+  } catch (e) { msg.textContent = 'Connected apps could not be loaded: ' + zzz10m5_err_text(e); }
+}
+
+// --- [Zzz10-M5:RECOVERY] okno s procesom ---------------------------------------------------------------------------------
+function zzz10m5_open_recovery_window() {
+  zzz10m5_css();
+  const old = document.querySelector('.zzz10m5-recovery-window');
+  if (old) { old.remove(); return; }   // ten isty prikaz okno aj zavrie
+  const { box, removeBox } = zzz6f41_create_context_window();
+  box.classList.add('zzz10m5-recovery-window');
+  const header = zzz10m5_el('div', 'zzz-context-header', 'RECOVERY');
+  zzz_ctx_header_x(header);
+  box.appendChild(header);
+  box.appendChild(zzz10m5_el('div', 'zzz10m5-note', 'Three ways back into your account. Your MV PHRASE is always needed as well - a device or an e-mail alone is never enough.'));
+
+  // 1) [Zzz10-M5:ONLINE-RECOVERY]
+  const s1 = zzz10m5_el('div', 'zzz10m5-step');
+  const h1 = zzz10m5_el('h4', '', '1 · ONLINE RECOVERY - e-mail '); h1.appendChild(zzz10m5_badge('on', 'ACTIVE'));
+  s1.appendChild(h1);
+  s1.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'A one-time token goes to your registered e-mail. With the token + your MV PHRASE you set a new password, and every other device is logged out. A new token comes by itself after each use.'));
+  const recHost = zzz10m5_el('div');
+  try { zzz_render_account_recovery(recHost); } catch (e) { recHost.textContent = 'Recovery form could not be shown.'; }
+  s1.appendChild(recHost);
+  box.appendChild(s1);
+
+  // 2) [Zzz10-M5:USB-RECOVERY]
+  const s2 = zzz10m5_el('div', 'zzz10m5-step');
+  const h2 = zzz10m5_el('h4', '', '2 · USB OFFLINE RECOVERY '); h2.appendChild(zzz10m5_badge('prep', 'PREPARED'));
+  s2.appendChild(h2);
+  s2.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'A USB or NFC security key (FIDO2). You can add it now; recovery with it - also without internet - comes with the Verso hybrid app. Not used for recovery yet.'));
+  const klist = zzz10m5_el('div');
+  const kmsg = zzz10m5_el('div', 'zzz10m5-msg');
+  const kadd = zzz10m5_el('button', 'zzz10m5-btn is-gold', 'ADD USB KEY'); kadd.type = 'button';
+  kadd.addEventListener('click', () => zzz10m5_add_usb_key(kadd, klist, kmsg));
+  s2.appendChild(klist); s2.appendChild(kadd); s2.appendChild(kmsg);
+  box.appendChild(s2);
+  zzz10m5_load_keys(klist, kmsg);
+
+  // 3) [Zzz10-M5:HYBRID-RECOVERY]
+  const s3 = zzz10m5_el('div', 'zzz10m5-step');
+  const h3 = zzz10m5_el('h4', '', '3 · HYBRID RECOVERY - Verso phone verification '); h3.appendChild(zzz10m5_badge('soon', 'SOON'));
+  s3.appendChild(h3);
+  s3.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'Verso will verify you by an automated phone check. Planned to join online and offline recovery in one place. Not available yet.'));
+  const pb = zzz10m5_el('button', 'zzz10m5-btn', 'SET UP PHONE'); pb.type = 'button'; pb.disabled = true;
+  s3.appendChild(pb);
+  box.appendChild(s3);
+
+  const actions = zzz10m5_el('div', 'entry-modal-actions');
+  const closeBtn = zzz10m5_el('button', 'entry-modal-close', 'CLOSE');
+  closeBtn.onclick = () => removeBox();
+  actions.appendChild(closeBtn);
+  box.appendChild(actions);
+  try { box.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {}
+}
+
+async function zzz10m5_load_keys(list, msg) {
+  list.innerHTML = '';
+  try {
+    const { keys } = await zzz10m5_call('keys');
+    if (!keys || !keys.length) { msg.textContent = 'No key added yet.'; return; }
+    msg.textContent = '';
+    keys.forEach((k) => {
+      const r = zzz10m5_el('div', 'zzz10m5-row');
+      const d = zzz10m5_el('div', '', k.label);
+      d.appendChild(zzz10m5_el('small', '', 'added ' + zzz10m5_date(k.created_at)));
+      const b = zzz10m5_el('button', 'zzz10m5-btn is-red', 'REMOVE'); b.type = 'button';
+      b.addEventListener('click', async () => {
+        if (!confirm('Remove the key "' + k.label + '"?')) return;
+        b.disabled = true;
+        try { await zzz10m5_call('key_revoke', { id: k.id }); zzz10m5_load_keys(list, msg); }
+        catch (e) { zzz_user_error('The key could not be removed - try again.', zzz10m5_err_text(e), '[Zzz10-M5:USB-RECOVERY]'); b.disabled = false; }
+      });
+      r.appendChild(d); r.appendChild(b); list.appendChild(r);
+    });
+  } catch (e) { msg.textContent = 'Keys could not be loaded: ' + zzz10m5_err_text(e); }
+}
+
+function zzz10m5_b64u_to_buf(s) {
+  const p = String(s).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(s).length + 3) % 4);
+  const bin = atob(p); const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+function zzz10m5_buf_to_b64u(buf) {
+  const bytes = new Uint8Array(buf); let s = '';
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function zzz10m5_add_usb_key(btn, list, msg) {
+  if (!window.PublicKeyCredential || !navigator.credentials || !navigator.credentials.create) {
+    msg.textContent = 'This browser cannot use security keys - open Verso in Chrome or in the Verso app.'; return;
+  }
+  const label = (prompt('Name for this key (e.g. "Blue USB key"):', 'USB key') || '').trim();
+  if (!label) return;
+  btn.disabled = true; msg.textContent = 'Insert or tap your key and touch it when it blinks...';
+  try {
+    const { options } = await zzz10m5_call('key_options');
+    const pk = Object.assign({}, options, {
+      challenge: zzz10m5_b64u_to_buf(options.challenge),
+      user: Object.assign({}, options.user, { id: zzz10m5_b64u_to_buf(options.user.id) }),
+      excludeCredentials: (options.excludeCredentials || []).map((c) => Object.assign({}, c, { id: zzz10m5_b64u_to_buf(c.id) })),
+    });
+    const cred = await navigator.credentials.create({ publicKey: pk });
+    if (!cred) throw new Error('No key answered.');
+    const resp = {
+      id: cred.id, rawId: zzz10m5_buf_to_b64u(cred.rawId), type: cred.type,
+      response: {
+        clientDataJSON: zzz10m5_buf_to_b64u(cred.response.clientDataJSON),
+        attestationObject: zzz10m5_buf_to_b64u(cred.response.attestationObject),
+        transports: (cred.response.getTransports && cred.response.getTransports()) || [],
+      },
+      clientExtensionResults: (cred.getClientExtensionResults && cred.getClientExtensionResults()) || {},
+      authenticatorAttachment: cred.authenticatorAttachment || undefined,
+    };
+    await zzz10m5_call('key_register', { response: resp, label });
+    msg.textContent = '✓ Key "' + label + '" added.';
+    zzz10m5_load_keys(list, msg);
+  } catch (e) {
+    const cancelled = e && (e.name === 'NotAllowedError' || e.name === 'AbortError');
+    msg.textContent = cancelled ? 'Cancelled - no key was added.' : ('The key could not be added: ' + zzz10m5_err_text(e));
+  }
+  btn.disabled = false;
+}
+
+// --- [Zzz10-M5:EXT-APP-LOGIN] suhlasove okno ------------------------------------------------------------------------------
+let zzz10m5Pending = null;
+function zzz10m5_gate_hash() {
+  const h = String(location.hash || '');
+  if (!/^#gate[?&]/i.test(h)) return;
+  const q = new URLSearchParams(h.slice(6));
+  zzz10m5Pending = {
+    app_id: q.get('app_id') || '', redirect_uri: q.get('redirect_uri') || '', code_challenge: q.get('code_challenge') || '',
+    state: q.get('state') || '', scopes: (q.get('scope') || 'identity').split(/[\s+,]+/).filter(Boolean),
+  };
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  let n = 0;
+  const go = () => {
+    if (!zzz10m5Pending) return;
+    const logged = typeof zzz6f7_isLoggedIn !== 'undefined' && zzz6f7_isLoggedIn && typeof zzz0auth_sessionToken === 'string' && zzz0auth_sessionToken;
+    if (!logged) {
+      if (n === 3) { try { zzz6f2_show_toast('An app wants to log in with Verso - log in to Verso first.', 'info', 4000); } catch (e) {} }
+      if (n++ < 300) setTimeout(go, 1000);
+      return;
+    }
+    zzz10m5_open_consent(zzz10m5Pending);
+  };
+  setTimeout(go, 800);
+}
+window.addEventListener('hashchange', zzz10m5_gate_hash);
+document.addEventListener('DOMContentLoaded', () => setTimeout(zzz10m5_gate_hash, 1200));
+
+async function zzz10m5_registered_redirect(appId, uri) {
+  try {
+    const { data } = await sb.from('verso_gate_apps').select('redirect_uris').eq('app_id', appId).maybeSingle();
+    return !!(data && Array.isArray(data.redirect_uris) && data.redirect_uris.includes(uri));
+  } catch (e) { return false; }
+}
+function zzz10m5_back_to_app(uri, params) {
+  const u = new URL(uri);
+  Object.keys(params).forEach((k) => { if (params[k]) u.searchParams.set(k, params[k]); });
+  location.href = u.toString();
+}
+
+async function zzz10m5_open_consent(req) {
+  zzz10m5_css();
+  let info;
+  try { info = await zzz10m5_call('app_info', { app_id: req.app_id }); }
+  catch (e) { zzz_user_error('An unknown app tried to log in with Verso - nothing was shared.', zzz10m5_err_text(e), '[Zzz10-M5:EXT-APP-LOGIN]'); zzz10m5Pending = null; return; }
+  document.querySelectorAll('.zzz10m5-consent-window').forEach((w) => w.remove());
+  const { box, removeBox } = zzz6f41_create_context_window();
+  box.classList.add('zzz10m5-consent-window');
+  const header = zzz10m5_el('div', 'zzz-context-header', 'VERSO GATE');
+  zzz_ctx_header_x(header);
+  box.appendChild(header);
+  const step = zzz10m5_el('div', 'zzz10m5-step');
+  step.appendChild(zzz10m5_el('h4', '', info.name + ' wants to log in with your Verso account'));
+  step.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'Your password stays in Verso. You can disconnect the app any time in SETTINGS › Advanced setup.'));
+  const asked = new Set(['identity', ...req.scopes]);
+  const checks = {};
+  (info.scopes || []).filter((s) => asked.has(s.scope)).forEach((s) => {
+    const row = zzz10m5_el('label', 'zzz10m5-scope');
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true;
+    if (s.scope === 'identity') cb.disabled = true;   // bez identity niet prihlasenia
+    checks[s.scope] = cb;
+    row.appendChild(cb); row.appendChild(zzz10m5_el('span', '', s.text));
+    step.appendChild(row);
+  });
+  const msg = zzz10m5_el('div', 'zzz10m5-msg');
+  step.appendChild(msg);
+  box.appendChild(step);
+
+  const actions = zzz10m5_el('div', 'entry-modal-actions');
+  const allow = zzz10m5_el('button', 'zzz1m5-attach-btn', 'ALLOW'); allow.type = 'button';
+  const deny = zzz10m5_el('button', 'entry-modal-delete', 'DENY'); deny.type = 'button';
+  const closeBtn = zzz10m5_el('button', 'entry-modal-close', 'CLOSE'); closeBtn.type = 'button';
+  closeBtn.onclick = () => { zzz10m5Pending = null; removeBox(); };
+  allow.addEventListener('click', async () => {
+    allow.disabled = true; deny.disabled = true; msg.textContent = 'Connecting...';
+    try {
+      const scopes = Object.keys(checks).filter((k) => checks[k].checked);
+      const r = await zzz10m5_call('authorize', { app_id: req.app_id, scopes, redirect_uri: req.redirect_uri, code_challenge: req.code_challenge });
+      zzz10m5Pending = null;
+      msg.textContent = '✓ Allowed - returning to ' + info.name + '...';
+      zzz10m5_back_to_app(req.redirect_uri, { code: r.code, state: req.state });
+    } catch (e) {
+      msg.textContent = 'Could not connect: ' + zzz10m5_err_text(e);
+      allow.disabled = false; deny.disabled = false;
+    }
+  });
+  deny.addEventListener('click', async () => {
+    zzz10m5Pending = null; removeBox();
+    if (await zzz10m5_registered_redirect(req.app_id, req.redirect_uri)) zzz10m5_back_to_app(req.redirect_uri, { error: 'access_denied', state: req.state });
+    else zzz6f2_show_toast('Denied - nothing was shared.', 'info');
+  });
+  actions.appendChild(allow); actions.appendChild(deny); actions.appendChild(closeBtn);
+  box.appendChild(actions);
+  try { box.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {}
+}
+// === [/Zzz10-M5:VERSO-GATE] ===
+
 function open_settings_workspace() {
   const workspace = document.getElementById('versoWorkspaceSection');
   if (!workspace) return;
@@ -47470,6 +47862,9 @@ function open_settings_workspace() {
         tabContent.appendChild(rdw);
       }
     } catch (e) {}
+  } else if (zzz10_0ActiveTab === 'advanced-settings') {
+    // [Zzz10-M5:VERSO-GATE] Advanced setup = RECOVERY, prepojene appky, bezpecnost, passive security bot | Vrso -> Claude AI | 2026-11-07
+    zzz10m5_render_advanced_setup(tabContent);
   } else {
 
     const placeholder = document.createElement('div');
@@ -48710,7 +49105,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-06 23:46';
+const VERSO_BUILD = '2026-11-07 01:48';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Verso Gate Test</title>
+<!-- [Zzz10-M5:EXT-APP-LOGIN] Testovacia "externa appka" pre branu Versa (verso-gate). Vrso 2026-11-07, doslovne: "ok zacni
+     zapracovavat... je to iba na tebe ty kodujes". Robi presne to, co bude robit kazda cudzia appka: vytvori PKCE dvojicu,
+     posle pouzivatela do Versa (#gate&...), po navrate vymeni jednorazovy kod za vlastny token a precita userinfo.
+     Registrovana v DB ako app_id 'verso-gate-test' s navratovou adresou presne na tuto stranku. | Vrso -> Claude AI | 2026-11-07 -->
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0b0b0b; color: #f1f1f1; font: 15px/1.45 system-ui, sans-serif; }
+  main { max-width: 440px; margin: 0 auto; padding: 24px 16px 40px; }
+  h1 { font-size: 20px; color: #D4AF37; letter-spacing: .04em; margin: 0 0 6px; }
+  p { color: #cfcfcf; margin: 6px 0 14px; }
+  label { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+  button { width: 100%; padding: 14px; border-radius: 10px; border: 2px solid #D4AF37; background: #171717; color: #D4AF37; font-weight: 800; font-size: 15px; letter-spacing: .06em; }
+  pre { white-space: pre-wrap; word-break: break-all; background: #151515; border: 1px solid #333; border-radius: 8px; padding: 10px; font-size: 12px; }
+  .ok { color: #22C55E; font-weight: 700; } .bad { color: #f87171; font-weight: 700; }
+</style>
+</head>
+<body>
+<main>
+  <h1>VERSO GATE TEST</h1>
+  <p>A pretend outside app. It never sees your Verso password - it sends you to Verso, you allow or deny there, and it gets back only what you allowed.</p>
+  <label><input type="checkbox" id="wantName"> also ask to see my Verso username</label>
+  <button id="go" type="button">LOG IN WITH VERSO</button>
+  <div id="out"></div>
+</main>
+<script>
+(function () {
+  var FN = 'https://piywybkxbupqaecdcrar.supabase.co/functions/v1/verso-gate';
+  var APP = 'verso-gate-test';
+  var BACK = location.origin + location.pathname;
+  var out = document.getElementById('out');
+  function show(cls, title, obj) {
+    out.innerHTML = '';
+    var t = document.createElement('p'); t.className = cls; t.textContent = title; out.appendChild(t);
+    if (obj) { var pre = document.createElement('pre'); pre.textContent = JSON.stringify(obj, null, 2); out.appendChild(pre); }
+  }
+  function b64url(bytes) { var s = ''; for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+  function rand(n) { return b64url(crypto.getRandomValues(new Uint8Array(n))); }
+  async function call(action, body, token) {
+    var h = { 'Content-Type': 'application/json' };
+    if (token) h.Authorization = 'Bearer ' + token;
+    var r = await fetch(FN, { method: 'POST', headers: h, body: JSON.stringify(Object.assign({ action: action }, body || {})) });
+    var j = await r.json().catch(function () { return {}; });
+    if (!r.ok) throw new Error((j.error || 'HTTP ' + r.status) + (j.detail ? ' (' + j.detail + ')' : ''));
+    return j;
+  }
+  document.getElementById('go').addEventListener('click', async function () {
+    var verifier = rand(48), state = rand(16);
+    var challenge = b64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
+    sessionStorage.setItem('vgt', JSON.stringify({ verifier: verifier, state: state }));
+    var scope = document.getElementById('wantName').checked ? 'identity username' : 'identity';
+    var q = new URLSearchParams({ app_id: APP, redirect_uri: BACK, code_challenge: challenge, scope: scope, state: state });
+    location.href = location.origin + '/#gate&' + q.toString();
+  });
+  (async function onReturn() {
+    var q = new URLSearchParams(location.search);
+    if (!q.has('code') && !q.has('error')) return;
+    var saved = {}; try { saved = JSON.parse(sessionStorage.getItem('vgt') || '{}'); } catch (e) {}
+    sessionStorage.removeItem('vgt');
+    history.replaceState(null, '', location.pathname);
+    if (q.get('state') !== saved.state) { show('bad', 'Refused: the answer does not belong to this login (state mismatch).'); return; }
+    if (q.has('error')) { show('bad', 'You denied the login - the app got nothing.'); return; }
+    try {
+      var tok = await call('token', { app_id: APP, code: q.get('code'), code_verifier: saved.verifier, redirect_uri: BACK });
+      var me = await call('userinfo', {}, tok.access_token);
+      show('ok', '✓ Logged in with Verso. This is everything the app received:', me);
+    } catch (e) { show('bad', 'Login failed: ' + e.message); }
+  })();
+})();
+</script>
+</body>
+</html>
