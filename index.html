@@ -47,6 +47,13 @@
   } catch (e) {}
 })();
 
+// [Zzz10-M5:GATE-EARLY-CATCH] Vrso 2026-11-07: "nic allow neotvorilo". Poziadavka cudzej appky (#gate&...) sa teraz zachyti
+// hned na zaciatku stranky a ulozi do sessionStorage - prezije reload (update, prihlasenie, APK start), ktory hash zmaze. | Vrso -> Claude AI | 2026-11-07
+(function () { try { var h = String(location.hash || ''); var i = h.search(/(^#|&)gate[?&]/); if (i < 0) return;
+  var q = h.slice(h.indexOf('gate', i) + 5); if (q.length < 20 || q.length > 4000) return;
+  sessionStorage.setItem('verso_gate_pending', JSON.stringify({ q: q, t: Date.now() }));
+  history.replaceState(null, '', location.pathname + location.search); } catch (e) {} })();
+
 (function () { try { if (/[?&]upd=/.test(location.search)) { var q = location.search.replace(/[?&]upd=[^&]*/g, '').replace(/^&/, '?'); history.replaceState(null, '', location.pathname + (q === '?' ? '' : q) + location.hash); } } catch (e) {} })();
 </script>
 <script>
@@ -47708,19 +47715,24 @@ async function zzz10m5_add_usb_key(btn, list, msg) {
 let zzz10m5Pending = null;
 function zzz10m5_gate_hash() {
   const h = String(location.hash || '');
-  if (!/^#gate[?&]/i.test(h)) return;
-  const q = new URLSearchParams(h.slice(6));
+  let raw = '';
+  if (/^#gate[?&]/i.test(h)) raw = h.slice(6);
+  else { try { const p = JSON.parse(sessionStorage.getItem('verso_gate_pending') || 'null'); if (p && p.q && Date.now() - p.t < 10 * 60 * 1000) raw = p.q; } catch (e) {} }
+  try { sessionStorage.removeItem('verso_gate_pending'); } catch (e) {}
+  if (!raw) return;
+  const q = new URLSearchParams(raw);
   zzz10m5Pending = {
     app_id: q.get('app_id') || '', redirect_uri: q.get('redirect_uri') || '', code_challenge: q.get('code_challenge') || '',
     state: q.get('state') || '', scopes: (q.get('scope') || 'identity').split(/[\s+,]+/).filter(Boolean),
   };
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  try { zzz6f2_show_toast('Verso Gate: an app asks to log in with Verso - the window opens in a moment.', 'info', 3500); } catch (e) {}
   let n = 0;
   const go = () => {
     if (!zzz10m5Pending) return;
     const logged = typeof zzz6f7_isLoggedIn !== 'undefined' && zzz6f7_isLoggedIn && typeof zzz0auth_sessionToken === 'string' && zzz0auth_sessionToken;
     if (!logged) {
-      if (n === 3) { try { zzz6f2_show_toast('An app wants to log in with Verso - log in to Verso first.', 'info', 4000); } catch (e) {} }
+      if (n === 3 || (n > 0 && n % 30 === 0)) { try { zzz6f2_show_toast('An app wants to log in with Verso - log in to Verso first, the window then opens by itself.', 'info', 5000); } catch (e) {} }
       if (n++ < 300) setTimeout(go, 1000);
       return;
     }
@@ -49133,7 +49145,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-07 16:00';
+const VERSO_BUILD = '2026-11-07 16:10';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
