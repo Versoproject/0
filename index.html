@@ -47527,8 +47527,12 @@ function zzz10m5_render_advanced_setup(host) {
   const list = zzz10m5_el('div');
   const amsg = zzz10m5_el('div', 'zzz10m5-msg', 'Loading...');
   apps.appendChild(list); apps.appendChild(amsg);
+  // [Zzz10-M5:GATE-IN-SETTINGS] cakajuca poziadavka + posledne poziadavky priamo v nastaveniach, nie len hlaska
+  const gp = zzz10m5_el('div', 'zzz10m5-gate-panel');
+  apps.appendChild(gp);
   host.appendChild(apps);
   zzz10m5_load_connected_apps(list, amsg);
+  zzz10m5_render_gate_panel(gp);
 
   // [Zzz10-M5:SECURITY-INFO]
   const sec = zzz10m5_el('div', 'zzz10m5-box');
@@ -47565,6 +47569,60 @@ function zzz10m5_render_advanced_setup(host) {
   bot.appendChild(bh);
   bot.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'Your own Verso bot will quietly watch over its owner - for example whether the person using the logged-in device is really you. Prepared place only: no tasks or settings yet.'));
   host.appendChild(bot);
+}
+
+// [Zzz10-M5:GATE-IN-SETTINGS] Vrso 2026-11-07, doslovne: "hlaska fajn ale nemalo by to byt uz v nastaveniach? neda sa spoliehat
+// len na hlasky vseobecne. vsetko musi byt najma v settings ak sa realne riesi alebo riesilo". Preto: cakajuca poziadavka appky
+// (OPEN / DENY) a zoznam poslednych poziadaviek (prisla / povolena / zamietnuta / neznama appka) su v SETTINGS › Advanced setup ›
+// VERSO GATE. Zoznam je v tomto zariadeni, oddeleny podla username (NO CROSS-USER CACHE). | Vrso -> Claude AI | 2026-11-07
+function zzz10m5_log_key() {
+  let u = '';
+  try { u = (typeof zzz_sessionUsername === 'string' && zzz_sessionUsername) || (typeof zzz0r1_get_current_username === 'function' ? zzz0r1_get_current_username() : '') || ''; } catch (e) {}
+  u = String(u || '').trim().toLowerCase();
+  return u ? 'verso_gate_log:' + u : '';
+}
+function zzz10m5_gate_log(appId, name, result) {
+  const k = zzz10m5_log_key(); if (!k) return;
+  try {
+    const list = JSON.parse(localStorage.getItem(k) || '[]');
+    list.unshift({ t: Date.now(), app: String(appId || '').slice(0, 64), name: String(name || appId || '').slice(0, 80), r: String(result).slice(0, 80) });
+    localStorage.setItem(k, JSON.stringify(list.slice(0, 20)));
+  } catch (e) {}
+  zzz10m5_render_gate_panel();
+}
+function zzz10m5_pending_clear() {
+  zzz10m5Pending = null;
+  try { sessionStorage.removeItem('verso_gate_pending'); } catch (e) {}
+  zzz10m5_render_gate_panel();
+}
+function zzz10m5_render_gate_panel(only) {
+  // panel moze byt este mimo stranky (tab sa sklada mimo DOM), preto ho dostane priamo; inak sa obnovia vsetky na stranke
+  (only ? [only] : Array.from(document.querySelectorAll('.zzz10m5-gate-panel'))).forEach(zzz10m5_fill_gate_panel);
+}
+function zzz10m5_fill_gate_panel(gp) {
+  gp.innerHTML = '';
+  const wh = zzz10m5_el('div', 'zzz10m5-row');
+  const wd = zzz10m5_el('div', '', 'WAITING REQUEST');
+  const req = zzz10m5Pending;
+  if (req) {
+    wd.appendChild(zzz10m5_el('small', '', (req.name || req.app_id) + ' asks to log in with Verso · since ' + new Date(req.t || Date.now()).toLocaleTimeString() + ' · ' + req.scopes.join(', ')));
+    const ob = zzz10m5_el('button', 'zzz10m5-btn is-gold', 'OPEN'); ob.type = 'button';
+    ob.addEventListener('click', () => zzz10m5_open_consent(req));
+    const db = zzz10m5_el('button', 'zzz10m5-btn is-red', 'DENY'); db.type = 'button';
+    db.addEventListener('click', () => { zzz10m5_gate_log(req.app_id, req.name, 'denied (in SETTINGS)'); zzz10m5_pending_clear(); });
+    wh.appendChild(wd); wh.appendChild(ob); wh.appendChild(db);
+  } else { wd.appendChild(zzz10m5_el('small', '', 'none - when an app asks to log in with Verso, it waits here until you allow or deny it')); wh.appendChild(wd); }
+  gp.appendChild(wh);
+  const k = zzz10m5_log_key();
+  let log = []; try { log = k ? JSON.parse(localStorage.getItem(k) || '[]') : []; } catch (e) {}
+  const lh = zzz10m5_el('div', 'zzz10m5-row'); const ld = zzz10m5_el('div', '', 'RECENT REQUESTS');
+  ld.appendChild(zzz10m5_el('small', '', log.length ? 'on this device, newest first' : 'none yet on this device'));
+  lh.appendChild(ld); gp.appendChild(lh);
+  log.slice(0, 10).forEach((x) => {
+    const rr = zzz10m5_el('div', 'zzz10m5-row'); const dd = zzz10m5_el('div', '', x.name || x.app);
+    dd.appendChild(zzz10m5_el('small', '', new Date(x.t).toLocaleString() + ' · ' + x.r));
+    rr.appendChild(dd); gp.appendChild(rr);
+  });
 }
 
 async function zzz10m5_load_connected_apps(list, msg) {
@@ -47717,11 +47775,12 @@ function zzz10m5_gate_hash() {
   const h = String(location.hash || '');
   let raw = '';
   if (/^#gate[?&]/i.test(h)) raw = h.slice(6);
-  else { try { const p = JSON.parse(sessionStorage.getItem('verso_gate_pending') || 'null'); if (p && p.q && Date.now() - p.t < 10 * 60 * 1000) raw = p.q; } catch (e) {} }
-  try { sessionStorage.removeItem('verso_gate_pending'); } catch (e) {}
+  let t0 = Date.now();
+  if (raw) { try { sessionStorage.setItem('verso_gate_pending', JSON.stringify({ q: raw, t: t0 })); } catch (e) {} }
+  else { try { const p = JSON.parse(sessionStorage.getItem('verso_gate_pending') || 'null'); if (p && p.q && Date.now() - p.t < 10 * 60 * 1000) { raw = p.q; t0 = p.t; } else sessionStorage.removeItem('verso_gate_pending'); } catch (e) {} }
   if (!raw) return;
   const q = new URLSearchParams(raw);
-  zzz10m5Pending = {
+  zzz10m5Pending = { t: t0,
     app_id: q.get('app_id') || '', redirect_uri: q.get('redirect_uri') || '', code_challenge: q.get('code_challenge') || '',
     state: q.get('state') || '', scopes: (q.get('scope') || 'identity').split(/[\s+,]+/).filter(Boolean),
   };
@@ -47736,6 +47795,7 @@ function zzz10m5_gate_hash() {
       if (n++ < 300) setTimeout(go, 1000);
       return;
     }
+    zzz10m5_render_gate_panel();
     zzz10m5_open_consent(zzz10m5Pending);
   };
   setTimeout(go, 800);
@@ -47759,7 +47819,8 @@ async function zzz10m5_open_consent(req) {
   zzz10m5_css();
   let info;
   try { info = await zzz10m5_call('app_info', { app_id: req.app_id }); }
-  catch (e) { zzz_user_error('An unknown app tried to log in with Verso - nothing was shared.', zzz10m5_err_text(e), '[Zzz10-M5:EXT-APP-LOGIN]'); zzz10m5Pending = null; return; }
+  catch (e) { zzz10m5_gate_log(req.app_id, req.app_id, 'refused - unknown app, nothing shared'); zzz_user_error('An unknown app tried to log in with Verso - nothing was shared.', zzz10m5_err_text(e), '[Zzz10-M5:EXT-APP-LOGIN]'); zzz10m5_pending_clear(); return; }
+  if (!req.name) { req.name = info.name; zzz10m5_gate_log(req.app_id, info.name, 'asked to log in'); }
   document.querySelectorAll('.zzz10m5-consent-window').forEach((w) => w.remove());
   const { box, removeBox } = zzz6f41_create_context_window();
   box.classList.add('zzz10m5-consent-window');
@@ -47787,22 +47848,25 @@ async function zzz10m5_open_consent(req) {
   const allow = zzz10m5_el('button', 'zzz1m5-attach-btn', 'ALLOW'); allow.type = 'button';
   const deny = zzz10m5_el('button', 'entry-modal-delete', 'DENY'); deny.type = 'button';
   const closeBtn = zzz10m5_el('button', 'entry-modal-close', 'CLOSE'); closeBtn.type = 'button';
-  closeBtn.onclick = () => { zzz10m5Pending = null; removeBox(); };
+  closeBtn.onclick = () => { removeBox(); zzz10m5_render_gate_panel(); try { zzz6f2_show_toast('The request still waits in SETTINGS › Advanced setup › VERSO GATE.', 'info', 4000); } catch (e) {} };
   allow.addEventListener('click', async () => {
     allow.disabled = true; deny.disabled = true; msg.textContent = 'Connecting...';
     try {
       const scopes = Object.keys(checks).filter((k) => checks[k].checked);
       const r = await zzz10m5_call('authorize', { app_id: req.app_id, scopes, redirect_uri: req.redirect_uri, code_challenge: req.code_challenge });
-      zzz10m5Pending = null;
+      zzz10m5_gate_log(req.app_id, info.name, 'allowed (' + scopes.join(', ') + ')');
+      zzz10m5_pending_clear();
       msg.textContent = '✓ Allowed - returning to ' + info.name + '...';
       zzz10m5_back_to_app(req.redirect_uri, { code: r.code, state: req.state });
     } catch (e) {
       msg.textContent = 'Could not connect: ' + zzz10m5_err_text(e);
+      zzz10m5_gate_log(req.app_id, info.name, 'error - ' + zzz10m5_err_text(e));
       allow.disabled = false; deny.disabled = false;
     }
   });
   deny.addEventListener('click', async () => {
-    zzz10m5Pending = null; removeBox();
+    zzz10m5_gate_log(req.app_id, info.name, 'denied');
+    zzz10m5_pending_clear(); removeBox();
     if (await zzz10m5_registered_redirect(req.app_id, req.redirect_uri)) zzz10m5_back_to_app(req.redirect_uri, { error: 'access_denied', state: req.state });
     else zzz6f2_show_toast('Denied - nothing was shared.', 'info');
   });
@@ -49145,7 +49209,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-07 16:10';
+const VERSO_BUILD = '2026-11-07 16:25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
