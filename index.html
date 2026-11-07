@@ -8419,6 +8419,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz10-R2</span>
   <span class="module-tag">Zzz10-M2</span>
   <span class="module-tag">Zzz10-0:TAB-NAMES</span>
+  <span class="module-tag">Zzz10-R4:ACCOUNT-NAME</span>
   <span class="module-tag">Zzz10-M5:VERSO-GATE</span>
   <span class="module-tag">Zzz10-M5:RECOVERY</span>
   <span class="module-tag">Zzz10-M5:ONLINE-RECOVERY</span>
@@ -49105,7 +49106,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-07 01:48';
+const VERSO_BUILD = '2026-11-07 02:20';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -57890,7 +57891,7 @@ function zzz10m2_build_prefilled_login_field(labelText, fieldKind) {
   cell.id = isContent ? 'versoLoginSetupContentDisplay' : 'versoLoginSetupUserDisplay';
   cell.readOnly = true;
 
-  cell.value = isContent ? (zzz6f7_isLoggedIn ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '') : (zzz6f36LastLoginUsername || '');
+  cell.value = isContent ? (zzz6f7_isLoggedIn ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '') : (zzz6f36LastLoginUsername || (zzz6f7_isLoggedIn && typeof zzz_sessionUsername === 'string' ? zzz_sessionUsername || '' : '')); // [Zzz10-R4:ACCOUNT-NAME] aj po automatickom prihlaseni MY DEVICE | Vrso -> Claude AI | 2026-11-07
   if (isContent) { cell.autocomplete = 'off'; cell.setAttribute('aria-label', 'password (hidden)'); cell.tabIndex = -1; }
   inputWrap.appendChild(cell);
 
@@ -58017,6 +58018,13 @@ function zzz10m2_render_login_setup(body) {
       if (!v) zzz6f2_show_toast('Enter your CURRENT PASSWORD first.', 'warn');
       return v;
     };
+    // === [Zzz10-R4:ACCOUNT-NAME] Vrso 2026-11-07 (screenshot "MV phrase not saved - unknown reason", "nejde mi zmenit frazu ani
+    // heslo"): CHANGE PASSWORD aj SAVE MV PHRASE posielali meno z poslednej RUCNEJ prihlasovacej akcie (zzz6f36LastLoginUsername).
+    // Ked MY DEVICE prihlasi automaticky (napr. po nacitani novej verzie), je prazdne -> server vratil 400 'username_required'
+    // a appka ukazala 'unknown reason'. Teraz meno aktivnej relacie, az potom cache. | Vrso -> Claude AI | 2026-11-07 ===
+    const zzz10r4_account_name = () => zzz10v1_normalize(
+      (typeof zzz_sessionUsername === 'string' && zzz_sessionUsername) || zzz6f36LastLoginUsername
+      || (typeof zzz0r1_get_current_username === 'function' ? zzz0r1_get_current_username() : '') || '');
 
     const changePwRow = document.createElement('div');
     changePwRow.className = 'zzz10r4-changepw-row';
@@ -58080,7 +58088,7 @@ function zzz10m2_render_login_setup(body) {
         const resp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-          body: JSON.stringify({ action: 'change_password', username: zzz10v1_normalize(zzz6f36LastLoginUsername),   oldPassword, newPassword, sessionId: zzz_sessionId   })
+          body: JSON.stringify({ action: 'change_password', username: zzz10r4_account_name(),   oldPassword, newPassword, sessionId: zzz_sessionId   })
         });
         const result = await resp.json();
         if (result.success) {
@@ -58092,8 +58100,9 @@ function zzz10m2_render_login_setup(body) {
           const reasonText = {
             wrong_old_password: 'CURRENT PASSWORD is wrong',
             not_registered: 'account is not registered',
-            old_and_new_password_required: 'missing old or new password'
-          }[result.reason] || (console.warn('[Zzz10-R4] reason', result.reason), 'unknown reason');
+            old_and_new_password_required: 'missing old or new password',
+            username_required: 'the account name is missing - log out and log in again'
+          }[result.reason || result.error] || (console.warn('[Zzz10-R4] reason', result.reason), 'unknown reason');
           zzz6f2_show_toast(`Password not changed - ${reasonText}.`, 'warn');
         }
       } catch (err) {
@@ -58164,7 +58173,7 @@ function zzz10m2_render_login_setup(body) {
         const resp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-          body: JSON.stringify({ action: 'set_mv_phrase', username: zzz10v1_normalize(zzz6f36LastLoginUsername), password: currentPassword, mvPhrase })
+          body: JSON.stringify({ action: 'set_mv_phrase', username: zzz10r4_account_name(), password: currentPassword, mvPhrase })
         });
         const result = await resp.json().catch(() => ({}));
         if (result.success) {
@@ -58177,8 +58186,9 @@ function zzz10m2_render_login_setup(body) {
             wrong_password: 'CURRENT PASSWORD is wrong',
             not_registered: 'account is not registered',
             phrase_too_short: 'the phrase must have at least 4 letters',
-            password_and_phrase_required: 'missing password or phrase'
-          }[result.reason] || (console.warn('[Zzz13-MV] reason', result.reason || result.error || resp.status), 'unknown reason');
+            password_and_phrase_required: 'missing password or phrase',
+            username_required: 'the account name is missing - log out and log in again'
+          }[result.reason || result.error] || (console.warn('[Zzz13-MV] reason', result.reason || result.error || resp.status), 'unknown reason');
           zzz6f2_show_toast(`MV phrase not saved - ${reasonText}.`, 'warn');
         }
       } catch (err) {
