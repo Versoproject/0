@@ -49206,7 +49206,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-07 23:57';
+const VERSO_BUILD = '2026-11-08 02:33';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -52531,8 +52531,30 @@ function zzz_media_mark_actual(it) {
     zzz_media_set_tags(line, w.concat(['actual'])).then(() => { try { zzz_media_actual_to_app(); } catch (e) {} });
   } catch (e) {}
 }
+
+const ZZZ_MEDIA_EXT = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|mp4|m4v|webm|mkv|mov|3gp|m3u8|m3u|pls|mpd)(\?|#|$)/i;
+function zzz_media_streamish(x) {
+  const l = String(x && x.link || '');
+  if (ZZZ_MEDIA_EXT.test(l)) return true;
+  if (/(^|[\/.:-])(stream|streams|icecast|shoutcast|radio|live|listen|hls)([\/.?:-]|$)/i.test(l)) return true;
+  const w = zzz_media_tagw(x && x.tags);
+  return ['streams', 'radios', 'podcasts', 'live'].some(t => w.indexOf(t) >= 0);
+}
+function zzz_media_web_ok(x) { return !!(x && x.link) && (!!zzz_media_embed(x.link) || zzz_media_streamish(x) || /^verso-file:/.test(x.link)); }
+function zzz_media_nat_ok(x) {
+  if (!x || !x.link) return false;
+  if (zzz_media_has_file(x)) return true;
+  if (zzz_media_offline() || (typeof navigator !== 'undefined' && navigator.onLine === false)) return false;
+  return !zzz_media_embed(x.link) && zzz_media_streamish(x);
+}
+function zzz_media_not_media(it) {
+  zzz6f2_show_toast((zzz_media_title(it) || 'This link') + ' is a web page, not a medium - opened in its app.', 'info');
+  zzz_media_hist_add(it);
+  try { zzz_media_open_app(it.link); } catch (e) {}
+}
+
 function zzz_media_play_native(it, l) {
-  const q = (l && l.length ? l : [it]).filter(x => x.link && (zzz_media_offline() || !zzz_media_embed(x.link)));
+  const q = (l && l.length ? l : [it]).filter(x => x.link && (x.link === it.link || zzz_media_nat_ok(x)));
   let i = Math.max(0, q.findIndex(x => x.link === it.link));
   const from = Math.max(0, i - 10), part = q.slice(from, from + 40); i -= from;
   const json = JSON.stringify(part.map(x => ({ t: zzz_media_title(x), u: x.link })));
@@ -53746,7 +53768,7 @@ async function zzz_media_actual_to_app() {
     if (!zzz14b17_in_app() || zzz14b17_app_code() < ZZZ_MM_ACTUAL_APP || !zzz_media_me() || !zzzMedia.all || zzzMedia.loadedOf !== zzz_media_me()) return;
     const off = zzz_media_offline();
     const l = zzz_media_actual_of((zzzMedia.list || []).filter(x => !x.trash && !zzz_media_locked_now(x)))
-      .filter(x => x.link && (/^verso-file:/.test(x.link) || off || (/^https?:/i.test(x.link) && !zzz_media_embed(x.link)))).slice(0, 40);
+      .filter(x => x.link && (zzz_media_has_file(x) || (!off && /^https?:/i.test(x.link) && !zzz_media_embed(x.link) && zzz_media_streamish(x)))).slice(0, 40);
 
     zzz_stars_want(l.map(x => x.id).filter(x => x != null));
     const js = JSON.stringify(l.map(x => { const av = x.id != null ? zzz_stars_avg(x.id) : 0; return { t: zzz_media_title(x) + (av ? ' \u2605' + zzz_stars_fmt(av) : ''), u: x.link }; })), sig = zzz_media_me() + '|' + js;
@@ -53830,6 +53852,9 @@ function zzz_media_play(it, queue) {
   if (it.id && zzz_media_locked_now(it)) { zzz6f2_show_toast('🔒 PRIVATE - locked while QUIET is on.', 'info'); return; }
   if (queue) zzzMedia.queue = queue.filter(x => x.link && !zzz_media_locked_now(x));
   if (zzzMedia.newId && String(zzzMedia.newId) === String(it.id || '')) zzzMedia.newId = null;
+  const offNow = zzz_media_offline() || navigator.onLine === false;
+  if (/^https?:/i.test(it.link) && !zzz_media_has_file(it) && !zzz_media_web_ok(it)) { if (offNow) { zzz6f2_show_toast('No internet - ' + (zzz_media_title(it) || 'this link') + ' needs it.', 'info'); return; } zzz_media_not_media(it); return; }
+  if (offNow && /^https?:/i.test(it.link) && !zzz_media_has_file(it)) { zzz6f2_show_toast('No internet and no copy on this phone - ' + (zzz_media_title(it) || 'this one') + ' is skipped.', 'info'); const nx = (zzzMedia.queue || []).find(x => x.link !== it.link && zzz_media_has_file(x)); if (nx) zzz_media_play(nx); return; }
   if (zzz_media_native() && (zzz_media_offline() || !zzz_media_embed(it.link))) { zzz_media_play_native(it, zzzMedia.queue); return; }
 
   if (zzzMedia.nat) { zzz_media_nat_cmd('stop'); zzzMedia.natPlaying = false; }
@@ -53889,7 +53914,10 @@ function zzz_media_play(it, queue) {
 function zzz_media_kb_redraw() { const pn = document.querySelector('.zzz-vkb-panel'); if (pn && pn._redrawMedia) pn._redrawMedia(); }
 function zzz_media_next(step, auto, err) {
   if (zzzMedia.nat && !auto) { zzz_media_nat_cmd(step < 0 ? 'prev' : 'next'); return; }
-  const l = zzzMedia.queue.length ? zzzMedia.queue : zzz_media_tablist().filter(x => x.link);
+  const l0 = zzzMedia.queue.length ? zzzMedia.queue : zzz_media_tablist().filter(x => x.link);
+
+  const offN = zzz_media_offline() || navigator.onLine === false;
+  const l = l0.filter(x => (zzzMedia.cur && x.link === zzzMedia.cur.link) || zzz_media_has_file(x) || (!offN && zzz_media_web_ok(x)));
   if (!l.length) return;
 
   if (err && navigator.onLine === false && zzzMedia.cur && /^https?:/i.test(zzzMedia.cur.link || '') && !zzz_media_offline()) {
