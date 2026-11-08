@@ -10266,6 +10266,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-rs-sw-t { flex: 1 1 auto; color: #e8c86a; font-size: 11.5px; font-weight: 700; letter-spacing: .03em; }
   .zzz-rs-keep { background: none; border: 1px solid #D4AF37; color: #D4AF37; border-radius: 8px; font-size: 11px; font-weight: 800; padding: 3px 8px; }
   .zzz-rs-keep.is-on { background: #D4AF37; color: #111; }
+  .zzz-rs-comm, .zzz-rs-diss { white-space: nowrap; }
+  .zzz-rs-sw-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .zzz-rs-chip.is-lock.is-on { background: #3a2f12; color: #e8c86a !important; }
+  .zzz-rs-diss-l { max-height: 40vh; overflow-y: auto; text-align: left; margin: 6px 0; }
+  .zzz-rs-diss-r { color: #ddd; font-size: 13px; padding: 4px 0; border-bottom: 1px solid #262626; white-space: pre-wrap; }
+  .zzz-rs-diss-r b { color: #D4AF37; }
+  .zzz-rs-diss-in { width: 100%; box-sizing: border-box; background: #fff; color: #222; border: 1px solid #D4AF37; border-radius: 8px; padding: 6px; font-size: 14px; }
   
   #zzzRsSpace.is-max .zzz-rs-crm { display: none; }
   #zzzRsSpace.is-max .zzz-rs-reader { margin: 0; border-radius: 0; min-height: 100%; box-sizing: border-box; }
@@ -28752,7 +28759,7 @@ function zzz_rs_path_norm(p) { return String(p || '').split(/\s*[›>\/]\s*/).ma
 function zzz_rs_key(p) { return 'read:' + zzz_rs_path_norm(p).toLowerCase(); }
 function zzz_rs_host(link) { try { return new URL(link).hostname.replace(/^www\./, ''); } catch (e) { return String(link || '').slice(0, 40); } }
 
-const ZZZ_RS_SETUP_DEF = { store: 'off', keep: 'all', cache: 20 };
+const ZZZ_RS_SETUP_DEF = { store: 'off', keep: 'all', cache: 20, locked: [] };
 function zzz_rs_setup() {
   if (zzzRs.setup && zzzRs.setup._u === zzz_rs_me()) return zzzRs.setup;
   let p = {}; try { p = JSON.parse(localStorage.getItem(zzz_ukey('zzz_rs_setup')) || '{}') || {}; } catch (e) { p = {}; }
@@ -28768,12 +28775,29 @@ async function zzz_rs_setup_pull() {
   } catch (e) {}
 }
 async function zzz_rs_setup_save(p) {
-  const u = zzz_rs_me(); const clean = { store: p.store, keep: p.keep, cache: Number(p.cache) || 0 };
+  const u = zzz_rs_me(); const clean = { store: p.store, keep: p.keep, cache: Number(p.cache) || 0, locked: Array.isArray(p.locked) ? p.locked.slice(0, 200) : [] };
   zzzRs.setup = Object.assign({}, clean, { _u: u });
   try { localStorage.setItem(zzz_ukey('zzz_rs_setup'), JSON.stringify(clean)); } catch (e) {}
   if (!u || typeof sb === 'undefined' || !sb) return;
   try { const { error } = await sb.from('verso_user_settings').upsert({ username: u, runtime: 'web', module: 'read_setup', prefs: clean }, { onConflict: 'username,runtime,module' }); if (error) throw error; }
   catch (e) { zzz_user_error('READ SETUP is kept on this device - the Verso server did not take it now (it is sent again next time).', e, '[Zzz5-W10:KEEP-CONTENT]', 'warn'); }
+}
+
+function zzz_rs_quiet() { try { return typeof zzz16_quiet === 'function' && !!zzz16_quiet(); } catch (e) { return false; } }
+function zzz_rs_is_locked(path) {
+  const L = (zzz_rs_setup().locked || []).map(String); if (!L.length || !path) return false;
+  const parts = zzz_rs_path_norm(path).split(ZZZ_RS_SEP);
+  for (let i = 1; i <= parts.length; i++) if (L.indexOf(zzz_rs_key(parts.slice(0, i).join(ZZZ_RS_SEP))) >= 0) return true;
+  return false;
+}
+function zzz_rs_hidden(path) { return zzz_rs_quiet() && zzz_rs_is_locked(path); }
+async function zzz_rs_lock_toggle(path) {
+  const s0 = zzz_rs_setup(); const k = zzz_rs_key(path);
+  const L = (s0.locked || []).slice(); const i = L.indexOf(k);
+  if (i >= 0) L.splice(i, 1); else L.push(k);
+  await zzz_rs_setup_save(Object.assign({}, s0, { locked: L }));
+  zzz6f2_show_toast(i >= 0 ? 'Unlocked: ' + path : '🔒 Locked: ' + path + ' - hidden while QUIET is on.', 'info', 1800);
+  zzz_rs_render();
 }
 
 function zzz_rs_cache_get(link) {
@@ -28860,6 +28884,8 @@ async function zzz_rs_load(force) {
       const byId = {}; Object.values(els).forEach(x => { byId[String(x.id)] = x; });
       const keeps = {};
       notes.filter(n => n.note_part && /^verso:keep\b/.test(String(n.note_text || ''))).forEach(n => { keeps[n.entry_key + '#' + n.note_number] = n; });
+      zzzRs.diss = {};
+      notes.filter(n => n.note_part && !/^verso:keep\b/.test(String(n.note_text || ''))).forEach(n => { const k = n.entry_key + '#' + n.note_number; (zzzRs.diss[k] = zzzRs.diss[k] || []).push(n); });
       zzzRs.lines = notes.filter(n => !n.note_part && /(^|\s)reads(\s|$)/.test(String(n.note_tags || '')) && !/(^|\s)trash(\s|$)/.test(String(n.note_tags || '')))
         .map(n => zzz_rs_item(n, byId[String(n.entry_key)], keeps[n.entry_key + '#' + n.note_number]));
       zzzRs.loadedOf = me;
@@ -28986,7 +29012,7 @@ function zzz_rs_space_open(on) {
 }
 function zzz_rs_rows() {
   const byId = {}; Object.values(zzzRs.els).forEach(x => { byId[String(x.id)] = x; });
-  return zzz5w5cm_tab_list(ZZZ_RS_KEY).map(it => {
+  return zzz5w5cm_tab_list(ZZZ_RS_KEY).filter(it => { const el = byId[String(it.sourceEntryId || '')]; return !(el && zzz_rs_hidden(el.path)); }).map(it => {
     const f = it.fields || {}, id = it.sourceEntryId ? String(it.sourceEntryId) : '';
     const el = byId[id];
     const n = el ? zzzRs.lines.filter(x => x.entry === id).length : 0;
@@ -29047,12 +29073,13 @@ function zzz_rs_feeder() {
   if (zzzRs.page) w.classList.add('is-reading');
 
   const tabs = document.createElement('div'); tabs.className = 'zzz-rs-tabs';
-  const all = Object.values(zzzRs.els).map(x => x.path).sort((a, b) => a.localeCompare(b));
+  const all = Object.values(zzzRs.els).map(x => x.path).filter(p => !zzz_rs_hidden(p)).sort((a, b) => a.localeCompare(b));
+  if (zzzRs.path && zzz_rs_hidden(zzzRs.path)) { zzzRs.path = ''; zzzRs.page = null; }
   const top = all.filter(p => p.indexOf(ZZZ_RS_SEP) < 0);
   const curTop = zzzRs.path ? zzzRs.path.split(ZZZ_RS_SEP)[0] : '';
   const chip = (label, on, fn, cls) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz14cs-feed-chip zzz-rs-chip' + (on ? ' is-on' : '') + (cls ? ' ' + cls : ''); b.textContent = label; b.addEventListener('click', (e) => { e.stopPropagation(); fn(b); }); return b; };
   tabs.appendChild(chip('ALL', !zzzRs.path, () => { zzzRs.path = ''; zzzRs.page = null; zzz_rs_render(); }, 'is-all'));
-  top.forEach(p => tabs.appendChild(chip(p, p === curTop, () => { zzzRs.path = p; zzzRs.page = null; zzz_rs_render(); })));
+  top.forEach(p => tabs.appendChild(chip((zzz_rs_is_locked(p) ? '🔒 ' : '') + p, p === curTop, () => { zzzRs.path = p; zzzRs.page = null; zzz_rs_render(); })));
   tabs.appendChild(chip('+ TAB', false, async () => {
     const v = await zzz_verso_prompt('New READ tab (e.g. OSOBNÉ):', '', 'MAKE'); if (!v || !v.trim()) return;
     const el = await zzz_rs_folder(v.trim().replace(/[›>\/]/g, ' ').toUpperCase(), true); if (el) { zzzRs.path = el.path; zzz_rs_render(); }
@@ -29076,11 +29103,12 @@ function zzz_rs_feeder() {
     }, 'is-add'));
     const el = zzzRs.els[zzz_rs_key(zzzRs.path)];
     if (el) row.appendChild(chip('💬', false, () => zzz_rs_chat(el.id), 'is-chat'));
+    { const lk = zzz_rs_is_locked(zzzRs.path); row.appendChild(chip(lk ? '🔒' : '🔓', lk, () => zzz_rs_lock_toggle(zzzRs.path), 'is-lock')); }
     w.appendChild(row);
   }
   if (zzzRs.page) return w;
 
-  const inPath = zzzRs.lines.filter(x => !zzzRs.path || x.path === zzzRs.path || x.path.indexOf(zzzRs.path + ZZZ_RS_SEP) === 0);
+  const inPath = zzzRs.lines.filter(x => !zzz_rs_hidden(x.path) && (!zzzRs.path || x.path === zzzRs.path || x.path.indexOf(zzzRs.path + ZZZ_RS_SEP) === 0));
   const head = document.createElement('div'); head.className = 'zzz14cs-feed-head';
   const t = document.createElement('span'); t.className = 'zzz14cs-feed-title'; t.textContent = 'READ FEEDER'; head.appendChild(t);
   const modes = [['new', 'NEW', x => !x.seen], ['all', 'ALL', () => true], ['read', 'READ', x => x.seen], ['kept', 'KEPT', x => !!x.keep]];
@@ -29188,7 +29216,7 @@ function zzz_rs_reader(it) {
   selBtn('→ NOTE', 'The marked text as a note of this page (SUBS)', async (s) => {
     if (it.tmp || !it.id) { zzz6f2_show_toast('Add the page into READ first (ADD CONTENT) - then its notes have a place.', 'warn'); return; }
     const n = await zzz1cn_add(it.entry, '„' + s + '“', true, { base: it.num }, '', true, false, [], '');
-    if (n) zzz6f2_show_toast('Saved as a note of this page.', 'info', 1600);
+    if (n) { const k = it.entry + '#' + it.num; ((zzzRs.diss = zzzRs.diss || {})[k] = zzzRs.diss[k] || []).push(Object.assign({ note_text: '„' + s + '“', username: zzz_rs_me(), created_at: new Date().toISOString() }, n)); zzz6f2_show_toast('Saved as a note of this page (DISS).', 'info', 1600); }
   });
   selBtn('→ DESCRIPTION', 'The marked text becomes the DESCRIPTION of this page', async (s) => { if (it.tmp || !it.id) { zzz6f2_show_toast('Add the page into READ first.', 'warn'); return; } await zzz_rs_set_name(it, s); tt.textContent = it.name; });
   selBtn('COPY', 'Copy the marked text', async (s) => { try { await navigator.clipboard.writeText(s); zzz6f2_show_toast('Copied.', 'info', 1200); } catch (e) {} });
@@ -29202,7 +29230,7 @@ function zzz_rs_reader(it) {
 
   const sw = document.createElement('div'); sw.className = 'zzz-rs-swipebar';
   const swl = document.createElement('span'); swl.className = 'zzz-rs-sw-grip'; sw.appendChild(swl);
-  const swt = document.createElement('span'); swt.className = 'zzz-rs-sw-t'; swt.textContent = it.entry ? 'CHATNOTES #' + it.entry : 'CHATNOTES'; sw.appendChild(swt);
+  const swt = document.createElement('span'); swt.className = 'zzz-rs-sw-t'; swt.textContent = 'CHATNOTES'; sw.appendChild(swt);
   const keepB = document.createElement('button'); keepB.type = 'button'; keepB.className = 'zzz-rs-keep' + (it.keep ? ' is-on' : ''); keepB.textContent = it.keep ? 'KEPT' : 'KEEP CONTENT';
   keepB.title = 'Store this content for good (READ SETUP: ' + zzz_rs_setup().keep + ') - otherwise it is kept only on this device';
   keepB.addEventListener('click', async (e) => {
@@ -29214,6 +29242,9 @@ function zzz_rs_reader(it) {
     keepB.disabled = false;
   });
   sw.appendChild(keepB);
+
+  if (it.entry) { const cb = document.createElement('button'); cb.type = 'button'; cb.className = 'zzz-rs-keep zzz-rs-comm'; cb.textContent = '💬 #' + it.entry; cb.title = 'COMM - the chat of the whole record #' + it.entry; cb.addEventListener('click', (e) => { e.stopPropagation(); zzz_rs_chat(it.entry); }); sw.insertBefore(cb, keepB); }
+  if (!it.tmp && it.id) { const db = document.createElement('button'); db.type = 'button'; db.className = 'zzz-rs-keep zzz-rs-diss'; const nn = ((zzzRs.diss || {})[it.entry + '#' + it.num] || []).length; db.textContent = 'DISS' + (nn ? ' ' + nn : ''); db.title = 'DISS - comments / notes of this page'; db.addEventListener('click', (e) => { e.stopPropagation(); zzz_rs_diss(it, () => { const n2 = ((zzzRs.diss || {})[it.entry + '#' + it.num] || []).length; db.textContent = 'DISS' + (n2 ? ' ' + n2 : ''); }); }); sw.insertBefore(db, keepB); }
   let y0 = null, moved = false;
   sw.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) return; y0 = e.clientY; moved = false; try { sw.setPointerCapture(e.pointerId); } catch (_) {} });
   sw.addEventListener('pointermove', (e) => { if (y0 !== null && Math.abs(e.clientY - y0) > 12) moved = true; });
@@ -29276,12 +29307,41 @@ function zzz_rs_filter(content, countEl) {
   });
   if (countEl) countEl.textContent = words.length ? n + ' parts' : '';
 }
+
+function zzz_rs_diss(it, after) {
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm'; o.setAttribute('data-zzz-nodraft', '1');
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzz-rs-setup';
+  const t = document.createElement('div'); t.className = 'zzz-media-confirm-text'; t.textContent = 'DISS · ' + (it.name || zzz_rs_host(it.link)); b.appendChild(t);
+  const list = document.createElement('div'); list.className = 'zzz-rs-diss-l'; b.appendChild(list);
+  const k = it.entry + '#' + it.num;
+  const paint = () => {
+    list.innerHTML = '';
+    const ns = ((zzzRs.diss || {})[k] || []).slice().sort((a, c) => String(a.created_at || '').localeCompare(String(c.created_at || '')));
+    if (!ns.length) { const e = document.createElement('div'); e.className = 'zzz-rs-set-h'; e.textContent = 'No note yet - write one below, or mark text in the page → NOTE.'; list.appendChild(e); }
+    ns.forEach(n => { const r = document.createElement('div'); r.className = 'zzz-rs-diss-r'; const w = document.createElement('b'); w.textContent = String(n.username || '') + ' '; r.appendChild(w); r.appendChild(document.createTextNode(String(n.note_text || ''))); list.appendChild(r); });
+  };
+  paint();
+  const inp = document.createElement('textarea'); inp.className = 'zzz-rs-diss-in'; inp.rows = 2; inp.placeholder = 'Note to this page…'; b.appendChild(inp);
+  const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
+  const no = document.createElement('button'); no.type = 'button'; no.className = 'zzz-media-btn'; no.textContent = 'CLOSE';
+  const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'zzz-media-btn is-on'; ok.textContent = 'ADD';
+  ok.addEventListener('click', async () => {
+    const v = inp.value.trim(); if (!v) return; ok.disabled = true;
+    const n = await zzz1cn_add(it.entry, v, true, { base: it.num }, '', true, false, [], '');
+    ok.disabled = false;
+    if (n) { ((zzzRs.diss = zzzRs.diss || {})[k] = zzzRs.diss[k] || []).push(Object.assign({ note_text: v, username: zzz_rs_me(), created_at: new Date().toISOString() }, n)); inp.value = ''; paint(); if (after) after(); }
+  });
+  no.addEventListener('click', () => o.remove());
+  row.appendChild(no); row.appendChild(ok); b.appendChild(row);
+  o.appendChild(b); o.addEventListener('click', (e) => { if (e.target === o) o.remove(); });
+  document.body.appendChild(o);
+}
 function zzz_rs_setup_window() {
   const s = zzz_rs_setup();
   const o = document.createElement('div'); o.className = 'zzz-media-confirm'; o.setAttribute('data-zzz-nodraft', '1');
   const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzz-rs-setup';
   const t = document.createElement('div'); t.className = 'zzz-media-confirm-text'; t.textContent = 'READ SETUP'; b.appendChild(t);
-  const cur = { store: s.store, keep: s.keep, cache: s.cache };
+  const cur = { store: s.store, keep: s.keep, cache: s.cache, locked: (s.locked || []).slice() };
   const group = (label, key, opts, help) => {
     const g = document.createElement('div'); g.className = 'zzz-rs-set-g';
     const l = document.createElement('div'); l.className = 'zzz-rs-set-l'; l.textContent = label; g.appendChild(l);
@@ -49920,7 +49980,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-08 19:27';
+const VERSO_BUILD = '2026-11-08 20:04';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
