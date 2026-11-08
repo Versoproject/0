@@ -7238,6 +7238,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-vi-win-send { flex: 0 0 96px; border: 2px solid #D4AF37; border-radius: 12px; background: #111; color: #D4AF37; font-weight: 800; font-size: 12px; line-height: 1.15; }
   .zzz-vi-line .zzz-vi-pk { border-color: #2DD4BF; color: #2DD4BF; } .zzz-vi-line .zzz-vi-pk.is-on { background: #2DD4BF; color: #000; }
   .zzz-vi-pklist { flex-wrap: wrap; } .zzz-vi-pklist button { border-color: #2DD4BF; color: #2DD4BF; } .zzz-vi-pklist button.is-on { background: #2DD4BF; color: #000; }
+  .zzz-media-btn.zzz-media-feeder.is-sat-off { color: #9ca3af; border-color: #6b7280; background: linear-gradient(to top right, transparent calc(50% - 1.5px), #ef4444 calc(50% - 1.5px), #ef4444 calc(50% + 1.5px), transparent calc(50% + 1.5px)), #2a2a2a; }   
+  .zzz-media-btn.zzz-media-feeder.is-smc { box-shadow: 0 0 0 2px #22c55e inset; }   
   .zzz-media-btn.zzz-media-feeder.is-on { background: #D4AF37; border-color: #D4AF37; color: #000; }   
   .zzz-vi-qcb .zzz-vi-qpick { flex: 1 0 100%; box-sizing: border-box; max-width: 100%; max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; border: 1px solid #D4AF37; border-radius: 10px; padding: 4px 6px; background: #111; }   
   .zzz-vi-qcb .zzz-vi-qpick .zzz-vi-qfind { width: 100%; box-sizing: border-box; background: #000; color: #fff; border: 1px solid #6b7280; border-radius: 8px; padding: 4px 8px !important; font-size: 14px; margin: 2px 0 4px; height: 34px !important; min-height: 0 !important; flex: 0 0 auto; }   
@@ -49258,7 +49260,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-08 15:51';
+const VERSO_BUILD = '2026-11-08 16:31';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -52554,6 +52556,7 @@ function zzz_media_set_offline(on) {
   if (zzz_media_native()) { try { zzz_native_go(zzz_media_intent('mediamode?off=' + (on ? 1 : 0))); } catch (e) {} }
   zzz6f2_show_toast(on ? 'VERSO MEDIA: OFFLINE - the list shows only files on this phone / browser.' : 'VERSO MEDIA: ONLINE - the list shows only web links.', 'info');
   document.querySelectorAll('.zzz-media-mode').forEach(b => { b.textContent = on ? 'OFFLINE' : 'ONLINE'; b.classList.toggle('is-off', on); });
+  document.querySelectorAll('.zzz-media-feeder').forEach(b => { try { b._satPaint && b._satPaint(); } catch (x) {} });
   try { zzz_media_redraw(); } catch (e) {}
   zzz_media_paint();
 }
@@ -52688,6 +52691,30 @@ function zzz_media_open_orig() {
   try { if (zzz_media_playing()) zzz_media_toggle(); } catch (e) {}
   zzz6f2_show_toast('\u2197 ' + (zzz_media_service(it.link) || 'original') + ': ' + zzz_media_title(it), 'info', 1800);
   try { zzz_media_open_app(it.link); } catch (e) {}
+}
+
+function zzz_media_smc() {
+  try {
+    if (typeof zzz14b17_in_app === 'function' && zzz14b17_in_app()) { const ns = JSON.parse(localStorage.getItem('verso_native_settings') || '{}'); if (ns && ns.kb && typeof ns.kb.smc_on === 'boolean') return ns.kb.smc_on; }
+    return localStorage.getItem(zzz_ukey('zzz_media_smc')) !== '0';
+  } catch (e) { return false; }
+}
+function zzz_media_set_smc(on) {
+  try { localStorage.setItem(zzz_ukey('zzz_media_smc'), on ? '1' : '0'); } catch (e) {}
+  try { const ns = JSON.parse(localStorage.getItem('verso_native_settings') || '{}') || {}; ns.kb = ns.kb || {}; ns.kb.smc_on = !!on; localStorage.setItem('verso_native_settings', JSON.stringify(ns)); } catch (e) {}
+  if (zzz_media_native()) { try { zzz_native_go(zzz_media_intent('mediamode?smc=' + (on ? 1 : 0))); } catch (e) {} }
+  zzz6f2_show_toast(on ? '\uD83D\uDCE1 SERVER MEDIA CONTROL on - Verso\u2019s server finds the video behind Facebook share links.' : '\uD83D\uDCE1 SERVER MEDIA CONTROL off.', 'info', 2600);
+  document.querySelectorAll('.zzz-media-feeder').forEach(b => { try { b._satPaint && b._satPaint(); } catch (x) {} });
+}
+const zzzMediaFbRes = {};
+async function zzz_media_fb_resolve(link) {
+  if (Object.prototype.hasOwnProperty.call(zzzMediaFbRes, link)) return zzzMediaFbRes[link];
+  let out = '';
+  try {
+    const mH = zzz_verso_fn_headers();
+    if (mH) { const r = await fetch(SUPABASE_URL + '/functions/v1/verso-media-meta?resolve=1&url=' + encodeURIComponent(link), { cache: 'no-store', headers: mH }); if (r.ok) { const j = await r.json(); out = (j && typeof j.url === 'string' && /^https:\/\/www\.facebook\.com\//.test(j.url)) ? j.url : ''; } }
+  } catch (e) { out = ''; }
+  zzzMediaFbRes[link] = out; return out;
 }
 
 function zzz_media_embed(u) {
@@ -54030,7 +54057,15 @@ function zzz_media_play(it, queue) {
   if (/^https?:/i.test(it.link) && !zzz_media_has_file(it) && !zzz_media_web_ok(it)) { if (offNow) { zzz6f2_show_toast('No internet - ' + (zzz_media_title(it) || 'this link') + ' needs it.', 'info'); return; } zzz_media_not_media(it); return; }
   if (offNow && /^https?:/i.test(it.link) && !zzz_media_has_file(it)) { zzz6f2_show_toast('No internet and no copy on this phone - ' + (zzz_media_title(it) || 'this one') + ' is skipped.', 'info'); const nx = (zzzMedia.queue || []).find(x => x.link !== it.link && zzz_media_has_file(x)); if (nx) zzz_media_play(nx); return; }
   if (zzz_media_native() && (zzz_media_offline() || !zzz_media_embed(it.link))) { zzz_media_play_native(it, zzzMedia.queue); return; }
-  if (!zzz_media_offline() && zzz_media_fb_noembed(it.link)) { zzz_media_stop(); zzzMedia.cur = it; zzz_media_next(1, true, true); return; }
+  if (!zzz_media_offline() && !it.embedLink && zzz_media_fb_noembed(it.link)) {
+    if (zzz_media_smc()) {
+      const known = zzzMediaFbRes[it.link];
+      if (known === undefined) { zzz6f2_show_toast('\uD83D\uDCE1 SERVER MEDIA CONTROL: looking for the video\u2026', 'info', 1500);
+        zzz_media_fb_resolve(it.link).then(u => { if (u) zzz_media_play(Object.assign({}, it, { embedLink: u })); else { zzz_media_stop(); zzzMedia.cur = it; zzz_media_next(1, true, true); } }); return; }
+      if (known) { zzz_media_play(Object.assign({}, it, { embedLink: known })); return; }
+    }
+    zzz_media_stop(); zzzMedia.cur = it; zzz_media_next(1, true, true); return;
+  }
 
   if (zzzMedia.nat) { zzz_media_nat_cmd('stop'); zzzMedia.natPlaying = false; }
   zzzMedia.nat = false;
@@ -54043,7 +54078,7 @@ function zzz_media_play(it, queue) {
   zzz_media_mark_actual(it);
   zzz_media_chip_started(it);
   const chipAt = zzzMedia.chipStart || 0; zzzMedia.chipStart = 0;
-  let emb = off ? '' : zzz_media_embed(it.link);
+  let emb = off ? '' : zzz_media_embed(it.embedLink || it.link);
   if (emb && chipAt && /youtube/.test(emb)) emb += '&start=' + chipAt;
 
   zzz_media_ext_mark(st, off ? '' : it.link);
@@ -54525,14 +54560,21 @@ async function zzz_media_open() {
   modeB.addEventListener('click', () => zzz_media_set_offline(!zzz_media_offline()));
 
   const fdB = document.createElement('button'); fdB.type = 'button'; fdB.className = 'zzz-media-btn zzz-media-feeder'; fdB.textContent = '\uD83D\uDCE1';
-  fdB.title = 'MEDIA FEEDER: tap = on / off · hold = sources (later, with STREAMS)';
+
+  fdB.title = '📡 sources: tap = ONLINE → OFFLINE → FEEDER · hold = SERVER MEDIA CONTROL on / off';
   { const k = () => zzz_ukey('zzz_media_feeder'); const isOn = () => { try { return localStorage.getItem(k()) === '1'; } catch (e) { return false; } };
-    const paint = () => fdB.classList.toggle('is-on', isOn()); paint();
+    const setFeed = (n) => { try { localStorage.setItem(k(), n ? '1' : '0'); } catch (e) {} };
+    const paint = () => { const f = isOn(), off = zzz_media_offline(); fdB.textContent = '\uD83D\uDCE1' + (f && !off ? ')))' : '') + (zzz_media_smc() ? '\u02E2' : ''); fdB.classList.toggle('is-on', f && !off); fdB.classList.toggle('is-sat-off', off); fdB.classList.toggle('is-smc', zzz_media_smc()); };
+    fdB._satPaint = paint; paint();
     let ht = 0, held = false;
-    fdB.addEventListener('pointerdown', () => { held = false; clearTimeout(ht); ht = setTimeout(() => { held = true; zzz_haptic_pulse(15); zzz6f2_show_toast('MEDIA FEEDER WINDOW (your sources) comes later with STREAMS.', 'info'); }, 800); });
+    fdB.addEventListener('pointerdown', () => { held = false; clearTimeout(ht); ht = setTimeout(() => { held = true; zzz_haptic_pulse(15); zzz_media_set_smc(!zzz_media_smc()); paint(); }, 1200); });
     ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => fdB.addEventListener(ev, () => clearTimeout(ht)));
-    fdB.addEventListener('click', () => { if (held) return; const n = !isOn(); try { localStorage.setItem(k(), n ? '1' : '0'); } catch (e) {} paint();
-      zzz6f2_show_toast(n ? 'MEDIA FEEDER on - your sources start playing when STREAMS is connected (later).' : 'MEDIA FEEDER off.', 'info'); }); }
+    fdB.addEventListener('contextmenu', (e) => e.preventDefault());
+    fdB.addEventListener('click', () => { if (held) { held = false; return; } const off = zzz_media_offline(), f = isOn();
+      if (off) { setFeed(true); zzz_media_set_offline(false); zzz6f2_show_toast('\uD83D\uDCE1))) FEEDER - your sources feed the list (STREAMS later).', 'info'); }
+      else if (f) { setFeed(false); zzz6f2_show_toast('\uD83D\uDCE1 ONLINE', 'info', 1400); }
+      else { setFeed(false); zzz_media_set_offline(true); }
+      paint(); }); }
   const hr = document.createElement('span'); hr.className = 'zzz-media-head-r'; hr.append(fdB, modeB, x);
   head.append(ttl, hr); w.appendChild(head);
   try { const vl = zzz_vi_line_el(); if (vl) w.appendChild(vl); } catch (e) {}
@@ -56715,7 +56757,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 289;
+const ZZZ14B17_APP_LATEST = 291;
 function zzz14b17_app_code() {
 
   try {
