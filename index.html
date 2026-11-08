@@ -7311,7 +7311,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   
   .zzz-media-row.is-seen > div { border-color: #16a34a !important; border-width: 2px; }
   
-  .zzz-media-row.is-gold:not(.is-seen):not(.is-lab):not(.is-folder):not(.is-pls):not(.is-cur):not(.is-new) > div:not(.zzz-media-elcell) { border-color: #EF4444; }
+  .zzz-media-row.is-gold:not(.is-seen):not(.is-problem):not(.is-lab):not(.is-folder):not(.is-pls):not(.is-cur):not(.is-new) > div:not(.zzz-media-elcell) { border-color: #EF4444; }
+  
+  .zzz-media-row.is-problem > div { background: #2b2b2b !important; color: #8f8f8f !important; border-color: #6b6b6b !important; }
+  .zzz-media-row.is-problem > div * { color: #8f8f8f; }
   .zzz-media-tagchip.is-read { border-color: #22C55E !important; color: #22C55E; } .zzz-media-tagchip.is-read.is-on { background: #22C55E; color: #0b0b0b; }
   .zzz-media-tagchip.is-unread { border-color: #EF4444 !important; color: #EF4444; } .zzz-media-tagchip.is-unread.is-on { background: #EF4444; color: #fff; }
   
@@ -49255,7 +49258,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-08 15:43';
+const VERSO_BUILD = '2026-11-08 15:45';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -52666,6 +52669,25 @@ function zzz_media_ext_mark(st, u) {
   lb.textContent = 'external: ' + (zzz_media_service(u) || 'web');
   lb.title = 'This player is loaded directly from ' + (zzz_media_service(u) || 'a foreign server') + ' - outside Verso, it sees your device.';
 }
+
+function zzz_media_fb_noembed(u) {
+  try { const x = new URL(u); const h = x.hostname.replace(/^(www|m|web|mbasic)\./, ''); return h === 'fb.watch' || (h === 'facebook.com' && /^\/share\//.test(x.pathname)); } catch (e) { return false; }
+}
+function zzz_media_is_problem(it) { const l = it && it.link ? zzz_media_line(it) : null; return !!(l && zzz_media_tagw(l.tags).indexOf('problem') >= 0); }
+async function zzz_media_problem(it, on) {
+  const l = it && it.link ? zzz_media_line(it) : null; if (!l || !l.id) return;
+  const w = zzz_media_tagw(l.tags), has = w.indexOf('problem') >= 0; if (has === !!on) return;
+  const nw = w.filter(t => t !== 'problem'); if (on) nw.push('problem');
+  if (await zzz_media_set_tags(l, nw)) { try { zzz_media_redraw(); } catch (e) {} zzz_media_paint(); }
+}
+
+function zzz_media_open_orig() {
+  const it = zzzMedia.cur; if (!it || !/^https?:/i.test(it.link || '')) { zzz_media_chip_org(); return; }
+  try { if (zzz_media_playing()) zzz_media_toggle(); } catch (e) {}
+  zzz6f2_show_toast('\u2197 ' + (zzz_media_service(it.link) || 'original') + ': ' + zzz_media_title(it), 'info', 1800);
+  try { zzz_media_open_app(it.link); } catch (e) {}
+}
+
 function zzz_media_embed(u) {
   let m;
   try {
@@ -52735,7 +52757,7 @@ async function zzz_media_autoname(it) {
   if (nm && !it.name) { await zzz_media_set_tags(it, zzz_media_tagw(it.tags), nm); zzz_media_redraw(); zzz_media_paint(); }
 }
 
-const ZZZ_MEDIA_PERSONAL = ['actual'];
+const ZZZ_MEDIA_PERSONAL = ['actual', 'problem'];
 function zzz_media_item(n, st) {
   const ownTags = String(n.note_tags || '').toLowerCase();
   const tags = st ? Array.from(new Set(zzz_media_tagw(ownTags).concat(zzz_media_tagw(st.note_tags)))).join(' ') : ownTags;
@@ -52896,7 +52918,7 @@ function zzz_media_chip_paint() {
 
     { const ps = zzz_media_pos(); b.textContent = '⏯ ' + (zzzMedia.cur && ps !== null ? zzz_media_fmt_time(ps) : 'MEDIA') + (o.slots.length ? ' · ' + o.slots.length : ''); }
     b.classList.toggle('has', !!(o.cur || o.slots.length));
-    b.title = o.cur ? 'Tap = back to „' + o.cur.name + '“ at ' + zzz_media_fmt_time(o.cur.pos || 0) + ' · hold = organizer' : 'Tap = NEXT UP · hold = organizer (one slot per tab)';
+    b.title = zzzMedia.cur ? 'Tap = play / stop · hold = the original in its app (YouTube, Facebook…)' : o.cur ? 'Tap = back to „' + o.cur.name + '“ at ' + zzz_media_fmt_time(o.cur.pos || 0) + ' · hold = organizer' : 'Tap = NEXT UP · hold = organizer (one slot per tab)';
   });
   const og = document.getElementById('zzzMediaChipOrg'); if (og && og._paint) og._paint();
 }
@@ -52962,7 +52984,7 @@ function zzz_media_diss_bubble() {
 function zzz_media_chip_button() {
   const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-btn zzz-media-chipb';
   let ht = 0, held = false;
-  b.addEventListener('pointerdown', () => { held = false; clearTimeout(ht); ht = setTimeout(() => { held = true; try { navigator.vibrate && navigator.vibrate(20); } catch (e) {} zzz_media_chip_org(); }, 600); });
+  b.addEventListener('pointerdown', () => { held = false; clearTimeout(ht); ht = setTimeout(() => { held = true; try { navigator.vibrate && navigator.vibrate(20); } catch (e) {} if (zzzMedia.cur) zzz_media_open_orig(); else zzz_media_chip_org(); }, 600); });
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => b.addEventListener(ev, () => clearTimeout(ht)));
   b.addEventListener('click', (e) => { e.stopPropagation(); if (held) { held = false; return; } zzz_media_btn_tap(); });
   b.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -53855,7 +53877,7 @@ function zzz_media_link_name(link) {
 }
 
 function zzz_media_own_tags(it) {
-  const tabs = ZZZ_MEDIA_TABS.map(x => x.toLowerCase()).concat(['actual', 'trash', 'seen', 'later', 'private', 'playlist', 'fav']);
+  const tabs = ZZZ_MEDIA_TABS.map(x => x.toLowerCase()).concat(['actual', 'trash', 'seen', 'later', 'private', 'playlist', 'fav', 'problem']);
   return zzz_media_tagw(it.tags).filter(t => tabs.indexOf(t) < 0 && t.indexOf('pls:') !== 0);
 }
 function zzz_media_tags_shown(it) { const o = zzz_media_own_tags(it); return o.length ? o.join(' ') : ''; }
@@ -54005,6 +54027,7 @@ function zzz_media_play(it, queue) {
   if (/^https?:/i.test(it.link) && !zzz_media_has_file(it) && !zzz_media_web_ok(it)) { if (offNow) { zzz6f2_show_toast('No internet - ' + (zzz_media_title(it) || 'this link') + ' needs it.', 'info'); return; } zzz_media_not_media(it); return; }
   if (offNow && /^https?:/i.test(it.link) && !zzz_media_has_file(it)) { zzz6f2_show_toast('No internet and no copy on this phone - ' + (zzz_media_title(it) || 'this one') + ' is skipped.', 'info'); const nx = (zzzMedia.queue || []).find(x => x.link !== it.link && zzz_media_has_file(x)); if (nx) zzz_media_play(nx); return; }
   if (zzz_media_native() && (zzz_media_offline() || !zzz_media_embed(it.link))) { zzz_media_play_native(it, zzzMedia.queue); return; }
+  if (!zzz_media_offline() && zzz_media_fb_noembed(it.link)) { zzz_media_stop(); zzzMedia.cur = it; zzz_media_next(1, true, true); return; }
 
   if (zzzMedia.nat) { zzz_media_nat_cmd('stop'); zzzMedia.natPlaying = false; }
   zzzMedia.nat = false;
@@ -54029,7 +54052,7 @@ function zzz_media_play(it, queue) {
     f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation');
     zzzMedia.ytState = undefined; zzzMedia.ytTime = undefined; zzzMedia.ytDur = undefined;
     f.addEventListener('load', () => { try { f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1 }), '*'); } catch (e) {}
-      if (/w\.soundcloud\.com/.test(emb)) ['play', 'pause', 'finish'].forEach(ev => { try { f.contentWindow.postMessage(JSON.stringify({ method: 'addEventListener', value: ev }), 'https://w.soundcloud.com'); } catch (e) {} });
+      if (/w\.soundcloud\.com/.test(emb)) ['play', 'pause', 'finish', 'error'].forEach(ev => { try { f.contentWindow.postMessage(JSON.stringify({ method: 'addEventListener', value: ev }), 'https://w.soundcloud.com'); } catch (e) {} });
     });
     st.insertBefore(f, st.firstChild);
   } else {
@@ -54041,7 +54064,7 @@ function zzz_media_play(it, queue) {
     if (chipAt) v.addEventListener('loadedmetadata', () => { try { if (chipAt < (v.duration || 1e9) - 2) v.currentTime = chipAt; } catch (e) {} }, { once: true });
     v.addEventListener('ended', () => { zzz_media_finished(it); zzz_media_next(1, true); });
     v.addEventListener('error', () => zzz_media_next(1, true, true));
-    v.addEventListener('playing', () => { zzzMedia.skips = 0; zzz_media_paint(); });
+    v.addEventListener('playing', () => { zzzMedia.skips = 0; if (zzz_media_is_problem(it)) zzz_media_problem(it, false); zzz_media_paint(); });
     v.addEventListener('pause', zzz_media_paint);
     st.insertBefore(v, st.firstChild);
     try { const pr = v.play(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {}
@@ -54066,7 +54089,7 @@ function zzz_media_next(step, auto, err) {
   const l0 = zzzMedia.queue.length ? zzzMedia.queue : zzz_media_tablist().filter(x => x.link);
 
   const offN = zzz_media_offline() || navigator.onLine === false;
-  const l = l0.filter(x => (zzzMedia.cur && x.link === zzzMedia.cur.link) || zzz_media_has_file(x) || (!offN && zzz_media_web_ok(x)));
+  const l = l0.filter(x => (zzzMedia.cur && x.link === zzzMedia.cur.link) || zzz_media_has_file(x) || (!offN && zzz_media_web_ok(x) && !zzz_media_is_problem(x)));
   if (!l.length) return;
 
   if (err && navigator.onLine === false && zzzMedia.cur && /^https?:/i.test(zzzMedia.cur.link || '') && !zzz_media_offline()) {
@@ -54074,8 +54097,9 @@ function zzz_media_next(step, auto, err) {
       window.addEventListener('online', () => { zzzMedia.netWait = false; if (zzzMedia.cur) zzz_media_play(zzzMedia.cur); }, { once: true }); }
     return;
   }
-  if (err) { zzzMedia.skips++; if (zzzMedia.skips > l.length) { zzzMedia.skips = 0; zzz6f2_show_toast('VERSO MEDIA: no link in this list could be played.', 'warn'); return; }
-    try { zzz6f2_show_toast('Could not play ' + zzz_media_title(zzzMedia.cur || {}) + ' - next one.', 'warn', 2500); } catch (e) {} }
+  if (err && zzzMedia.cur && /^https?:/i.test(zzzMedia.cur.link || '') && !zzz_media_has_file(zzzMedia.cur)) { try { zzz_media_problem(zzzMedia.cur, true); } catch (e) {} }
+  if (err) { zzzMedia.skips++; if (zzzMedia.skips > l.length) { zzzMedia.skips = 0; zzz_media_stop(); zzz6f2_show_toast('VERSO MEDIA: no link in this list could be played here (grey rows).', 'warn'); return; }
+    try { zzz6f2_show_toast((zzz_media_service((zzzMedia.cur || {}).link) || 'The service') + ' will not play ' + zzz_media_title(zzzMedia.cur || {}) + ' in Verso - marked grey, next one.', 'warn', 2800); } catch (e) {} }
   let i = l.findIndex(x => zzzMedia.cur && x.link === zzzMedia.cur.link);
   const loop = zzz_media_loop();
   if (auto && !err && loop === 2 && i >= 0) { zzz_media_play(l[i]); return; }
@@ -54091,6 +54115,8 @@ window.addEventListener('message', (e) => {
   if (e.origin !== 'https://w.soundcloud.com') return;
   let d; try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (x) { return; }
   const m = d && d.method; if (!m) return;
+  if (m === 'error') { zzz_media_next(1, true, true); return; }
+  if (m === 'play' && zzzMedia.cur && zzz_media_is_problem(zzzMedia.cur)) zzz_media_problem(zzzMedia.cur, false);
   if (m === 'play' || m === 'pause') { zzzMedia.scState = m; zzz_media_paint(); try { zzz_media_kb_redraw(); } catch (x) {} }
   else if (m === 'finish') { zzzMedia.scState = 'pause'; try { if (zzzMedia.cur) zzz_media_finished(zzzMedia.cur); } catch (x) {} zzz_media_next(1, true); }
 });
@@ -54135,6 +54161,7 @@ window.addEventListener('message', (e) => {
 
   if (d.info && typeof d.info.currentTime === 'number') zzzMedia.ytTime = d.info.currentTime;
   if (d.info && typeof d.info.duration === 'number' && d.info.duration > 0) zzzMedia.ytDur = d.info.duration;
+  if (ps === 1 && zzzMedia.cur && zzz_media_is_problem(zzzMedia.cur)) zzz_media_problem(zzzMedia.cur, false);
   if (typeof ps === 'number' && ps !== zzzMedia.ytState) { zzzMedia.ytState = ps; zzz_media_paint(); try { zzz_media_kb_redraw(); } catch (x) {} }
   if (ps === 0) { zzz_media_finished(zzzMedia.cur); zzz_media_next(1, true); }
 });
@@ -54794,7 +54821,7 @@ async function zzz_media_open() {
     l.forEach(it => {
       const seen = it.seen;
       const lockedNow = zzz_media_locked_now(it);
-      const r = document.createElement('div'); r.className = 'zzz-media-row ' + (it.link ? 'is-gold' : 'is-silver') + (zzzMedia.sel.has(it.id) ? ' is-sel' : '') + (seen ? ' is-seen' : '') + (lockedNow ? ' is-locked' : '');
+      const r = document.createElement('div'); r.className = 'zzz-media-row ' + (it.link ? 'is-gold' : 'is-silver') + (zzzMedia.sel.has(it.id) ? ' is-sel' : '') + (seen ? ' is-seen' : '') + (lockedNow ? ' is-locked' : '') + (zzz_media_tagw(it.tags).indexOf('problem') >= 0 ? ' is-problem' : '');
       if (it.link) r.dataset.link = it.link;
       if (it.id) r.dataset.mid = String(it.id);
       if (it.id && String(it.id) === String(zzzMedia.newId || '')) r.classList.add('is-new');
@@ -54929,7 +54956,7 @@ function zzz_media_edit(it, redraw) {
     c.addEventListener('click', () => { if (on.has(n)) on.delete(n); else on.add(n); c.classList.toggle('is-on', on.has(n)); }); tb.appendChild(c); });
   b.appendChild(tb);
   lab('PLAYLISTS (comma)'); const pl = document.createElement('input'); pl.value = w.filter(x => x.indexOf('pls:') === 0).map(x => x.slice(4)).join(', '); b.appendChild(pl);
-  const keep = ['seen', 'later', 'trash'];
+  const keep = ['seen', 'later', 'trash', 'problem'];
 
   lab('MAIN TAG + TAGS'); const tcw = document.createElement('div'); tcw.className = 'zzz-media-tagchips'; b.appendChild(tcw);
   const ownArr = w.filter(x => tabNames.indexOf(x) < 0 && x.indexOf('pls:') !== 0 && keep.indexOf(x) < 0);
