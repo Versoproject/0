@@ -164,7 +164,9 @@
   #zzzUpdScreen .zzzupd-ch.is-cancel { border-color: #9a9a9a; color: #d0d0d0; }
   #zzzUpdScreen .zzzupd-chnote { width: 100%; text-align: center; color: #9a9a9a; font: 12px/1.35 system-ui, sans-serif; }
   html.zzz-start-cover::after { content: ''; position: fixed; inset: 0; z-index: 2147483644; background: #171717; }   
-  #zzzBusyScreen { position: fixed; inset: 0; z-index: 2147483645; background: rgba(23,23,23,.96); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; touch-action: none; user-select: none; -webkit-user-select: none; }   
+  @keyframes zzzBusyIn { from { opacity: 0; } to { opacity: 1; } }   
+  #zzzBusyScreen.is-out { opacity: 0; transition: opacity .18s ease-in; }
+  #zzzBusyScreen { animation: zzzBusyIn .16s ease-out; position: fixed; inset: 0; z-index: 2147483645; background: rgba(23,23,23,.96); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; touch-action: none; user-select: none; -webkit-user-select: none; }   
   #zzzBusyScreen .zzzupd-logo { position: relative; width: 120px; height: 120px; display: flex; align-items: center; justify-content: center; }
   #zzzBusyScreen .zzzupd-chain { animation: zzzupd-spin 3.2s linear infinite; }
   #zzzBusyScreen .zzzupd-logo b, #zzzBusyScreen .zzzupd-t { color: #D4AF37; font: 700 18px/1.2 system-ui, sans-serif; }
@@ -11886,7 +11888,20 @@ async function zzz6f29_fetch_entry_row(id) {
   } catch (e) { return null; }
 }
 
-async function zzz_open_chat_entry(key, focusNoteId) {
+async function zzz_flow_guard(title, run, settleMs) {
+  let own = false;
+  try { own = !zzzBusy; if (own) zzz_busy_start(title || 'VERSO'); } catch (e) { own = false; }
+  try { return await run(); }
+  finally {
+    try { await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); if (settleMs) await new Promise(r => setTimeout(r, settleMs)); } catch (e) {}
+    if (own) try { zzz_busy_end(); } catch (e) {}
+  }
+}
+function zzz_open_chat_entry(key, focusNoteId) {
+  const k = String(key || '').replace(/\D/g, '');
+  return zzz_flow_guard(k ? 'CHAT #' + k : 'VERSO', () => zzz_open_chat_entry_now(key, focusNoteId), focusNoteId ? 300 : 120);
+}
+async function zzz_open_chat_entry_now(key, focusNoteId) {
   const k = String(key || '').replace(/\D/g, '');
   if (!k) return false;
   let row = zzz6f29_entry_row_of(k);
@@ -49221,7 +49236,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-08 05:35';
+const VERSO_BUILD = '2026-11-08 11:42';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -49365,7 +49380,7 @@ function zzz_busy_end(keepCover) {
   if (!keepCover) try { document.documentElement.classList.remove('zzz-start-cover'); } catch (e) {}
   const b = zzzBusy; zzzBusy = null; if (!b) return;
   clearTimeout(b.timer); clearTimeout(b.stop);
-  if (b.el) { b.pct = 100; try { b.el.querySelector('.zzzupd-s').textContent = '100 %'; b.el.querySelector('.zzzbusy-bar i').style.width = '100%'; } catch (e) {} setTimeout(() => { try { b.el.remove(); } catch (e) {} }, 180); }
+  if (b.el) { b.pct = 100; try { b.el.querySelector('.zzzupd-s').textContent = '100 %'; b.el.querySelector('.zzzbusy-bar i').style.width = '100%'; } catch (e) {} try { b.el.classList.add('is-out'); } catch (e) {} setTimeout(() => { try { b.el.remove(); } catch (e) {} }, 200); }
 }
 
 try { if (/^#media\b/i.test(String(location.hash || ''))) setTimeout(() => { if (!document.getElementById('zzzMediaWin')) { zzz_busy_start('VERSO MEDIA CENTER', true); zzz_busy_set(5, 'starting Verso'); } }, 0); } catch (e) {}

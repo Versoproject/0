@@ -46,7 +46,8 @@ async function versoSwGood() {
   try { const r = await (await caches.open(VERSO_GOOD_CACHE)).match('./'); if (!r) return null; const html = await r.clone().text(); return { res: r, build: versoSwBuildOf(html) }; } catch (e) { return null; }
 }
 async function versoSwWeb() {
-  try { const r = await fetch('./verso-web.json?sw=' + Date.now(), { cache: 'no-store' }); return r.ok ? await r.json() : null; } catch (e) { return null; }
+  try { const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 3000);
+    const r = await fetch('./verso-web.json?sw=' + Date.now(), { cache: 'no-store', signal: ac.signal }); clearTimeout(t); return r.ok ? await r.json() : null; } catch (e) { return null; }
 }
 
 async function versoSwTarget(web, netBuild) {
@@ -69,19 +70,31 @@ async function versoSwTakePrefetch() {
     return new Response(await r.text(), { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
   } catch (e) { return null; }
 }
+
+const VERSO_SW_SLOW_MS = 3500;
 async function versoSwNavigate(req) {
   let res = await versoSwTakePrefetch();
-  if (!res) try { res = await fetch(req, { cache: 'no-store' }); }
-  catch (err) {
-    const cached = (await caches.match('./')) || (await caches.match('./', { cacheName: VERSO_GOOD_CACHE }));
-    if (cached) return cached;
-    throw err;
+  const webP = versoSwWeb();
+  if (!res) {
+    const netP = fetch(req, { cache: 'no-store' });
+    const cachedNow = (await caches.match('./', { cacheName: VERSO_GOOD_CACHE })) || (await caches.match('./', { cacheName: VERSO_SW_CACHE }));
+    if (cachedNow) {
+      const first = await Promise.race([netP.then((r) => ({ r }), () => ({ r: null })), new Promise((ok) => setTimeout(() => ok({ slow: 1 }), VERSO_SW_SLOW_MS))]);
+      if (first.slow || !first.r) {
+        netP.then(async (r) => { if (r && r.ok && (r.headers.get('content-type') || '').includes('text/html')) { const h = await r.text(); (await caches.open(VERSO_SW_CACHE)).put('./', new Response(h, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })); } }).catch(() => {});
+        return cachedNow;
+      }
+      res = first.r;
+    } else {
+      try { res = await netP; }
+      catch (err) { throw err; }
+    }
   }
   try {
     if (!(res && res.ok && (res.headers.get('content-type') || '').includes('text/html'))) return res;
     const html = await res.clone().text();
     const netBuild = versoSwBuildOf(html);
-    const target = await versoSwTarget(await versoSwWeb(), netBuild);
+    const target = await versoSwTarget(await webP, netBuild);
     if (target) {
       const good = await versoSwGood();
       if (good && good.build && good.build === target) return good.res;
