@@ -7251,6 +7251,11 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-vi-line input { flex: 1 1 60px; min-width: 0; border: 1px solid #D4AF37; border-radius: 10px; background: #0e0e0e; color: #fff; padding: 6px; font-size: 14px; }
   .zzz-vi-line .zzz-vi-rp { border-color: #D4AF37; color: #D4AF37; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
   .zzz-vi-line .zzz-vi-rp[hidden] { display: none; }
+  .zzz-vi-line .zzz-vi-rp.is-on { background: #D4AF37; color: #111; }   
+  .zzz-vi-line .zzz-vi-rp.is-off { border-color: #C0C0C0; color: #C0C0C0; background: transparent; }
+  
+  body:has(#zzzMediaWin) .zzz-vi-win { z-index: 2147483003; }
+  .zzz-vi-win .zzz-vi-wrap .zzz-vi-frow { display: none; }
   .zzz-vi-line .zzz-vi-go { border-color: #D4AF37; background: #D4AF37; color: #000; }
   .zzz-media-paste input { flex: 1; min-width: 0; border: 1.5px dashed #D4AF37; border-radius: 8px; background: #0f0f0f; color: #eee; padding: 6px; }
   .zzz-media-btn { border: 1.5px solid #D4AF37; border-radius: 14px; background: transparent; color: #D4AF37; font-weight: 700; padding: 4px 10px; font-size: 11px; }
@@ -28906,6 +28911,7 @@ function zzz3d_render_now() {
     } catch (e) {}
   });
   window.zzzLineCur = cur.src === 'chat' ? cur : null;
+  window.zzzLineList = line;
   ban.title = `MAIN NOTIF LINE · ${ZZZ3D_SRC_NAME[cur.src]} ${cur.prio.toUpperCase()} - tap = open + SHIFTED, hold = read aloud + SHIFTED, swipe right = READ, swipe left = SHIFT`;
   if (cur.src === 'op' && cur.btn) {
     const cb = document.createElement('button');
@@ -49243,7 +49249,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-08 14:07';
+const VERSO_BUILD = '2026-11-08 14:18';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -51327,7 +51333,11 @@ async function zzz_vi_win_open(big) {
   const send = document.createElement('button'); send.type = 'button'; send.className = 'zzz-vi-win-send'; send.innerHTML = 'ENTER<br>CHATNOTE';
   send.title = 'Tap = into the chat · hold 1 s = SAVE NOTE (chat and Notes)';
   line.append(ta, send);
-  w.append(head, cmd, found, space, chat, line);
+
+  let mod = null; try { mod = zzz_vi_line_el(); mod.classList.add('zzz-vi-space-mod'); } catch (e) { mod = null; }
+  w.append(head, cmd, found, space, chat);
+  if (mod) w.appendChild(mod);
+  w.appendChild(line);
   zzzViFind = null;
   document.body.appendChild(w);
   zzz_vi_win_size(big || zzz_vi_get('win', 'mid') === 'max' ? 'max' : 'mid');
@@ -51336,6 +51346,11 @@ async function zzz_vi_win_open(big) {
   const go = async (save) => {
     if (busy) return; const text = String(ta.value || '').trim();
     if (!text) { zzz6f2_show_toast('Write something first.', 'info'); return; }
+    if (!save && mod && mod.isConnected && mod._viSend) {
+      busy = true; send.disabled = true;
+      try { if (await mod._viSend(text)) { ta.value = ''; zzz_vi_put('draft', ''); await zzz_vi_win_render(); } } finally { busy = false; send.disabled = false; }
+      return;
+    }
     const e = await zzz_vi_home(); if (!e) return;
     busy = true; send.disabled = true;
     try {
@@ -51607,16 +51622,32 @@ function zzz_vi_line_el() {
   setTimeout(() => { if (row.isConnected) paintBar(false); }, 0);
 
   const rp = document.createElement('button'); rp.type = 'button'; rp.className = 'zzz-vi-rp'; rp.title = 'Answer the message in the NOTIF LINE · tap = not to it';
-  let rpIt = null, rpDrop = '';
+
+  let rpIt = null, rpDrop = '', rpOff = '';
   const rpKey = (x) => x && x.raw ? String(x.raw.id || '') : '';
   const paintRp = () => {
     const c = window.zzzLineCur || null;
-    rpIt = c && rpKey(c) && rpKey(c) !== rpDrop ? c : null;
-    rp.hidden = !rpIt;
+    const c0 = c && rpKey(c) && rpKey(c) !== rpDrop ? c : null;
+    rp.hidden = !c0;
+    const off = !!c0 && rpOff === rpKey(c0);
+    rpIt = off ? null : c0;
+    rp.classList.toggle('is-on', !!rpIt); rp.classList.toggle('is-off', off);
+    if (c0 && !rpIt) { rp.textContent = '↩ ' + (c0.from ? String(c0.from).slice(0, 10) : '#' + c0.entry); }
     if (rpIt) rp.textContent = '↩ ' + (rpIt.from ? String(rpIt.from).slice(0, 10) : '#' + rpIt.entry);
     inp.placeholder = rpIt ? 'answer #' + rpIt.entry : 'VI · chatnote';
   };
-  rp.addEventListener('click', () => { rpDrop = rpKey(rpIt); paintRp(); });
+  { let ht = 0, held = false;
+    rp.title = 'ANSWER LINK · tap = next message of the NOTIF LINE · hold = not used / used again';
+    rp.addEventListener('pointerdown', () => { held = false; clearTimeout(ht); ht = setTimeout(() => { held = true; zzz_haptic_pulse(25);
+      const c = window.zzzLineCur, k = rpKey(c); if (!k) return; rpOff = rpOff === k ? '' : k; paintRp();
+      zzz6f2_show_toast(rpOff ? 'ANSWER LINK off - the line goes to your chips / VI record' : 'ANSWER LINK on - the line answers this message', 'info', 1600); }, 600); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => rp.addEventListener(ev, () => clearTimeout(ht)));
+    rp.addEventListener('contextmenu', (e) => e.preventDefault());
+    rp.addEventListener('click', () => { if (held) { held = false; return; }
+      const L = window.zzzLineList || [], start = window.zzzLineCur;
+      if (L.length < 2 || typeof zzz3d_step !== 'function') { zzz6f2_show_toast('No other message waits in the NOTIF LINE.', 'info'); return; }
+      for (let i = 0; i < L.length; i++) { zzz3d_step(L, 1); if (window.zzzLineCur && window.zzzLineCur !== start) break; }
+      paintRp(); }); }
   const inp = document.createElement('input'); inp.type = 'text'; inp.placeholder = 'VI · chatnote'; inp.enterKeyHint = 'send';
   inp.value = zzz_vi_get('draft', ''); inp.addEventListener('input', () => zzz_vi_put('draft', inp.value));
   const go = document.createElement('button'); go.type = 'button'; go.className = 'zzz-vi-go'; go.textContent = '➤'; go.title = 'Send (only sends - VI SPACE is ⛶)';
@@ -51640,6 +51671,7 @@ function zzz_vi_line_el() {
   paintMe();
   paintRp();
   const rpT = setInterval(() => { if (!row.isConnected) { clearInterval(rpT); return; } paintRp(); }, 1500);
+  wrap._viSend = async (t) => { inp.value = t; zzz_vi_put('draft', t); await send(); return !inp.value.trim(); };
   return wrap;
 }
 async function zzz_vi_send(b64) {
@@ -56602,7 +56634,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 283;
+const ZZZ14B17_APP_LATEST = 284;
 function zzz14b17_app_code() {
 
   try {
