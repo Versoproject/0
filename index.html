@@ -7131,6 +7131,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-listhead { flex-wrap: nowrap !important; }
   .zzz-media-listhead .zzz-media-sub { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
   .zzz-media-listhead .zzz-media-tools { flex: 0 0 auto; }
+  .zzz-media-grip.is-qnext { background: #1e7e34 !important; color: #fff !important; }   
+  .zzz-media-grip.is-qnext::after { content: '\25B6  NEXT'; font-weight: 800; margin-left: 8px; }
+  .zzz-media-bar .zzz-media-listb.is-on { background: #D4AF37; color: #111; }   
   .zzz-media-org { max-width: 420px; width: calc(100vw - 28px); max-height: 82vh; display: flex; flex-direction: column; }
   .zzz-media-org-l { overflow-y: auto; max-height: 55vh; }
   .zzz-media-org-r { display: flex; align-items: center; gap: 4px; padding: 4px 0; border-bottom: 1px solid #2a2a2a; }
@@ -49249,7 +49252,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-08 14:18';
+const VERSO_BUILD = '2026-11-08 14:43';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -50454,6 +50457,8 @@ function zzz_media_back_guard() {
   if (Date.now() - zzzMediaGuardAt < 150) return true;
   try {
     if (!document.getElementById('zzzMediaWin')) return false;
+    { const mw = document.getElementById('zzzMediaWin');
+      if (mw.classList.contains('is-pmini') || mw.classList.contains('is-pmax')) { zzz_media_psize(mw, 1); zzzMediaGuardAt = Date.now(); return true; } }
     const vv = window.visualViewport;
     if (vv && vv.scale > 1.05) {
       const m = document.querySelector('meta[name="viewport"]');
@@ -53413,6 +53418,16 @@ function zzz_media_hist_add(it) {
 }
 function zzz_media_redraw() { const w = document.getElementById('zzzMediaWin'); if (w && w._draw) w._draw(); }
 
+function zzz_media_far(el) { const w = (el && el.getBoundingClientRect().width) || 360; return Math.max(170, w * 0.55); }
+
+function zzz_media_queue_next(it) {
+  if (!it || !it.link) return;
+  if (!zzzMedia.cur) { zzz_media_play(it, zzz_media_tablist().filter(x => x.link)); return; }
+  const q = (zzzMedia.queue && zzzMedia.queue.length ? zzzMedia.queue : zzz_media_tablist().filter(x => x.link)).filter(x => x.link !== it.link);
+  const ci = q.findIndex(x => x.link === zzzMedia.cur.link);
+  q.splice(ci + 1, 0, it); zzzMedia.queue = q;
+  zzz_haptic_pulse(20); zzz6f2_show_toast('\u25B6 NEXT: ' + (zzz_media_title(it) || '#' + it.num) + ' - after what plays now', 'ok', 1800);
+}
 function zzz_media_bind_swipe(el, it, redraw) {
   let x0 = null, y0 = 0, dx = 0, moved = false, pid = null;
   el.addEventListener('pointerdown', (e) => { if (e.button > 0 || (e.target.closest && e.target.closest('.zzz-media-pl, .zzz-media-fb'))) return; x0 = e.clientX; y0 = e.clientY; dx = 0; moved = false; pid = e.pointerId; });
@@ -53432,8 +53447,9 @@ function zzz_media_bind_swipe(el, it, redraw) {
       const pr = (el.parentElement || el).getBoundingClientRect();
       lab.style.left = Math.max(0, pr.left) + 'px'; lab.style.top = Math.max(0, r.top) + 'px';
       lab.style.width = Math.min(window.innerWidth, pr.width) + 'px'; lab.style.height = Math.max(18, Math.min(r.height, 60)) + 'px';
-      lab.textContent = dx < 0 ? '\u2190 SHIFTED \u00b7 LATER \u00b7 \u23F0' : 'READ \u2713 \u2192';
-      lab.style.zIndex = '2147483600'; lab.style.background = dx < 0 ? '#e67e22' : '#2e7d32'; lab.style.opacity = Math.abs(dx) > 60 ? '1' : '.45'; lab.style.display = 'flex';
+      const far = dx > zzz_media_far(el);
+      lab.textContent = dx < 0 ? '\u2190 SHIFTED \u00b7 LATER \u00b7 \u23F0' : far ? '\uD83D\uDCCC PIN \u2192 TABS \u00b7 PL' : 'READ \u2713 \u2192 \u00b7 further = \uD83D\uDCCC PIN';
+      lab.style.zIndex = '2147483600'; lab.style.background = dx < 0 ? '#e67e22' : far ? '#1d4ed8' : '#2e7d32'; lab.style.opacity = Math.abs(dx) > 60 ? '1' : '.45'; lab.style.display = 'flex';
     } catch (_) {}
   });
   const end = () => {
@@ -53445,6 +53461,9 @@ function zzz_media_bind_swipe(el, it, redraw) {
     el._zzzSwiped = true; setTimeout(() => { el._zzzSwiped = false; }, 450);
     const line = it.id ? it : zzz_media_line(it);
     if (!line) { zzz6f2_show_toast('Not in ALL MEDIA yet.', 'info'); return; }
+
+    if (d > zzz_media_far(el)) { const items = zzzMedia.selecting && zzzMedia.sel.has(line.id) ? (zzzMedia.list || []).filter(x => zzzMedia.sel.has(x.id)) : [line];
+      zzz_media_attach_pick(items, () => { if (zzzMedia.selecting) { zzzMedia.sel.clear(); zzzMedia.selecting = false; } redraw(); }, { title: '\uD83D\uDCCC PIN \u00b7 ' + items.length + (items.length === 1 ? ' medium' : ' media') }); return; }
     if (d > 60) zzz_media_mark_read(line).then(redraw);
     else if (d < -60) zzz_media_shift_pick(line, redraw);
   };
@@ -53617,6 +53636,7 @@ function zzz_media_bind_rowdrag(r, it, redraw) {
     if (e.cancelable) e.preventDefault();
     dy = t.clientY - y0; r.style.transform = 'translateY(' + dy + 'px)';
     zzz_media_org_over(r, t.clientX, t.clientY);
+    { const g = document.querySelector('#zzzMediaWin .zzz-media-grip'); if (g) g.classList.toggle('is-qnext', t.clientY < g.getBoundingClientRect().bottom + 6); }
   }, { passive: false });
   const end = () => {
     clearTimeout(arm);
@@ -53625,6 +53645,8 @@ function zzz_media_bind_rowdrag(r, it, redraw) {
       if (tg) { reset(); r._zzzSwiped = true; setTimeout(() => { r._zzzSwiped = false; }, 400); zzz_media_org_drop(it, tg, r, redraw); return; } }
     const list = r.parentNode; const rows = list ? Array.from(list.querySelectorAll('.zzz-media-row[data-mid]')) : [];
     const mid = top0 + r.offsetHeight / 2 + dy;
+    { const g = document.querySelector('#zzzMediaWin .zzz-media-grip'); if (g) g.classList.remove('is-qnext');
+      if (g && mid < g.getBoundingClientRect().bottom + 6) { reset(); r._zzzSwiped = true; setTimeout(() => { r._zzzSwiped = false; }, 400); zzz_media_queue_next(it); return; } }
     reset(); r._zzzSwiped = true; setTimeout(() => { r._zzzSwiped = false; }, 400);
     if (Math.abs(dy) < 8 || !rows.length) return;
     const order = rows.map(x => x.dataset.mid).filter(x => x !== String(it.id));
@@ -53913,6 +53935,15 @@ function zzz_media_full() {
   else st.classList.toggle('is-full');
   setTimeout(zzz_media_place, 300);
 }
+function zzz_media_psize(w, n) {
+  w = w || document.getElementById('zzzMediaWin'); if (!w) return;
+  w.classList.toggle('is-pmini', n === 0); w.classList.toggle('is-pmax', n === 2);
+  if (n === 0) w.classList.remove('is-compact');
+  if (n === 2) w.classList.add('is-compact');
+  zzz_haptic_pulse(10); setTimeout(zzz_media_place, 60);
+  zzz6f2_show_toast(n === 0 ? 'Player small - the list has the screen · ↑ / Back = bigger' : n === 2 ? 'Player big · ↓ / Back = normal' : 'Player normal', 'info', 1400);
+  try { const b = w.querySelector('.zzz-media-listb'); if (b) b.classList.toggle('is-on', n === 0); } catch (e) {}
+}
 function zzz_media_place() {
   const st = document.getElementById('zzzMediaStage');
   if (!st) return;
@@ -53933,7 +53964,11 @@ function zzz_media_place() {
     else if (/soundcloud\.com/i.test(u)) h = Math.min(300, vh * 0.4);
     else if (/tiktok\.com|instagram\.com|youtube\.com\/shorts|\/reel/i.test(u)) h = Math.min(w0 * 16 / 9, vh * 0.62);
     else h = Math.min(w0 * 9 / 16, vh * 0.56);
-    slot.style.height = Math.max(120, Math.round(h)) + 'px';
+
+    const mw = document.getElementById('zzzMediaWin');
+    if (mw && mw.classList.contains('is-pmini')) h = 64;
+    else if (mw && mw.classList.contains('is-pmax')) h = Math.max(h, vh * 0.72);
+    slot.style.height = Math.max(mw && mw.classList.contains('is-pmini') ? 56 : 120, Math.round(h)) + 'px';
   }
   if (!slot || !has) { st.style.cssText = 'left:-9999px;top:0;width:2px;height:2px;'; return; }
   const r = slot.getBoundingClientRect();
@@ -54513,6 +54548,11 @@ async function zzz_media_open() {
         }
         return;
       }
+
+      if (el === grip && Math.abs(dy) > 50) { gripSwiped = true; setTimeout(() => { gripSwiped = false; }, 400);
+        const st0 = w.classList.contains('is-pmax') ? 2 : w.classList.contains('is-pmini') ? 0 : 1;
+        if (dy > 0 && st0 === 0) { w.remove(); zzz_media_place(); zzz6f2_show_toast('MEDIA CENTER hidden - playing goes on.', 'info'); return; }
+        zzz_media_psize(w, Math.max(0, Math.min(2, st0 + (dy < 0 ? 1 : -1)))); return; }
       if (dy > 70) { if (el === grip) { gripSwiped = true; setTimeout(() => { gripSwiped = false; }, 400); } w.remove(); zzz_media_place(); zzz6f2_show_toast('MEDIA CENTER hidden - playing goes on.', 'info'); }
     };
     el.addEventListener('pointerup', (e) => { end(e); zzz_media_place(); }); el.addEventListener('pointercancel', () => { y0 = null; w.style.transform = ''; zzz_media_place(); });
@@ -54543,6 +54583,10 @@ async function zzz_media_open() {
   barKey('⤢ FULL', 'Full screen', 'is-wide').addEventListener('click', () => zzz_media_full());
 
   const appB = barKey('APP · hold', 'Hold 1 s = open this link in its own app (Instagram, YouTube…)', 'is-wide');
+
+  { const lsB = barKey('\u2630', 'LIST: the list and tabs get the screen (player small) · again = player normal', 'zzz-media-listb');
+    if (w.classList.contains('is-pmini')) lsB.classList.add('is-on');
+    lsB.addEventListener('click', () => zzz_media_psize(w, w.classList.contains('is-pmini') ? 1 : 0)); }
   { let at = 0, done = false;
 
     appB.addEventListener('pointerdown', () => { done = false; clearTimeout(at); appB.classList.add('is-hold'); at = setTimeout(() => { done = true; zzz_haptic_pulse(20); }, 900); });
@@ -56634,7 +56678,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 284;
+const ZZZ14B17_APP_LATEST = 285;
 function zzz14b17_app_code() {
 
   try {
