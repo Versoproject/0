@@ -10270,6 +10270,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-rs-h1 { color: #fff; font-size: 19px; font-weight: 700; line-height: 1.25; }
   .zzz-rs-meta { color: #888; font-size: 11.5px; margin-top: 3px; }
   .zzz-rs-img { display: block; width: 100%; text-align: left; background: #161616; color: #aaa; border: 1px dashed #444; border-radius: 6px; padding: 6px; margin: 0 0 .7em; font-size: 12px; }
+  .zzz-rs-img.is-wait { border-style: dotted; color: #777; min-height: 60px; }
   .zzz-rs-im { display: block; max-width: 100%; height: auto; border-radius: 6px; margin: 0 0 .7em; }
   .zzz-rs-err { color: #e8a05f; }
   .zzz-rs-selbar { position: sticky; bottom: 44px; z-index: 3; display: flex; gap: 6px; justify-content: center; padding: 4px; }
@@ -28774,7 +28775,7 @@ function zzz_rs_path_norm(p) { return String(p || '').split(/\s*[›>\/]\s*/).ma
 function zzz_rs_key(p) { return 'read:' + zzz_rs_path_norm(p).toLowerCase(); }
 function zzz_rs_host(link) { try { return new URL(link).hostname.replace(/^www\./, ''); } catch (e) { return String(link || '').slice(0, 40); } }
 
-const ZZZ_RS_SETUP_DEF = { store: 'off', keep: 'all', cache: 20, locked: [] };
+const ZZZ_RS_SETUP_DEF = { store: 'off', keep: 'all', cache: 20, locked: [], img: 'verso' };
 function zzz_rs_setup() {
   if (zzzRs.setup && zzzRs.setup._u === zzz_rs_me()) return zzzRs.setup;
   let p = {}; try { p = JSON.parse(localStorage.getItem(zzz_ukey('zzz_rs_setup')) || '{}') || {}; } catch (e) { p = {}; }
@@ -28790,7 +28791,7 @@ async function zzz_rs_setup_pull() {
   } catch (e) {}
 }
 async function zzz_rs_setup_save(p) {
-  const u = zzz_rs_me(); const clean = { store: p.store, keep: p.keep, cache: Number(p.cache) || 0, locked: Array.isArray(p.locked) ? p.locked.slice(0, 200) : [] };
+  const u = zzz_rs_me(); const clean = { store: p.store, keep: p.keep, cache: Number(p.cache) || 0, img: ['verso', 'tap', 'direct'].indexOf(p.img) >= 0 ? p.img : 'verso', locked: Array.isArray(p.locked) ? p.locked.slice(0, 200) : [] };
   zzzRs.setup = Object.assign({}, clean, { _u: u });
   try { localStorage.setItem(zzz_ukey('zzz_rs_setup'), JSON.stringify(clean)); } catch (e) {}
   if (!u || typeof sb === 'undefined' || !sb) return;
@@ -29287,6 +29288,44 @@ function zzz_rs_reader(it) {
   fin.addEventListener('input', () => { zzzRs.q = fin.value; zzz_rs_filter(content, fcount); });
   return box;
 }
+
+let zzzRsImgObs = null;
+function zzz_rs_image_direct(b) { const im = document.createElement('img'); im.src = b.v; im.alt = b.a || ''; im.loading = 'lazy'; im.decoding = 'async'; im.referrerPolicy = 'no-referrer'; im.className = 'zzz-rs-im'; return im; }
+function zzz_rs_image_tap(b, note) {
+  const el = document.createElement('button'); el.type = 'button'; el.className = 'zzz-rs-img';
+  el.textContent = '🖼 ' + (b.a || 'image') + ' - ' + (note || 'tap = show (comes from the site)');
+  el.addEventListener('click', () => el.replaceWith(zzz_rs_image_direct(b)));
+  return el;
+}
+async function zzz_rs_image_fetch(holder) {
+  const b = holder._rsImg; if (!b || holder._rsLoading) return; holder._rsLoading = true;
+  const h = (typeof zzz_verso_fn_headers === 'function') ? zzz_verso_fn_headers() : null;
+  try {
+    if (!h) throw new Error('no session');
+    const r = await fetch(SUPABASE_URL + '/functions/v1/verso-read-page?img=' + encodeURIComponent(b.v), { headers: h });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const blob = await r.blob();
+    if (!/^image\//.test(blob.type)) throw new Error('not an image');
+    const im = document.createElement('img'); im.alt = b.a || ''; im.className = 'zzz-rs-im'; im.decoding = 'async';
+    im.src = URL.createObjectURL(blob);
+    im.addEventListener('load', () => { setTimeout(() => { try { URL.revokeObjectURL(im.src); } catch (e) {} }, 1000); }, { once: true });
+    if (holder.isConnected) holder.replaceWith(im);
+  } catch (e) {
+    if (holder.isConnected) holder.replaceWith(zzz_rs_image_tap(b, 'Verso could not load it - tap = straight from the site'));
+  }
+}
+function zzz_rs_image(b) {
+  const mode = zzz_rs_setup().img || 'verso';
+  if (mode === 'tap') return zzz_rs_image_tap(b);
+  if (mode === 'direct') return zzz_rs_image_direct(b);
+  const hold = document.createElement('div'); hold.className = 'zzz-rs-img is-wait'; hold.textContent = '🖼 ' + (b.a || 'image') + ' …';
+  hold._rsImg = b;
+  try {
+    if (!zzzRsImgObs && 'IntersectionObserver' in window) zzzRsImgObs = new IntersectionObserver((ents) => { ents.forEach(en => { if (en.isIntersecting) { zzzRsImgObs.unobserve(en.target); zzz_rs_image_fetch(en.target); } }); }, { rootMargin: '600px 0px' });
+    if (zzzRsImgObs) zzzRsImgObs.observe(hold); else setTimeout(() => zzz_rs_image_fetch(hold), 0);
+  } catch (e) { setTimeout(() => zzz_rs_image_fetch(hold), 0); }
+  return hold;
+}
 function zzz_rs_paint(content, d, box) {
   box._rsData = d;
   content.innerHTML = '';
@@ -29297,9 +29336,7 @@ function zzz_rs_paint(content, d, box) {
   (d.blocks || []).forEach(b => {
     let el;
     if (b.t === 'img') {
-      el = document.createElement('button'); el.type = 'button'; el.className = 'zzz-rs-img';
-      el.textContent = '🖼 ' + (b.a || 'image') + ' - tap = show (comes from the site)';
-      el.addEventListener('click', () => { const im = document.createElement('img'); im.src = b.v; im.alt = b.a || ''; im.loading = 'lazy'; im.referrerPolicy = 'no-referrer'; im.className = 'zzz-rs-im'; el.replaceWith(im); });
+      el = zzz_rs_image(b);
     } else {
       el = document.createElement(b.t === 'h' ? 'h3' : b.t === 'q' ? 'blockquote' : b.t === 'pre' ? 'pre' : 'p');
       if (b.t === 'li') el.className = 'zzz-rs-li';
@@ -29356,7 +29393,7 @@ function zzz_rs_setup_window() {
   const o = document.createElement('div'); o.className = 'zzz-media-confirm'; o.setAttribute('data-zzz-nodraft', '1');
   const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzz-rs-setup';
   const t = document.createElement('div'); t.className = 'zzz-media-confirm-text'; t.textContent = 'READ SETUP'; b.appendChild(t);
-  const cur = { store: s.store, keep: s.keep, cache: s.cache, locked: (s.locked || []).slice() };
+  const cur = { store: s.store, keep: s.keep, cache: s.cache, img: s.img || 'verso', locked: (s.locked || []).slice() };
   const group = (label, key, opts, help) => {
     const g = document.createElement('div'); g.className = 'zzz-rs-set-g';
     const l = document.createElement('div'); l.className = 'zzz-rs-set-l'; l.textContent = label; g.appendChild(l);
@@ -29368,6 +29405,8 @@ function zzz_rs_setup_window() {
   };
   group('A NEW PAGE STORES', 'store', [['off', 'NOTHING'], ['excerpt', 'EXCERPT'], ['text', 'TEXT'], ['all', 'TEXT + IMAGES']], 'Stored in the Verso database with the page line. NOTHING = only link + description; the content is read again when opened.');
   group('KEEP CONTENT STORES', 'keep', [['text', 'TEXT'], ['all', 'TEXT + IMAGES']], 'Images are stored only as their links.');
+  group('IMAGES', 'img', [['verso', 'AUTO VIA VERSO'], ['tap', 'ON TAP'], ['direct', 'DIRECT']], 'AUTO VIA VERSO = shown at once, fetched by the Verso server (the site never sees your phone). DIRECT = like a normal browser (the site sees your IP). ON TAP = nothing until you tap.');
+  { const g = document.createElement('div'); g.className = 'zzz-rs-set-g'; const l = document.createElement('div'); l.className = 'zzz-rs-set-l'; l.textContent = 'SEARCH'; g.appendChild(l); const h = document.createElement('div'); h.className = 'zzz-rs-set-h'; h.textContent = 'Now: VERSO READER + SHOW (search inside a page). Later: SearXNG (free), Claude (catalogue).'; g.appendChild(h); b.appendChild(g); }
   group('THIS DEVICE KEEPS', 'cache', [[0, 'NONE'], [20, '20 PAGES'], [50, '50 PAGES']], 'Read pages kept on this device for reading without connection.');
   const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
   const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'zzz-media-btn is-on'; ok.textContent = 'SAVE';
@@ -42224,7 +42263,7 @@ const ZZZ_SET_REG = [
   { m: 'VOICE-DIA-SK', w: 'w', scope: 'all', place: 'settings', app: 'the Verso keyboard ⚙ › VOICE-DIA-SK', deps: ['Keyboard languages'], help: 'Adds Slovak diacritics to a finished word (mas → máš), ⌫ right after = your word back. This switch = the web keyboard in this browser; the Verso app keyboard has its own switch.' },
   { m: 'VERSO MULTIBOARD', w: 'd', androidApp: true, scope: 'device', place: 'settings', help: 'The VI Bubble over other apps - only the Verso app for Android, only this DEVICE.' },
   { m: 'Media control', w: 'wd', scope: 'device', place: 'settings', deps: ['VERSO MEDIA CENTER'], help: 'MEDIA CONTROL of the keyboard. This browser; in the Verso app also the phone player on this DEVICE.' },
-  { m: 'READ SETUP', w: 's', scope: 'all', place: 'settings', help: 'READ SPACE (⚙): what a new page stores (nothing / excerpt / text / text + images), what KEEP CONTENT stores, how many read pages this device keeps for reading offline. Verso server; this device keeps a copy.' },
+  { m: 'READ SETUP', w: 's', scope: 'all', place: 'settings', help: 'READ SPACE (⚙): what a new page stores (nothing / excerpt / text / text + images), what KEEP CONTENT stores, IMAGES (auto via Verso / on tap / direct), how many read pages this device keeps for reading offline; SEARCH shown (SearXNG / Claude later). Verso server; this device keeps a copy.' },
   { m: 'VERSO MEDIA CENTER', w: 'wd', scope: 'device', place: 'settings', deps: ['Media control'], help: 'ON / OFF, ONLINE / OFFLINE, copied links. Your media lines themselves are on the Verso server (ALL MEDIA).' },
   { m: 'TRANSLATOR · languages on this device', w: 'd', scope: 'device', place: 'settings', deps: ['VERSO TRANSLATOR'], help: 'Language packs of the chat translator, downloaded once to this DEVICE (checked against the checksum inside Verso) - download again on a new device.' },
   { m: 'VERSO TRANSLATOR', w: 'w', scope: 'all', place: 'settings', deps: ['TRANSLATOR · languages on this device'], help: 'Translator in the chat (IN / OFF / IN+OUT). This browser now - saved on the Verso server with the coming settings backup.' },
@@ -50044,7 +50083,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-09 20:29';
+const VERSO_BUILD = '2026-11-09 20:47';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
