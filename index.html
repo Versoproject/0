@@ -10288,6 +10288,24 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-rs-diss-l { max-height: 40vh; overflow-y: auto; text-align: left; margin: 6px 0; }
   .zzz-rs-diss-r { color: #ddd; font-size: 13px; padding: 4px 0; border-bottom: 1px solid #262626; white-space: pre-wrap; }
   .zzz-rs-diss-r b { color: #D4AF37; }
+  
+  .zzz-b26-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 2px; }
+  .zzz-b26-title { color: #D4AF37; font-weight: 700; letter-spacing: .06em; }
+  .zzz-b26-mode { font-size: 11px; padding: 2px 8px; border-radius: 10px; border: 1px solid; }
+  .zzz-b26-mode.is-live { color: #ff6b6b; border-color: #ff6b6b; }
+  .zzz-b26-mode.is-test { color: #8fd18f; border-color: #8fd18f; }
+  .zzz-b26-note { color: #aaa; font-size: 12px; margin: 4px 0; }
+  .zzz-b26-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; align-items: center; }
+  .zzz-b26-card { border: 1px solid #3a3320; border-radius: 10px; padding: 8px; margin: 8px 0; text-align: left; max-width: 100%; box-sizing: border-box; }
+  .zzz-b26-ctitle { color: #D4AF37; font-weight: 700; margin-bottom: 4px; }
+  .zzz-b26-l { color: #ccc; font-size: 12px; margin-top: 6px; }
+  .zzz-b26-in { background: #fff; color: #222; border: 1px solid #D4AF37; border-radius: 8px; padding: 5px 6px; font-size: 14px; max-width: 100%; min-width: 0; }
+  input.zzz-b26-in { width: 9em; }
+  .zzz-b26-why { width: 100%; box-sizing: border-box; background: #fff; color: #222; border: 1px solid #D4AF37; border-radius: 8px; padding: 6px; font-size: 14px; margin: 6px 0; }
+  .zzz-b26-exr { display: flex; justify-content: space-between; align-items: center; color: #ddd; font-size: 13px; padding: 3px 0; border-bottom: 1px solid #262626; }
+  .zzz-b26-x { background: none; border: 0; color: #ff6b6b; font-size: 18px; cursor: pointer; }
+  .zzz-b26-line { color: #ddd; font-size: 12px; padding: 3px 0; border-bottom: 1px solid #222; overflow-wrap: anywhere; }
+  .zzz-b26-line.is-live { color: #ffb3b3; }
   .zzz-rs-diss-in { width: 100%; box-sizing: border-box; background: #fff; color: #222; border: 1px solid #D4AF37; border-radius: 8px; padding: 6px; font-size: 14px; }
   
   #zzzRsSpace.is-max .zzz-rs-crm { display: none; }
@@ -28779,20 +28797,21 @@ const ZZZ_RS_SETUP_DEF = { store: 'off', keep: 'all', cache: 20, locked: [], img
 function zzz_rs_setup() {
   if (zzzRs.setup && zzzRs.setup._u === zzz_rs_me()) return zzzRs.setup;
   let p = {}; try { p = JSON.parse(localStorage.getItem(zzz_ukey('zzz_rs_setup')) || '{}') || {}; } catch (e) { p = {}; }
-  zzzRs.setup = Object.assign({}, ZZZ_RS_SETUP_DEF, p, { _u: zzz_rs_me() });
+  zzzRs.setup = zzz_b26_apply('read_setup', Object.assign({}, ZZZ_RS_SETUP_DEF, p, { _u: zzz_rs_me() }), p);
   return zzzRs.setup;
 }
 async function zzz_rs_setup_pull() {
   const u = zzz_rs_me(); if (!u || typeof sb === 'undefined' || !sb) return;
+  await zzz_b26_pull('read_setup'); zzzRs.setup = null;
   try {
     const { data } = await sb.from('verso_user_settings').select('prefs').eq('username', u).eq('runtime', 'web').eq('module', 'read_setup').limit(1);
     const p = data && data[0] && data[0].prefs;
-    if (p && typeof p === 'object') { zzzRs.setup = Object.assign({}, ZZZ_RS_SETUP_DEF, p, { _u: u }); try { localStorage.setItem(zzz_ukey('zzz_rs_setup'), JSON.stringify(p)); } catch (e) {} }
+    if (p && typeof p === 'object') { zzzRs.setup = zzz_b26_apply('read_setup', Object.assign({}, ZZZ_RS_SETUP_DEF, p, { _u: u }), p); try { localStorage.setItem(zzz_ukey('zzz_rs_setup'), JSON.stringify(p)); } catch (e) {} }
   } catch (e) {}
 }
 async function zzz_rs_setup_save(p) {
   const u = zzz_rs_me(); const clean = { store: p.store, keep: p.keep, cache: Number(p.cache) || 0, img: ['verso', 'tap', 'direct'].indexOf(p.img) >= 0 ? p.img : 'verso', pages: p.pages === 'verso' ? 'verso' : 'auto', locked: Array.isArray(p.locked) ? p.locked.slice(0, 200) : [] };
-  zzzRs.setup = Object.assign({}, clean, { _u: u });
+  zzzRs.setup = zzz_b26_apply('read_setup', Object.assign({}, clean, { _u: u }), clean);
   try { localStorage.setItem(zzz_ukey('zzz_rs_setup'), JSON.stringify(clean)); } catch (e) {}
   if (!u || typeof sb === 'undefined' || !sb) return;
   try { const { error } = await sb.from('verso_user_settings').upsert({ username: u, runtime: 'web', module: 'read_setup', prefs: clean }, { onConflict: 'username,runtime,module' }); if (error) throw error; }
@@ -29503,9 +29522,10 @@ function zzz_rs_setup_window() {
     const g = document.createElement('div'); g.className = 'zzz-rs-set-g';
     const l = document.createElement('div'); l.className = 'zzz-rs-set-l'; l.textContent = label; g.appendChild(l);
     const r = document.createElement('div'); r.className = 'zzz-rs-set-r';
-    opts.forEach(([v, lab]) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz14cs-feed-mode' + (String(cur[key]) === String(v) ? ' is-on' : ''); x.textContent = lab; x.addEventListener('click', () => { cur[key] = v; r.querySelectorAll('button').forEach(y => y.classList.remove('is-on')); x.classList.add('is-on'); }); r.appendChild(x); });
+    const sysR = zzz_b26_rule('read_setup', key);
+    opts.forEach(([v, lab]) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz14cs-feed-mode' + (String(cur[key]) === String(v) ? ' is-on' : ''); x.textContent = lab; if (sysR && (sysR.fixed !== undefined ? String(sysR.fixed) !== String(v) : (sysR.allow && sysR.allow.indexOf(String(v)) < 0))) x.disabled = true; x.addEventListener('click', () => { cur[key] = v; r.querySelectorAll('button').forEach(y => y.classList.remove('is-on')); x.classList.add('is-on'); }); r.appendChild(x); });
     g.appendChild(r);
-    const h = document.createElement('div'); h.className = 'zzz-rs-set-h'; h.textContent = help; g.appendChild(h);
+    const h = document.createElement('div'); h.className = 'zzz-rs-set-h'; h.textContent = (sysR && (sysR.fixed !== undefined || (sysR.allow && sysR.allow.length < opts.length)) ? 'SET BY SYSTEM · ' : '') + help; g.appendChild(h);
     b.appendChild(g);
   };
 
@@ -42370,6 +42390,7 @@ const ZZZ_SET_REG = [
   { m: 'VOICE-DIA-SK', w: 'w', scope: 'all', place: 'settings', app: 'the Verso keyboard ⚙ › VOICE-DIA-SK', deps: ['Keyboard languages'], help: 'Adds Slovak diacritics to a finished word (mas → máš), ⌫ right after = your word back. This switch = the web keyboard in this browser; the Verso app keyboard has its own switch.' },
   { m: 'VERSO MULTIBOARD', w: 'd', androidApp: true, scope: 'device', place: 'settings', help: 'The VI Bubble over other apps - only the Verso app for Android, only this DEVICE.' },
   { m: 'Media control', w: 'wd', scope: 'device', place: 'settings', deps: ['VERSO MEDIA CENTER'], help: 'MEDIA CONTROL of the keyboard. This browser; in the Verso app also the phone player on this DEVICE.' },
+  { m: 'SYSTEM SETUP', w: 's', scope: 'all', place: 'system', help: 'Verso admins only (SETTINGS › SYSTEM): defaults, allowed choices and exceptions per user for module setups (first READ SETUP › PAGES / IMAGES). LIVE = all users, TEST = test accounts. Every change with a reason in the ADMIN audit. Verso server.' },
   { m: 'READ SETUP', w: 's', scope: 'all', place: 'settings', help: 'READ SPACE (⚙): what a new page stores (nothing / excerpt / text / text + images), what KEEP CONTENT stores, IMAGES (auto via Verso / on tap / direct), how many read pages this device keeps for reading offline; SEARCH shown (SearXNG / Claude later). Verso server; this device keeps a copy.' },
   { m: 'VERSO MEDIA CENTER', w: 'wd', scope: 'device', place: 'settings', deps: ['Media control'], help: 'ON / OFF, ONLINE / OFFLINE, copied links. Your media lines themselves are on the Verso server (ALL MEDIA).' },
   { m: 'TRANSLATOR · languages on this device', w: 'd', scope: 'device', place: 'settings', deps: ['VERSO TRANSLATOR'], help: 'Language packs of the chat translator, downloaded once to this DEVICE (checked against the checksum inside Verso) - download again on a new device.' },
@@ -48404,6 +48425,174 @@ async function zzz5t0_run_filter_search(isRetry = false) {
   });
 })();
 
+const ZZZ_B26_MODULES = [
+  { module: 'read_setup', label: 'READ SETUP', opts: [
+    { key: 'pages', label: 'PAGES', vals: [['auto', 'AUTO'], ['verso', 'VIA VERSO']] },
+    { key: 'img', label: 'IMAGES', vals: [['verso', 'AUTO VIA VERSO'], ['tap', 'ON TAP'], ['direct', 'DIRECT']] },
+  ] },
+];
+const zzzB26 = { mode: undefined, modeFor: '', rules: {}, rulesFor: '', scope: 'test' };
+function zzz_b26_me() { try { return String((typeof zzz0r1_get_current_username === 'function' && zzz0r1_get_current_username()) || '').trim().toLowerCase(); } catch (e) { return ''; } }
+
+function zzz_b26_mode() {
+  const u = zzz_b26_me();
+  if (!u) return null;
+  if (zzzB26.modeFor === u) return zzzB26.mode;
+  zzzB26.modeFor = u; zzzB26.mode = null;
+  if (typeof sb !== 'undefined' && sb) sb.rpc('verso_admin_mode').then(({ data, error }) => {
+    if (error || !data || zzzB26.modeFor !== u) return;
+    zzzB26.mode = String(data); zzzB26.scope = zzzB26.mode === 'live' ? 'live' : 'test';
+    try { if (document.querySelector('.settings-workspace') && typeof open_settings_workspace === 'function') open_settings_workspace(); } catch (e) {}
+  }).catch(() => {});
+  return null;
+}
+
+async function zzz_b26_pull(module) {
+  const u = zzz_b26_me(); if (!u || typeof sb === 'undefined' || !sb) return null;
+  if (zzzB26.rulesFor !== u) { zzzB26.rules = {}; zzzB26.rulesFor = u; }
+  try { const { data, error } = await sb.rpc('verso_system_setup', { p_module: module }); if (!error && data) zzzB26.rules[module] = data; } catch (e) {}
+  return zzzB26.rules[module] || null;
+}
+
+function zzz_b26_rule(module, key) {
+  try { if (zzzB26.rulesFor !== zzz_b26_me()) return null; } catch (e) { return null; }
+  const r = zzzB26.rules[module]; if (!r) return null;
+  const pr = r.prefs || {}, mine = r.mine || {};
+  const out = {};
+  if (mine && mine[key] !== undefined) out.fixed = String(mine[key]);
+  const al = pr.allow && Array.isArray(pr.allow[key]) && pr.allow[key].length ? pr.allow[key].map(String) : null;
+  if (al) { out.allow = al; if (al.length === 1 && out.fixed === undefined) out.fixed = al[0]; }
+  if (pr.defaults && pr.defaults[key] !== undefined) out.def = String(pr.defaults[key]);
+  return Object.keys(out).length ? out : null;
+}
+
+function zzz_b26_apply(module, set, own) {
+  let m = null; try { m = ZZZ_B26_MODULES.find(x => x.module === module); } catch (e) { return set; }
+  if (!m) return set;
+  m.opts.forEach(o => {
+    const r = zzz_b26_rule(module, o.key); if (!r) return;
+    if (r.def !== undefined && (!own || own[o.key] === undefined)) set[o.key] = r.def;
+    if (r.allow && r.allow.indexOf(String(set[o.key])) < 0) set[o.key] = (r.def !== undefined && r.allow.indexOf(r.def) >= 0) ? r.def : r.allow[0];
+    if (r.fixed !== undefined) set[o.key] = r.fixed;
+  });
+  return set;
+}
+function zzz_b26_el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+function zzz_b26_time(t) { try { return new Date(t).toLocaleString('sk-SK', { timeZone: 'Europe/Bratislava', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return String(t || ''); } }
+function zzz_b26_head(host, title, sub) {
+  const mode = zzzB26.mode;
+  const h = zzz_b26_el('div', 'zzz-b26-head');
+  h.appendChild(zzz_b26_el('span', 'zzz-b26-title', title));
+  h.appendChild(zzz_b26_el('span', 'zzz-b26-mode is-' + mode, mode === 'live' ? 'LIVE ADMIN' : 'TEST ADMIN'));
+  host.appendChild(h);
+  host.appendChild(zzz_b26_el('div', 'zzz-b26-note', sub));
+}
+
+async function zzz_b26_render_system(host) {
+  if (!zzzB26.mode) { host.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'Only for Verso admins.')); return; }
+  zzz_b26_head(host, 'SYSTEM SETUP', 'Defaults and allowed choices for users, plus exceptions for one user. Every save needs a reason and goes into the ADMIN audit. ' + (zzzB26.mode === 'live' ? 'LIVE = all users · TEST = only test accounts (verso1, verso2 …).' : 'You are the TEST admin: changes are valid only for the test accounts (verso1, verso2 …).'));
+  const sc = zzz_b26_el('div', 'zzz-b26-row');
+  ['live', 'test'].forEach(k => {
+    const b = zzz_b26_el('button', 'zzz14cs-feed-mode' + (zzzB26.scope === k ? ' is-on' : ''), k === 'live' ? 'LIVE · ALL USERS' : 'TEST · TEST ACCOUNTS'); b.type = 'button';
+    if (k === 'live' && zzzB26.mode !== 'live') b.disabled = true;
+    b.addEventListener('click', () => { zzzB26.scope = k; host.innerHTML = ''; zzz_b26_render_system(host); });
+    sc.appendChild(b);
+  });
+  host.appendChild(sc);
+  for (const m of ZZZ_B26_MODULES) {
+    const card = zzz_b26_el('div', 'zzz-b26-card'); host.appendChild(card);
+    card.appendChild(zzz_b26_el('div', 'zzz-b26-ctitle', m.label));
+    let row = null;
+    try { const { data, error } = await sb.rpc('verso_system_get', { p_module: m.module }); if (error) throw error; row = (data && data.rows && data.rows[zzzB26.scope]) || null; }
+    catch (e) { card.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'Could not read the system settings - try again.')); continue; }
+    const prefs = JSON.parse(JSON.stringify((row && row.prefs) || {})); prefs.defaults = prefs.defaults || {}; prefs.allow = prefs.allow || {};
+    const exc = JSON.parse(JSON.stringify((row && row.exceptions) || {}));
+    if (row && row.by) card.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'Last change: ' + row.by + ' · ' + zzz_b26_time(row.at)));
+    m.opts.forEach(o => {
+      card.appendChild(zzz_b26_el('div', 'zzz-b26-l', o.label + ' · DEFAULT'));
+      const d = zzz_b26_el('div', 'zzz-b26-row');
+      [['', 'USER CHOOSES']].concat(o.vals).forEach(([v, lab]) => {
+        const b = zzz_b26_el('button', 'zzz14cs-feed-mode' + (String(prefs.defaults[o.key] || '') === v ? ' is-on' : ''), lab); b.type = 'button';
+        b.addEventListener('click', () => { if (v) prefs.defaults[o.key] = v; else delete prefs.defaults[o.key]; d.querySelectorAll('button').forEach(y => y.classList.remove('is-on')); b.classList.add('is-on'); });
+        d.appendChild(b);
+      });
+      card.appendChild(d);
+      card.appendChild(zzz_b26_el('div', 'zzz-b26-l', o.label + ' · ALLOWED (none marked = all)'));
+      const a = zzz_b26_el('div', 'zzz-b26-row');
+      o.vals.forEach(([v, lab]) => {
+        const on = () => (prefs.allow[o.key] || []).indexOf(v) >= 0;
+        const b = zzz_b26_el('button', 'zzz14cs-feed-mode' + (on() ? ' is-on' : ''), lab); b.type = 'button';
+        b.addEventListener('click', () => { const L = (prefs.allow[o.key] || []).slice(); const i = L.indexOf(v); if (i >= 0) L.splice(i, 1); else L.push(v); if (L.length) prefs.allow[o.key] = L; else delete prefs.allow[o.key]; b.classList.toggle('is-on', on()); });
+        a.appendChild(b);
+      });
+      card.appendChild(a);
+    });
+
+    card.appendChild(zzz_b26_el('div', 'zzz-b26-l', 'EXCEPTIONS · one user, fixed value'));
+    const list = zzz_b26_el('div', 'zzz-b26-exc'); card.appendChild(list);
+    const paintExc = () => {
+      list.innerHTML = '';
+      const users = Object.keys(exc).sort();
+      if (!users.length) list.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'No exception.'));
+      users.forEach(u => Object.keys(exc[u] || {}).forEach(k => {
+        const o = m.opts.find(x => x.key === k); const vl = o ? ((o.vals.find(x => x[0] === exc[u][k]) || [])[1] || exc[u][k]) : exc[u][k];
+        const r = zzz_b26_el('div', 'zzz-b26-exr'); r.appendChild(zzz_b26_el('span', '', u + ' · ' + (o ? o.label : k) + ' = ' + vl));
+        const x = zzz_b26_el('button', 'zzz-b26-x', '×'); x.type = 'button'; x.addEventListener('click', () => { delete exc[u][k]; if (!Object.keys(exc[u]).length) delete exc[u]; paintExc(); });
+        r.appendChild(x); list.appendChild(r);
+      }));
+    };
+    paintExc();
+    const add = zzz_b26_el('div', 'zzz-b26-row');
+    const iu = zzz_b26_el('input', 'zzz-b26-in'); iu.placeholder = 'username'; iu.autocomplete = 'off'; iu.spellcheck = false;
+    const so = zzz_b26_el('select', 'zzz-b26-in'); m.opts.forEach(o => { const op = zzz_b26_el('option', '', o.label); op.value = o.key; so.appendChild(op); });
+    const sv = zzz_b26_el('select', 'zzz-b26-in');
+    const fillV = () => { sv.innerHTML = ''; (m.opts.find(o => o.key === so.value) || m.opts[0]).vals.forEach(([v, lab]) => { const op = zzz_b26_el('option', '', lab); op.value = v; sv.appendChild(op); }); };
+    so.addEventListener('change', fillV); fillV();
+    const ab = zzz_b26_el('button', 'zzz-media-btn', '+ ADD'); ab.type = 'button';
+    ab.addEventListener('click', () => { const u = zzz10v1_normalize(iu.value || ''); if (!/^[a-z0-9._-]{2,40}$/.test(u)) { zzz6f2_show_toast('Write a valid user name.', 'warn', 1600); return; } (exc[u] = exc[u] || {})[so.value] = sv.value; iu.value = ''; paintExc(); });
+    [iu, so, sv, ab].forEach(x => add.appendChild(x));
+    card.appendChild(add);
+    const why = zzz_b26_el('textarea', 'zzz-b26-why'); why.rows = 2; why.placeholder = 'Reason (required - goes into the audit)';
+    card.appendChild(why);
+    const save = zzz_b26_el('button', 'zzz-media-btn is-on', 'SAVE ' + (zzzB26.scope === 'live' ? 'LIVE' : 'TEST')); save.type = 'button';
+    save.addEventListener('click', async () => {
+      const reason = why.value.trim(); if (reason.length < 3) { zzz6f2_show_toast('Write the reason first.', 'warn', 1600); why.focus(); return; }
+      save.disabled = true;
+      try {
+        const { error } = await sb.rpc('verso_system_set', { p_module: m.module, p_scope: zzzB26.scope, p_prefs: prefs, p_exceptions: exc, p_reason: reason });
+        if (error) throw error;
+        zzz6f2_show_toast('SYSTEM SETUP saved (' + zzzB26.scope.toUpperCase() + ') - written to the audit.', 'info', 1800);
+        why.value = ''; zzzB26.rulesFor = ''; if (m.module === 'read_setup') { try { zzz_rs_setup_pull(); } catch (e) {} }
+      } catch (e) { zzz_user_error('SYSTEM SETUP was not saved.', e, '[Zzz14-B26:SYSTEM-SETUP]'); }
+      save.disabled = false;
+    });
+    card.appendChild(save);
+  }
+}
+
+async function zzz_b26_render_admin(host) {
+  if (!zzzB26.mode) { host.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'Only for Verso admins.')); return; }
+  zzz_b26_head(host, 'ADMIN', 'Every opening and every step here is written to the audit (who, LIVE / TEST, what, reason). ' + (zzzB26.mode === 'test' ? 'TEST admin: you see only TEST audit rows.' : ''));
+  let ov = null, au = [];
+  try { const r1 = await sb.rpc('verso_admin_overview'); if (r1.error) throw r1.error; ov = r1.data; const r2 = await sb.rpc('verso_admin_audit_list', { p_limit: 100 }); if (r2.error) throw r2.error; au = r2.data || []; }
+  catch (e) { zzz_user_error('ADMIN could not load - try again.', e, '[Zzz14-B26:ADMIN]'); return; }
+  const sec = (t, n) => { const c = zzz_b26_el('div', 'zzz-b26-card'); c.appendChild(zzz_b26_el('div', 'zzz-b26-ctitle', t + (n !== undefined ? ' (' + n + ')' : ''))); host.appendChild(c); return c; };
+  const users = (ov && ov.users) || [];
+  const cu = sec('USERS', users.length);
+  users.forEach(x => { const r = zzz_b26_el('div', 'zzz-b26-line'); r.textContent = (x.test ? '🧪 ' : '') + x.u + ' · ' + (x.last ? zzz_b26_time(x.last) : 'never') + (x.live ? ' · ● ' + x.live + ' online' : ''); cu.appendChild(r); });
+  const iss = (ov && ov.issues) || [];
+  const ci = sec('DEVICE ISSUES', iss.length);
+  if (!iss.length) ci.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'No open issue.'));
+  iss.forEach(x => { const r = zzz_b26_el('div', 'zzz-b26-line'); r.textContent = zzz_b26_time(x.created_at) + ' · ' + (x.username || '-') + ' · ' + (x.kind || '') + ' · ' + (x.message || '') + (x.build ? ' · ' + x.build : ''); ci.appendChild(r); });
+  const ca = sec('AUDIT', au.length);
+  au.forEach(x => { const r = zzz_b26_el('div', 'zzz-b26-line is-' + x.mode); r.textContent = zzz_b26_time(x.at) + ' · ' + x.admin + ' · ' + String(x.mode).toUpperCase() + ' · ' + x.action + (x.target ? ' · ' + x.target : '') + (x.reason ? ' · „' + x.reason + '“' : ''); ca.appendChild(r); });
+  const cp = sec('ACTIONS (next phase)');
+  ['Login recovery for a user', 'Unblock a user', 'Emergency: every device back to the last good build', 'Archive solved device issues'].forEach(t => {
+    const b = zzz_b26_el('button', 'zzz14cs-feed-mode', t + ' · SOON'); b.type = 'button'; b.disabled = true; cp.appendChild(b);
+  });
+  cp.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'Each action will ask for a reason and write the audit. Data of users (end-to-end) stays unreadable for admins.'));
+}
+
 const ZZZ10_0_TABS = [
 
   { key: 'advanced-settings', label: 'Advanced setup' },
@@ -48412,6 +48601,8 @@ const ZZZ10_0_TABS = [
   { key: 'settings', label: 'Setup' },
   { key: 'login-setup', label: 'Login setup' },
   { key: 'archive', label: 'Archive' },
+  { key: 'system', label: 'SYSTEM', admin: true },
+  { key: 'admin', label: 'ADMIN', admin: true },
 ];
 let zzz10_0ActiveTab = 'login-setup';
 
@@ -48880,7 +49071,10 @@ function open_settings_workspace() {
   const tabBar = document.createElement('div');
   tabBar.className = 'zzz10-0-tabbar zzz10-0-tabbar-boxed';
 
+  const zzzB26Mode = zzz_b26_mode();
+  if (!zzzB26Mode && (zzz10_0ActiveTab === 'system' || zzz10_0ActiveTab === 'admin')) zzz10_0ActiveTab = 'settings';
   ZZZ10_0_TABS.forEach((tab) => {
+    if (tab.admin && !zzzB26Mode) return;
     const tabBtn = document.createElement('button');
     tabBtn.type = 'button';
     tabBtn.className = 'zzz10-0-tab-button zzz10-0-tab-button-boxed' + (zzz10_0ActiveTab === tab.key ? ' zzz10-0-tab-active' : '');
@@ -48947,6 +49141,10 @@ function open_settings_workspace() {
         tabContent.appendChild(rdw);
       }
     } catch (e) {}
+  } else if (zzz10_0ActiveTab === 'system') {
+    zzz_b26_render_system(tabContent);
+  } else if (zzz10_0ActiveTab === 'admin') {
+    zzz_b26_render_admin(tabContent);
   } else if (zzz10_0ActiveTab === 'advanced-settings') {
 
     zzz10m5_render_advanced_setup(tabContent);
@@ -50190,7 +50388,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-09 21:26';
+const VERSO_BUILD = '2026-11-10 00:57';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
