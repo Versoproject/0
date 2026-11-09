@@ -8503,6 +8503,11 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <span class="module-tag">Zzz10-M5:CONNECTED-APPS</span>
   <span class="module-tag">Zzz10-M5:SECURITY-INFO</span>
   <span class="module-tag">Zzz10-M5:PASSIVE-SECURITY-BOT</span>
+  <span class="module-tag">Zzz10-M6:AUDIT-LOG</span>
+  <span class="module-tag">Zzz10-M6:TRACE-LOG</span>
+  <span class="module-tag">Zzz10-M6:STATE-VS-PLAN</span>
+  <span class="module-tag">GR:MULTISIG-DISCLOSURE</span>
+  <span class="module-tag">Zzz14-SEC:BACKEND-AUDIT</span>
   <span class="module-tag">Zzz6-F3:HASH-CHAIN</span>
   <span class="module-tag">Zzz6-F36</span>
   <span class="module-tag">Zzz10-R1</span>
@@ -11456,6 +11461,8 @@ async function zzz0auth_check_bridge() {
     const who = data || {};
 
     if (!who.logged_in) zzz_user_error('The database does not recognise your login yet - log out and in again if saving fails.', null, '[Zzz0Auth-Gate:JWT-BRIDGE]');
+    // [Zzz10-M6:TRACE-LOG] po overenom prihlaseni (aj automatickom MY DEVICE) jedna stopa 'app_open' s IP zo servera | Vrso -> Claude AI | 2026-11-09
+    if (who.logged_in && !zzz10m6PingedOpen) { zzz10m6PingedOpen = true; zzz10m6_ping('app_open'); }
     console.log('Zzz0Auth-Gate:JWT-BRIDGE whoami =', who);
     return who;
   } catch (err) {
@@ -48336,12 +48343,398 @@ function zzz10m5_render_advanced_setup(host) {
   cr.appendChild(cd); cr.appendChild(cb); sec.appendChild(cr); sec.appendChild(cmsg);
   host.appendChild(sec);
 
+  // [Zzz10-M6:AUDIT-LOG] Vrso 2026-11-09: "zzz10-M6 Audit log trace log....ip...zaprscuj" - okno AUDIT LOG (stopa, multisig, backend, NOW/PLAN) | Vrso -> Claude AI | 2026-11-09
+  zzz10m6_render_box(host);
+
   const bot = zzz10m5_el('div', 'zzz10m5-box');
   const bh = zzz10m5_el('h3', '', 'PASSIVE SECURITY BOT '); bh.appendChild(zzz10m5_badge('soon', 'SOON'));
   bot.appendChild(bh);
   bot.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'Your own Verso bot will quietly watch over its owner - for example whether the person using the logged-in device is really you. Prepared place only: no tasks or settings yet.'));
   host.appendChild(bot);
 }
+
+// === [Zzz10-M6:AUDIT-LOG] okno AUDIT LOG v SETTINGS > Advanced setup.
+// Vrso 2026-11-09, doslovne: "zzz10-M6 Audit log trace log....ip...zaprscuj... [GR:MULTISIG-DISCLOSURE] a dennik
+// pristupov do backendu [Zzz14-SEC:BACKEND-AUDIT]. zapracuj a dopisem aj sucasny audit stav nastavenia ake je a aj
+// plan...ako back to back...." + "ano suhlasim so vsetkym nepytaj sa ma" | Vrso -> Claude AI | 2026-11-09
+// Casti okna:
+//   [Zzz10-M6:STATE-VS-PLAN]     NOW | PLAN vedla seba (back to back) pre kazdu oblast auditu - NOW je zivy stav z DB
+//                                (verso_audit_status), PLAN je dohodnuty dalsi krok
+//   [Zzz10-M6:TRACE-LOG]         moja stopa pristupov: kedy, co, zariadenie, orezana IP, znacka siete (verso_my_trace)
+//   [GR:MULTISIG-DISCLOSURE]     ziadosti o odhalenie mojej stopy (vidim kazdu hned) + panel podpisujuceho, ak drzim kreslo
+//   [Zzz14-SEC:BACKEND-AUDIT]    dennik pristupov do backendu (zmeny schemy, priame zapisy mimo appky, cron)
+// Plna IP sa v appke NIKDY nezobrazi majitelovi ani nikomu inemu - len po prahu podpisov v okne vykonania disclosure.
+// Toast nikdy nestaci (pravidlo [Zzz10-M5:GATE-IN-SETTINGS]) - vsetko je tu, v SETTINGS. ===
+const ZZZ10M6_TRACE_FN = `${SUPABASE_URL}/functions/v1/verso-trace`;
+var zzz10m6PingedOpen = false;   // var (nie let) - pouzite skor v subore, nesmie padnut na TDZ
+
+async function zzz10m6_trace_call(action, payload) {
+  const headers = { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY };
+  if (typeof zzz0auth_sessionToken === 'string' && zzz0auth_sessionToken) headers.Authorization = 'Bearer ' + zzz0auth_sessionToken;
+  const res = await fetch(ZZZ10M6_TRACE_FN, { method: 'POST', headers, body: JSON.stringify(Object.assign({ action }, payload || {})) });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(body.error || ('HTTP ' + res.status)); e.detail = body.detail || ''; throw e; }
+  return body;
+}
+// [Zzz10-M6:TRACE-LOG] appka len ohlasi udalost - IP a cas dopise server, appka ich nevie podvrhnut
+function zzz10m6_ping(event) {
+  try {
+    if (!(typeof zzz0auth_sessionToken === 'string' && zzz0auth_sessionToken)) return;
+    let deviceId = null; try { deviceId = zzz_device_id(); } catch (e) {}
+    zzz10m6_trace_call('ping', { event, deviceId }).catch((e) => console.warn('[Zzz10-M6:TRACE-LOG] ping', event, zzz10m5_err_text(e)));
+  } catch (e) {}
+}
+async function zzz10m6_rpc(name, args) {
+  const { data, error } = await sb.rpc(name, args || {});
+  if (error) throw error;
+  return typeof data === 'string' ? (() => { try { return JSON.parse(data); } catch (e) { return data; } })() : data;
+}
+function zzz10m6_time(iso) { try { const d = new Date(iso); return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
+function zzz10m6_ago(iso) {
+  if (!iso) return 'never';
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 90) return 'just now'; if (s < 5400) return Math.round(s / 60) + ' min ago';
+  if (s < 129600) return Math.round(s / 3600) + ' h ago'; return Math.round(s / 86400) + ' days ago';
+}
+const ZZZ10M6_ACTION_TEXT = {
+  login: 'Log in', logout: 'Log out', logout_phrase: 'Log out with MV phrase', unlock: 'Unlock session', reserve: 'Registration code sent',
+  register: 'Registration', request_override: 'Recovery token requested', use_override_token: 'Recovery token used',
+  change_password: 'Password changed', set_mv_phrase: 'MV phrase changed', empty_trash_with_token: 'Trash emptied with token',
+  app_open: 'App opened (logged in)', app_resume: 'App resumed', audit_view: 'Audit log viewed',
+  gate_authorize: 'Allowed an app (Verso gate)', gate_token: 'App picked up its access', gate_revoke: 'Disconnected an app',
+  gate_key_register: 'USB key added', gate_key_revoke: 'USB key removed',
+  disclosure_executed: 'Your trace was OPENED by signatories', disclosure_execute: 'You opened a disclosure',
+};
+
+function zzz10m6_css() {
+  zzz10m5_css();
+  if (document.getElementById('zzz10m6Css')) return;
+  const st = document.createElement('style');
+  st.id = 'zzz10m6Css';
+  st.textContent = `
+    .zzz10m6-b2b{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:4px 0 10px}
+    .zzz10m6-b2b-head{grid-column:1/-1;font-weight:800;font-size:13px;color:#171717;margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+    .zzz10m6-cell{border-radius:6px;padding:6px 7px;font-size:11.5px;line-height:1.35;min-width:0;overflow-wrap:anywhere}
+    .zzz10m6-cell b{display:block;font-size:10px;letter-spacing:.08em;margin-bottom:2px}
+    .zzz10m6-cell.is-now{background:#f0fdf4;border:1px solid #86efac;color:#14532d}
+    .zzz10m6-cell.is-now.is-warn{background:#fff7ed;border-color:#fdba74;color:#7c2d12}
+    .zzz10m6-cell.is-now.is-bad{background:#fef2f2;border-color:#fca5a5;color:#7f1d1d}
+    .zzz10m6-cell.is-plan{background:#f8fafc;border:1px dashed #94a3b8;color:#1e293b}
+    .zzz10m6-cell ul{margin:2px 0 0;padding-left:14px}
+    .zzz10m6-trace{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid rgba(0,0,0,.1);font-size:12px;color:#171717}
+    .zzz10m6-trace .zzz10m6-dot{flex:0 0 9px;height:9px;border-radius:50%;margin-top:4px;background:#16a34a}
+    .zzz10m6-trace .zzz10m6-dot.is-fail{background:#dc2626}.zzz10m6-trace .zzz10m6-dot.is-refused{background:#f59e0b}
+    .zzz10m6-trace small{display:block;color:#555;font-size:11px}
+    .zzz10m6-net{display:inline-block;font-family:monospace;font-size:10.5px;padding:0 5px;border-radius:4px;background:#e5e7eb;color:#111}
+    .zzz10m6-net.is-new{background:#fde68a}
+    .zzz10m6-alert{border:1px solid #dc2626;background:#fef2f2;color:#7f1d1d;border-radius:6px;padding:7px;font-size:12px;margin:6px 0}
+    .zzz10m6-form label{display:block;font-size:11px;color:#333;margin-top:6px}
+    .zzz10m6-form input,.zzz10m6-form textarea{width:100%;box-sizing:border-box;padding:7px;border:1px solid #999;border-radius:6px;font-size:13px;color:#171717;background:#fff}
+    .zzz10m6-form textarea{min-height:56px}
+    .zzz10m6-seats{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}
+    .zzz10m6-seat{font-size:10.5px;padding:2px 6px;border-radius:999px;border:1px solid #999;color:#555}
+    .zzz10m6-seat.is-filled{border-color:#15803d;color:#15803d;font-weight:700}
+  `;
+  document.head.appendChild(st);
+}
+
+function zzz10m6_render_box(host) {
+  const box = zzz10m5_el('div', 'zzz10m5-box');
+  const h = zzz10m5_el('h3', '', 'AUDIT LOG '); h.appendChild(zzz10m5_badge('on', 'ACTIVE'));
+  box.appendChild(h);
+  box.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'Every login, recovery and security change leaves a trace with time, device and network. Your full IP address is sealed - nobody, not even Verso, can open it alone; only enough independent signatories together. Here you also see every access to the Verso backend, and the current state next to the plan.'));
+  const b = zzz10m5_el('button', 'zzz10m5-big', 'AUDIT LOG'); b.type = 'button';
+  b.addEventListener('click', () => zzz10m6_open_audit_window());
+  box.appendChild(b);
+  host.appendChild(box);
+}
+
+function zzz10m6_open_audit_window() {
+  zzz10m6_css();
+  const old = document.querySelector('.zzz10m6-audit-window');
+  if (old) { old.remove(); return; }
+  const { box, removeBox } = zzz6f41_create_context_window();
+  box.classList.add('zzz10m6-audit-window');
+  const header = zzz10m5_el('div', 'zzz-context-header', 'AUDIT LOG');
+  zzz_ctx_header_x(header);
+  box.appendChild(header);
+  zzz10m6_ping('audit_view');
+
+  const sState = zzz10m5_el('div', 'zzz10m5-step');
+  sState.appendChild(zzz10m5_el('h4', '', 'NOW · PLAN'));
+  sState.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'Left: what is really running right now (read live from the database). Right: the next agreed step.'));
+  const stHost = zzz10m5_el('div', '', 'Loading...');
+  sState.appendChild(stHost);
+  box.appendChild(sState);
+
+  const sTrace = zzz10m5_el('div', 'zzz10m5-step');
+  sTrace.appendChild(zzz10m5_el('h4', '', 'MY ACCESS TRACE'));
+  sTrace.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'Newest first. The grey code is your network (the same network always gets the same code); a yellow code is a network seen only once here - if that was not you, use RECOVERY.'));
+  const trHost = zzz10m5_el('div', '', 'Loading...');
+  sTrace.appendChild(trHost);
+  box.appendChild(sTrace);
+
+  const sDisc = zzz10m5_el('div', 'zzz10m5-step');
+  sDisc.appendChild(zzz10m5_el('h4', '', 'WHO MAY OPEN MY TRACE'));
+  const dHost = zzz10m5_el('div', '', 'Loading...');
+  sDisc.appendChild(dHost);
+  box.appendChild(sDisc);
+
+  const sBack = zzz10m5_el('div', 'zzz10m5-step');
+  sBack.appendChild(zzz10m5_el('h4', '', 'BACKEND ACCESS'));
+  sBack.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'Every change to the database structure and every write that did not come through the Verso app (dashboard, SQL, scheduled jobs). New records are also e-mailed out, so they cannot be erased quietly.'));
+  const bHost = zzz10m5_el('div', '', 'Loading...');
+  sBack.appendChild(bHost);
+  box.appendChild(sBack);
+
+  const actions = zzz10m5_el('div', 'entry-modal-actions');
+  const reload = zzz10m5_el('button', 'zzz1m5-attach-btn', 'REFRESH');
+  reload.onclick = () => zzz10m6_fill_all(stHost, trHost, dHost, bHost);
+  const closeBtn = zzz10m5_el('button', 'entry-modal-close', 'CLOSE');
+  closeBtn.onclick = () => removeBox();
+  actions.appendChild(reload); actions.appendChild(closeBtn);
+  box.appendChild(actions);
+  zzz10m6_fill_all(stHost, trHost, dHost, bHost);
+  try { box.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {}
+}
+
+function zzz10m6_fill_all(stHost, trHost, dHost, bHost) {
+  zzz10m6_fill_state(stHost);
+  zzz10m6_fill_trace(trHost);
+  zzz10m6_fill_disclosures(dHost);
+  zzz10m6_fill_backend(bHost);
+}
+
+// ---------- [Zzz10-M6:STATE-VS-PLAN] ----------
+function zzz10m6_b2b(host, title, badge, nowLines, nowLevel, planLines) {
+  const g = zzz10m5_el('div', 'zzz10m6-b2b');
+  const h = zzz10m5_el('div', 'zzz10m6-b2b-head', title);
+  if (badge) h.appendChild(badge);
+  g.appendChild(h);
+  const mk = (cls, label, lines) => {
+    const c = zzz10m5_el('div', 'zzz10m6-cell ' + cls);
+    c.appendChild(zzz10m5_el('b', '', label));
+    const ul = document.createElement('ul');
+    lines.forEach((t) => ul.appendChild(zzz10m5_el('li', '', t)));
+    c.appendChild(ul);
+    return c;
+  };
+  g.appendChild(mk('is-now' + (nowLevel ? ' is-' + nowLevel : ''), 'NOW', nowLines));
+  g.appendChild(mk('is-plan', 'PLAN', planLines));
+  host.appendChild(g);
+}
+function zzz10m6_chain_text(c) {
+  if (!c) return 'chain: unknown';
+  if (c.ok === true) return 'chain intact (' + (c.rows != null ? c.rows : c.chain_rows) + ' records)';
+  if (c.ok === false) return 'CHAIN BROKEN at #' + (c.broken_at_seq || '?');
+  return 'chain: could not check';
+}
+async function zzz10m6_fill_state(host) {
+  host.textContent = 'Loading...';
+  let s;
+  try { s = await zzz10m6_rpc('verso_audit_status'); }
+  catch (e) { host.textContent = 'The live state could not be read: ' + zzz10m5_err_text(e); return; }
+  host.innerHTML = '';
+  const t = s.trace || {}, b = s.backend || {}, bt = s.backend_triggers || {}, gr = s.gr || {}, jobs = s.jobs || {};
+  const lvl = (ok, warn) => (ok ? '' : (warn ? 'warn' : 'bad'));
+
+  zzz10m6_b2b(host, 'Access trace with IP', zzz10m5_badge('on', 'ACTIVE'),
+    [t.rows ? (t.rows + ' records, last ' + zzz10m6_ago(t.last_at)) : 'waiting for the first login after this update',
+     'IP: masked for you, sealed for signatories (' + (t.sealed || 0) + ' sealed)',
+     'written only by the server - the app cannot fake time or IP',
+     zzz10m6_chain_text(s.trace_chain),
+     'sealed IP erased after 365 days: ' + (jobs['verso-trace-ip-retention'] ? 'scheduled' : 'NOT scheduled')],
+    lvl(s.trace_chain && s.trace_chain.ok !== false && jobs['verso-trace-ip-retention'], !t.rows),
+    ['device names instead of codes (from MY DEVICE)', 'alert to you when a new network or country logs in (your security bot)',
+     'country from the IP computed on the Verso server, never by a third party', 'chain head anchored outside Verso (OpenTimestamps)']);
+
+  zzz10m6_b2b(host, 'Activity log (records, trash, AI)', zzz10m5_badge('on', 'ACTIVE'),
+    [(s.audit_log && s.audit_log.rows || 0) + ' records, last ' + zzz10m6_ago(s.audit_log && s.audit_log.last_at),
+     'login required, username always taken from the login token', 'cannot be edited or deleted'],
+    '',
+    ['written by the server instead of the app, so a modified app cannot skip it', 'reading of data recorded too, once reads go through the server']);
+
+  zzz10m6_b2b(host, 'Record chain (saved entries)', zzz10m5_badge('on', 'ACTIVE'),
+    [zzz10m6_chain_text(s.entry_chain), 'any later change of a saved record would show here'],
+    lvl(s.entry_chain && s.entry_chain.ok !== false, s.entry_chain && s.entry_chain.ok == null),
+    ['chain head anchored outside Verso (OpenTimestamps on Bitcoin) - then not even the database owner can rewrite history unnoticed',
+     'the same chain for the verification table']);
+
+  const watchOk = bt.ddl && bt.drop;
+  zzz10m6_b2b(host, 'Backend access', zzz10m5_badge(watchOk ? 'on' : 'soon', watchOk ? 'ACTIVE' : 'OFF'),
+    ['schema watch: ' + (watchOk ? 'ON' : 'OFF - schema changes are NOT recorded'),
+     'writes outside the app watched on ' + (bt.write_tables || 0) + ' sensitive tables',
+     'scheduled jobs watch: ' + (bt.cron_watch ? 'ON' : 'not allowed by the platform - jobs listed in the e-mail instead'),
+     (b.rows || 0) + ' records, last ' + zzz10m6_ago(b.last_at), zzz10m6_chain_text(s.backend_chain),
+     'e-mail digest: ' + (jobs['verso-backend-digest'] ? 'every 15 min' : 'NOT scheduled') + ', last sent ' + zzz10m6_ago(s.digest_last_sent_at),
+     'GitHub: 2FA + e-mail on every push'],
+    lvl(watchOk && s.backend_chain && s.backend_chain.ok !== false && jobs['verso-backend-digest']),
+    ['admin READS recorded too (database audit extension / platform logs)', 'Supabase dashboard logins and function deploys in the same log',
+     'production changes only through Git with a second approver', 'later: production changes need several signatories, not one account']);
+
+  const filled = gr.seats_filled || 0, thr = gr.threshold || 5;
+  const seats = zzz10m5_el('div', 'zzz10m6-seats');
+  (gr.seats || []).forEach((x) => seats.appendChild(zzz10m5_el('span', 'zzz10m6-seat' + (x.filled ? ' is-filled' : ''), x.seat_no + ' ' + x.role)));
+  zzz10m6_b2b(host, 'Multisig disclosure', zzz10m5_badge(filled >= thr ? 'on' : 'prep', filled >= thr ? 'ACTIVE' : 'PREPARED'),
+    [filled + ' of ' + (gr.seats_total || 7) + ' seats filled, ' + thr + ' signatures needed',
+     filled >= thr ? 'a disclosure can be opened with enough signatures' : 'nobody can open a trace now - not even the founder alone',
+     (gr.open_requests || 0) + ' open request(s), ' + (gr.executed || 0) + ' opened so far',
+     'a seat gives a vote, never access to data; no veto', 'you see every request about you at once'],
+    filled >= thr ? '' : 'warn',
+    ['fill the seats: state, security services, banks, independent auditor, DPO, civil society',
+     'split the sealing key between signatories, so even the server owner cannot open an IP alone',
+     'seat changes decided by the signatories themselves', 'whether a notice may ever be delayed - decided by the signatories, never by Verso']);
+  host.appendChild(seats);
+}
+
+// ---------- [Zzz10-M6:TRACE-LOG] ----------
+async function zzz10m6_fill_trace(host) {
+  host.textContent = 'Loading...';
+  let rows;
+  try { rows = await zzz10m6_rpc('verso_my_trace', { p_limit: 50 }); }
+  catch (e) { host.textContent = 'Your trace could not be read: ' + zzz10m5_err_text(e); return; }
+  host.innerHTML = '';
+  if (!rows || !rows.length) { host.appendChild(zzz10m5_el('div', 'zzz10m5-msg', 'No trace yet - it starts with your next login.')); return; }
+  const seen = {}; rows.forEach((r) => { if (r.network_tag) seen[r.network_tag] = (seen[r.network_tag] || 0) + 1; });
+  const opened = rows.filter((r) => r.action === 'disclosure_executed');
+  if (opened.length) host.appendChild(zzz10m5_el('div', 'zzz10m6-alert', 'Your trace was opened by signatories ' + opened.length + 'x - see WHO MAY OPEN MY TRACE below for the reason.'));
+  rows.forEach((r) => {
+    const line = zzz10m5_el('div', 'zzz10m6-trace');
+    line.appendChild(zzz10m5_el('span', 'zzz10m6-dot is-' + r.result));
+    const d = zzz10m5_el('div', '', (ZZZ10M6_ACTION_TEXT[r.action] || r.action) + (r.result !== 'ok' ? ' - ' + (r.result === 'refused' ? 'REFUSED' : 'FAILED') + (r.reason ? ' (' + r.reason + ')' : '') : ''));
+    const meta = zzz10m5_el('small', '', zzz10m6_time(r.created_at) + (r.ip_masked ? ' · ' + r.ip_masked : '') + (r.device_tag ? ' · device ' + r.device_tag.slice(0, 6) : '') + (r.actor ? ' · by ' + r.actor : '') + ' ');
+    if (r.network_tag) meta.appendChild(zzz10m5_el('span', 'zzz10m6-net' + (seen[r.network_tag] === 1 && rows.length > 3 ? ' is-new' : ''), 'net ' + r.network_tag));
+    d.appendChild(meta);
+    if (r.user_agent) d.appendChild(zzz10m5_el('small', '', r.user_agent.slice(0, 90)));
+    line.appendChild(d);
+    host.appendChild(line);
+  });
+}
+
+// ---------- [GR:MULTISIG-DISCLOSURE] ----------
+async function zzz10m6_fill_disclosures(host) {
+  host.textContent = 'Loading...';
+  let mine, gr;
+  try { [mine, gr] = await Promise.all([zzz10m6_rpc('verso_my_disclosures'), zzz10m6_rpc('verso_gr_status')]); }
+  catch (e) { host.textContent = 'Could not be read: ' + zzz10m5_err_text(e); return; }
+  host.innerHTML = '';
+  host.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'Your full IP addresses can be opened only when ' + gr.threshold + ' of ' + gr.seats_total + ' independent signatories agree (now ' + gr.seats_filled + ' seat(s) filled). Every request about you appears here at once, with its reason.'));
+  if (!mine || !mine.length) host.appendChild(zzz10m5_el('div', 'zzz10m5-msg', 'No request about you - nobody has asked to open your trace.'));
+  (mine || []).forEach((r) => {
+    const row = zzz10m5_el('div', 'zzz10m5-row');
+    const d = zzz10m5_el('div', '', (r.executed_at ? 'OPENED ' + zzz10m6_time(r.executed_at) : (r.cancelled_at ? 'Cancelled' : (new Date(r.expires_at) < new Date() ? 'Expired' : 'Waiting for signatures'))) + ' · asked by: ' + (r.requested_seat_role || 'signatory'));
+    d.appendChild(zzz10m5_el('small', '', 'Reason: ' + r.purpose + (r.legal_basis ? ' · Legal basis: ' + r.legal_basis : '')));
+    d.appendChild(zzz10m5_el('small', '', 'Period ' + zzz10m6_time(r.from_at) + ' - ' + zzz10m6_time(r.to_at) + ' · signatures ' + r.approvals + '/' + r.threshold));
+    row.appendChild(d); host.appendChild(row);
+  });
+  if (gr.my_seat && gr.my_seat.seat_no) zzz10m6_fill_signatory(host, gr);
+}
+
+async function zzz10m6_fill_signatory(host, gr) {
+  const panel = zzz10m5_el('div');
+  panel.appendChild(zzz10m5_el('h4', '', 'YOUR SIGNATORY SEAT · ' + gr.my_seat.seat_no + ' ' + gr.my_seat.role));
+  panel.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'Your seat gives you a vote, not access. A request is opened only with ' + gr.threshold + ' approvals, the person concerned sees it immediately, and opening it is recorded in their trace.'));
+  const list = zzz10m5_el('div', '', 'Loading...');
+  panel.appendChild(list);
+  const out = zzz10m5_el('div');
+  panel.appendChild(out);
+
+  const form = zzz10m5_el('div', 'zzz10m6-form');
+  const field = (label, el) => { const l = zzz10m5_el('label', '', label); form.appendChild(l); form.appendChild(el); return el; };
+  const inp = (type) => { const i = document.createElement('input'); i.type = type; return i; };
+  const fSubj = field('Username whose trace is asked for', inp('text'));
+  const fFrom = field('From', inp('date'));
+  const fTo = field('To', inp('date'));
+  const fWhy = field('Reason (at least 20 characters - the person will read it)', document.createElement('textarea'));
+  const fLaw = field('Legal basis (optional)', inp('text'));
+  const fBtn = zzz10m5_el('button', 'zzz10m5-btn is-gold', 'ASK FOR DISCLOSURE'); fBtn.type = 'button';
+  const fMsg = zzz10m5_el('div', 'zzz10m5-msg');
+  form.appendChild(fBtn); form.appendChild(fMsg);
+  fBtn.addEventListener('click', async () => {
+    fBtn.disabled = true; fMsg.textContent = 'Sending...';
+    try {
+      const from = new Date(fFrom.value + 'T00:00:00'); const to = new Date(fTo.value + 'T23:59:59');
+      if (!fFrom.value || !fTo.value) throw new Error('Pick both dates.');
+      await zzz10m6_rpc('verso_gr_request_disclosure', { p_subject: fSubj.value.trim().toLowerCase(), p_from: from.toISOString(), p_to: to.toISOString(), p_purpose: fWhy.value.trim(), p_legal_basis: fLaw.value.trim() || null });
+      fMsg.textContent = 'Request created - it waits for signatures.'; zzz10m6_load_requests(list, out, gr);
+    } catch (e) { fMsg.textContent = 'Not created: ' + zzz10m5_err_text(e); }
+    fBtn.disabled = false;
+  });
+  panel.appendChild(form);
+  host.appendChild(panel);
+  zzz10m6_load_requests(list, out, gr);
+}
+
+async function zzz10m6_load_requests(list, out, gr) {
+  list.textContent = 'Loading...';
+  let reqs;
+  try { reqs = await zzz10m6_rpc('verso_gr_requests'); }
+  catch (e) { list.textContent = 'Requests could not be read: ' + zzz10m5_err_text(e); return; }
+  list.innerHTML = '';
+  if (!reqs || !reqs.length) { list.appendChild(zzz10m5_el('div', 'zzz10m5-msg', 'No requests.')); return; }
+  reqs.forEach((r) => {
+    const open = !r.executed_at && !r.cancelled_at && new Date(r.expires_at) > new Date();
+    const row = zzz10m5_el('div', 'zzz10m5-row');
+    const d = zzz10m5_el('div', '', r.subject + ' · ' + r.approvals + '/' + gr.threshold + ' approvals' + (r.denials ? ', ' + r.denials + ' against' : '') + (r.executed_at ? ' · OPENED' : (open ? '' : ' · closed')));
+    d.appendChild(zzz10m5_el('small', '', r.purpose + ' · asked by ' + r.requested_by + ' · ' + zzz10m6_time(r.created_at) + (r.my_decision ? ' · you: ' + r.my_decision : '')));
+    row.appendChild(d);
+    if (open && !r.my_decision) {
+      ['approve', 'deny'].forEach((dec) => {
+        const b = zzz10m5_el('button', 'zzz10m5-btn' + (dec === 'deny' ? ' is-red' : ' is-gold'), dec.toUpperCase()); b.type = 'button';
+        b.addEventListener('click', async () => {
+          if (!confirm((dec === 'approve' ? 'Approve' : 'Deny') + ' opening the trace of ' + r.subject + '? Your decision is final and recorded.')) return;
+          b.disabled = true;
+          try { await zzz10m6_rpc('verso_gr_sign', { p_request: r.id, p_decision: dec }); zzz10m6_load_requests(list, out, gr); }
+          catch (e) { zzz_user_error('The signature was not saved.', zzz10m5_err_text(e), '[GR:MULTISIG-DISCLOSURE]'); b.disabled = false; }
+        });
+        row.appendChild(b);
+      });
+    }
+    if (open && r.approvals >= gr.threshold) {
+      const ob = zzz10m5_el('button', 'zzz10m5-btn is-gold', 'OPEN'); ob.type = 'button';
+      ob.addEventListener('click', async () => {
+        if (!confirm('Open the trace of ' + r.subject + ' now? It can be opened only once, and ' + r.subject + ' will see that it was opened.')) return;
+        ob.disabled = true; out.textContent = 'Opening...';
+        try {
+          const res = await zzz10m6_trace_call('disclose', { request_id: r.id });
+          out.innerHTML = '';
+          out.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'Trace of ' + res.subject + ' - ' + res.rows.length + ' record(s). Shown once; it is not stored on this device.'));
+          res.rows.forEach((x) => {
+            const l = zzz10m5_el('div', 'zzz10m6-trace');
+            const dd = zzz10m5_el('div', '', zzz10m6_time(x.created_at) + ' · ' + (ZZZ10M6_ACTION_TEXT[x.action] || x.action) + ' · ' + x.result);
+            dd.appendChild(zzz10m5_el('small', '', 'IP ' + (x.ip || '-') + ' (' + x.ip_status + ')' + (x.device_tag ? ' · device ' + x.device_tag.slice(0, 6) : '') + (x.user_agent ? ' · ' + x.user_agent.slice(0, 60) : '')));
+            l.appendChild(dd); out.appendChild(l);
+          });
+          zzz10m6_load_requests(list, out, gr);
+        } catch (e) { out.textContent = 'Not opened: ' + zzz10m5_err_text(e); ob.disabled = false; }
+      });
+      row.appendChild(ob);
+    }
+    list.appendChild(row);
+  });
+}
+
+// ---------- [Zzz14-SEC:BACKEND-AUDIT] ----------
+const ZZZ10M6_ACTOR_TEXT = { postgres: 'database owner (dashboard / SQL / job)', supabase_admin: 'Supabase platform', authenticator: 'Verso server' };
+async function zzz10m6_fill_backend(host) {
+  host.textContent = 'Loading...';
+  let rows;
+  try { rows = await zzz10m6_rpc('verso_backend_audit_recent', { p_limit: 40 }); }
+  catch (e) { host.textContent = 'Could not be read: ' + zzz10m5_err_text(e); return; }
+  host.innerHTML = '';
+  if (!rows || !rows.length) { host.appendChild(zzz10m5_el('div', 'zzz10m5-msg', 'No backend access recorded yet.')); return; }
+  rows.forEach((r) => {
+    const line = zzz10m5_el('div', 'zzz10m6-trace');
+    line.appendChild(zzz10m5_el('span', 'zzz10m6-dot' + (r.kind === 'direct_write' || r.kind === 'cron_change' ? ' is-refused' : '')));
+    const what = r.kind === 'direct_write' ? 'Write outside the app: ' + r.command_tag + ' on ' + r.object_identity
+      : (r.kind === 'cron_change' ? 'Scheduled jobs changed (' + r.command_tag + ')' : r.command_tag + ' ' + (r.object_identity || r.object_type || ''));
+    const d = zzz10m5_el('div', '', what);
+    d.appendChild(zzz10m5_el('small', '', zzz10m6_time(r.created_at) + ' · ' + (ZZZ10M6_ACTOR_TEXT[r.actor] || r.actor || '?') + (r.app_name ? ' · ' + r.app_name : '') + ' · #' + r.seq));
+    line.appendChild(d);
+    host.appendChild(line);
+  });
+}
+// === [/Zzz10-M6:AUDIT-LOG] ===
 
 function zzz10m5_log_key() {
   let u = '';
