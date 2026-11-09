@@ -6142,8 +6142,15 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz14cs-feed-chip.zzz14cs-feed-show-urgent.is-on { background: #8b1e3f; border-color: #8b1e3f; color: #fff; }
   .zzz14cs-feed-chip.zzz14cs-feed-show-attention.is-on { background: #e07b00; border-color: #e07b00; color: #111; }
   .zzz14cs-feed-chip.zzz14cs-feed-show-open.is-on { background: #16a34a; border-color: #16a34a; color: #fff; }
-  .zzz14cs-feed-cn-hidden { display: none !important; }
-  .zzz14cs-feed-viwrap { margin-top: 4px; }
+  
+  .zzz-vicn-main { position: relative; }
+  .zzz-vicn-main > .zzz-vicn-bot { position: absolute; left: 6px; top: 6px; z-index: 2; width: 30px; height: 30px; padding: 0; font-size: 18px; line-height: 26px; border-radius: 50%; }
+  .zzz-vicn-main > textarea.zzz-vicn-field { padding-left: 42px !important; border-color: #D4AF37 !important; }
+  .zzz14cs-feed-vispace { border-color: #D4AF37; color: #D4AF37; }
+  .zzz-vicn-bot { border: 1px solid #C0C0C0; background: #1a1a1a; color: #fff; cursor: pointer; }
+  .zzz-vicn-bot.is-on { background: #4CAF50; border-color: #4CAF50; }
+  .zzz-vicn-bot.is-stby { background: #D4AF37; border-color: #D4AF37; }
+  .zzz-vicn-bot.is-off { background: #9CA3AF; border-color: #9CA3AF; filter: grayscale(1); }
   
 
   
@@ -36355,7 +36362,7 @@ function zzz14cs_feed_refresh() {
     const w = document.getElementById('zzz14csFeed');
     if (!w || !w.isConnected) return;
     const a = document.activeElement;
-    if (a && w.contains(a) && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT') && String(a.value || '').trim()) { zzz14cs_feed_paint(w, true); return; }
+    if (a && w.contains(a) && a.tagName === 'TEXTAREA' && String(a.value || '').trim()) { zzz14cs_feed_paint(w, true); return; }
     zzz14cs_feed_paint(w);
   }, 120);
 }
@@ -36403,6 +36410,11 @@ function zzz14cs_feed_paint(wrap, listOnly) {
       b.addEventListener('click', () => { const q = zzz14cs_feed_prefs(); q.show = Object.assign({}, q.show); if (q.show[k]) delete q.show[k]; else q.show[k] = 1; zzz14cs_feed_save(q); zzz14cs_feed_paint(wrap, true); });
       sb.appendChild(b);
     });
+
+    const vs = document.createElement('button'); vs.type = 'button'; vs.className = 'zzz14cs-feed-chip zzz14cs-feed-vispace'; vs.textContent = '\u26f6 VI';
+    vs.title = 'VI SPACE (your VI chat + pinned records)';
+    vs.addEventListener('click', () => { try { zzz_vi_win_open(true); } catch (e) {} });
+    sb.appendChild(vs);
     bar.appendChild(sb);
   }
   if (!chats.length) {
@@ -36446,21 +36458,20 @@ function zzz14cs_feed_paint(wrap, listOnly) {
   else zzz14cs_feed_target_paint(comp, items);
 }
 
-function zzz14cs_feed_vi_target() {
-  const items = zzz14cs_feed_items(zzz14cs_feed_prefs());
-  const n = zzz14cs_feed_target(items);
-  if (!n) return null;
-  return items.find(it => it.raw && String(it.raw.id) === String(n.id)) || { raw: n, entry: n.entry_key, from: n.username || '' };
-}
 function zzz14cs_feed_vi(comp) {
-  if (!comp || typeof zzz_vi_line_el !== 'function') return;
-  comp.querySelectorAll(':scope > .zzz14cs-feed-chips, :scope > .zzz14cs-feed-cn').forEach(el => { el.hidden = true; el.classList.add('zzz14cs-feed-cn-hidden'); });
-  let el = null;
-  try { el = zzz_vi_line_el({ feedTarget: zzz14cs_feed_vi_target }); } catch (e) { el = null; }
-  if (!el) { comp.querySelectorAll('.zzz14cs-feed-cn-hidden').forEach(x => { x.hidden = false; }); return; }
-  el.classList.add('zzz14cs-feed-viwrap');
-  const tg = comp.querySelector('.zzz14cs-feed-target');
-  if (tg && tg.nextSibling) comp.insertBefore(el, tg.nextSibling); else comp.appendChild(el);
+  const main = comp && comp.querySelector('.zzz14cs-feed-cn .zzz1cn-rowmain');
+  const ta = main && main.querySelector('textarea');
+  if (!ta || main.querySelector('.zzz-vicn-bot')) return;
+  main.classList.add('zzz-vicn-main');
+  ta.classList.add('zzz-vicn-field');
+  ta.placeholder = 'VI · chatnote';
+  const bot = document.createElement('button'); bot.type = 'button'; bot.className = 'zzz-vi-bot zzz-vicn-bot';
+  const paint = () => { const m = zzz_vi_get('mode', 'standby'); bot.textContent = '🤖'; bot.className = 'zzz-vi-bot zzz-vicn-bot ' + (m === 'on' ? 'is-on' : (m === 'off' ? 'is-off' : 'is-stby'));
+    bot.title = 'VI ' + (m === 'on' ? 'ON' : m === 'off' ? 'OFF' : 'STANDBY') + ' - tap = ON / STANDBY / OFF (the VI bot is coming)'; };
+  bot.addEventListener('mousedown', (e) => e.preventDefault());
+  bot.addEventListener('click', (e) => { e.preventDefault(); const M = ['on', 'standby', 'off'], m = zzz_vi_get('mode', 'standby'); zzz_vi_put('mode', M[(M.indexOf(m) + 1) % 3]); paint(); });
+  paint();
+  main.insertBefore(bot, ta);
 }
 function zzz14cs_feed_row(it, wrap) {
   const r = document.createElement('div');
@@ -50033,7 +50044,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-09 19:38';
+const VERSO_BUILD = '2026-11-09 19:51';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -52290,10 +52301,8 @@ function zzz_vi_new_cl_done(payload) {
 
 function zzz_vi_get(k, d) { try { return localStorage.getItem(zzz_ukey('zzz_vi_' + k)) || d; } catch (e) { return d; } }
 function zzz_vi_put(k, v) { try { localStorage.setItem(zzz_ukey('zzz_vi_' + k), String(v)); } catch (e) {} }
-function zzz_vi_line_el(opts) {
-
-  const feed = opts && typeof opts.feedTarget === 'function' ? opts.feedTarget : null;
-  if (!feed && zzz_vi_get('line', '1') !== '1') return null;
+function zzz_vi_line_el() {
+  if (zzz_vi_get('line', '1') !== '1') return null;
   const row = document.createElement('div'); row.className = 'zzz-vi-line';
   const MODES = ['on', 'standby', 'off'], PR = ['open', 'attention', 'urgent'];
   const vi = document.createElement('button'); vi.type = 'button';
@@ -52301,7 +52310,7 @@ function zzz_vi_line_el(opts) {
   const paintVi = () => { const m = zzz_vi_get('mode', 'standby'); vi.textContent = '\uD83E\uDD16'; vi.className = 'zzz-vi-bot ' + (m === 'on' ? 'is-on' : (m === 'off' ? 'is-off' : 'is-stby')); vi.setAttribute('aria-label', 'VI ' + (m === 'on' ? 'ON' : m === 'off' ? 'OFF' : 'STANDBY')); };
   paintVi(); vi.title = 'VI (Verso Intelligence): tap = ON / STANDBY / OFF (the bot is coming) · 2× tap = your VI record in COMM SPACE · hold = hide the VI LINE';
   let t1 = 0, last = 0, held = false, ht = 0;
-  vi.addEventListener('pointerdown', () => { held = false; clearTimeout(ht); if (feed) return; ht = setTimeout(() => { held = true; zzz_vi_put('line', '0'); wrap.remove(); zzz6f2_show_toast('VI LINE hidden - back: hold the title VERSO MEDIA CENTER.', 'info'); }, 900); });
+  vi.addEventListener('pointerdown', () => { held = false; clearTimeout(ht); ht = setTimeout(() => { held = true; zzz_vi_put('line', '0'); wrap.remove(); zzz6f2_show_toast('VI LINE hidden - back: hold the title VERSO MEDIA CENTER.', 'info'); }, 900); });
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => vi.addEventListener(ev, () => clearTimeout(ht)));
   vi.addEventListener('click', () => {
     if (held) return;
@@ -52418,7 +52427,7 @@ function zzz_vi_line_el(opts) {
   let rpIt = null, rpDrop = '', rpOff = '';
   const rpKey = (x) => x && x.raw ? String(x.raw.id || '') : '';
   const paintRp = () => {
-    const c = feed ? feed() : (window.zzzLineCur || null);
+    const c = window.zzzLineCur || null;
     const c0 = c && rpKey(c) && rpKey(c) !== rpDrop ? c : null;
     rp.hidden = !c0;
     const off = !!c0 && rpOff === rpKey(c0);
@@ -52436,7 +52445,6 @@ function zzz_vi_line_el(opts) {
     ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => rp.addEventListener(ev, () => clearTimeout(ht)));
     rp.addEventListener('contextmenu', (e) => e.preventDefault());
     rp.addEventListener('click', () => { if (held) { held = false; return; }
-      if (feed) { zzz6f2_show_toast('Tap a message above - the VI LINE answers that one.', 'info', 1600); return; }
       const L = window.zzzLineList || [], start = window.zzzLineCur;
       if (L.length < 2 || typeof zzz3d_step !== 'function') { zzz6f2_show_toast('No other message waits in the NOTIF LINE.', 'info'); return; }
       for (let i = 0; i < L.length; i++) { zzz3d_step(L, 1); if (window.zzzLineCur && window.zzzLineCur !== start) break; }
@@ -52447,7 +52455,7 @@ function zzz_vi_line_el(opts) {
   let busy = false;
   const send = async () => { if (busy) return; busy = true; go.disabled = true;
     try { const qt = qTargets(); const ok = rpIt ? await zzz_vi_reply(rpIt, inp.value, zzz_vi_get('prio', 'open')) : (qt.length ? await zzz_vi_post_bar(inp.value, zzz_vi_get('prio', 'open'), qt) : await zzz_vi_post(inp.value, zzz_vi_get('prio', 'open'), ''));
-      if (ok) { inp.value = ''; zzz_vi_put('draft', '');   if (rpIt) { rpDrop = rpKey(rpIt); paintRp(); } if (feed) { try { zzz14cs_feed_refresh(); } catch (e) {} } } } finally { busy = false; go.disabled = false; } };
+      if (ok) { inp.value = ''; zzz_vi_put('draft', '');   if (rpIt) { rpDrop = rpKey(rpIt); paintRp(); } } } finally { busy = false; go.disabled = false; } };
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
   go.addEventListener('click', send);
 
@@ -52456,16 +52464,7 @@ function zzz_vi_line_el(opts) {
   function paintMe() { meB.classList.toggle('is-on', qSel().includes('')); }
   const spaceB = tool('\u26f6', 'VI SPACE (your VI chat + pinned records)', () => zzz_vi_win_open(true));
   spaceB.classList.add('zzz-vi-space');
-
-  const feedEk = () => { const c = feed ? feed() : null; return c ? String((c.raw && c.raw.entry_key) || c.entry || '') : ''; };
-  let trB = null;
-  if (feed) { try { trB = zzz23tr_toggle(feedEk); } catch (e) { trB = null; } }
-  const alB = feed ? tool('\u23f0', 'ALARM MODULE for the chat of the tapped message', (e) => {
-      const ek = feedEk(); if (!/^\d+$/.test(ek)) { zzz6f2_show_toast('Tap a message first - the alarm belongs to its chat.', 'warn'); return; }
-      zzz5w8_open_item_window(null, 'schedule', { entry: ek, anchor: e && e.currentTarget }); })
-    : tool('\u23f0', 'ALARM MODULE', () => zzz_vi_open('alarm'));
-  alB.classList.add('zzz-vi-alarm');
-  row.append(vi, pr, pk, rp, alB, trB || tool('\u21c4', 'VERSO TRANSLATOR', () => zzz_vi_open('tr')), meB);
+  row.append(vi, pr, pk, rp, tool('\u23f0', 'ALARM MODULE', () => zzz_vi_open('alarm')), tool('\u21c4', 'VERSO TRANSLATOR', () => zzz_vi_open('tr')), meB);
   const frow = document.createElement('div'); frow.className = 'zzz-vi-line zzz-vi-frow';
   frow.append(inp, go, spaceB);
   const wrap = document.createElement('div'); wrap.className = 'zzz-vi-wrap';
@@ -52504,9 +52503,8 @@ async function zzz_vi_open(tool, noTarget, mode) {
   try { zzz14cs_space_build(); zzz14cs_space_open(true, true); } catch (x) { zzz_user_error('Could not open COMM SPACE - tap its button.', x, '[Zzz14-VI:OPEN-COMM]'); return; }
   const sel = { alarm: '.zzz1cn-clock', tr: '.zzz23tr-tog', max: '.zzz1cn-max-btn' }[String(tool || '')];
   if (!sel) return;
-  const viSel = { alarm: '.zzz-vi-alarm', tr: '.zzz23tr-tog' }[String(tool || '')];
   for (let i = 0; i < 20; i++) {
-    const b = (viSel && document.querySelector('.zzz14cs-feed-comp .zzz-vi-wrap ' + viSel)) || document.querySelector('.zzz14cs-feed-cn ' + sel) || document.querySelector('.zzz14cs-feed-comp ' + sel);
+    const b = document.querySelector('.zzz14cs-feed-cn ' + sel) || document.querySelector('.zzz14cs-feed-comp ' + sel);
     if (b) { try { b.click(); } catch (e) {} return; }
     await new Promise(r => setTimeout(r, 300));
   }
