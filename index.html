@@ -50044,7 +50044,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-09 19:51';
+const VERSO_BUILD = '2026-11-09 20:29';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -51924,7 +51924,7 @@ function zzz_vi_reply_find(r) {
   const at = Number(r.at) || 0;
   return hits.sort((a, b) => at ? Math.abs((a.t || 0) - at) - Math.abs((b.t || 0) - at) : (b.t || 0) - (a.t || 0))[0];
 }
-async function zzz_vi_reply(it, text, prio) {
+async function zzz_vi_reply(it, text, prio, save) {
   text = String(text || '').trim().slice(0, 4000);
   if (!text) { zzz6f2_show_toast('VI LINE: write something first.', 'info'); return false; }
   const n = it.raw || {}, ek = String(n.entry_key || it.entry);
@@ -51938,15 +51938,32 @@ async function zzz_vi_reply(it, text, prio) {
         const t = await zzz23tr_outgoing(ek, text); if (t) { body = t.text; trOrig = { orig: t.orig, lang: t.lang }; }
       }
     } catch (e) {}
-    const saved = await zzz1cn_add(ek, body, false, n.note_number ? { base: Number(n.note_number) } : null, '', false,
+    const saved = await zzz1cn_add(ek, body, false, n.note_number ? { base: Number(n.note_number) } : null, '', !!save,
       zzz1cn_prio_level(String(prio || '')) || (typeof zzz56_prio_mode === 'function' ? zzz56_prio_mode(ek) : ''), mOnly, null, 0, trOrig);
     if (!saved) throw new Error('not saved');
+    await zzz_vi_rem_take(ek, body, prio, saved);
     try { zzz14cs_feed_read(it, null); } catch (e) { try { zzz5w8_to_checked(it); } catch (e2) {} }
     zzz6f2_show_toast('VI ↩ #' + zzz5w7_label_of(saved) + ' → #' + ek + (it.from ? ' (' + it.from + ')' : ''), 'info');
     return true;
   } catch (x) { zzz_user_error('VI LINE: the answer was not saved - check the connection and send it again.', x, '[Zzz14-VI:REPLY-NOTIF]'); return false; }
 }
-async function zzz_vi_post(text, prio, pack) {
+
+function zzz_vi_rem_get() { try { const o = JSON.parse(zzz_vi_get('rem', 'null')); return o && o.due_at ? o : null; } catch (e) { return null; } }
+function zzz_vi_rem_set(cfg) { zzz_vi_put('rem', cfg ? JSON.stringify(cfg) : 'null'); try { document.querySelectorAll('.zzz-vi-alarm').forEach(b => { b.classList.toggle('is-on', !!cfg); b.title = cfg ? 'ALARM set - added to your next VI LINE message · tap = change' : 'ALARM MODULE - set it, it is added to your next VI LINE message'; }); } catch (e) {} }
+async function zzz_vi_rem_take(ek, text, prio, saved) {
+  const cfg = zzz_vi_rem_get(); if (!cfg || !saved) return;
+  zzz_vi_rem_set(null);
+  try { await zzz5w8_insert_from_chat(cfg, ek, text, prio, saved); } catch (e) { zzz_user_error('VI LINE: the message is sent, but its ALARM was not saved - set it again.', e, '[Zzz14-VI:LINE-ALARM]'); }
+}
+async function zzz_vi_alarm_arm(anchor) {
+  const cfg = zzz_vi_rem_get();
+  zzz5w8_open_item_window(null, cfg ? cfg.kind : 'schedule', {
+    entry: '', cfg, anchor: anchor || null,
+    onArm: (c) => { zzz_vi_rem_set(c); zzz6f2_show_toast('ALARM set - it is added to your next VI LINE message.', 'info'); },
+    onDisarm: () => { zzz_vi_rem_set(null); }
+  });
+}
+async function zzz_vi_post(text, prio, pack, save) {
   text = String(text || '').trim().slice(0, 4000);
   if (!text) { zzz6f2_show_toast('VI LINE: write something first.', 'info'); return false; }
   const e = await zzz_vi_entry(true);
@@ -51963,9 +51980,10 @@ async function zzz_vi_post(text, prio, pack) {
     if (!to.length) { zzz6f2_show_toast('VI LINE: „' + (one ? pk.slice(1) : pk) + '“ is not in your CONTACTS any more - nothing was sent.', 'warn'); return false; }
   }
   try {
-    const saved = await zzz1cn_add(String(e.entry_id), text, !to.length, null, '', true, zzz1cn_prio_level(String(prio || '')), to, 'vi');
+    const saved = await zzz1cn_add(String(e.entry_id), text, !to.length, null, '', !!save, zzz1cn_prio_level(String(prio || '')), to, 'vi');
     if (!saved) throw new Error('not saved');
-    zzz6f2_show_toast('VI ✓ sent to your VI record #' + e.entry_id + (to.length ? ' · pack ' + pk : ' · private'), 'info');
+    await zzz_vi_rem_take(String(e.entry_id), text, prio, saved);
+    zzz6f2_show_toast((save ? 'VI ✓ NOTE saved in' : 'VI ✓ sent to') + ' your VI record #' + e.entry_id + (to.length ? ' · pack ' + pk : ' · private'), 'info');
     return true;
   } catch (x) { zzz_user_error('VI LINE: the line was not saved - check the connection and send it again.', x, '[Zzz14-VI:LINE]'); return false; }
 }
@@ -52008,7 +52026,7 @@ async function zzz_qcb_to_app() {
 }
 setInterval(() => { const u = zzz_media_me(); if (!u) return; if (zzzQcbPulled !== u) zzz_qcb_pull(); else zzz_qcb_to_app(); }, 20000);
 setInterval(() => { if (zzz_media_me()) zzz_qcb_pull(); }, 120000);
-async function zzz_vi_post_bar(text, prio, q) {
+async function zzz_vi_post_bar(text, prio, q, save) {
   const names = [], miss = []; let me = false;
   for (const x of (q || []).slice(0, 40)) {
     const k = String(x && x.k || '').trim();
@@ -52032,9 +52050,10 @@ async function zzz_vi_post_bar(text, prio, q) {
   if (!e) return false;
   text = String(text || '').trim().slice(0, 4000);
   try {
-    const saved = await zzz1cn_add(String(e.entry_id), text, !names.length, null, '', true, zzz1cn_prio_level(String(prio || '')), names, 'vi');
+    const saved = await zzz1cn_add(String(e.entry_id), text, !names.length, null, '', !!save, zzz1cn_prio_level(String(prio || '')), names, 'vi');
     if (!saved) throw new Error('not saved');
-    zzz6f2_show_toast('VI \u2713 sent to your VI record #' + e.entry_id + (names.length ? ' \u00b7 ' + names.length + (names.length === 1 ? ' person' : ' people') : ' \u00b7 private'), 'info');
+    await zzz_vi_rem_take(String(e.entry_id), text, prio, saved);
+    zzz6f2_show_toast((save ? 'VI \u2713 NOTE saved in' : 'VI \u2713 sent to') + ' your VI record #' + e.entry_id + (names.length ? ' \u00b7 ' + names.length + (names.length === 1 ? ' person' : ' people') : ' \u00b7 private'), 'info');
     return true;
   } catch (x) { zzz_user_error('VI LINE: the line was not saved - check the connection and send it again.', x, '[Zzz14-VI:QUICK-CONTACTS-BAR]'); return false; }
 }
@@ -52453,18 +52472,26 @@ function zzz_vi_line_el() {
   inp.value = zzz_vi_get('draft', ''); inp.addEventListener('input', () => zzz_vi_put('draft', inp.value));
   const go = document.createElement('button'); go.type = 'button'; go.className = 'zzz-vi-go'; go.textContent = '➤'; go.title = 'Send (only sends - VI SPACE is ⛶)';
   let busy = false;
-  const send = async () => { if (busy) return; busy = true; go.disabled = true;
-    try { const qt = qTargets(); const ok = rpIt ? await zzz_vi_reply(rpIt, inp.value, zzz_vi_get('prio', 'open')) : (qt.length ? await zzz_vi_post_bar(inp.value, zzz_vi_get('prio', 'open'), qt) : await zzz_vi_post(inp.value, zzz_vi_get('prio', 'open'), ''));
+  const send = async (save) => { if (busy) return; busy = true; go.disabled = true; save = save === true;
+    try { const qt = qTargets(); const ok = rpIt ? await zzz_vi_reply(rpIt, inp.value, zzz_vi_get('prio', 'open'), save) : (qt.length ? await zzz_vi_post_bar(inp.value, zzz_vi_get('prio', 'open'), qt, save) : await zzz_vi_post(inp.value, zzz_vi_get('prio', 'open'), '', save));
       if (ok) { inp.value = ''; zzz_vi_put('draft', '');   if (rpIt) { rpDrop = rpKey(rpIt); paintRp(); } } } finally { busy = false; go.disabled = false; } };
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
-  go.addEventListener('click', send);
+
+  { let gT = 0, gHeld = false;
+    go.title = 'Tap = send into the chat · hold 1 s = SAVE NOTE (chat + Notes)';
+    go.addEventListener('pointerdown', () => { gHeld = false; clearTimeout(gT); gT = setTimeout(() => { gHeld = true; zzz_haptic_pulse(15); send(true); }, 1000); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => go.addEventListener(ev, () => clearTimeout(gT)));
+    go.addEventListener('contextmenu', (e) => e.preventDefault());
+    go.addEventListener('click', () => { if (gHeld) { gHeld = false; return; } send(false); }); }
 
   const tool = (lab, title, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = lab; b.title = title; b.className = 'zzz-vi-tool'; b.addEventListener('click', fn); return b; };
   const meB = tool('\uD83D\uDD12 me', '🔒 me: the line also goes to your own VI record (private)', () => { const s2 = qSel(); const i = s2.indexOf(''); if (i >= 0) s2.splice(i, 1); else s2.push(''); qSave(qList(), s2); paintMe(); paintPk(); if (bar.isConnected) paintBar(false); });
   function paintMe() { meB.classList.toggle('is-on', qSel().includes('')); }
   const spaceB = tool('\u26f6', 'VI SPACE (your VI chat + pinned records)', () => zzz_vi_win_open(true));
   spaceB.classList.add('zzz-vi-space');
-  row.append(vi, pr, pk, rp, tool('\u23f0', 'ALARM MODULE', () => zzz_vi_open('alarm')), tool('\u21c4', 'VERSO TRANSLATOR', () => zzz_vi_open('tr')), meB);
+  const alB = tool('\u23f0', 'ALARM MODULE - set it, it is added to your next VI LINE message', (e) => zzz_vi_alarm_arm(e && e.currentTarget));
+  alB.classList.add('zzz-vi-alarm'); alB.classList.toggle('is-on', !!zzz_vi_rem_get());
+  row.append(vi, pr, pk, rp, alB, tool('\u21c4', 'VERSO TRANSLATOR', () => zzz_vi_open('tr')), meB);
   const frow = document.createElement('div'); frow.className = 'zzz-vi-line zzz-vi-frow';
   frow.append(inp, go, spaceB);
   const wrap = document.createElement('div'); wrap.className = 'zzz-vi-wrap';
@@ -52472,7 +52499,7 @@ function zzz_vi_line_el() {
   paintMe();
   paintRp();
   const rpT = setInterval(() => { if (!row.isConnected) { clearInterval(rpT); return; } paintRp(); }, 1500);
-  wrap._viSend = async (t) => { inp.value = t; zzz_vi_put('draft', t); await send(); return !inp.value.trim(); };
+  wrap._viSend = async (t, save) => { inp.value = t; zzz_vi_put('draft', t); await send(save === true); return !inp.value.trim(); };
   return wrap;
 }
 async function zzz_vi_send(b64) {
@@ -52484,10 +52511,10 @@ async function zzz_vi_send(b64) {
   if (o.r && (o.r.e || o.r.w)) {
     let it = null;
     for (let i = 0; i < 24 && !it; i++) { it = zzz_vi_reply_find(o.r); if (!it) await new Promise(res => setTimeout(res, 500)); }
-    if (it) ok = await zzz_vi_reply(it, o.t, o.p);
-    else { zzz6f2_show_toast('VI LINE: that message is not in your notifications any more - the line went to your VI record.', 'warn'); ok = await zzz_vi_post(o.t, o.p, ''); }
-  } else if (Array.isArray(o.q) && o.q.length) ok = await zzz_vi_post_bar(o.t, o.p, o.q);
-  else ok = await zzz_vi_post(o.t, o.p, o.k);
+    if (it) ok = await zzz_vi_reply(it, o.t, o.p, !!o.s);
+    else { zzz6f2_show_toast('VI LINE: that message is not in your notifications any more - the line went to your VI record.', 'warn'); ok = await zzz_vi_post(o.t, o.p, '', !!o.s); }
+  } else if (Array.isArray(o.q) && o.q.length) ok = await zzz_vi_post_bar(o.t, o.p, o.q, !!o.s);
+  else ok = await zzz_vi_post(o.t, o.p, o.k, !!o.s);
   try { if (o.qs && Array.isArray(o.qs.l) && Number(o.qs.t) > Number(zzz_qcb().t || 0)) { zzz_qcb_save(o.qs, true); zzz_qcb_push(); } } catch (e) {}
   zzz_busy_set(100);
 
@@ -52500,6 +52527,7 @@ async function zzz_vi_open(tool, noTarget, mode) {
   if (noTarget && mode !== 'off' && !tool) { await zzz_vi_win_open(); return; }
 
   if (tool === 'win') { await zzz_vi_win_open(true); return; }
+  if (tool === 'alarm') { await zzz_vi_alarm_arm(null); return; }
   try { zzz14cs_space_build(); zzz14cs_space_open(true, true); } catch (x) { zzz_user_error('Could not open COMM SPACE - tap its button.', x, '[Zzz14-VI:OPEN-COMM]'); return; }
   const sel = { alarm: '.zzz1cn-clock', tr: '.zzz23tr-tog', max: '.zzz1cn-max-btn' }[String(tool || '')];
   if (!sel) return;
@@ -57545,7 +57573,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 294;
+const ZZZ14B17_APP_LATEST = 295;
 function zzz14b17_app_code() {
 
   try {
