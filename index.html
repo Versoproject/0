@@ -28775,7 +28775,7 @@ function zzz_rs_path_norm(p) { return String(p || '').split(/\s*[›>\/]\s*/).ma
 function zzz_rs_key(p) { return 'read:' + zzz_rs_path_norm(p).toLowerCase(); }
 function zzz_rs_host(link) { try { return new URL(link).hostname.replace(/^www\./, ''); } catch (e) { return String(link || '').slice(0, 40); } }
 
-const ZZZ_RS_SETUP_DEF = { store: 'off', keep: 'all', cache: 20, locked: [], img: 'verso' };
+const ZZZ_RS_SETUP_DEF = { store: 'off', keep: 'all', cache: 20, locked: [], img: 'verso', pages: 'auto' };
 function zzz_rs_setup() {
   if (zzzRs.setup && zzzRs.setup._u === zzz_rs_me()) return zzzRs.setup;
   let p = {}; try { p = JSON.parse(localStorage.getItem(zzz_ukey('zzz_rs_setup')) || '{}') || {}; } catch (e) { p = {}; }
@@ -28791,7 +28791,7 @@ async function zzz_rs_setup_pull() {
   } catch (e) {}
 }
 async function zzz_rs_setup_save(p) {
-  const u = zzz_rs_me(); const clean = { store: p.store, keep: p.keep, cache: Number(p.cache) || 0, img: ['verso', 'tap', 'direct'].indexOf(p.img) >= 0 ? p.img : 'verso', locked: Array.isArray(p.locked) ? p.locked.slice(0, 200) : [] };
+  const u = zzz_rs_me(); const clean = { store: p.store, keep: p.keep, cache: Number(p.cache) || 0, img: ['verso', 'tap', 'direct'].indexOf(p.img) >= 0 ? p.img : 'verso', pages: p.pages === 'verso' ? 'verso' : 'auto', locked: Array.isArray(p.locked) ? p.locked.slice(0, 200) : [] };
   zzzRs.setup = Object.assign({}, clean, { _u: u });
   try { localStorage.setItem(zzz_ukey('zzz_rs_setup'), JSON.stringify(clean)); } catch (e) {}
   if (!u || typeof sb === 'undefined' || !sb) return;
@@ -28831,7 +28831,112 @@ function zzz_rs_cache_put(link, d) {
   } catch (e) {}
 }
 
+const ZZZ_RS_DIRECT_APP = 296;
+const zzzRsWait = {};
+function zzz_rs_direct_able() {
+  try { return zzz14b17_in_app() && zzz14b17_app_code() >= ZZZ_RS_DIRECT_APP && zzz_native_cmd_able('intent://quick/readfetch'); } catch (e) { return false; }
+}
+function zzz_rs_direct_on() { return zzz_rs_setup().pages !== 'verso' && zzz_rs_direct_able(); }
+function zzz_rs_b64u(s) { const b = String(s).replace(/-/g, '+').replace(/_/g, '/'); return b + '==='.slice((b.length + 3) % 4); }
+function zzz_rpage_hash() {
+  const h = String(location.hash || '');
+  if (h.indexOf('#rpage=') !== 0) return;
+  const m = /^#rpage=([0-9a-z]{1,16})\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]*)$/.exec(h);
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  if (!m) return;
+  const w = zzzRsWait[m[1]]; if (!w) return;
+  delete zzzRsWait[m[1]];
+  w(m[2], m[3]);
+}
+window.addEventListener('hashchange', zzz_rpage_hash);
+async function zzz_rs_inflate(b64) {
+  const bin = atob(zzz_rs_b64u(b64)); const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  const st = new Blob([u8]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return await new Response(st).text();
+}
+function zzz_rs_direct(link) {
+  return new Promise((resolve) => {
+    const id = Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
+    const t = setTimeout(() => { delete zzzRsWait[id]; resolve({ error: 'The phone did not answer.', direct: true }); }, 12000);
+    zzzRsWait[id] = async (a, data) => {
+      clearTimeout(t);
+      try {
+        if (a === 'e') { resolve({ error: decodeURIComponent(escape(atob(zzz_rs_b64u(data)))), direct: true }); return; }
+        const url = decodeURIComponent(escape(atob(zzz_rs_b64u(a))));
+        const html = await zzz_rs_inflate(data);
+        const d = zzz_rs_extract(html, url); d.url = url; d.via = 'direct';
+        resolve(d);
+      } catch (e) { resolve({ error: 'The page from the phone could not be opened.', direct: true }); }
+    };
+    if (!zzz_native_cmd('intent://quick/readfetch?id=' + id + '&u=' + encodeURIComponent(link))) { clearTimeout(t); delete zzzRsWait[id]; resolve({ error: 'no channel', direct: true }); }
+  });
+}
+
+const ZZZ_RS_ENT = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '–', mdash: '—', hellip: '…', laquo: '«', raquo: '»',
+  bdquo: '„', ldquo: '“', rdquo: '”', lsquo: '‘', rsquo: '’', copy: '©', reg: '®', euro: '€', deg: '°', times: '×', middot: '·', bull: '•' };
+function zzz_rs_dec(s) {
+  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
+    if (e[0] === '#') { const n = e[1].toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); try { return Number.isFinite(n) ? String.fromCodePoint(n) : m; } catch (x) { return m; } }
+    const v = ZZZ_RS_ENT[e.toLowerCase()]; return v === undefined ? m : v;
+  });
+}
+function zzz_rs_extract(html, base) {
+  const txt = (s) => zzz_rs_dec(s.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, ' ')).replace(/[ \t\r\f\v]+/g, ' ').replace(/ *\n */g, '\n').trim();
+  const meta = (...names) => {
+    for (const n of names) {
+      const re1 = new RegExp('<meta[^>]+(?:property|name)=["\']' + n + '["\'][^>]*content=["\']([^"\']*)["\']', 'i');
+      const re2 = new RegExp('<meta[^>]+content=["\']([^"\']*)["\'][^>]*(?:property|name)=["\']' + n + '["\']', 'i');
+      const m = html.match(re1) || html.match(re2);
+      if (m && m[1].trim()) return zzz_rs_dec(m[1]).trim();
+    }
+    return '';
+  };
+  const abs = (src) => { if (!String(src || '').trim()) return ''; try { const u = new URL(zzz_rs_dec(src), base); return /^https?:$/.test(u.protocol) ? u.toString() : ''; } catch (e) { return ''; } };
+  const DROP = ['script', 'style', 'noscript', 'svg', 'template', 'iframe', 'object', 'embed', 'form', 'button', 'select', 'textarea', 'nav', 'footer', 'aside', 'dialog', 'canvas', 'video', 'audio'];
+  const NOISE = /(cookie|consent|banner|advert|\bads?\b|sponsor|promo|newsletter|subscribe|share|social|related|recommend|comment|popup|modal|sidebar|breadcrumb|menu|navbar|footer|header-|paywall|outbrain|taboola)/i;
+  const title = meta('og:title', 'twitter:title') || txt((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '');
+  let host = ''; try { host = new URL(base).hostname.replace(/^www\./, ''); } catch (e) {}
+  const site = meta('og:site_name', 'application-name') || host;
+  const desc = meta('og:description', 'description', 'twitter:description');
+  const byline = meta('author', 'article:author', 'parsely-author');
+  const image = abs(meta('og:image', 'twitter:image'));
+  const lang = ((html.match(/<html[^>]+lang=["']?([\w-]+)/i) || [])[1] || '').slice(0, 8);
+  let body = html.replace(/<!--[\s\S]*?-->/g, '');
+  for (const t of DROP) body = body.replace(new RegExp('<' + t + '\\b[\\s\\S]*?<\\/' + t + '>', 'gi'), ' ').replace(new RegExp('<' + t + '\\b[^>]*\\/?>', 'gi'), ' ');
+  body = body.replace(/<(div|section|header|ul|aside|p)\b([^>]*)>([\s\S]*?)<\/\1>/gi, (m, _tag, attrs) => (NOISE.test((String(attrs).match(/(?:class|id|role|aria-label)=["'][^"']*["']/gi) || []).join(' ')) ? ' ' : m));
+  const pick = (re) => { const all = [...body.matchAll(re)].map((m) => m[1]); return all.sort((a, b) => b.length - a.length)[0] || ''; };
+  let main = pick(/<article\b[^>]*>([\s\S]*?)<\/article>/gi) || pick(/<main\b[^>]*>([\s\S]*?)<\/main>/gi) || (body.match(/<body\b[^>]*>([\s\S]*)<\/body>/i) || [])[1] || body;
+  if (txt(main).length < 150) main = (body.match(/<body\b[^>]*>([\s\S]*)<\/body>/i) || [])[1] || body;
+  const blocks = [], seen = new Set();
+  const re = /<(h[1-4]|p|li|blockquote|pre|figcaption|img|td|dd)\b([^>]*)>([\s\S]*?)(?=<\/\1>|<(?:h[1-4]|p|li|blockquote|pre|figcaption|img|td|dd)\b|$)/gi;
+  let m, chars = 0;
+  while ((m = re.exec(main)) && blocks.length < 600 && chars < 120000) {
+    const tag = m[1].toLowerCase(), attrs = m[2] || '', inner = m[3] || '';
+    if (tag === 'img') {
+      const src = (attrs.match(/\b(?:data-src|data-lazy-src|src)=["']([^"']+)["']/i) || [])[1] || '';
+      const url = abs(src);
+      if (!url || /\.(gif|svg)(\?|$)/i.test(url) || /(pixel|spacer|tracking|logo|icon|avatar|1x1)/i.test(url) || seen.has(url)) continue;
+      const w = Number((attrs.match(/\bwidth=["']?(\d+)/i) || [])[1] || 0); if (w && w < 120) continue;
+      seen.add(url);
+      blocks.push({ t: 'img', v: url, a: txt((attrs.match(/\balt=["']([^"']*)["']/i) || [])[1] || '').slice(0, 200) });
+      continue;
+    }
+    const v = txt(inner);
+    if (!v || v.length < (tag === 'p' || tag === 'td' || tag === 'dd' ? 25 : 2)) continue;
+    const key = v.slice(0, 120); if (seen.has(key)) continue; seen.add(key);
+    const t = tag[0] === 'h' ? 'h' : tag === 'blockquote' ? 'q' : tag === 'pre' ? 'pre' : tag === 'li' ? 'li' : 'p';
+    blocks.push({ t, v: v.slice(0, 6000) }); chars += v.length;
+  }
+  return { title: title.slice(0, 300), site: site.slice(0, 120), byline: byline.slice(0, 120), desc: desc.slice(0, 500), image, lang, blocks };
+}
+
 async function zzz_rs_fetch(link) {
+  if (zzz_rs_direct_on()) {
+    const d = await zzz_rs_direct(link);
+    if (d && d.blocks) { zzz_rs_cache_put(link, d); return d; }
+    if (d && d.error && d.error !== 'no channel') zzz6f2_show_toast('Phone: ' + d.error + ' - reading VIA VERSO.', 'info', 2200);
+  }
   const h = (typeof zzz_verso_fn_headers === 'function') ? zzz_verso_fn_headers() : null;
   if (!h) return { error: 'Log in to Verso first - VERSO READER reads pages only for a logged-in user.' };
   try {
@@ -29393,7 +29498,7 @@ function zzz_rs_setup_window() {
   const o = document.createElement('div'); o.className = 'zzz-media-confirm'; o.setAttribute('data-zzz-nodraft', '1');
   const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzz-rs-setup';
   const t = document.createElement('div'); t.className = 'zzz-media-confirm-text'; t.textContent = 'READ SETUP'; b.appendChild(t);
-  const cur = { store: s.store, keep: s.keep, cache: s.cache, img: s.img || 'verso', locked: (s.locked || []).slice() };
+  const cur = { store: s.store, keep: s.keep, cache: s.cache, img: s.img || 'verso', pages: s.pages || 'auto', locked: (s.locked || []).slice() };
   const group = (label, key, opts, help) => {
     const g = document.createElement('div'); g.className = 'zzz-rs-set-g';
     const l = document.createElement('div'); l.className = 'zzz-rs-set-l'; l.textContent = label; g.appendChild(l);
@@ -29403,6 +29508,8 @@ function zzz_rs_setup_window() {
     const h = document.createElement('div'); h.className = 'zzz-rs-set-h'; h.textContent = help; g.appendChild(h);
     b.appendChild(g);
   };
+
+  group('PAGES', 'pages', [['auto', 'AUTO'], ['verso', 'VIA VERSO']], 'AUTO = in the Verso app the phone reads the page itself (the site sees your IP, Verso does not see what you read); on the web the Verso server reads it (the site sees only Verso). Now here: ' + (zzz_rs_direct_able() ? 'DIRECT (Verso app).' : 'VIA VERSO (' + (zzz14b17_in_app() ? 'update the Verso app for DIRECT' : 'web version') + ').') + ' VIA VERSO = always the Verso server.');
   group('A NEW PAGE STORES', 'store', [['off', 'NOTHING'], ['excerpt', 'EXCERPT'], ['text', 'TEXT'], ['all', 'TEXT + IMAGES']], 'Stored in the Verso database with the page line. NOTHING = only link + description; the content is read again when opened.');
   group('KEEP CONTENT STORES', 'keep', [['text', 'TEXT'], ['all', 'TEXT + IMAGES']], 'Images are stored only as their links.');
   group('IMAGES', 'img', [['verso', 'AUTO VIA VERSO'], ['tap', 'ON TAP'], ['direct', 'DIRECT']], 'AUTO VIA VERSO = shown at once, fetched by the Verso server (the site never sees your phone). DIRECT = like a normal browser (the site sees your IP). ON TAP = nothing until you tap.');
@@ -40998,7 +41105,7 @@ async function zzz_native_launch(url) {
 function zzz_native_cmd_able(url) {
 
   try {
-    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|mediaact|mediadone|vipacks|qcb|ring|relaunch)\b/.test(String(url || 'intent://quick/quiet'))
+    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|mediaact|mediadone|readfetch|vipacks|qcb|ring|relaunch)\b/.test(String(url || 'intent://quick/quiet'))
       && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator;
   } catch (e) { return false; }
 }
@@ -50083,7 +50190,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-09 20:47';
+const VERSO_BUILD = '2026-11-09 21:26';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -57612,7 +57719,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 295;
+const ZZZ14B17_APP_LATEST = 296;
 function zzz14b17_app_code() {
 
   try {
