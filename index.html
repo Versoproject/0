@@ -10353,6 +10353,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   
   .zzz-rdr-ibtn.zzz-rdr-wsbtn { font-size: 11px; padding: 4px 8px; margin-left: 8px; text-shadow: none; vertical-align: middle; }
   .zzz-rdr-rec { cursor: pointer; }
+  .zzz-rdr-flash { outline: 2px solid #d4af37; outline-offset: 2px; transition: outline-color .4s; }
   .zzz-rdr-rec:active { background: rgba(212, 175, 55, .10); }
   .zzz-rdr-lh { color: #8a8a8a; font-size: 11px; }
   .zzz-rdr-link { background: none; border: 0; padding: 2px 0; color: #e8c86a; font-size: 15px; text-align: left; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
@@ -30131,6 +30132,41 @@ function zzz_rdr_items_show(place, items) {
   if (!items.length) content.appendChild(blk('p', 'zzz-rs-meta', 'Nothing here yet.', 'EMPTY'));
   fr.copyAll();
   fr.finish();
+}
+
+function zzz_rdr_dom_items(root, fallback) {
+  const items = []; if (!root) return items;
+  const txt = (el) => String(el ? (el.innerText !== undefined && el.isConnected ? el.innerText : el.textContent) : '').split(/\n+/).map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' · ').replace(/(\s*·)?\s*[▼▲]\s*$/, '');
+  const own = (el) => { if (!el) return ''; const c = el.cloneNode(true); c.querySelectorAll('small, button, input, select, textarea').forEach(x => x.remove()); return String(c.textContent || '').replace(/\s+/g, ' ').trim(); };
+  const isOn = (b) => /(^|\s)(on|is-on|active|is-active|zzz10-0-tab-active|zzz2r23-active)(\s|$)/.test(b.className || '') || b.getAttribute('aria-pressed') === 'true';
+  const flashTo = (el) => () => { try { el.scrollIntoView({ block: 'center' }); el.classList.add('zzz-rdr-flash'); setTimeout(() => el.classList.remove('zzz-rdr-flash'), 1600); } catch (e) {} };
+  const heads = Array.from(root.querySelectorAll('h3'));
+  const boxes = heads.map(h => h.parentElement);
+  const sectionOf = (el) => { let best = -1; boxes.forEach((b, i) => { if (b.contains(el) && (best < 0 || boxes[best].contains(b))) best = i; }); return best; };
+  const leafRows = Array.from(root.querySelectorAll('[class*="-row"]')).filter(r => !r.querySelector('[class*="-row"]'));
+  const sections = heads.length ? heads.map((h, i) => ({ h, box: boxes[i], i })) : [{ h: null, box: root, i: -1 }];
+  sections.forEach(({ h, box, i }) => {
+    const group = h ? txt(h) : String(fallback || 'SETUP').toUpperCase();
+    const rows = leafRows.filter(r => sectionOf(r) === i);
+    const info = Array.from(box.children).filter(c => c !== h && !/-row/.test(String(c.className || '')) && !c.querySelector('[class*="-row"], h3, button') && !c.matches('button, input, select, textarea') && txt(c)).map(c => txt(c)).join(' · ');
+    const fns = Array.from(box.children).filter(c => !c.querySelector('[class*="-row"], h3')).flatMap(c => c.matches('button') ? [c] : Array.from(c.querySelectorAll('button'))).filter(b => txt(b)).map(b => ({ title: txt(b), kind: 'FN' }));
+    items.push({ group, title: group, info: info.slice(0, 900), kind: 'UI', subs: fns, open: h ? flashTo(h) : null });
+    rows.forEach(r => {
+      let btns = Array.from(r.querySelectorAll('button')).filter(b => txt(b));
+      let lab = own(r.firstElementChild || r) || own(r);
+      if (lab.length < 4 && btns.length) { lab = txt(btns[0]); btns = btns.slice(1); }
+      if (!lab) return;
+      const sm = Array.from(r.querySelectorAll('small')).map(x => txt(x)).filter(Boolean).join(' · ');
+      const chosen = btns.filter(isOn).map(b => txt(b));
+      const checks = Array.from(r.querySelectorAll('input[type=checkbox], input[type=radio]')).map(c => c.checked ? '✓' : '✕');
+      const sel = Array.from(r.querySelectorAll('select')).map(x => { const o = x.options[x.selectedIndex]; return o ? txt(o) : ''; }).filter(Boolean);
+      const hasCtl = btns.length || r.querySelector('input, select, textarea');
+      const meta = [chosen.length ? 'chosen: ' + chosen.join(', ') : '', sel.join(', '), checks.join(' ')].filter(Boolean).join(' · ');
+      items.push({ group, title: lab.slice(0, 160), info: sm.slice(0, 600), meta, kind: hasCtl ? 'SETUP' : 'DATA',
+        subs: btns.filter(b => !isOn(b)).slice(0, 12).map(b => ({ title: txt(b), kind: 'FN' })), open: flashTo(r) });
+    });
+  });
+  return items.filter(it => it.title);
 }
 function zzz_rdr_list_show(place, rows) {
   const fr = zzz_rdr_frame(place, place + ' · ' + rows.length + ' records', place);
@@ -50087,6 +50123,10 @@ function open_settings_workspace() {
 
   const tabContent = document.createElement('div');
   tabContent.className = 'zzz10-0-tab-content';
+
+  { const tl = (ZZZ10_0_TABS.find(t => t.key === zzz10_0ActiveTab) || {}).label || zzz10_0ActiveTab;
+    wrap.setAttribute('data-zzz-rdr-ws', '1'); wrap.zzzRdrPlace = 'SETTINGS › ' + String(tl).toUpperCase(); wrap.zzzRdrTitle = tabBar; wrap.zzzRdrItems = () => zzz_rdr_dom_items(tabContent, tl);
+    zzz_rdr_ws_btn(tabBar, wrap.zzzRdrPlace); }
   if (zzz10_0ActiveTab === 'login-setup') {
     zzz10m2_render_login_setup(tabContent);
   } else if (zzz10_0ActiveTab === 'multi-verification') {
@@ -51383,7 +51423,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-10 17:42';
+const VERSO_BUILD = '2026-11-10 18:57';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
