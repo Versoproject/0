@@ -10303,6 +10303,21 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-rs-keep { background: none; border: 1px solid #D4AF37; color: #D4AF37; border-radius: 8px; font-size: 11px; font-weight: 800; padding: 3px 8px; }
   .zzz-rs-keep.is-on { background: #D4AF37; color: #111; }
   .zzz-rs-comm, .zzz-rs-diss { white-space: nowrap; }
+  
+  .zzz-rdr { position: fixed; inset: 0; z-index: 2147482000; background: rgba(0,0,0,.72); display: flex; align-items: stretch; justify-content: center; padding: 8px; box-sizing: border-box; }
+  .zzz-rdr-box { width: 100%; max-width: 820px; max-height: 100%; overflow: hidden; margin: 0; }
+  .zzz-rdr-box .zzz-rs-content { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .zzz-rdr-box h1.zzz-rs-h1 { font-size: 20px; margin: 4px 0; }
+  .zzz-rdr-box h2.zzz-rs-h { font-size: 13px; color: #D4AF37; letter-spacing: .06em; margin: 14px 0 4px; border-bottom: 1px solid #3a3320; padding-bottom: 2px; }
+  .zzz-rdr-cells { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 2px 10px; margin: 8px 0 12px; }
+  .zzz-rdr-cell { display: contents; }
+  .zzz-rdr-cl { color: #D4AF37; font-size: 11px; font-weight: 700; letter-spacing: .04em; padding-top: 3px; white-space: nowrap; }
+  .zzz-rdr-cv { color: #eee; font-size: 14px; overflow-wrap: anywhere; }
+  .zzz-rdr-line { border-bottom: 1px solid #262626; padding: 6px 0; }
+  .zzz-rdr-lh { color: #8a8a8a; font-size: 11px; }
+  .zzz-rdr-link { background: none; border: 0; padding: 2px 0; color: #e8c86a; font-size: 15px; text-align: left; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+  .zzz-rdr-tx { white-space: pre-wrap; }
+  .zzz-rdr-sub { color: #bbb; font-size: 13px; padding-left: 10px; white-space: pre-wrap; }
   .zzz-rs-sw-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .zzz-rs-chip.is-lock.is-on { background: #3a2f12; color: #e8c86a !important; }
   .zzz-rs-diss-l { max-height: 40vh; overflow-y: auto; text-align: left; margin: 6px 0; }
@@ -12162,6 +12177,11 @@ function zzz6f29_open_readonly_viewer(label, value, row) {
       zzz6f2_show_toast(`Link to #${cislo} copied. Whoever opens it sees the record only if they may.`);
     });
     header.appendChild(odkaz);
+
+    const rdb = document.createElement('button'); rdb.className = 'zzz14cs-pin-link'; rdb.textContent = '📖 READER'; rdb.title = `#${cislo} as a page in the VERSO READER`;
+    rdb.addEventListener('pointerdown', (e) => e.stopPropagation());
+    rdb.addEventListener('click', (e) => { e.stopPropagation(); zzz_rdr_open(cislo); });
+    header.appendChild(rdb);
   }
   zzz_ctx_header_x(header);
 
@@ -29608,6 +29628,110 @@ function zzz_rs_filter(content, countEl) {
   });
   if (countEl) countEl.textContent = words.length ? n + ' parts' : '';
 }
+
+function zzz_rdr_kind(n) {
+  const t = String(n.note_text || '').trim(), first = t.split(/\s+/)[0] || '';
+  let alarm = false; try { alarm = typeof zzz5w8_note_has_alarm === 'function' && zzz5w8_note_has_alarm(n); } catch (e) {}
+  if (alarm) return 'alarm';
+  if (/^https?:\/\//i.test(first)) { try { if (typeof zzz_media_is_media_link === 'function' && zzz_media_is_media_link(first)) return 'media'; } catch (e) {} return 'web'; }
+  return 'note';
+}
+const ZZZ_RDR_GROUPS = [['web', 'WEB · BUNDLES'], ['media', 'MEDIA'], ['alarm', 'ALARMS'], ['note', 'NOTES']];
+async function zzz_rdr_open(entryId) {
+  const id = String(entryId || '').replace(/\D/g, ''); if (!id) return;
+  return zzz_flow_guard('READER #' + id, async () => {
+    let row = null; try { row = zzz6f29_entry_row_of(id); } catch (e) {}
+    if (!row) row = await zzz6f29_fetch_entry_row(id);
+    if (!row) { zzz6f2_show_toast('#' + id + ' is not readable for you right now.', 'warn'); return; }
+    let notes = [];
+    try { const { data } = await sb.from('verso_chat_notes').select('*').eq('entry_key', id).order('note_number', { ascending: true }).limit(2000); notes = data || []; } catch (e) {}
+    zzz_rdr_show(id, row, notes);
+  }, 120);
+}
+function zzz_rdr_show(id, row, notes) {
+  const old = document.getElementById('zzzRdr'); if (old) old.remove();
+  const f = (typeof zzz_parse_fields_json === 'function') ? zzz_parse_fields_json(row) : (row.fields_json || {});
+  const ov = document.createElement('div'); ov.id = 'zzzRdr'; ov.className = 'zzz-rdr'; ov.setAttribute('data-zzz-nodraft', '1');
+  const box = document.createElement('div'); box.className = 'zzz-rs-reader zzz-rdr-box';
+  const L = (el, lab) => { el.setAttribute('data-vlabel', 'VERSO › RECORD #' + id + ' › ' + lab); return el; };
+
+  const show = document.createElement('div'); show.className = 'zzz-rs-showbar';
+  const st = document.createElement('span'); st.className = 'zzz-rs-show-t'; st.textContent = 'SHOW'; show.appendChild(st);
+  const title = String(f.r3 || f.r9 || '').trim();
+  const tt = document.createElement('span'); tt.className = 'zzz-rs-show-title'; tt.textContent = '#' + id + (title ? ' · ' + title : ''); show.appendChild(tt);
+  const xb = document.createElement('button'); xb.type = 'button'; xb.className = 'zzz5w5cm-close zzz-rs-x'; xb.textContent = '×'; xb.setAttribute('aria-label', 'Close the reader');
+  xb.addEventListener('click', (e) => { e.stopPropagation(); ov.remove(); }); show.appendChild(xb);
+  const find = document.createElement('div'); find.className = 'zzz-rs-find'; find.hidden = true;
+  const fin = document.createElement('input'); fin.type = 'text'; fin.placeholder = 'SHOW only parts with… (a, b = or)';
+  const fcount = document.createElement('span'); fcount.className = 'zzz-rs-find-n';
+  find.appendChild(fin); find.appendChild(fcount);
+  show.addEventListener('click', (e) => { if (e.target.closest('button')) return; find.hidden = !find.hidden; if (!find.hidden) fin.focus(); });
+  box.appendChild(show); box.appendChild(find);
+  const content = document.createElement('div'); content.className = 'zzz-rs-content';
+  const blk = (tag, cls, text, lab) => { const e = document.createElement(tag); e.className = 'zzz-rs-blk' + (cls ? ' ' + cls : ''); if (text !== undefined) e.textContent = text; return L(e, lab); };
+  content.appendChild(blk('h1', 'zzz-rs-h1', title || ('#' + id), 'TITLE'));
+  const meta = blk('div', 'zzz-rs-meta', ['#' + id, row.username || '', String(row.entry_date || '').slice(0, 10)].filter(Boolean).join(' · '), 'META'); content.appendChild(meta);
+
+  const cells = blk('div', 'zzz-rdr-cells', undefined, 'CELLS');
+  (typeof ZZZ_CL_FIELDS !== 'undefined' ? ZZZ_CL_FIELDS : []).forEach(([, k, lab]) => {
+    if (k === 'r10') return;
+    const v = String(f[k] == null ? '' : f[k]).trim(); if (!v) return;
+    const c = document.createElement('div'); c.className = 'zzz-rdr-cell zzz-rs-blk'; L(c, 'CELL ' + lab);
+    const a = document.createElement('span'); a.className = 'zzz-rdr-cl'; a.textContent = lab;
+    const b = document.createElement('span'); b.className = 'zzz-rdr-cv'; b.textContent = v;
+    c.appendChild(a); c.appendChild(b); cells.appendChild(c);
+  });
+  content.appendChild(cells);
+  const body = String(f.r10 || '').trim();
+  if (body) { content.appendChild(blk('h2', 'zzz-rs-h', 'CONTENT', 'CONTENT HEAD')); body.split(/\n{2,}/).forEach((p, i) => content.appendChild(blk('p', '', p, 'CONTENT ' + (i + 1)))); }
+
+  const lines = notes.filter(n => !n.note_part && !/(^|\s)trash(\s|$)/.test(String(n.note_tags || '')));
+  const subs = {}; notes.filter(n => n.note_part).forEach(n => { (subs[n.note_number] = subs[n.note_number] || []).push(n); });
+  const groups = {}; lines.forEach(n => { const k = zzz_rdr_kind(n); (groups[k] = groups[k] || []).push(n); });
+  ZZZ_RDR_GROUPS.forEach(([k, lab]) => {
+    const g = groups[k]; if (!g || !g.length) return;
+    content.appendChild(blk('h2', 'zzz-rs-h', lab + ' · ' + g.length, 'GROUP ' + lab));
+    g.forEach(n => {
+      const r = blk('div', 'zzz-rdr-line', undefined, 'LINE #' + id + '/' + n.note_number);
+      const head = document.createElement('div'); head.className = 'zzz-rdr-lh';
+      head.textContent = '#' + n.note_number + ' · ' + (n.username || '') + (n.created_at ? ' · ' + zzz_b26_time(n.created_at) : '') + (n.note_status === 'done' ? ' · ✓' : '') + (n.is_private ? ' · 🔒' : '');
+      r.appendChild(head);
+      const raw = String(n.note_text || '').trim(), first = raw.split(/\s+/)[0] || '';
+      const name = String(n.note_name || '').trim();
+      if (k === 'web' || k === 'media') {
+        const a = document.createElement('button'); a.type = 'button'; a.className = 'zzz-rdr-link'; a.textContent = (name || first.replace(/^https?:\/\/(www\.)?/, '').slice(0, 80));
+        a.title = k === 'web' ? 'Tap = VERSO READER · the page as a Verso page' : 'Tap = MEDIA CENTER';
+        a.addEventListener('click', (e) => { e.stopPropagation(); if (k === 'web') { ov.remove(); zzz_rs_open_page({ tmp: true, link: zzz_media_norm(first), name: name, path: 'READ', entry: id, num: n.note_number }); } else { try { zzz_media_add_link(first); zzz6f2_show_toast('In VERSO MEDIA CENTER › ALL MEDIA.', 'info', 1600); } catch (er) {} } });
+        r.appendChild(a);
+        const host = document.createElement('div'); host.className = 'zzz-rs-meta'; host.textContent = zzz_rs_host(first); r.appendChild(host);
+      } else {
+        if (name) { const nm = document.createElement('b'); nm.textContent = name + ' '; r.appendChild(nm); }
+        const tx = document.createElement('div'); tx.className = 'zzz-rdr-tx'; tx.textContent = raw; r.appendChild(tx);
+      }
+      const sn = subs[n.note_number] || [];
+      sn.filter(x => !/^verso:keep\b/.test(String(x.note_text || ''))).forEach(x => { const d = document.createElement('div'); d.className = 'zzz-rdr-sub'; d.textContent = '↳ ' + (x.username || '') + ': ' + String(x.note_text || '').slice(0, 600); r.appendChild(d); });
+      content.appendChild(r);
+    });
+  });
+  if (!lines.length && !body) content.appendChild(blk('p', 'zzz-rs-meta', 'No content and no SUBS lines yet.', 'EMPTY'));
+  box.appendChild(content);
+
+  const sw = document.createElement('div'); sw.className = 'zzz-rs-swipe';
+  const swt = document.createElement('span'); swt.className = 'zzz-rs-sw-t'; swt.textContent = 'RECORD'; sw.appendChild(swt);
+  const btn = (t, title2, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-rs-keep'; b.textContent = t; b.title = title2; b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); sw.appendChild(b); };
+  btn('💬 #' + id, 'COMM - the chat of this record', () => { ov.remove(); zzz_open_chat_entry(id); });
+  btn('CRM', 'The record window (cells, EDIT, ATTACH)', () => { ov.remove(); zzz6f29_open_entry_number_window(id); });
+  btn('COPY ALL', 'Copy the whole page as text', () => { const t = Array.from(content.querySelectorAll('.zzz-rs-blk:not(.is-hidden)')).map(x => x.innerText).join('\n'); zzz_copy_text_to_clipboard_silent(t); zzz6f2_show_toast('Copied.', 'info', 1200); });
+  box.appendChild(sw);
+  fin.addEventListener('input', () => { zzzRs.q = fin.value; zzz_rs_filter(content, fcount); });
+  ov.appendChild(box);
+  ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+}
+
+function zzz_rdr_hash() { const m = /^#rdr=(\d{1,9})$/.exec(String(location.hash || '')); if (!m) return; try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} setTimeout(() => zzz_rdr_open(m[1]), 600); }
+window.addEventListener('hashchange', zzz_rdr_hash);
+setTimeout(() => { try { if (typeof zzz6f7_isLoggedIn === 'undefined' || zzz6f7_isLoggedIn) zzz_rdr_hash(); } catch (e) {} }, 2500);
 
 function zzz_rs_diss(it, after) {
   const o = document.createElement('div'); o.className = 'zzz-media-confirm'; o.setAttribute('data-zzz-nodraft', '1');
@@ -50698,7 +50822,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-10 03:51';
+const VERSO_BUILD = '2026-11-10 03:53';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -51941,6 +52065,7 @@ function zzz_back_close_top() {
     try { const t = p._target; if (p._text && t && t.blur) t.blur(); } catch (e) {}
     return true;
   }
+  { const rd = document.getElementById('zzzRdr'); if (rd) { rd.remove(); return true; } }
 
   { const st = document.getElementById('zzzMediaStage'); if (st && (document.fullscreenElement === st || st.classList.contains('is-full'))) { try { zzz_media_full(); } catch (e) {} return true; } }
   if (zzz_media_back_guard()) return true;
