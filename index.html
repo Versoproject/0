@@ -10304,6 +10304,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-rs-keep.is-on { background: #D4AF37; color: #111; }
   .zzz-rs-comm, .zzz-rs-diss { white-space: nowrap; }
   
+  .zzz-rs-tree { display: flex; flex-direction: column; gap: 2px; }
+  .zzz-rs-treerow { align-items: center; }
+  .zzz-rs-move { background: none; border: 1px solid #555; color: #D4AF37; border-radius: 8px; padding: 0 8px; margin-left: 8px; line-height: 1.3; cursor: pointer; font-size: 14px; }
+  
   .zzz-rdr { position: fixed; inset: 0; z-index: 2147482000; background: rgba(0,0,0,.72); display: flex; align-items: stretch; justify-content: center; padding: 8px; box-sizing: border-box; }
   .zzz-rdr-box { width: 100%; max-width: 820px; max-height: 100%; overflow: hidden; margin: 0; }
   .zzz-rdr-box .zzz-rs-content { overflow-y: auto; -webkit-overflow-scrolling: touch; }
@@ -29068,8 +29072,17 @@ async function zzz_rs_load(force) {
       notes.filter(n => n.note_part && /^verso:keep\b/.test(String(n.note_text || ''))).forEach(n => { keeps[n.entry_key + '#' + n.note_number] = n; });
       zzzRs.diss = {};
       notes.filter(n => n.note_part && !/^verso:keep\b/.test(String(n.note_text || ''))).forEach(n => { const k = n.entry_key + '#' + n.note_number; (zzzRs.diss[k] = zzzRs.diss[k] || []).push(n); });
-      zzzRs.lines = notes.filter(n => !n.note_part && /(^|\s)(bundles|reads)(\s|$)/.test(String(n.note_tags || '')) && !/(^|\s)trash(\s|$)/.test(String(n.note_tags || '')))
+      zzzRs.lines = notes.filter(n => !n.note_part && /(^|\s)(rpage|bundles|reads)(\s|$)/.test(String(n.note_tags || '')) && !/(^|\s)trash(\s|$)/.test(String(n.note_tags || '')))
         .map(n => zzz_rs_item(n, byId[String(n.entry_key)], keeps[n.entry_key + '#' + n.note_number]));
+
+      zzzRs.tree = {};
+      notes.filter(n => !n.note_part && /(^|\s)(rbundle|rcoll)(\s|$)/.test(String(n.note_tags || '')) && !/(^|\s)trash(\s|$)/.test(String(n.note_tags || ''))).forEach(n => {
+        const el = byId[String(n.entry_key)]; if (!el) return;
+        const tg = String(n.note_tags || ''), t = zzzRs.tree[el.id] = zzzRs.tree[el.id] || { b: [], c: [] };
+        const par = (/(?:^|\s)rp:(\d+)/.exec(tg) || [])[1];
+        const x = { id: n.id, num: n.note_number, entry: String(n.entry_key), name: String(n.note_name || n.note_text || '').trim(), parent: par ? Number(par) : null, note: n };
+        (/(^|\s)rbundle(\s|$)/.test(tg) ? t.b : t.c).push(x);
+      });
       zzzRs.loadedOf = me;
     } catch (e) { zzz_user_error('READ SPACE could not load your pages - check the connection and open it again.', e, '[Zzz5-W10:READ-MODEL]', 'warn'); }
     finally { zzzRs.loading = null; }
@@ -29079,8 +29092,104 @@ async function zzz_rs_load(force) {
 function zzz_rs_item(n, el, keep) {
   const raw = String(n.note_text || '').trim().split(/\s+/)[0] || '';
   return { id: n.id, num: n.note_number, entry: String(n.entry_key), note: n, link: /^https?:\/\//i.test(raw) ? zzz_media_norm(raw) : raw,
-    name: String(n.note_name || '').trim(), tags: String(n.note_tags || '').split(/\s+/).filter(t => t && t !== 'reads' && t !== 'bundles').join(' '),
-    seen: n.note_status === 'done', path: el ? el.path : '', keep: keep || null };
+    name: String(n.note_name || '').trim(), tags: String(n.note_tags || '').split(/\s+/).filter(t => t && t !== 'reads' && t !== 'bundles' && t !== 'rpage' && !/^rp:/.test(t)).join(' '),
+    seen: n.note_status === 'done', path: el ? el.path : '', keep: keep || null, elId: el ? el.id : null,
+    parent: (() => { const m = /(?:^|\s)rp:(\d+)/.exec(String(n.note_tags || '')); return m ? Number(m[1]) : null; })() };
+}
+
+const zzzRsSel = {};
+function zzz_rs_sel_of(elId) { const id = elId || ((zzzRs.els[zzz_rs_key(zzzRs.path || '')] || {}).id); return id ? (zzzRsSel[id] = zzzRsSel[id] || { b: null, c: null }) : { b: null, c: null }; }
+function zzz_rs_tree_of(elId) { return (zzzRs.tree || {})[elId] || { b: [], c: [] }; }
+function zzz_rs_tree_path(it) {
+  if (!it || !it.elId) return '';
+  const t = zzz_rs_tree_of(it.elId); const c = it.parent ? t.c.find(x => x.num === it.parent) : null;
+  if (!c) return it.parent ? '' : (t.b.length ? 'UNSORTED' : '');
+  const b = c.parent ? t.b.find(x => x.num === c.parent) : null;
+  return (b ? b.name + ' › ' : '') + c.name;
+}
+function zzz_rs_tree_pass(it) {
+  if (!zzzRs.path || !it.elId) return true;
+  const el = zzzRs.els[zzz_rs_key(zzzRs.path)]; if (!el || it.elId !== el.id) return true;
+  const sl = zzz_rs_sel_of(el.id), t = zzz_rs_tree_of(el.id);
+  if (sl.c === 'none') return !it.parent || !t.c.some(x => x.num === it.parent);
+  if (sl.c) return it.parent === sl.c;
+  if (sl.b) { const cs = t.c.filter(x => x.parent === sl.b).map(x => x.num); return cs.indexOf(it.parent) >= 0; }
+  return true;
+}
+function zzz_rs_next_get() { try { const v = JSON.parse(localStorage.getItem(zzz_ukey('zzz_rs_next')) || 'null'); return v && v.path ? v : {}; } catch (e) { return {}; } }
+function zzz_rs_next_set(v) { try { if (v) localStorage.setItem(zzz_ukey('zzz_rs_next'), JSON.stringify(v)); else localStorage.removeItem(zzz_ukey('zzz_rs_next')); } catch (e) {} }
+function zzz_rs_next_label(nx) {
+  if (!nx || !nx.path) return 'ACTUAL';
+  const el = zzzRs.els[zzz_rs_key(nx.path)]; const t = el ? zzz_rs_tree_of(el.id) : { b: [], c: [] };
+  const b = nx.b ? t.b.find(x => x.num === nx.b) : null, c = nx.c ? t.c.find(x => x.num === nx.c) : null;
+  return [nx.path, b && b.name, c && c.name].filter(Boolean).join(ZZZ_RS_SEP);
+}
+async function zzz_rs_tree_add(el, kind, parent) {
+  const what = kind === 'b' ? 'BUNDLE' : 'COLLECTION';
+  const v = await zzz_verso_prompt('New ' + what + (kind === 'b' ? ' in ' + el.path : '') + ' (e.g. ' + (kind === 'b' ? 'TOPÁNKY' : 'ZIMNÉ') + '):', '', 'MAKE');
+  if (!v || !v.trim()) return;
+  const name = v.trim().replace(/\s+/g, ' ').slice(0, 60);
+  const n = await zzz1cn_add(String(el.id), name, true, null, name, true, false, [], kind === 'b' ? 'rbundle' : 'rcoll rp:' + Number(parent));
+  if (!n) { zzz6f2_show_toast('The ' + what + ' was not saved - check the connection.', 'warn'); return; }
+  const t = (zzzRs.tree = zzzRs.tree || {})[el.id] = zzz_rs_tree_of(el.id);
+  const x = { id: n.id, num: n.note_number, entry: String(el.id), name, parent: kind === 'b' ? null : Number(parent), note: n };
+  (kind === 'b' ? t.b : t.c).push(x);
+  const sl = zzz_rs_sel_of(el.id); if (kind === 'b') { sl.b = x.num; sl.c = null; } else sl.c = x.num;
+  zzz_rs_render();
+}
+function zzz_rs_tree_rows(el, chip) {
+  const box = document.createElement('div'); box.className = 'zzz-rs-tree';
+  const t = zzz_rs_tree_of(el.id), sl = zzz_rs_sel_of(el.id), nx = zzz_rs_next_get();
+  const row = (lab) => { const r = document.createElement('div'); r.className = 'zzz-rs-tabs zzz-rs-sub zzz-rs-treerow'; const l = document.createElement('span'); l.className = 'zzz14cs-feed-show-lab'; l.textContent = lab; r.appendChild(l); box.appendChild(r); return r; };
+  const unsorted = zzzRs.lines.filter(x => x.elId === el.id && (!x.parent || !t.c.some(c => c.num === x.parent))).length;
+  const rb = row('BUNDLES');
+  t.b.forEach(b => rb.appendChild(chip('🗂 ' + b.name, sl.b === b.num, () => { if (sl.b === b.num) { sl.b = null; sl.c = null; } else { sl.b = b.num; sl.c = null; } zzz_rs_render(); })));
+  if (unsorted && t.b.length) rb.appendChild(chip('UNSORTED ' + unsorted, sl.c === 'none', () => { sl.c = sl.c === 'none' ? null : 'none'; sl.b = null; zzz_rs_render(); }));
+  rb.appendChild(chip('+ BUNDLE', false, () => zzz_rs_tree_add(el, 'b'), 'is-add'));
+  if (sl.b) {
+    const rc = row('COLLS');
+    t.c.filter(c => c.parent === sl.b).forEach(c => rc.appendChild(chip('📁 ' + c.name, sl.c === c.num, () => { sl.c = sl.c === c.num ? null : c.num; zzz_rs_render(); })));
+    rc.appendChild(chip('+ COLL', false, () => zzz_rs_tree_add(el, 'c', sl.b), 'is-add'));
+  }
+
+  const cur = { path: el.path, b: sl.b || null, c: (sl.c && sl.c !== 'none') ? sl.c : null };
+  const isNext = nx.path === cur.path && (nx.b || null) === cur.b && (nx.c || null) === cur.c;
+  const ra = row('PLACE');
+  ra.appendChild(chip((isNext ? '⦿' : '○') + ' NEXT UP', isNext, () => { zzz_rs_next_set(isNext ? null : cur); zzz6f2_show_toast(isNext ? 'NEXT UP off - incoming links go to ACTUAL.' : 'NEXT UP: incoming links land in ' + zzz_rs_next_label(cur) + '.', 'info', 2000); zzz_rs_render(); }));
+  const focus = cur.c ? t.c.find(x => x.num === cur.c) : (cur.b ? t.b.find(x => x.num === cur.b) : null);
+  if (focus) {
+    const nn = ((zzzRs.diss || {})[focus.entry + '#' + focus.num] || []).length;
+    ra.appendChild(chip('💬 DISS ' + focus.name + (nn ? ' ' + nn : ''), false, () => zzz_rs_diss({ entry: focus.entry, num: focus.num, name: focus.name, link: '' }, () => zzz_rs_render())));
+  }
+  return box;
+}
+
+function zzz_rs_move(it) {
+  const t = zzz_rs_tree_of(it.elId);
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm'; o.setAttribute('data-zzz-nodraft', '1');
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzz-rs-setup';
+  const h = document.createElement('div'); h.className = 'zzz-media-confirm-text'; h.textContent = 'MOVE · ' + (it.name || zzz_rs_host(it.link)); b.appendChild(h);
+  const list = document.createElement('div'); list.className = 'zzz-rs-diss-l'; b.appendChild(list);
+  const go = async (c) => {
+    const tags = ('rpage' + (c ? ' rp:' + c : '') + (it.tags ? ' ' + it.tags : '')).trim();
+    const { error } = await sb.from('verso_chat_notes').update({ note_tags: tags }).eq('id', it.id);
+    if (error) { zzz_user_error('The page was not moved - check the connection.', error, '[Zzz5-W10:READS-TREE]'); return; }
+    it.parent = c || null; if (it.note) it.note.note_tags = tags; o.remove(); zzz6f2_show_toast('Moved to ' + (zzz_rs_tree_path(it) || 'UNSORTED') + '.', 'info', 1600); zzz_rs_render();
+  };
+  if (!t.c.length) { const e = document.createElement('div'); e.className = 'zzz-rs-set-h'; e.textContent = 'No COLLECTION yet - make a BUNDLE and a COLLECTION first (+ BUNDLE, + COLL).'; list.appendChild(e); }
+  t.b.forEach(bb => {
+    const cs = t.c.filter(c => c.parent === bb.num); if (!cs.length) return;
+    const l = document.createElement('div'); l.className = 'zzz-rs-set-h'; l.textContent = '🗂 ' + bb.name; list.appendChild(l);
+    const r = document.createElement('div'); r.className = 'zzz-b26-row';
+    cs.forEach(c => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz14cs-feed-mode' + (it.parent === c.num ? ' is-on' : ''); x.textContent = '📁 ' + c.name; x.addEventListener('click', () => go(c.num)); r.appendChild(x); });
+    list.appendChild(r);
+  });
+  const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
+  const un = document.createElement('button'); un.type = 'button'; un.className = 'zzz-media-btn'; un.textContent = 'UNSORTED'; un.addEventListener('click', () => go(null));
+  const no = document.createElement('button'); no.type = 'button'; no.className = 'zzz-media-btn'; no.textContent = 'CLOSE'; no.addEventListener('click', () => o.remove());
+  row.appendChild(un); row.appendChild(no); b.appendChild(row);
+  o.appendChild(b); o.addEventListener('click', (e) => { if (e.target === o) o.remove(); });
+  document.body.appendChild(o);
 }
 
 const zzzRsFolderBusy = {};
@@ -29123,7 +29232,7 @@ async function zzz_rs_folder_make(path, key, me, quiet) {
   } catch (e) { zzz_user_error('The READ tab / folder could not be made - check the connection and try again.', e, '[Zzz5-W10:READ-MODEL]'); return null; }
 }
 
-async function zzz_rs_add(link, path) {
+async function zzz_rs_add(link, path, coll) {
   link = String(link || '').trim();
   if (!/^https?:\/\//i.test(link)) { const m = /https?:\/\/\S+/i.exec(link); if (!m) { zzz6f2_show_toast('Paste a web link (https://…).', 'warn'); return null; } link = m[0]; }
   link = zzz_media_norm(link);
@@ -29131,18 +29240,18 @@ async function zzz_rs_add(link, path) {
   const have = zzzRs.lines.find(x => x.link === link);
   if (have) { zzz6f2_show_toast('Already in READ' + ZZZ_RS_SEP + (have.path || '') + ' - opened.', 'info'); zzz_rs_open_page(have); return have; }
   if (zzzRsAddBusy[link]) return zzzRsAddBusy[link];
-  const run = zzz_rs_add_now(link, path);
+  const run = zzz_rs_add_now(link, path, coll);
   zzzRsAddBusy[link] = run;
   try { return await run; } finally { delete zzzRsAddBusy[link]; }
 }
 const zzzRsAddBusy = {};
-async function zzz_rs_add_now(link, path) {
+async function zzz_rs_add_now(link, path, coll) {
   const el = await zzz_rs_folder(path || zzzRs.path || 'ACTUAL', true);
   if (!el) return null;
   let name = zzz_rs_host(link);
-  const n = await zzz1cn_add(String(el.id), link, true, null, name, true, false, [], 'bundles');
+  const n = await zzz1cn_add(String(el.id), link, true, null, name, true, false, [], 'rpage' + (coll ? ' rp:' + Number(coll) : ''));
   if (!n) { zzz6f2_show_toast('The link could not be saved - check the connection and try again.', 'warn', 2400); return null; }
-  const it = zzz_rs_item(Object.assign({ note_text: link, note_name: name, note_tags: 'bundles', entry_key: String(el.id) }, n), el, null);
+  const it = zzz_rs_item(Object.assign({ note_text: link, note_name: name, note_tags: 'rpage' + (coll ? ' rp:' + Number(coll) : ''), entry_key: String(el.id) }, n), el, null);
   zzzRs.lines.push(it);
   const d = await zzz_rs_fetch(link);
   const title = String((d && !d.error && d.title) || '').replace(/\s+/g, ' ').trim().slice(0, 60);
@@ -29172,9 +29281,10 @@ async function zzz_rs_clip_auto() {
     await zzz_rs_load();
     const have = zzzRs.lines.find(x => x.link === link);
     if (have) { zzz6f2_show_toast('Copied link is already in READ SPACE' + ZZZ_RS_SEP + (have.path || ''), 'info', 2200); return; }
-    zzz6f2_show_toast('Copied link → READ SPACE' + ZZZ_RS_SEP + 'ACTUAL …', 'info', 1600);
-    const it = await zzz_rs_add(link, 'ACTUAL');
-    if (it) { zzz6f2_show_toast('READ SPACE' + ZZZ_RS_SEP + 'ACTUAL: ' + (it.name || zzz_rs_host(link)) + ' - open READ SPACE to read it.', 'info', 3000); if (zzzRs.open) zzz_rs_render(); }
+    zzz6f2_show_toast('Copied link → READ SPACE' + ZZZ_RS_SEP + zzz_rs_next_label(zzz_rs_next_get()) + ' …', 'info', 1600);
+    const nx = zzz_rs_next_get();
+    const it = await zzz_rs_add(link, nx.path || 'ACTUAL', nx.c || null);
+    if (it) { zzz6f2_show_toast('READ SPACE' + ZZZ_RS_SEP + zzz_rs_next_label(nx) + ': ' + (it.name || zzz_rs_host(link)) + ' - open READ SPACE to read it.', 'info', 3000); if (zzzRs.open) zzz_rs_render(); }
   } catch (e) {} finally { zzzRsClipBusy = false; }
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(zzz_rs_clip_auto, 1300); });
@@ -29231,7 +29341,7 @@ function zzz_rs_space_open(on) {
     { const mw = document.getElementById('zzzMediaWin'); if (mw) { mw.remove(); try { zzz_media_place(); } catch (e) {} } }
     zzz_rs_build();
     if (typeof zzz5w5cm_load_tab_placements === 'function') { zzz5w5cm_load_tab_placements(true).then(() => zzz_rs_render()).catch(() => {}); }
-    zzz_rs_load().then(() => zzz_rs_render());
+    zzz_rs_load().then(async () => { if (zzzRs.loadedOf && !zzzRs.els['read:actual']) { try { await zzz_rs_folder('ACTUAL', true, true); } catch (e) {} } zzz_rs_render(); });
     try { zzz_outside_back_arm(); } catch (e) {}
     zzz_haptic_pulse(15);
   }
@@ -29325,19 +29435,17 @@ function zzz_rs_feeder() {
     const kids = all.filter(p => p.indexOf(zzzRs.path + ZZZ_RS_SEP) === 0 && p.slice(zzzRs.path.length + ZZZ_RS_SEP.length).indexOf(ZZZ_RS_SEP) < 0);
     if (kids.length) { const s = document.createElement('span'); s.className = 'zzz-rs-sep'; s.textContent = '▸'; row.appendChild(s); }
     kids.forEach(p => row.appendChild(chip('📂 ' + p.split(ZZZ_RS_SEP).pop(), false, () => { zzzRs.path = p; zzzRs.page = null; zzz_rs_render(); })));
-    row.appendChild(chip('+ FOLDER', false, async () => {
-      const v = await zzz_verso_prompt('New folder in ' + zzzRs.path + ':', '', 'MAKE'); if (!v || !v.trim()) return;
-      const el = await zzz_rs_folder(zzzRs.path + ZZZ_RS_SEP + v.trim().replace(/[›>\/]/g, ' '), true); if (el) { zzzRs.path = el.path; zzz_rs_render(); }
-    }, 'is-add'));
+
     const el = zzzRs.els[zzz_rs_key(zzzRs.path)];
     if (el) row.appendChild(chip('💬', false, () => zzz_rs_chat(el.id), 'is-chat'));
     if (el) row.appendChild(chip('📖', false, () => zzz_rdr_open(el.id), 'is-chat'));
     { const lk = zzz_rs_is_locked(zzzRs.path); row.appendChild(chip(lk ? '🔒' : '🔓', lk, () => zzz_rs_lock_toggle(zzzRs.path), 'is-lock')); }
     w.appendChild(row);
+    if (el) w.appendChild(zzz_rs_tree_rows(el, chip));
   }
   if (zzzRs.page) return w;
 
-  const inPath = zzzRs.lines.filter(x => !zzz_rs_hidden(x.path) && (!zzzRs.path || x.path === zzzRs.path || x.path.indexOf(zzzRs.path + ZZZ_RS_SEP) === 0));
+  const inPath = zzzRs.lines.filter(x => !zzz_rs_hidden(x.path) && (!zzzRs.path || x.path === zzzRs.path || x.path.indexOf(zzzRs.path + ZZZ_RS_SEP) === 0)).filter(zzz_rs_tree_pass);
   const head = document.createElement('div'); head.className = 'zzz14cs-feed-head';
   const t = document.createElement('span'); t.className = 'zzz14cs-feed-title'; t.textContent = 'READ FEEDER'; head.appendChild(t);
   const modes = [['new', 'NEW', x => !x.seen], ['all', 'ALL', () => true], ['read', 'READ', x => x.seen], ['kept', 'KEPT', x => !!x.keep]];
@@ -29347,11 +29455,11 @@ function zzz_rs_feeder() {
   const add = document.createElement('div'); add.className = 'zzz-rs-add';
   const inp = document.createElement('input'); inp.type = 'url'; inp.className = 'zzz-rs-add-in'; inp.placeholder = 'ADD CONTENT - paste a link'; inp.autocomplete = 'off'; inp.setAttribute('data-zzz-nodraft', '1');
   const go = document.createElement('button'); go.type = 'button'; go.className = 'zzz14cs-feed-send zzz-rs-add-go'; go.textContent = '+ ADD';
-  go.title = 'Adds the page into ' + (zzzRs.path || 'ACTUAL') + ' - its title becomes the DESCRIPTION';
+  go.title = 'Adds the page into ' + (zzzRs.path || 'ACTUAL') + ' (the chosen COLLECTION) - its title becomes the DESCRIPTION';
   const doAdd = async () => {
     const v = inp.value; if (!v.trim()) { try { const c = await navigator.clipboard.readText(); if (c) inp.value = c; } catch (e) {} if (!inp.value.trim()) { zzz6f2_show_toast('Paste a web link (https://…).', 'warn'); return; } }
     go.disabled = true; go.textContent = '…';
-    try { const it = await zzz_rs_add(inp.value, zzzRs.path || 'ACTUAL'); if (it) { inp.value = ''; if (!zzzRs.path) zzzRs.path = it.path; zzz_rs_render(); } }
+    try { const sl = zzz_rs_sel_of(); const it = await zzz_rs_add(inp.value, zzzRs.path || 'ACTUAL', sl.c && sl.c !== 'none' ? sl.c : null); if (it) { inp.value = ''; if (!zzzRs.path) zzzRs.path = it.path; zzz_rs_render(); } }
     finally { go.disabled = false; go.textContent = '+ ADD'; }
   };
   go.addEventListener('click', (e) => { e.stopPropagation(); doAdd(); });
@@ -29454,7 +29562,9 @@ function zzz_rs_line(it) {
   const r = document.createElement('div'); r.className = 'zzz-rs-line' + (it.seen ? ' is-read' : '');
   r.appendChild(zzz_rs_media_chip(it));
   const t = document.createElement('span'); t.className = 'zzz-rs-line-t'; t.textContent = it.name || zzz_rs_host(it.link); r.appendChild(t);
-  const h = document.createElement('span'); h.className = 'zzz-rs-line-h'; h.textContent = zzz_rs_host(it.link) + (it.keep ? ' · KEPT' : '') + (it.tags ? ' · ' + it.tags : ''); r.appendChild(h);
+  const tp = zzz_rs_tree_path(it);
+  const h = document.createElement('span'); h.className = 'zzz-rs-line-h'; h.textContent = zzz_rs_host(it.link) + (tp ? ' · ' + tp : '') + (it.keep ? ' · KEPT' : '') + (it.tags ? ' · ' + it.tags : ''); r.appendChild(h);
+  if (it.elId && it.id) { const mv = document.createElement('button'); mv.type = 'button'; mv.className = 'zzz-rs-move'; mv.textContent = '↳'; mv.title = 'MOVE into a BUNDLE › COLLECTION'; mv.addEventListener('click', (e) => { e.stopPropagation(); zzz_rs_move(it); }); h.appendChild(mv); }
   r.title = it.link;
   r.addEventListener('click', () => zzz_rs_open_page(it));
   return r;
@@ -29648,13 +29758,14 @@ function zzz_rs_filter(content, countEl) {
 }
 
 function zzz_rdr_kind(n) {
+  if (/(^|\s)(rbundle|rcoll)(\s|$)/.test(String(n.note_tags || ''))) return 'tree';
   const t = String(n.note_text || '').trim(), first = t.split(/\s+/)[0] || '';
   let alarm = false; try { alarm = typeof zzz5w8_note_has_alarm === 'function' && zzz5w8_note_has_alarm(n); } catch (e) {}
   if (alarm) return 'alarm';
   if (/^https?:\/\//i.test(first)) { try { if (typeof zzz_media_is_media_link === 'function' && zzz_media_is_media_link(first)) return 'media'; } catch (e) {} return 'web'; }
   return 'note';
 }
-const ZZZ_RDR_GROUPS = [['web', 'WEB · BUNDLES'], ['media', 'MEDIA'], ['alarm', 'ALARMS'], ['note', 'NOTES']];
+const ZZZ_RDR_GROUPS = [['tree', 'BUNDLES · COLLECTIONS'], ['web', 'WEB · PAGES'], ['media', 'MEDIA'], ['alarm', 'ALARMS'], ['note', 'NOTES']];
 async function zzz_rdr_open(entryId) {
   const id = String(entryId || '').replace(/\D/g, ''); if (!id) return;
   return zzz_flow_guard('READER #' + id, async () => {
@@ -50840,7 +50951,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-10 12:41';
+const VERSO_BUILD = '2026-11-10 13:33';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
