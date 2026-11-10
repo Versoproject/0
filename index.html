@@ -29973,8 +29973,8 @@ function zzz_rdr_item_btn(it, from) {
 function zzz_rdr_frame(root, headText, swTitle) {
   const old = document.getElementById('zzzRdr'); if (old) old.remove();
   const ov = document.createElement('div'); ov.id = 'zzzRdr'; ov.className = 'zzz-rdr'; ov.setAttribute('data-zzz-nodraft', '1');
-  const box = document.createElement('div'); box.className = 'zzz-rs-reader zzz-rdr-box';
-  const L = (el, lab) => { el.setAttribute('data-vlabel', 'VERSO › ' + root + ' › ' + lab); return el; };
+  const box = document.createElement('div'); box.className = 'zzz-rs-reader zzz-rdr-box'; box.setAttribute('data-vkind', 'UI'); box.setAttribute('data-vlabel', 'VERSO › ' + root);
+  const L = (el, lab) => { el.setAttribute('data-vlabel', 'VERSO › ' + root + ' › ' + lab); if (!el.hasAttribute('data-vkind')) el.setAttribute('data-vkind', 'DATA'); return el; };
   const show = document.createElement('div'); show.className = 'zzz-rs-showbar';
   const st = document.createElement('span'); st.className = 'zzz-rs-show-t'; st.textContent = 'SHOW'; show.appendChild(st);
   const tt = document.createElement('span'); tt.className = 'zzz-rs-show-title'; tt.textContent = headText; show.appendChild(tt);
@@ -30076,13 +30076,34 @@ function zzz_rdr_ws_btn(title, place) {
   b.addEventListener('click', (e) => {
     e.stopPropagation();
     const ws = title.closest('.db-workspace') || title.parentElement;
-    const rows = Array.from((ws || document).querySelectorAll('.db-workspace-entry-row')).map(r => r.zzzRowData).filter(r => r && r.entry_id !== undefined && r.entry_id !== null && r.entry_id !== '');
-    const seen = {}; const uniq = rows.filter(r => { const k = String(r.entry_id); if (seen[k]) return false; seen[k] = 1; return true; });
-    zzz_rdr_list_show(place, uniq);
+    const uniq = zzz_rdr_ws_rows(ws);
+    zzz_rdr_list_show((ws && ws.zzzRdrPlace) || place, uniq);
   });
   const x = title.querySelector('.zzz4-0-close-x');
   if (x) title.insertBefore(b, x); else title.appendChild(b);
 }
+
+function zzz_rdr_ws_rows(ws) {
+  let rows = (ws && Array.isArray(ws.zzzRdrRows)) ? ws.zzzRdrRows : Array.from((ws || document).querySelectorAll('.db-workspace-entry-row')).map(r => r.zzzRowData);
+  rows = rows.filter(r => r && r.entry_id !== undefined && r.entry_id !== null && r.entry_id !== '');
+  const seen = {}; return rows.filter(r => { const k = String(r.entry_id); if (seen[k]) return false; seen[k] = 1; return true; });
+}
+
+function zzz_rdr_auto_scan() {
+  const host = document.getElementById('versoWorkspaceSection'); if (!host) return;
+  host.querySelectorAll('.db-workspace').forEach(ws => {
+    const t = ws.querySelector(':scope > .db-workspace-title'); if (!t || t.querySelector('.zzz-rdr-wsbtn')) return;
+    if (!ws.zzzRdrRows && !ws.querySelector('.db-workspace-entry-row')) return;
+    const lab = (Array.from(t.childNodes).filter(n => n.nodeType === 3 || (n.tagName === 'SPAN')).map(n => n.textContent).join(' ').split(/[·(-]/)[0] || 'WORKSPACE').trim().toUpperCase();
+    zzz_rdr_ws_btn(t, lab || 'WORKSPACE');
+  });
+}
+(function zzz_rdr_auto_watch() {
+  let tm = 0;
+  const go = () => { const host = document.getElementById('versoWorkspaceSection'); if (!host) { setTimeout(go, 1000); return; }
+    try { new MutationObserver(() => { if (tm) return; tm = setTimeout(() => { tm = 0; try { zzz_rdr_auto_scan(); } catch (e) {} }, 250); }).observe(host, { childList: true, subtree: true }); } catch (e) {} };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+})();
 function zzz_rdr_list_show(place, rows) {
   const fr = zzz_rdr_frame(place, place + ' · ' + rows.length + ' records', place);
   const { content, blk } = fr;
@@ -30090,7 +30111,8 @@ function zzz_rdr_list_show(place, rows) {
   const groups = {};
   rows.forEach(r => {
     const f = (typeof zzz_parse_fields_json === 'function' ? zzz_parse_fields_json(r) : (r.fields_json || {})) || {};
-    const cat = String(f.r5 || '').trim().toUpperCase() || 'NO CATEGORY';
+    const isFn = (typeof zzz_fn_is_fn === 'function') && zzz_fn_is_fn(f);
+    const cat = isFn ? 'FUNCTIONS' : (String(f.r5 || '').trim().toUpperCase() || 'NO CATEGORY');
     (groups[cat] = groups[cat] || []).push({ r, f });
   });
   const cats = Object.keys(groups).sort((a, b) => (a === 'NO CATEGORY') - (b === 'NO CATEGORY') || a.localeCompare(b));
@@ -30098,7 +30120,9 @@ function zzz_rdr_list_show(place, rows) {
     content.appendChild(blk('h2', 'zzz-rs-h', cat + ' · ' + groups[cat].length, 'GROUP ' + cat));
     groups[cat].forEach(({ r, f }) => {
       const id = String(r.entry_id);
-      const e = blk('div', 'zzz-rdr-line zzz-rdr-rec', undefined, 'RECORD #' + id);
+      const fnc = (cat === 'FUNCTIONS' && typeof zzz_fn_code === 'function') ? zzz_fn_code(f) : '';
+      const e = blk('div', 'zzz-rdr-line zzz-rdr-rec', undefined, (fnc ? 'FUNCTION #' : 'RECORD #') + id);
+      e.setAttribute('data-vkind', fnc ? 'FN' : 'DATA');
       const head = document.createElement('div'); head.className = 'zzz-rdr-lh';
       head.textContent = ['#' + id, String(f.r2 || '').trim() ? 'PN ' + String(f.r2).trim() : '', String(f.r4 || r.username || '').trim(), String(r.entry_date || '').slice(0, 10), r.zzz_archived ? 'ARCHIVE' : (r.is_trashed ? 'TRASH' : '')].filter(Boolean).join(' · ');
       e.appendChild(head);
@@ -30107,9 +30131,10 @@ function zzz_rdr_list_show(place, rows) {
       if (desc && desc !== nm.textContent) { const d = document.createElement('div'); d.className = 'zzz-rdr-tx'; d.textContent = desc.slice(0, 300); e.appendChild(d); }
       const tags = [String(f.tags || '').trim(), String(f.r26 || '').trim()].filter(Boolean).join(' · ');
       if (tags) { const t = document.createElement('div'); t.className = 'zzz-rs-meta'; t.textContent = tags; e.appendChild(t); }
-      e.title = 'Tap = #' + id + ' in the RECORD READER';
+      e.title = fnc ? 'Tap = start ' + (f.r9 || fnc) : 'Tap = #' + id + ' in the RECORD READER';
       e.addEventListener('click', (ev) => {
         ev.stopPropagation();
+        if (fnc) { document.getElementById('zzzRdr') && document.getElementById('zzzRdr').remove(); zzz_fn_run(fnc); return; }
         const back = { label: place, fn: again };
         if (r.zzz_archived) { zzz_rdr_load(id, { row: r }).then(m => { if (m) { m.archived = true; zzz_rdr_show(m, { back }); } }); }
         else zzz_rdr_open(id, { back, from: place });
@@ -51217,6 +51242,10 @@ async function open_zzz14b21_workspace(slug) {
     em.textContent = 'Empty tab - place a record here with its ENTRY NUMBER.';
     list.appendChild(em);
   }
+
+  box.zzzRdrRows = rows;
+  { const tn = (tabs.find(t => t.entry_id === tabNo) || activeRow); const tf = tn ? zzz14b21_fields(tn) : {}; box.zzzRdrPlace = ws.label + ' › ' + String(tf.r9 || ('#' + tabNo)).toUpperCase(); }
+  zzz_rdr_ws_btn(box.querySelector('.db-workspace-title'), ws.label);
   rows.forEach(r => {
     const f = zzz14b21_fields(r);
     const row = document.createElement('div'); row.className = 'zzz14b21-row';
@@ -51326,7 +51355,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-10 17:13';
+const VERSO_BUILD = '2026-11-10 17:25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
