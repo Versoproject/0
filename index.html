@@ -37548,7 +37548,7 @@ function zzz14cs_feed_vi(comp) {
 let zzz14csPack = null;
 function zzz14cs_pack_state() {
 
-  if (!zzz14csPack) zzz14csPack = { chats: null, people: null, extra: [], mode: 'chat', priv: true, prio: '', auto: true, rem: null, sent: [], kind: 'msg', vote: Object.assign({}, ZZZ14CS_VOTES_DEF) };
+  if (!zzz14csPack) zzz14csPack = { chats: null, people: null, extra: [], mode: 'chat', priv: 'setup', prio: '', auto: true, rem: null, sent: [], kind: 'msg', vote: Object.assign({}, ZZZ14CS_VOTES_DEF) };
   return zzz14csPack;
 }
 async function zzz14cs_pack_members(ek) {
@@ -37569,7 +37569,7 @@ async function zzz14cs_pack_open(opts) {
   const chats = (opts.chats || zzz5w5cm_tab_list(ZZZ14CS_SPACE_KEY).map(it => ({ ek: String(it.sourceEntryId || ''), name: String((it.fields || {}).r3 || '') }))).map(c => ({ ek: String(c.ek || ''), name: String(c.name || '') })).filter(c => /^\d+$/.test(c.ek));
   if (!chats.length) { zzz6f2_show_toast(source === 'comm_space' ? 'COMM SPACE PACK: no chats are attached in COMM SPACE yet.' : 'PACK: open it from a chat.', 'warn'); return; }
   const pf = opts.prefill || null;
-  if (pf) { if (pf.vote) { st.kind = 'vote'; st.vote = { type: pf.vote.type || 'choice', opts: pf.vote.type === 'rating' ? ZZZ14CS_VOTES_DEF.opts : (pf.vote.opts || []).join(', '), mode: pf.vote.mode || 'public' }; st.voteId = pf.voteId || null; } st.text = String(pf.text || ''); ['mode', 'prio'].forEach(k => { if (pf[k] !== undefined) st[k] = pf[k]; }); ['priv', 'auto'].forEach(k => { if (pf[k] !== undefined) st[k] = !!pf[k]; }); st.from = pf.from || null; }
+  if (pf) { if (pf.vote) { st.kind = 'vote'; st.vote = { type: pf.vote.type || 'choice', opts: pf.vote.type === 'rating' ? ZZZ14CS_VOTES_DEF.opts : (pf.vote.opts || []).join(', '), mode: pf.vote.mode || 'public' }; st.voteId = pf.voteId || null; } st.text = String(pf.text || ''); ['mode', 'prio'].forEach(k => { if (pf[k] !== undefined) st[k] = pf[k]; }); if (pf.priv !== undefined) st.priv = pf.priv === 'setup' ? 'setup' : !!pf.priv; if (pf.auto !== undefined) st.auto = !!pf.auto; st.from = pf.from || null; }
   if (!st.chats) { st.chats = {}; chats.forEach(c => { if (!pf || !pf.chats || pf.chats.map(String).indexOf(c.ek) >= 0) st.chats[c.ek] = 1; }); }
   const mem = {};
   await Promise.all(chats.map(async c => { try { mem[c.ek] = await zzz14cs_pack_members(c.ek); } catch (e) { mem[c.ek] = []; } }));
@@ -37606,7 +37606,10 @@ async function zzz14cs_pack_open(opts) {
     if (!st.people) { st.people = {}; people.forEach(n => { st.people[norm(n)] = 1; }); }
     people.forEach(n => { if (st.people[norm(n)] === undefined) st.people[norm(n)] = 1; });
     const r1 = sec('CHATS (COMM SPACE)');
-    chats.forEach(c => r1.appendChild(chip('#' + c.ek + (c.name ? ' ' + c.name : '') + ' · ' + (mem[c.ek] || []).length, !!st.chats[c.ek], () => { if (st.chats[c.ek]) delete st.chats[c.ek]; else st.chats[c.ek] = 1; paint(); })));
+    chats.forEach(c => r1.appendChild(chip('#' + c.ek + (c.name ? ' ' + c.name : '') + ' · ' + (mem[c.ek] || []).length + zzz14cs_pack_chat_mark(st, c.ek, mem), !!st.chats[c.ek], () => { if (st.chats[c.ek]) delete st.chats[c.ek]; else st.chats[c.ek] = 1; paint(); })));
+
+    const why = chats.filter(c => st.chats[c.ek]).map(c => zzz14cs_pack_chat_why(st, c, mem)).filter(Boolean);
+    if (why.length) { const w = document.createElement('div'); w.className = 'zzz14cs-pack-note zzz14cs-pack-why'; w.textContent = why.join(' · '); r1.appendChild(w); }
     const r2 = sec('PEOPLE (each once) · ' + people.filter(n => st.people[norm(n)]).length + ' / ' + people.length);
     if (!people.length) { const e = document.createElement('span'); e.className = 'zzz14cs-pack-note'; e.textContent = 'nobody yet - tick a chat or add packs / contacts below'; r2.appendChild(e); }
     people.forEach(n => { const k = chatOf(n).length; r2.appendChild(chip(n + (k > 1 ? ' ·' + k : (k ? '' : ' · VI')), !!st.people[norm(n)], () => { st.people[norm(n)] = st.people[norm(n)] ? 0 : 1; paint(); }, k ? '' : 'is-out')); });
@@ -37640,8 +37643,9 @@ async function zzz14cs_pack_open(opts) {
     const r4 = sec('HOW');
     r4.appendChild(chip('PER CHAT', st.mode === 'chat', () => { st.mode = 'chat'; paint(); }));
     r4.appendChild(chip('INDIVIDUAL', st.mode === 'one', () => { st.mode = 'one'; paint(); }));
-    r4.appendChild(chip('PUBLIC', st.mode === 'chat' && !st.priv, () => { if (st.mode === 'one') { zzz6f2_show_toast('INDIVIDUAL messages are always only for that person.', 'info'); return; } st.priv = false; paint(); }));
-    r4.appendChild(chip('PRIVATE', st.mode === 'one' || st.priv, () => { st.priv = true; paint(); }));
+    r4.appendChild(chip('BY COMM SETUP', st.mode === 'chat' && st.priv === 'setup', () => { if (st.mode === 'one') { zzz14cs_pack_say(win, 'INDIVIDUAL messages are always only for that person.', 'info'); return; } st.priv = 'setup'; paint(); }));
+    r4.appendChild(chip('PUBLIC', st.mode === 'chat' && st.priv === false, () => { if (st.mode === 'one') { zzz14cs_pack_say(win, 'INDIVIDUAL messages are always only for that person.', 'info'); return; } st.priv = false; paint(); }));
+    r4.appendChild(chip('PRIVATE', st.mode === 'one' || st.priv === true, () => { st.priv = true; paint(); }));
     const r5 = sec('PRIORITY · ALARM · NOT REACHED');
     [['', 'OPEN'], ['attention', 'ATTENTION'], ['urgent', 'URGENT']].forEach(([k, t]) => r5.appendChild(chip(t, st.prio === k, () => { st.prio = k; paint(); }, 'zzz14cs-feed-show-' + (k || 'open'))));
     r5.appendChild(chip(st.rem ? '⏰ SET' : '⏰ ALARM', !!st.rem, () => zzz5w8_open_item_window(null, st.rem ? st.rem.kind : 'schedule', { entry: '', cfg: st.rem, anchor: win,
@@ -37650,7 +37654,8 @@ async function zzz14cs_pack_open(opts) {
     const info = document.createElement('div'); info.className = 'zzz14cs-pack-note';
     info.textContent = st.mode === 'one'
       ? 'INDIVIDUAL: every ticked person gets his own message, only for him, in the first ticked chat he belongs to.'
-      : (st.priv ? 'PER CHAT · PRIVATE: one message per chat, only its ticked people read it (each person in one chat only).' : 'PER CHAT · PUBLIC: one message per chat, everybody of that chat reads it (people in several chats get it there too).');
+      : (st.priv === 'setup' ? 'PER CHAT · BY COMM SETUP: one message per chat, each chat as its own comm setup says (🔒 = private there: only its ticked people read it).'
+        : (st.priv ? 'PER CHAT · PRIVATE: one message per chat, only its ticked people read it (each person in one chat only).' : 'PER CHAT · PUBLIC: one message per chat, everybody of that chat reads it (people in several chats get it there too).'));
     info.textContent += st.auto ? ' Not reached (· VI) → sent privately through your VI record (your contacts only).' : ' Not reached → listed, you write them yourself.';
     body.appendChild(info);
     ta = document.createElement('textarea'); ta.className = 'zzz14cs-pack-text'; ta.placeholder = st.kind === 'vote' ? 'Question…' : 'Invitation / message…'; ta.value = keepTxt; ta.setAttribute('data-zzz-nodraft', '1');
@@ -37691,11 +37696,14 @@ async function zzz14cs_pack_send(chats, mem, win, repaint) {
     if (st.mode === 'chat') {
       for (const c of ticked) {
         let to = [];
-        if (st.priv) { to = (mem[c.ek] || []).filter(n => st.people[norm(n)] && !done.has(norm(n))); if (!to.length) continue; }
+        const pv = zzz14cs_pack_priv_of(st, c.ek);
+        if (!(mem[c.ek] || []).length) { res.push({ who: '#' + c.ek + ' all', ek: c.ek, how: 'no', all: true, why: 'nobody here has given comm consent' }); continue; }
+        if (pv) { to = (mem[c.ek] || []).filter(n => st.people[norm(n)] && !done.has(norm(n))); if (!to.length) continue; }
         const saved = await zzz1cn_add(c.ek, msg, false, null, '', false, st.prio, to, '');
         const ok = !!(saved && !saved.zzz0ob_pending);
-        (st.priv ? to : (mem[c.ek] || []).filter(n => st.people[norm(n)])).forEach(n => { done.add(norm(n)); res.push({ who: n, ek: c.ek, how: ok ? 'chat' : (saved ? 'wait' : 'no'), id: saved && saved.id }); });
-        if (!st.priv) res.push({ who: '#' + c.ek + ' all', ek: c.ek, how: ok ? 'chat' : (saved ? 'wait' : 'no'), id: saved && saved.id, all: true });
+        const why = ok ? '' : (saved ? 'offline - goes out when online' : 'this chat did not take it (comm setup / rights / connection)');
+        (pv ? to : (mem[c.ek] || []).filter(n => st.people[norm(n)])).forEach(n => { done.add(norm(n)); res.push({ who: n, ek: c.ek, how: ok ? 'chat' : (saved ? 'wait' : 'no'), id: saved && saved.id, why, priv: pv }); });
+        if (!pv) res.push({ who: '#' + c.ek + ' all', ek: c.ek, how: ok ? 'chat' : (saved ? 'wait' : 'no'), id: saved && saved.id, all: true, why });
         await addAlarm(c.ek, saved);
       }
     } else {
@@ -37703,7 +37711,7 @@ async function zzz14cs_pack_send(chats, mem, win, repaint) {
         const c = ticked.find(cc => (mem[cc.ek] || []).some(x => norm(x) === norm(n)));
         if (!c) continue;
         const saved = await zzz1cn_add(c.ek, msg, false, null, '', false, st.prio, [n], '');
-        done.add(norm(n)); res.push({ who: n, ek: c.ek, how: saved && !saved.zzz0ob_pending ? 'chat' : (saved ? 'wait' : 'no'), id: saved && saved.id });
+        done.add(norm(n)); res.push({ who: n, ek: c.ek, how: saved && !saved.zzz0ob_pending ? 'chat' : (saved ? 'wait' : 'no'), id: saved && saved.id, why: saved && !saved.zzz0ob_pending ? '' : (saved ? 'offline - goes out when online' : 'this chat did not take it (comm setup / rights / connection)') });
         await addAlarm(c.ek, saved);
       }
     }
@@ -37716,9 +37724,9 @@ async function zzz14cs_pack_send(chats, mem, win, repaint) {
       if (st.auto && mine.has(norm(n))) {
         try { viE = viE || await zzz_vi_entry(true); } catch (e) { viE = null; }
         const saved = viE ? await zzz1cn_add(String(viE.entry_id), msg, false, null, '', false, st.prio, [n], 'vi') : null;
-        res.push({ who: n, ek: viE ? String(viE.entry_id) : '', how: saved && !saved.zzz0ob_pending ? 'vi' : 'no', id: saved && saved.id });
+        res.push({ who: n, ek: viE ? String(viE.entry_id) : '', how: saved && !saved.zzz0ob_pending ? 'vi' : 'no', id: saved && saved.id, why: saved ? 'not in a ticked chat with comm consent - sent privately via VI' : 'VI record not reachable' });
         if (viE) await addAlarm(String(viE.entry_id), saved);
-      } else res.push({ who: n, ek: '', how: 'manual' });
+      } else res.push({ who: n, ek: '', how: 'manual', why: !st.auto ? 'MANUAL chosen' : 'not in a ticked chat with comm consent and not your contact (VI writes only to your contacts)' });
     }
   } finally { st.busy = false; }
   st.sent = res;
@@ -37737,6 +37745,21 @@ async function zzz14cs_pack_send(chats, mem, win, repaint) {
   zzz6f2_show_toast(`PACK: sent ${ok} · not reached ${res.filter(r => r.how === 'manual' || r.how === 'no').length}` + (st.rem ? ' · ⏰ alarm added' : '') + (st.taskId ? ' · TASK #' + st.taskId : ' · task kept only here (no server)'), 'info', 4000);
   st.rem = null;
   if (win && win.isConnected) repaint();
+}
+
+function zzz14cs_pack_priv_of(st, ek) {
+  if (st.priv === 'setup') { try { return !!zzz56_modes_get(String(ek)).priv; } catch (e) { return true; } }
+  return !!st.priv;
+}
+function zzz14cs_pack_chat_mark(st, ek, mem) {
+  if (!(mem[ek] || []).length) return ' · ⚠';
+  return st.mode === 'chat' && zzz14cs_pack_priv_of(st, ek) ? ' · 🔒' : '';
+}
+function zzz14cs_pack_chat_why(st, c, mem) {
+  const n = (mem[c.ek] || []).length;
+  if (!n) return '#' + c.ek + ': nobody here has given comm consent - nothing goes there';
+  if (st.mode === 'chat' && st.priv === 'setup' && zzz14cs_pack_priv_of(st, c.ek)) return '#' + c.ek + ': 🔒 private by its comm setup - only the ticked people';
+  return '';
 }
 
 function zzz14cs_pack_say(win, text, kind) {
@@ -37783,8 +37806,8 @@ function zzz14cs_pack_result_box(sent, title, taskId) {
       const d = document.createElement('div'); d.className = 'zzz14cs-pack-ri is-' + r.how;
       const rd = reads && r.id ? (reads[String(r.id)] || []) : [];
       const seen = reads ? (r.all ? rd.length : rd.some(x => zzz10v1_normalize(x) === zzz10v1_normalize(r.who))) : (r.all ? (r.reads || 0) : !!r.read);
-      const how = { chat: '✓ sent #' + r.ek, vi: '✓ via VI #' + r.ek, wait: '⌛ waiting (offline) #' + r.ek, no: '✕ not sent (comm setup)', manual: '✕ not reached - write yourself' }[r.how] || r.how;
-      d.textContent = r.who + ' · ' + how + (seen ? (r.all ? ' · 👁 ' + (reads ? rd.length : seen) + ' read' : ' · 👁 read') : (reads && (r.how === 'chat' || r.how === 'vi') ? ' · not read yet' : ''));
+      const how = { chat: '✓ sent #' + r.ek, vi: '✓ via VI #' + r.ek, wait: '⌛ waiting (offline) #' + r.ek, no: '✕ not sent', manual: '✕ not reached - write yourself' }[r.how] || r.how;
+      d.textContent = r.who + ' · ' + how + (r.priv ? ' 🔒' : '') + (r.why && r.how !== 'chat' ? ' - ' + r.why : '') + (seen ? (r.all ? ' · 👁 ' + (reads ? rd.length : seen) + ' read' : ' · 👁 read') : (reads && (r.how === 'chat' || r.how === 'vi') ? ' · not read yet' : ''));
       list.appendChild(d);
     });
   };
@@ -37807,7 +37830,7 @@ let zzz14csPackTasksFor = '';
 async function zzz14cs_pack_task_save(st, chats, people, res, text, vote) {
   const me = zzz_rs_me(); if (!me || typeof sb === 'undefined' || !sb) return null;
   const nn = (n) => zzz10v1_normalize(n || '');
-  const setup = { mode: st.mode, priv: !!st.priv, prio: st.prio || '', auto: !!st.auto, chats: (chats || []).map(c => ({ ek: c.ek, name: c.name })),
+  const setup = { mode: st.mode, priv: st.priv === 'setup' ? 'setup' : !!st.priv, prio: st.prio || '', auto: !!st.auto, chats: (chats || []).map(c => ({ ek: c.ek, name: c.name })),
     people: (people || []).slice(0, 500), rem: st.rem ? JSON.parse(JSON.stringify(st.rem)) : null, from: st.from || null };
   if (vote) setup.vote = vote;
   const { data, error } = await sb.from('verso_pack_tasks').insert({ username: me, source: st.source || 'comm_space', text: String(text || '').slice(0, 8000), setup, results: res || [] }).select('id, username, source, text, setup, results, status, is_trashed, created_at, updated_at').single();
@@ -37842,7 +37865,7 @@ function zzz14cs_pack_task_counts(t) {
 function zzz14cs_pack_task_label(t) {
   const s = t.setup || {}; const c = zzz14cs_pack_task_counts(t);
   const src = (s.vote ? (s.vote.type === 'rating' ? '🗳 RATING · ' : '🗳 VOTE · ') : '') + (String(t.source || '') === 'comm_space' ? 'COMM SPACE PACK' : 'PACK ' + String(t.source || '').replace(/^record:/, '#'));
-  return `${src} #${t.id} · ${s.mode === 'one' ? 'INDIVIDUAL' : 'PER CHAT' + (s.priv ? ' · PRIVATE' : '')}` + (s.prio ? ' · ' + String(s.prio).toUpperCase() : '')
+  return `${src} #${t.id} · ${s.mode === 'one' ? 'INDIVIDUAL' : 'PER CHAT' + (s.priv === 'setup' ? ' · BY COMM SETUP' : (s.priv ? ' · PRIVATE' : ''))}` + (s.prio ? ' · ' + String(s.prio).toUpperCase() : '')
     + ` · ✓ ${c.sent}` + (c.wait ? ` · ⌛ ${c.wait}` : '') + (c.miss ? ` · ✕ ${c.miss}` : '') + (c.read ? ` · 👁 ${c.read}` : '') + (s.rem ? ' · ⏰' : '');
 }
 
@@ -51753,7 +51776,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-10 20:20';
+const VERSO_BUILD = '2026-11-10 20:23';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
