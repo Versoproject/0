@@ -29033,16 +29033,17 @@ async function zzz_rs_load(force) {
         const f = zzz_parse_fields_json(r);
         if (String(f.r5 || '').toLowerCase() !== 'read' || !f.rkey) return;
         const k = String(f.rkey).toLowerCase();
-        if (!els[k]) els[k] = { id: Number(r.entry_id), path: zzz_rs_path_norm(f.rpath || f.r9 || ''), row: r };
+        if (!els[k]) els[k] = { id: Number(r.entry_id), path: zzz_rs_path_norm(f.rpath || f.r9 || ''), row: r, twins: [] };
+        else els[k].twins.push(Number(r.entry_id));
       });
       zzzRs.els = els;
-      const ids = Object.values(els).map(x => String(x.id));
+      const ids = []; Object.values(els).forEach(x => { ids.push(String(x.id)); (x.twins || []).forEach(t => ids.push(String(t))); });
       let notes = [];
       if (ids.length) {
         const { data: nd } = await sb.from('verso_chat_notes').select('*').in('entry_key', ids).order('note_number', { ascending: true }).limit(5000);
         notes = nd || [];
       }
-      const byId = {}; Object.values(els).forEach(x => { byId[String(x.id)] = x; });
+      const byId = {}; Object.values(els).forEach(x => { byId[String(x.id)] = x; (x.twins || []).forEach(t => { byId[String(t)] = x; }); });
       const keeps = {};
       notes.filter(n => n.note_part && /^verso:keep\b/.test(String(n.note_text || ''))).forEach(n => { keeps[n.entry_key + '#' + n.note_number] = n; });
       zzzRs.diss = {};
@@ -29206,7 +29207,7 @@ function zzz_rs_rows() {
     return !(el && zzz_rs_hidden(el.path)); }).map(it => {
     const f = it.fields || {}, id = it.sourceEntryId ? String(it.sourceEntryId) : '';
     const el = byId[id];
-    const n = el ? zzzRs.lines.filter(x => x.entry === id).length : 0;
+    const n = el ? zzzRs.lines.filter(x => x.entry === id || (el.twins || []).map(String).indexOf(String(x.entry)) >= 0).length : 0;
     const row = id && typeof zzz6f29_entry_row_of === 'function' ? zzz6f29_entry_row_of(id) : null;
     return {
       entry: id ? '#' + id : zzz14cs_cl_label(it), pnum: f.r2 || '', project: f.r3 || '', name: f.r4 || '',
@@ -50624,7 +50625,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-10 03:17';
+const VERSO_BUILD = '2026-11-10 03:28';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
