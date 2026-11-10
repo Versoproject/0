@@ -6167,6 +6167,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz14cs-pack-note { font-size: 10px; color: #9a9a9a; margin: 6px 0; line-height: 1.35; }
   .zzz14cs-pack-text { width: 100%; box-sizing: border-box; min-height: 70px; border: 2px solid #D4AF37; border-radius: 10px; background: #fff; color: #111; padding: 8px; font-size: 14px; }
   .zzz14cs-pack-send { width: 100%; margin-top: 6px; height: 40px; border: 2px solid #D4AF37; border-radius: 12px; background: #D4AF37; color: #111; font-weight: 900; letter-spacing: .05em; cursor: pointer; }
+  .zzz14cs-pack-fixed { white-space: pre-wrap; background: #111 !important; border: 1px solid #333; border-radius: 8px; padding: 8px; color: #eee; min-height: 0; }   
+  .zzz14cs-pack-taskbtns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .zzz14pt-ov-task.zzz14cs-pt-row { border-left: 3px solid #D4AF37; }
   .zzz14cs-pack-res { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
   .zzz14cs-pack-ri.is-chat, .zzz14cs-pack-ri.is-vi { color: #7fdc8f; }
   .zzz14cs-pack-ri.is-wait { color: #e0b44f; }
@@ -16811,6 +16814,39 @@ function zzz14pt_overview() {
         r.textContent = (hid.proj ? '' : c.project + ' \u00b7 ') + String(c.n.note_text || '').replace(/^\S+\s*CLOSING\s*\u00b7\s*/, '') ;
         r.title = 'Tap = open this closing in its chat';
         r.addEventListener('click', () => zzz_open_chat_entry(String(c.n.entry_key), c.n.id));
+        list.appendChild(r);
+      });
+    }
+
+    if ((zzz14csPackTasks === null || zzz14csPackTasksFor !== zzz_rs_me()) && box._zzzPkTried !== zzz_rs_me()) { box._zzzPkTried = zzz_rs_me(); zzz14csPackTasks = zzz14csPackTasks || []; zzz14cs_pack_tasks_load(true).then(() => { if (box.isConnected) paint(); }).catch(() => {}); }
+    const pks = (zzz14csPackTasks || []).filter(t => !t.is_trashed).map(t => Object.assign({}, t, { t: Date.parse(t.created_at || '') || 0 }))
+      .filter(t => f.state === 'all' || (f.state === 'done' ? t.status === 'done' : t.status !== 'done'))
+      .filter(t => {
+        const p = f.period || 'all';
+        const r = (p === 'closing' || p === 'prevclosing') ? null : zzz14sh_range(p, now);
+        if (r && !(t.t >= r[0] && t.t < r[1])) return false;
+        const d = f.dates || {};
+        if (d.from && t.t < Date.parse(d.from + 'T00:00:00')) return false;
+        if (d.to) { const e = new Date(d.to + 'T00:00:00'); if (t.t >= new Date(e.getFullYear(), e.getMonth(), e.getDate() + 1).getTime()) return false; }
+        return true;
+      })
+      .filter(t => !anyOn(f.prio) || f.prio[(t.setup && t.setup.prio) || 'open'])
+      .filter(t => !q || zzz10v1_normalize([t.text, t.source, '#' + t.id, ((t.setup && t.setup.people) || []).join(' ')].join(' ')).includes(q));
+    const ph = document.createElement('button'); ph.type = 'button'; ph.className = 'zzz14pt-cl-head' + (st.packsOpen !== false ? ' is-open' : '');
+    ph.textContent = `${st.packsOpen !== false ? '\u25be' : '\u25b8'} PACKS (${pks.length})`;
+    ph.title = 'Sent PACKS (COMM SPACE PACK, PACK TASK of a record) - tap = open / close';
+    ph.addEventListener('click', () => { st.packsOpen = st.packsOpen === false; zzz14sh_save('tasksdb', st); paint(); });
+    list.appendChild(ph);
+    if (st.packsOpen !== false) {
+      if (!pks.length) { const e = document.createElement('div'); e.className = 'zzz5w5cm-view-empty'; e.textContent = 'No PACK yet - COMM SPACE › 👥 PACK, or PACKS › 👥 PACK TASK in a chat.'; list.appendChild(e); }
+      pks.forEach(t => {
+        const r = document.createElement('div'); r.className = 'zzz14pt-ov-task zzz14cs-pt-row' + (t.status === 'done' ? ' is-done' : '');
+        const top = document.createElement('div'); top.className = 'zzz14pt-ov-top';
+        top.textContent = zzz14cs_pack_task_label(t) + (hid.text ? '' : ' · ' + String(t.text || '').replace(/\s+/g, ' ').slice(0, 60)) + (hid.time ? '' : ' · ' + zzz5w8_fmt_time(t.t));
+        if (t.status === 'done') { const d = document.createElement('span'); d.className = 'zzz14pt-taskdone'; d.textContent = 'DONE'; top.appendChild(d); }
+        r.appendChild(top);
+        r.title = 'Tap = the PACK task (result, send again, done)';
+        r.addEventListener('click', () => zzz14cs_pack_task_window(t, () => { if (box.isConnected) paint(); }));
         list.appendChild(r);
       });
     }
@@ -32998,9 +33034,16 @@ function zzz56_priv_open_presets(anchorEl) {
 
   if (typeof zzz14csSpaceOpen !== 'undefined' && zzz14csSpaceOpen) {
     const sp = document.createElement('button'); sp.type = 'button'; sp.className = 'zzz14cs-pack-btn'; sp.textContent = '\uD83D\uDC65 COMM SPACE PACK';
-    sp.title = 'Hold to open: one message (+ alarm) to the people of all COMM SPACE chats';
+    sp.title = 'Open: one message (+ alarm) to the people of all COMM SPACE chats';
     zzz14cs_pack_bind_hold(sp);
-    head.insertBefore(sp, hx);
+    head.appendChild(sp);
+  } else if (/^\d+$/.test(String(zzz56PrivCtx || ''))) {
+
+    const ek = String(zzz56PrivCtx);
+    const sp = document.createElement('button'); sp.type = 'button'; sp.className = 'zzz14cs-pack-btn'; sp.textContent = '\uD83D\uDC65 PACK TASK';
+    sp.title = 'One message (+ alarm) to people of this chat and your packs / contacts - kept as a task in NOTIFICATIONS › TASKS';
+    sp.addEventListener('click', () => { win.remove(); let nm = ''; try { nm = zzz5w8_project_of(ek) || ''; } catch (e) {} zzz14cs_pack_open({ chats: [{ ek, name: nm }], source: 'record:' + ek, title: '👥 PACK · #' + ek }); });
+    head.appendChild(sp);
   }
   head.appendChild(hx);
   win.appendChild(head);
@@ -37533,6 +37576,10 @@ async function zzz14cs_pack_setup_window(after) {
   const nt = document.createElement('div'); nt.className = 'zzz-rs-set-h'; nt.textContent = 'Every choice can still be changed in the window before sending. Saved on the Verso server (the same in the Verso app, web app and web); this device keeps a copy.'; b.appendChild(nt);
   const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
   const no = document.createElement('button'); no.type = 'button'; no.className = 'zzz-media-btn'; no.textContent = 'CANCEL';
+
+  const rs = document.createElement('button'); rs.type = 'button'; rs.className = 'zzz-media-btn'; rs.textContent = 'RESET';
+  rs.addEventListener('click', () => { Object.assign(cur, ZZZ14CS_PACK_DEF); groups.forEach(f => f()); });
+  row.appendChild(rs);
   const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'zzz-media-btn is-on'; ok.textContent = 'SAVE';
   ok.addEventListener('click', async () => { o.remove(); await zzz14cs_pack_setup_save(cur); zzz6f2_show_toast('COMM SPACE PACK SETUP saved.', 'info', 1400); if (after) after(zzz14cs_pack_setup()); });
   no.addEventListener('click', () => o.remove());
@@ -37542,8 +37589,8 @@ async function zzz14cs_pack_setup_window(after) {
 }
 function zzz14cs_pack_bind_hold(el) {
   if (!el || el._zzzPackHold) return; el._zzzPackHold = true;
-  zzz5w7_bind_tiered_hold(el, [{ ms: 700, fn: () => { zzz_haptic_pulse(20); zzz14cs_pack_open(); } }]);
-  el.addEventListener('click', () => zzz6f2_show_toast('COMM SPACE PACK - hold to open (so it never starts by mistake).', 'info', 2200));
+
+  el.addEventListener('click', () => { if (el._zzzPackOpening) return; el._zzzPackOpening = true; setTimeout(() => { el._zzzPackOpening = false; }, 600); zzz14cs_pack_open(); });
 }
 async function zzz14cs_pack_members(ek) {
   const c = await zzz56_reach_load(ek);
@@ -37553,18 +37600,30 @@ async function zzz14cs_pack_members(ek) {
   [c.owner, c.r4].concat(Array.from(c.ok || [])).forEach(n => { n = String(n || '').trim(); if (n && zzz10v1_normalize(n) !== me && !out.some(x => zzz10v1_normalize(x) === zzz10v1_normalize(n))) out.push(n); });
   return out.filter(n => !(c.owner === me && typeof zzz5w5cm_is_blocked === 'function' && zzz5w5cm_is_blocked(Number(ek), n)));
 }
-async function zzz14cs_pack_open() {
+
+async function zzz14cs_pack_open(opts) {
+  opts = opts || {};
   document.querySelectorAll('.zzz14cs-pack-win').forEach(w => w.remove());
-  const st = zzz14cs_pack_state();
-  const chats = zzz5w5cm_tab_list(ZZZ14CS_SPACE_KEY).map(it => ({ ek: String(it.sourceEntryId || ''), name: String((it.fields || {}).r3 || '') })).filter(c => /^\d+$/.test(c.ek));
-  if (!chats.length) { zzz6f2_show_toast('COMM SPACE PACK: no chats are attached in COMM SPACE yet.', 'warn'); return; }
-  if (!st.chats) { st.chats = {}; chats.forEach(c => { st.chats[c.ek] = 1; }); }
+  const source = String(opts.source || 'comm_space');
+  if (opts.prefill || (zzz14csPack && zzz14csPack.source !== source)) zzz14csPack = null;
+  const st = zzz14cs_pack_state(); st.source = source;
+  const chats = (opts.chats || zzz5w5cm_tab_list(ZZZ14CS_SPACE_KEY).map(it => ({ ek: String(it.sourceEntryId || ''), name: String((it.fields || {}).r3 || '') }))).map(c => ({ ek: String(c.ek || ''), name: String(c.name || '') })).filter(c => /^\d+$/.test(c.ek));
+  if (!chats.length) { zzz6f2_show_toast(source === 'comm_space' ? 'COMM SPACE PACK: no chats are attached in COMM SPACE yet.' : 'PACK: open it from a chat.', 'warn'); return; }
+  const pf = opts.prefill || null;
+  if (pf) { st.text = String(pf.text || ''); ['mode', 'prio'].forEach(k => { if (pf[k] !== undefined) st[k] = pf[k]; }); ['priv', 'auto'].forEach(k => { if (pf[k] !== undefined) st[k] = !!pf[k]; }); st.from = pf.from || null; }
+  if (!st.chats) { st.chats = {}; chats.forEach(c => { if (!pf || !pf.chats || pf.chats.map(String).indexOf(c.ek) >= 0) st.chats[c.ek] = 1; }); }
   const mem = {};
   await Promise.all(chats.map(async c => { try { mem[c.ek] = await zzz14cs_pack_members(c.ek); } catch (e) { mem[c.ek] = []; } }));
+  if (pf && Array.isArray(pf.people)) {
+    const nn = (n) => zzz10v1_normalize(n || '');
+    st.people = {};
+    chats.forEach(c => (mem[c.ek] || []).forEach(n => { st.people[nn(n)] = 0; }));
+    pf.people.forEach(n => { n = String(n || '').trim(); if (!n || /^#\d+ all$/.test(n)) return; st.people[nn(n)] = 1; if (!chats.some(c => (mem[c.ek] || []).some(x => nn(x) === nn(n))) && !st.extra.some(x => nn(x) === nn(n))) st.extra.push(n); });
+  }
   try { await zzz5w5cm_load_my_contacts(); } catch (e) {}
   const win = document.createElement('div'); win.className = 'zzz14cs-pack-win';
   const head = document.createElement('div'); head.className = 'zzz14cs-pack-head';
-  const ht = document.createElement('span'); ht.textContent = '👥 COMM SPACE PACK'; head.appendChild(ht);
+  const ht = document.createElement('span'); ht.textContent = opts.title || (source === 'comm_space' ? '👥 COMM SPACE PACK' : '👥 PACK'); head.appendChild(ht);
 
   const hg = document.createElement('button'); hg.type = 'button'; hg.className = 'zzz-rs-gear zzz14cs-pack-gear'; hg.textContent = '⚙'; hg.title = 'COMM SPACE PACK SETUP - the choices this window opens with';
   hg.addEventListener('click', (e) => { e.stopPropagation(); zzz14cs_pack_setup_window((d) => { const s2 = zzz14cs_pack_state(); s2.mode = d.mode; s2.priv = !!d.priv; s2.prio = d.prio; s2.auto = !!d.auto; if (win.isConnected && win._zzzPaint) win._zzzPaint(); }); });
@@ -37676,28 +37735,36 @@ async function zzz14cs_pack_send(chats, mem, win, repaint) {
       } else res.push({ who: n, ek: '', how: 'manual' });
     }
   } finally { st.busy = false; }
-  st.sent = res; st.text = '';
+  st.sent = res;
   const ok = res.filter(r => r.how === 'chat' || r.how === 'vi').length;
-  zzz6f2_show_toast(`COMM SPACE PACK: sent ${ok} · not reached ${res.filter(r => r.how === 'manual' || r.how === 'no').length}` + (st.rem ? ' · ⏰ alarm added' : ''), 'info', 4000);
+
+  st.taskId = null;
+  try { st.taskId = await zzz14cs_pack_task_save(st, ticked, people, res, text); } catch (e) { st.taskId = null; }
+  st.text = '';
+  zzz6f2_show_toast(`PACK: sent ${ok} · not reached ${res.filter(r => r.how === 'manual' || r.how === 'no').length}` + (st.rem ? ' · ⏰ alarm added' : '') + (st.taskId ? ' · TASK #' + st.taskId : ' · task kept only here (no server)'), 'info', 4000);
   st.rem = null;
   if (win && win.isConnected) repaint();
 }
 
 async function zzz14cs_pack_result(body) {
   const st = zzz14cs_pack_state();
+  body.appendChild(zzz14cs_pack_result_box(st.sent, st.taskId ? 'RESULT · TASK #' + st.taskId : 'RESULT', st.taskId));
+}
+
+function zzz14cs_pack_result_box(sent, title, taskId) {
+  const st = { sent: sent || [] };
   const box = document.createElement('div'); box.className = 'zzz14cs-pack-sec';
-  const cap = document.createElement('div'); cap.className = 'zzz14cs-pack-cap'; cap.textContent = 'RESULT'; box.appendChild(cap);
+  const cap = document.createElement('div'); cap.className = 'zzz14cs-pack-cap'; cap.textContent = title || 'RESULT'; box.appendChild(cap);
   const rf = document.createElement('button'); rf.type = 'button'; rf.className = 'zzz14cs-feed-chip'; rf.textContent = '🔄 READ?'; cap.appendChild(rf);
   const list = document.createElement('div'); list.className = 'zzz14cs-pack-res'; box.appendChild(list);
-  body.appendChild(box);
   const paint = (reads) => {
     list.innerHTML = '';
     st.sent.forEach(r => {
       const d = document.createElement('div'); d.className = 'zzz14cs-pack-ri is-' + r.how;
       const rd = reads && r.id ? (reads[String(r.id)] || []) : [];
-      const seen = r.all ? rd.length : rd.some(x => zzz10v1_normalize(x) === zzz10v1_normalize(r.who));
+      const seen = reads ? (r.all ? rd.length : rd.some(x => zzz10v1_normalize(x) === zzz10v1_normalize(r.who))) : (r.all ? (r.reads || 0) : !!r.read);
       const how = { chat: '✓ sent #' + r.ek, vi: '✓ via VI #' + r.ek, wait: '⌛ waiting (offline) #' + r.ek, no: '✕ not sent (comm setup)', manual: '✕ not reached - write yourself' }[r.how] || r.how;
-      d.textContent = r.who + ' · ' + how + (seen ? (r.all ? ' · 👁 ' + rd.length + ' read' : ' · 👁 read') : (reads && (r.how === 'chat' || r.how === 'vi') ? ' · not read yet' : ''));
+      d.textContent = r.who + ' · ' + how + (seen ? (r.all ? ' · 👁 ' + (reads ? rd.length : seen) + ' read' : ' · 👁 read') : (reads && (r.how === 'chat' || r.how === 'vi') ? ' · not read yet' : ''));
       list.appendChild(d);
     });
   };
@@ -37706,9 +37773,85 @@ async function zzz14cs_pack_result(body) {
     const eks = Array.from(new Set(st.sent.filter(r => r.ek && (r.how === 'chat' || r.how === 'vi')).map(r => r.ek)));
     for (const ek of eks) { try { const { data } = await sb.rpc('verso_note_reads', { p_entry_key: ek }); (data || []).forEach(x => { (reads[String(x.note_id)] = reads[String(x.note_id)] || []).push(x.reader); }); } catch (e) {} }
     paint(reads);
+
+    st.sent.forEach(r => { const rd = r.id ? (reads[String(r.id)] || []) : []; if (r.all) r.reads = rd.length; else if (rd.some(x => zzz10v1_normalize(x) === zzz10v1_normalize(r.who))) r.read = true; });
+    if (taskId) zzz14cs_pack_task_update(taskId, { results: st.sent });
   };
   rf.addEventListener('click', (e) => { e.stopPropagation(); load(); });
   paint(null);
+  return box;
+}
+
+let zzz14csPackTasks = null;
+let zzz14csPackTasksFor = '';
+async function zzz14cs_pack_task_save(st, chats, people, res, text) {
+  const me = zzz_rs_me(); if (!me || typeof sb === 'undefined' || !sb) return null;
+  const nn = (n) => zzz10v1_normalize(n || '');
+  const setup = { mode: st.mode, priv: !!st.priv, prio: st.prio || '', auto: !!st.auto, chats: (chats || []).map(c => ({ ek: c.ek, name: c.name })),
+    people: (people || []).slice(0, 500), rem: st.rem ? JSON.parse(JSON.stringify(st.rem)) : null, from: st.from || null };
+  const { data, error } = await sb.from('verso_pack_tasks').insert({ username: me, source: st.source || 'comm_space', text: String(text || '').slice(0, 8000), setup, results: res || [] }).select('id, username, source, text, setup, results, status, is_trashed, created_at, updated_at').single();
+  if (error) { zzz_user_error('The PACK was sent, but its task was not saved on the Verso server.', error, '[Zzz14-CS:PACK-TASK]', 'warn'); return null; }
+  if (zzz14csPackTasks && zzz14csPackTasksFor === me && data) zzz14csPackTasks.unshift(data);
+  try { if (typeof zzz5w8_render === 'function' && document.querySelector('.zzz14pt-ov')) zzz5w8_render(); } catch (e) {}
+  return data ? data.id : null;
+}
+async function zzz14cs_pack_task_update(id, patch) {
+  if (!id || typeof sb === 'undefined' || !sb) return false;
+  const row = Object.assign({}, patch, { updated_at: new Date().toISOString() });
+  const { error } = await sb.from('verso_pack_tasks').update(row).eq('id', id);
+  if (error) { zzz_user_error('PACK task not changed - check the connection and try again.', error, '[Zzz14-CS:PACK-TASK]', 'warn'); return false; }
+  (zzz14csPackTasks || []).forEach(t => { if (String(t.id) === String(id)) Object.assign(t, row); });
+  return true;
+}
+async function zzz14cs_pack_tasks_load(force) {
+  const me = zzz_rs_me(); if (!me || typeof sb === 'undefined' || !sb) return [];
+  if (!force && zzz14csPackTasks && zzz14csPackTasksFor === me) return zzz14csPackTasks;
+  const { data, error } = await sb.from('verso_pack_tasks').select('id, username, source, text, setup, results, status, is_trashed, created_at, updated_at')
+    .eq('username', me).eq('is_trashed', false).order('created_at', { ascending: false }).limit(300);
+  if (error) { zzz14csPackTasks = zzz14csPackTasks || []; zzz14csPackTasksFor = me; return zzz14csPackTasks; }
+  zzz14csPackTasks = data || []; zzz14csPackTasksFor = me;
+  return zzz14csPackTasks;
+}
+function zzz14cs_pack_task_counts(t) {
+  const r = Array.isArray(t.results) ? t.results : [];
+  const pers = r.filter(x => !x.all);
+  return { sent: pers.filter(x => x.how === 'chat' || x.how === 'vi').length, wait: pers.filter(x => x.how === 'wait').length,
+    miss: pers.filter(x => x.how === 'manual' || x.how === 'no').length, read: pers.filter(x => x.read).length + r.filter(x => x.all).reduce((a, x) => a + (x.reads || 0), 0) };
+}
+function zzz14cs_pack_task_label(t) {
+  const s = t.setup || {}; const c = zzz14cs_pack_task_counts(t);
+  const src = String(t.source || '') === 'comm_space' ? 'COMM SPACE PACK' : 'PACK ' + String(t.source || '').replace(/^record:/, '#');
+  return `${src} #${t.id} · ${s.mode === 'one' ? 'INDIVIDUAL' : 'PER CHAT' + (s.priv ? ' · PRIVATE' : '')}` + (s.prio ? ' · ' + String(s.prio).toUpperCase() : '')
+    + ` · ✓ ${c.sent}` + (c.wait ? ` · ⌛ ${c.wait}` : '') + (c.miss ? ` · ✕ ${c.miss}` : '') + (c.read ? ` · 👁 ${c.read}` : '') + (s.rem ? ' · ⏰' : '');
+}
+
+function zzz14cs_pack_task_window(t, after) {
+  document.querySelectorAll('.zzz14cs-pack-taskwin').forEach(w => w.remove());
+  const s = t.setup || {};
+  const win = document.createElement('div'); win.className = 'zzz14cs-pack-win zzz14cs-pack-taskwin'; win.setAttribute('data-zzz-nodraft', '1');
+  const head = document.createElement('div'); head.className = 'zzz14cs-pack-head';
+  const ht = document.createElement('span'); ht.textContent = '👥 PACK TASK #' + t.id + (t.status === 'done' ? ' · DONE' : ''); head.appendChild(ht);
+  const hx = document.createElement('button'); hx.type = 'button'; hx.className = 'zzz-ctx-x'; hx.textContent = '×'; hx.addEventListener('click', () => win.remove()); head.appendChild(hx);
+  win.appendChild(head);
+  const body = document.createElement('div'); body.className = 'zzz14cs-pack-body'; win.appendChild(body);
+  const info = document.createElement('div'); info.className = 'zzz14cs-pack-note';
+  info.textContent = zzz14cs_pack_task_label(t) + ' · ' + zzz5w8_fmt_time(Date.parse(t.created_at || '') || 0)
+    + ' · chats: ' + (s.chats || []).map(c => '#' + c.ek + (c.name ? ' ' + c.name : '')).join(', ') + ' · ' + (s.auto ? 'AUTO via VI' : 'MANUAL');
+  body.appendChild(info);
+  const msg = document.createElement('div'); msg.className = 'zzz14cs-pack-text zzz14cs-pack-fixed'; msg.textContent = t.text || ''; body.appendChild(msg);
+  const res = Array.isArray(t.results) ? t.results : [];
+  body.appendChild(zzz14cs_pack_result_box(res, 'RESULT', t.id));
+  const miss = res.filter(r => !r.all && (r.how === 'manual' || r.how === 'no' || r.how === 'wait')).map(r => r.who);
+  const row = document.createElement('div'); row.className = 'zzz14cs-pack-row zzz14cs-pack-taskbtns';
+  const btn = (txt, fn, on) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz14cs-feed-chip' + (on ? ' is-on' : ''); b.textContent = txt; b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); row.appendChild(b); return b; };
+  const reopen = (people) => { win.remove(); zzz14cs_pack_open({ chats: s.chats || [], source: t.source || 'comm_space', prefill: { text: t.text, chats: (s.chats || []).map(c => c.ek), people, mode: s.mode, priv: s.priv, prio: s.prio, auto: s.auto, from: t.id } }); };
+  if (miss.length) btn('↻ SEND AGAIN · ' + miss.length, () => reopen(miss), true);
+  btn('⧉ NEW FROM THIS', () => reopen(s.people || []));
+  btn(t.status === 'done' ? '↺ REOPEN' : '✓ DONE', async () => { if (await zzz14cs_pack_task_update(t.id, { status: t.status === 'done' ? 'open' : 'done' })) { win.remove(); if (after) after(); } });
+  btn('🗄 ARCHIVE', async () => { if (await zzz14cs_pack_task_update(t.id, { is_trashed: true })) { zzz14csPackTasks = (zzz14csPackTasks || []).filter(x => String(x.id) !== String(t.id)); win.remove(); if (after) after(); zzz6f2_show_toast('PACK TASK #' + t.id + ' archived (kept on the server).', 'info'); } });
+  body.appendChild(row);
+  if (s.from) { const f = document.createElement('div'); f.className = 'zzz14cs-pack-note'; f.textContent = 'From PACK TASK #' + s.from; body.appendChild(f); }
+  document.body.appendChild(win);
 }
 function zzz14cs_feed_row(it, wrap) {
   const r = document.createElement('div');
@@ -37997,7 +38140,7 @@ function zzz14cs_space_build() {
   closeX.addEventListener('click', () => zzz14cs_space_open(false));
 
   const spk = document.createElement('button'); spk.type = 'button'; spk.className = 'zzz14cs-pack-btn'; spk.textContent = '\uD83D\uDC65 PACK';
-  spk.title = 'COMM SPACE PACK - hold to open: one message (+ alarm) to the people of these chats';
+  spk.title = 'COMM SPACE PACK - open: one message (+ alarm) to the people of these chats';
   zzz14cs_pack_bind_hold(spk);
   bar.appendChild(spk);
   bar.appendChild(closeX);
@@ -51521,7 +51664,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-10 19:29';
+const VERSO_BUILD = '2026-11-10 19:33';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
