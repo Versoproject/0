@@ -11540,8 +11540,18 @@ body{margin:0;color:#fff;font-family:sans-serif;}
 const SUPABASE_URL = "https://piywybkxbupqaecdcrar.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_ps48H6-NCGe0-KaHbiijIw_YYatFp4K";
 
+const ZZZ_BUZZ_APP_MIN = 298;
+let zzzBuzzAt = 0;
 function zzz_haptic_pulse(ms = 15) {
   if (!ms) return;
+  if (ms >= 60) {
+    try {
+      if (zzz14b17_in_app() && zzz14b17_app_code() >= ZZZ_BUZZ_APP_MIN && Date.now() - zzzBuzzAt > 400) {
+        zzzBuzzAt = Date.now();
+        if (zzz_native_cmd('intent://quick/buzz?ms=' + Math.min(400, Math.round(ms)))) return;
+      }
+    } catch (e) {   }
+  }
   try {
     if (navigator.vibrate) navigator.vibrate(ms);
   } catch (e) {   }
@@ -33057,17 +33067,22 @@ function zzz56_priv_open_presets(anchorEl) {
   } else if (/^\d+$/.test(String(zzz56PrivCtx || ''))) {
 
     const ek = String(zzz56PrivCtx);
-    const sp = document.createElement('button'); sp.type = 'button'; sp.className = 'zzz14cs-pack-btn'; sp.textContent = '\uD83D\uDC65 PACK TASK';
-    sp.title = 'One message (+ alarm) to people of this chat and your packs / contacts - kept as a task in NOTIFICATIONS › TASKS';
-    sp.addEventListener('click', () => { win.remove(); let nm = ''; try { nm = zzz5w8_project_of(ek) || ''; } catch (e) {} zzz14cs_pack_open({ chats: [{ ek, name: nm }], source: 'record:' + ek, title: '👥 PACK · #' + ek }); });
+    const isVi = typeof zzzVi !== 'undefined' && zzzVi.entry && String(zzzVi.entry.entry_id) === ek;
+    const lineOf = () => { let t = null, n = anchorEl; for (let i = 0; n && i < 8 && !t; i++, n = n.parentElement) t = n.querySelector && n.querySelector('textarea'); return t; };
+    const sp = document.createElement('button'); sp.type = 'button'; sp.className = 'zzz14cs-pack-btn';
+    sp.textContent = isVi ? '\uD83D\uDC65 COMM SPACE PACK' : '\uD83D\uDC65 PACK TASK';
+    sp.title = isVi ? 'Send what you write in this chat line as COMM SPACE PACK (people of your COMM SPACE chats, each chat by its comm setup)'
+      : 'Send what you write in this chat line as PACK: one message (+ alarm, + vote) to people of this chat and your packs / contacts - kept as a task in NOTIFICATIONS › TASKS';
+    sp.addEventListener('click', (e) => {
+      e.stopPropagation(); win.remove();
+      const t = lineOf();
+      if (isVi) { zzz14cs_pack_from_line(t); return; }
+      let nm = ''; try { nm = zzz5w8_project_of(ek) || ''; } catch (e2) {}
+      const txt = t ? String(t.value || '') : '';
+      zzz14cs_pack_open({ chats: [{ ek, name: nm }], source: 'record:' + ek, title: '👥 PACK · #' + ek });
+      if (txt.trim()) { const st1 = zzz14cs_pack_state(); st1.text = txt; st1.fromLine = t; const ta1 = document.querySelector('.zzz14cs-pack-win textarea.zzz14cs-pack-text'); if (ta1 && !ta1.value) ta1.value = txt; }
+    });
     head.appendChild(sp);
-
-    if (typeof zzzVi !== 'undefined' && zzzVi.entry && String(zzzVi.entry.entry_id) === ek) {
-      const cp = document.createElement('button'); cp.type = 'button'; cp.className = 'zzz14cs-pack-btn'; cp.textContent = '\uD83D\uDC65 COMM SPACE PACK';
-      cp.title = 'Send what you write in this chat line as COMM SPACE PACK (people of your COMM SPACE chats, each chat by its comm setup)';
-      cp.addEventListener('click', (e) => { e.stopPropagation(); win.remove(); let t = null, n = anchorEl; for (let i = 0; n && i < 8 && !t; i++, n = n.parentElement) t = n.querySelector && n.querySelector('textarea'); zzz14cs_pack_from_line(t); });
-      head.appendChild(cp);
-    }
   }
   head.appendChild(hx);
   win.appendChild(head);
@@ -33214,7 +33229,7 @@ function zzz56_priv_button() {
   zzz5w7_bind_tiered_hold(btn, [
     { ms: 700, fn: () => { const k = zzz56PrivCtx; const pv = !zzz56_pack_priv(k); zzz56_pack_priv_set(k, pv); zzz56_priv_refresh();
       zzz6f2_show_toast(pv ? '\u{1F512} PACKS private - only the chosen people read it.' : 'PACKS open - everyone in the chat reads it, the chosen people get it as addressees.', 'ok'); } },
-    { ms: 1600, fn: () => zzz56_priv_open_presets(btn) }]);
+    { ms: 1600, now: true, fn: () => zzz56_priv_open_presets(btn) }]);
   btn.addEventListener('click', () => zzz56_priv_toggle());
   setTimeout(zzz56_priv_refresh, 0);
   return btn;
@@ -40970,7 +40985,11 @@ function zzz5w7_bind_tiered_hold(el, tiers) {
     sy = t ? t.clientY : (e && e.clientY) || 0;
     t0 = Date.now(); armed = true; fired = false;
     clearPulses();
-    steps.forEach(s => pulses.push(setTimeout(() => zzz_haptic_pulse(15), s.ms)));
+
+    steps.forEach(s => pulses.push(setTimeout(() => {
+      if (s.now) { if (!armed) return; armed = false; clearPulses(); fired = true; zzz_haptic_pulse(80); s.fn(); return; }
+      zzz_haptic_pulse(25);
+    }, s.ms)));
   };
   const cancel = () => { armed = false; clearPulses(); };
   const move = (e) => {
@@ -42472,7 +42491,7 @@ async function zzz_native_launch(url) {
 function zzz_native_cmd_able(url) {
 
   try {
-    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|mediaact|mediadone|readfetch|vipacks|qcb|ring|relaunch)\b/.test(String(url || 'intent://quick/quiet'))
+    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|buzz|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|mediaact|mediadone|readfetch|vipacks|qcb|ring|relaunch)\b/.test(String(url || 'intent://quick/quiet'))
       && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator;
   } catch (e) { return false; }
 }
@@ -51785,7 +51804,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-10 20:28';
+const VERSO_BUILD = '2026-11-10 21:43';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -59317,7 +59336,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 297;
+const ZZZ14B17_APP_LATEST = 298;
 function zzz14b17_app_code() {
 
   try {
