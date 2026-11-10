@@ -10350,6 +10350,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-rdr-ibtn { flex: 0 0 auto; background: transparent; border: 1px solid #5a4a1a; color: #d4af37; border-radius: 6px; font-size: 12px; line-height: 1; padding: 2px 4px; margin-left: 4px; cursor: pointer; }
   .zzz-rdr-ibtn.is-line { align-self: center; padding: 3px 6px; margin: 2px 0 0 0; }
   .zzz-rdr-ibtn.zzz5w8-more-item { font-size: 12px; padding: 3px 8px; }
+  
+  .zzz-rdr-ibtn.zzz-rdr-wsbtn { font-size: 11px; padding: 4px 8px; margin-left: 8px; text-shadow: none; vertical-align: middle; }
+  .zzz-rdr-rec { cursor: pointer; }
+  .zzz-rdr-rec:active { background: rgba(212, 175, 55, .10); }
   .zzz-rdr-lh { color: #8a8a8a; font-size: 11px; }
   .zzz-rdr-link { background: none; border: 0; padding: 2px 0; color: #e8c86a; font-size: 15px; text-align: left; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
   .zzz-rdr-tx { white-space: pre-wrap; }
@@ -25343,6 +25347,7 @@ async function open_database_workspace(loadMore = false) {
     }
   });
   title.appendChild(closeX);
+  zzz_rdr_ws_btn(title, 'DATABASE');
   wrap.appendChild(title);
 
   wrap.appendChild(zzz4_0_build_entry_tabs_row());
@@ -25677,6 +25682,7 @@ async function open_trash_workspace() {
   title.className = 'db-workspace-title';
   title.textContent = `TRASH${rows.length ? ' - ' + rows.length + ' records' : ''}`;
   wrap.appendChild(title);
+  zzz_rdr_ws_btn(title, 'TRASH');
 
   if (rows.length > 0) {
     const deleteAllBtn = document.createElement('button');
@@ -25805,6 +25811,7 @@ async function open_archive_workspace() {
   title.className = 'db-workspace-title';
   title.textContent = `ARCHIVE (Zzz6-F12)${rows.length ? ' - ' + rows.length + ' records' : ''}`;
   wrap.appendChild(title);
+  zzz_rdr_ws_btn(title, 'ARCHIVE');
 
   if (fetchError) {
     const errEl = document.createElement('div');
@@ -25898,6 +25905,7 @@ async function open_organizer_workspace() {
   title.className = 'db-workspace-title';
   title.textContent = `ORGANIZER (Zzz4-3) - ${placedRows.length} organized, ${supersededRows.length} edited`;
   wrap.appendChild(title);
+  zzz_rdr_ws_btn(title, 'ORGANIZER');
 
   function section(headingText, rows, emptyText, groupByTab) {
     const heading = document.createElement('div');
@@ -29924,9 +29932,10 @@ function zzz_rdr_kind(n) {
 }
 const ZZZ_RDR_GROUPS = [['tree', 'BUNDLES · COLLECTIONS'], ['web', 'WEB · PAGES'], ['media', 'MEDIA'], ['alarm', 'ALARMS'], ['note', 'NOTES']];
 
-async function zzz_rdr_load(entryId) {
+async function zzz_rdr_load(entryId, o) {
   const id = String(entryId || '').replace(/\D/g, ''); if (!id) return null;
-  let row = null; try { row = zzz6f29_entry_row_of(id); } catch (e) {}
+  let row = (o && o.row) || null;
+  if (!row) { try { row = zzz6f29_entry_row_of(id); } catch (e) {} }
   if (!row) { try { row = await zzz6f29_fetch_entry_row(id); } catch (e) {} }
   if (!row) return null;
   const f = (typeof zzz_parse_fields_json === 'function') ? zzz_parse_fields_json(row) : (row.fields_json || {});
@@ -29960,19 +29969,15 @@ function zzz_rdr_item_btn(it, from) {
   ['pointerdown', 'touchstart', 'mousedown'].forEach(k => b.addEventListener(k, (ev) => ev.stopPropagation(), { passive: true }));
   return b;
 }
-function zzz_rdr_show(m, opts) {
-  opts = opts || {};
-  const id = m.id, row = m.row, notes = m.notes || [];
+
+function zzz_rdr_frame(root, headText, swTitle) {
   const old = document.getElementById('zzzRdr'); if (old) old.remove();
-  const f = m.f || {};
   const ov = document.createElement('div'); ov.id = 'zzzRdr'; ov.className = 'zzz-rdr'; ov.setAttribute('data-zzz-nodraft', '1');
   const box = document.createElement('div'); box.className = 'zzz-rs-reader zzz-rdr-box';
-  const L = (el, lab) => { el.setAttribute('data-vlabel', 'VERSO › RECORD #' + id + ' › ' + lab); return el; };
-
+  const L = (el, lab) => { el.setAttribute('data-vlabel', 'VERSO › ' + root + ' › ' + lab); return el; };
   const show = document.createElement('div'); show.className = 'zzz-rs-showbar';
   const st = document.createElement('span'); st.className = 'zzz-rs-show-t'; st.textContent = 'SHOW'; show.appendChild(st);
-  const title = String(f.r3 || f.r9 || '').trim();
-  const tt = document.createElement('span'); tt.className = 'zzz-rs-show-title'; tt.textContent = '#' + id + (title ? ' · ' + title : ''); show.appendChild(tt);
+  const tt = document.createElement('span'); tt.className = 'zzz-rs-show-title'; tt.textContent = headText; show.appendChild(tt);
   const xb = document.createElement('button'); xb.type = 'button'; xb.className = 'zzz5w5cm-close zzz-rs-x'; xb.textContent = '×'; xb.setAttribute('aria-label', 'Close the reader');
   xb.addEventListener('click', (e) => { e.stopPropagation(); ov.remove(); }); show.appendChild(xb);
   const find = document.createElement('div'); find.className = 'zzz-rs-find'; find.hidden = true;
@@ -29983,8 +29988,28 @@ function zzz_rdr_show(m, opts) {
   box.appendChild(show); box.appendChild(find);
   const content = document.createElement('div'); content.className = 'zzz-rs-content';
   const blk = (tag, cls, text, lab) => { const e = document.createElement(tag); e.className = 'zzz-rs-blk' + (cls ? ' ' + cls : ''); if (text !== undefined) e.textContent = text; return L(e, lab); };
+  const sw = document.createElement('div'); sw.className = 'zzz-rs-swipe';
+  const swt = document.createElement('span'); swt.className = 'zzz-rs-sw-t'; swt.textContent = swTitle || 'READER'; sw.appendChild(swt);
+  const btn = (t, title2, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-rs-keep'; b.textContent = t; b.title = title2; b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); sw.appendChild(b); return b; };
+  const copyAll = () => btn('COPY ALL', 'Copy the whole page as text', () => { const t = Array.from(content.querySelectorAll('.zzz-rs-blk:not(.is-hidden)')).map(x => x.innerText).join('\n'); zzz_copy_text_to_clipboard_silent(t); zzz6f2_show_toast('Copied.', 'info', 1200); });
+  const finish = () => {
+    box.appendChild(content); box.appendChild(sw);
+    fin.addEventListener('input', () => { zzzRs.q = fin.value; zzz_rs_filter(content, fcount); });
+    ov.appendChild(box);
+    ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+  };
+  return { ov, box, content, sw, L, blk, btn, copyAll, finish };
+}
+function zzz_rdr_show(m, opts) {
+  opts = opts || {};
+  const id = m.id, row = m.row, notes = m.notes || [];
+  const f = m.f || {};
+  const title = String(f.r3 || f.r9 || '').trim();
+  const fr = zzz_rdr_frame('RECORD #' + id, '#' + id + (title ? ' · ' + title : '') + (m.archived ? ' · ARCHIVE' : ''), 'RECORD');
+  const { ov, content, L, blk, btn } = fr;
   content.appendChild(blk('h1', 'zzz-rs-h1', title || ('#' + id), 'TITLE'));
-  const meta = blk('div', 'zzz-rs-meta', ['#' + id, row.username || '', String(row.entry_date || '').slice(0, 10)].filter(Boolean).join(' · '), 'META'); content.appendChild(meta);
+  const meta = blk('div', 'zzz-rs-meta', ['#' + id, row.username || '', String(row.entry_date || '').slice(0, 10), row.is_trashed ? (m.archived ? 'ARCHIVE' : 'TRASH') : ''].filter(Boolean).join(' · '), 'META'); content.appendChild(meta);
 
   const cells = blk('div', 'zzz-rdr-cells', undefined, 'CELLS');
   (typeof ZZZ_CL_FIELDS !== 'undefined' ? ZZZ_CL_FIELDS : []).forEach(([, k, lab]) => {
@@ -30028,24 +30053,73 @@ function zzz_rdr_show(m, opts) {
     });
   });
   if (!lines.length && !body) content.appendChild(blk('p', 'zzz-rs-meta', 'No content and no SUBS lines yet.', 'EMPTY'));
-  box.appendChild(content);
 
-  const sw = document.createElement('div'); sw.className = 'zzz-rs-swipe';
-  const swt = document.createElement('span'); swt.className = 'zzz-rs-sw-t'; swt.textContent = 'RECORD'; sw.appendChild(swt);
-  const btn = (t, title2, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-rs-keep'; b.textContent = t; b.title = title2; b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); sw.appendChild(b); };
-  btn('💬 #' + id, 'COMM - the chat of this record', () => { ov.remove(); zzz_open_chat_entry(id); });
-  btn('CRM', 'The record window (cells, EDIT, ATTACH)', () => { ov.remove(); zzz6f29_open_entry_number_window(id); });
-  btn('COPY ALL', 'Copy the whole page as text', () => { const t = Array.from(content.querySelectorAll('.zzz-rs-blk:not(.is-hidden)')).map(x => x.innerText).join('\n'); zzz_copy_text_to_clipboard_silent(t); zzz6f2_show_toast('Copied.', 'info', 1200); });
-  box.appendChild(sw);
-  fin.addEventListener('input', () => { zzzRs.q = fin.value; zzz_rs_filter(content, fcount); });
-  ov.appendChild(box);
-  ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
-  document.body.appendChild(ov);
+  if (!m.archived) {
+    btn('💬 #' + id, 'COMM - the chat of this record', () => { ov.remove(); zzz_open_chat_entry(id); });
+    btn('CRM', 'The record window (cells, EDIT, ATTACH)', () => { ov.remove(); zzz6f29_open_entry_number_window(id); });
+  }
+  if (opts.back) btn('‹ ' + opts.back.label, 'Back to the workspace reader', () => opts.back.fn());
+  fr.copyAll();
+  fr.finish();
   if (opts.focus) {
     const fl = content.querySelector('.zzz-rdr-line.is-focus');
     if (fl) requestAnimationFrame(() => { try { fl.scrollIntoView({ block: 'center' }); } catch (e) {} });
     else zzz6f2_show_toast('This message is a reply inside a line - shown under its line.', 'info', 1800);
   }
+}
+
+function zzz_rdr_ws_btn(title, place) {
+  if (!title || title.querySelector('.zzz-rdr-wsbtn')) return;
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-rdr-ibtn zzz-rdr-wsbtn'; b.textContent = '📖 READER';
+  b.title = place + ' as a Verso page (the rows shown now)'; b.setAttribute('data-vlabel', 'VERSO › ' + place + ' › READER');
+  b.addEventListener('pointerdown', (e) => e.stopPropagation());
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const ws = title.closest('.db-workspace') || title.parentElement;
+    const rows = Array.from((ws || document).querySelectorAll('.db-workspace-entry-row')).map(r => r.zzzRowData).filter(r => r && r.entry_id !== undefined && r.entry_id !== null && r.entry_id !== '');
+    const seen = {}; const uniq = rows.filter(r => { const k = String(r.entry_id); if (seen[k]) return false; seen[k] = 1; return true; });
+    zzz_rdr_list_show(place, uniq);
+  });
+  const x = title.querySelector('.zzz4-0-close-x');
+  if (x) title.insertBefore(b, x); else title.appendChild(b);
+}
+function zzz_rdr_list_show(place, rows) {
+  const fr = zzz_rdr_frame(place, place + ' · ' + rows.length + ' records', place);
+  const { content, blk } = fr;
+  const again = () => zzz_rdr_list_show(place, rows);
+  const groups = {};
+  rows.forEach(r => {
+    const f = (typeof zzz_parse_fields_json === 'function' ? zzz_parse_fields_json(r) : (r.fields_json || {})) || {};
+    const cat = String(f.r5 || '').trim().toUpperCase() || 'NO CATEGORY';
+    (groups[cat] = groups[cat] || []).push({ r, f });
+  });
+  const cats = Object.keys(groups).sort((a, b) => (a === 'NO CATEGORY') - (b === 'NO CATEGORY') || a.localeCompare(b));
+  cats.forEach(cat => {
+    content.appendChild(blk('h2', 'zzz-rs-h', cat + ' · ' + groups[cat].length, 'GROUP ' + cat));
+    groups[cat].forEach(({ r, f }) => {
+      const id = String(r.entry_id);
+      const e = blk('div', 'zzz-rdr-line zzz-rdr-rec', undefined, 'RECORD #' + id);
+      const head = document.createElement('div'); head.className = 'zzz-rdr-lh';
+      head.textContent = ['#' + id, String(f.r2 || '').trim() ? 'PN ' + String(f.r2).trim() : '', String(f.r4 || r.username || '').trim(), String(r.entry_date || '').slice(0, 10), r.zzz_archived ? 'ARCHIVE' : (r.is_trashed ? 'TRASH' : '')].filter(Boolean).join(' · ');
+      e.appendChild(head);
+      const nm = document.createElement('b'); nm.textContent = String(f.r3 || '').trim() || String(f.r9 || '').trim() || ('#' + id); e.appendChild(nm);
+      const desc = String(f.r9 || '').trim();
+      if (desc && desc !== nm.textContent) { const d = document.createElement('div'); d.className = 'zzz-rdr-tx'; d.textContent = desc.slice(0, 300); e.appendChild(d); }
+      const tags = [String(f.tags || '').trim(), String(f.r26 || '').trim()].filter(Boolean).join(' · ');
+      if (tags) { const t = document.createElement('div'); t.className = 'zzz-rs-meta'; t.textContent = tags; e.appendChild(t); }
+      e.title = 'Tap = #' + id + ' in the RECORD READER';
+      e.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const back = { label: place, fn: again };
+        if (r.zzz_archived) { zzz_rdr_load(id, { row: r }).then(m => { if (m) { m.archived = true; zzz_rdr_show(m, { back }); } }); }
+        else zzz_rdr_open(id, { back, from: place });
+      });
+      content.appendChild(e);
+    });
+  });
+  if (!rows.length) content.appendChild(blk('p', 'zzz-rs-meta', 'Nothing shown in ' + place + ' right now.', 'EMPTY'));
+  fr.copyAll();
+  fr.finish();
 }
 
 function zzz_rdr_hash() { const m = /^#rdr=(\d{1,9})$/.exec(String(location.hash || '')); if (!m) return; try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} setTimeout(() => zzz_rdr_open(m[1]), 600); }
@@ -51252,7 +51326,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-10 17:06';
+const VERSO_BUILD = '2026-11-10 17:13';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
