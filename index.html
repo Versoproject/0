@@ -29306,6 +29306,7 @@ function zzz_rs_feeder() {
   const modes = [['new', 'NEW', x => !x.seen], ['all', 'ALL', () => true], ['read', 'READ', x => x.seen], ['kept', 'KEPT', x => !!x.keep]];
   modes.forEach(([k, lab, fn]) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz14cs-feed-mode' + (zzzRs.mode === k ? ' is-on' : ''); b.textContent = lab + ' ' + inPath.filter(fn).length; b.addEventListener('click', (e) => { e.stopPropagation(); zzzRs.mode = k; zzz_rs_render(); }); head.appendChild(b); });
   w.appendChild(head);
+  w.appendChild(zzz_rs_show_bar(inPath));
   const add = document.createElement('div'); add.className = 'zzz-rs-add';
   const inp = document.createElement('input'); inp.type = 'url'; inp.className = 'zzz-rs-add-in'; inp.placeholder = 'ADD CONTENT - paste a link'; inp.autocomplete = 'off';
   const go = document.createElement('button'); go.type = 'button'; go.className = 'zzz14cs-feed-send zzz-rs-add-go'; go.textContent = '+ ADD';
@@ -29322,11 +29323,83 @@ function zzz_rs_feeder() {
 
   const list = document.createElement('div'); list.className = 'zzz14cs-feed-list zzz-rs-list';
   const fn = (modes.find(m => m[0] === zzzRs.mode) || modes[1])[2];
-  const shown = inPath.filter(fn).slice().reverse();
+  const shown = zzz_rs_show_sort(inPath.filter(fn).filter(zzz_rs_show_pass));
   if (!shown.length) { const e = document.createElement('div'); e.className = 'zzz14cs-feed-empty'; e.textContent = zzzRs.lines.length ? 'Nothing here in this view.' : 'No pages yet - paste a link into ADD CONTENT.'; list.appendChild(e); }
   shown.forEach(it => list.appendChild(zzz_rs_line(it)));
   w.appendChild(list);
   return w;
+}
+
+const ZZZ_RS_SORTS = [['new', 'NEWEST'], ['old', 'OLDEST'], ['az', 'A–Z'], ['site', 'SITE']];
+function zzz_rs_show() {
+  if (zzzRs.show && zzzRs.show._u === zzz_rs_me()) return zzzRs.show;
+  let p = {}; try { p = JSON.parse(localStorage.getItem(zzz_ukey('zzz_rs_show')) || '{}') || {}; } catch (e) { p = {}; }
+  zzzRs.show = Object.assign({ notes: 0, today: 0, week: 0, sites: {}, q: '', sort: 'new', find: false }, p, { _u: zzz_rs_me() });
+  return zzzRs.show;
+}
+function zzz_rs_show_save() { const s0 = zzz_rs_show(); try { const c = Object.assign({}, s0); delete c._u; localStorage.setItem(zzz_ukey('zzz_rs_show'), JSON.stringify(c)); } catch (e) {} }
+function zzz_rs_line_time(it) { const t = Date.parse((it.note && it.note.created_at) || '') || 0; return t; }
+function zzz_rs_show_pass(it) {
+  const s0 = zzz_rs_show();
+  if (s0.notes && !((zzzRs.diss || {})[it.entry + '#' + it.num] || []).length) return false;
+  const t = zzz_rs_line_time(it), now = Date.now();
+  if (s0.today) { const d = new Date(); d.setHours(0, 0, 0, 0); if (t < d.getTime()) return false; }
+  if (s0.week && t < now - 7 * 86400000) return false;
+  const sites = Object.keys(s0.sites || {});
+  if (sites.length && sites.indexOf(zzz_rs_host(it.link)) < 0) return false;
+  const q = String(s0.q || '').trim();
+  if (q) {
+    const hay = zzz10v1_normalize([it.name, it.link, it.tags, it.path, zzz_rs_host(it.link)].join(' '));
+    if (!q.split(',').map(x => zzz10v1_normalize(x.trim())).filter(Boolean).some(x => hay.indexOf(x) >= 0)) return false;
+  }
+  return true;
+}
+function zzz_rs_show_sort(arr) {
+  const s0 = zzz_rs_show(), a = arr.slice();
+  if (s0.sort === 'old') a.sort((x, y) => zzz_rs_line_time(x) - zzz_rs_line_time(y));
+  else if (s0.sort === 'az') a.sort((x, y) => String(x.name || zzz_rs_host(x.link)).localeCompare(String(y.name || zzz_rs_host(y.link)), 'sk'));
+  else if (s0.sort === 'site') a.sort((x, y) => zzz_rs_host(x.link).localeCompare(zzz_rs_host(y.link)) || zzz_rs_line_time(y) - zzz_rs_line_time(x));
+  else a.sort((x, y) => zzz_rs_line_time(y) - zzz_rs_line_time(x));
+  return a;
+}
+function zzz_rs_show_bar(inPath) {
+  const s0 = zzz_rs_show();
+  const box = document.createElement('div'); box.className = 'zzz-rs-showline';
+  const row = document.createElement('div'); row.className = 'zzz14cs-feed-show';
+  const lab = document.createElement('span'); lab.className = 'zzz14cs-feed-show-lab'; lab.textContent = 'SHOW'; row.appendChild(lab);
+  const chip = (t, on, fn, title) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz14cs-feed-chip' + (on ? ' is-on' : ''); b.textContent = t; if (title) b.title = title; b.addEventListener('click', (e) => { e.stopPropagation(); fn(); zzz_rs_show_save(); zzz_rs_render(); }); return b; };
+  row.appendChild(chip('🔍', !!(s0.find || s0.q), () => { s0.find = !s0.find; if (!s0.find) s0.q = ''; }, 'Find in name, site, link, tags (a, b = or)'));
+  const nNotes = inPath.filter(it => ((zzzRs.diss || {})[it.entry + '#' + it.num] || []).length).length;
+  row.appendChild(chip('💬 NOTES' + (nNotes ? ' ' + nNotes : ''), !!s0.notes, () => { s0.notes = s0.notes ? 0 : 1; }, 'Only bundles with notes (DISS)'));
+  row.appendChild(chip('TODAY', !!s0.today, () => { s0.today = s0.today ? 0 : 1; if (s0.today) s0.week = 0; }, 'Added today'));
+  row.appendChild(chip('7 DAYS', !!s0.week, () => { s0.week = s0.week ? 0 : 1; if (s0.week) s0.today = 0; }, 'Added in the last 7 days'));
+  const so = ZZZ_RS_SORTS.find(x => x[0] === s0.sort) || ZZZ_RS_SORTS[0];
+  row.appendChild(chip('⇅ ' + so[1], s0.sort !== 'new', () => { const i = ZZZ_RS_SORTS.findIndex(x => x[0] === s0.sort); s0.sort = ZZZ_RS_SORTS[(i + 1) % ZZZ_RS_SORTS.length][0]; }, 'Sort: tap = next (NEWEST · OLDEST · A–Z · SITE)'));
+  const any = s0.notes || s0.today || s0.week || s0.q || Object.keys(s0.sites || {}).length;
+  if (any) row.appendChild(chip('✕', false, () => { s0.notes = 0; s0.today = 0; s0.week = 0; s0.sites = {}; s0.q = ''; s0.find = false; }, 'Show everything again'));
+  box.appendChild(row);
+  if (s0.find || s0.q) {
+    const fi = document.createElement('input'); fi.type = 'text'; fi.className = 'zzz-rs-add-in zzz-rs-show-find'; fi.placeholder = 'SHOW only bundles with… (a, b = or)'; fi.value = s0.q || '';
+    let t = null;
+    fi.addEventListener('input', () => { s0.q = fi.value; zzz_rs_show_save(); clearTimeout(t); t = setTimeout(() => {
+      const list = document.querySelector('#zzzRsSpace .zzz-rs-list'); if (!list) return;
+      const mf = { new: x => !x.seen, read: x => x.seen, kept: x => !!x.keep }[zzzRs.mode] || (() => true);
+      const all = zzz_rs_show_sort(inPath.filter(mf).filter(zzz_rs_show_pass));
+      list.innerHTML = ''; all.forEach(it => list.appendChild(zzz_rs_line(it)));
+      if (!all.length) { const e = document.createElement('div'); e.className = 'zzz14cs-feed-empty'; e.textContent = 'Nothing here in this view.'; list.appendChild(e); }
+    }, 200); });
+    box.appendChild(fi);
+  }
+
+  const hosts = {}; inPath.forEach(it => { const h = zzz_rs_host(it.link); if (h) hosts[h] = (hosts[h] || 0) + 1; });
+  const hl = Object.keys(hosts).sort((a, b) => hosts[b] - hosts[a] || a.localeCompare(b)).slice(0, 12);
+  if (hl.length > 1 || Object.keys(s0.sites || {}).length) {
+    const r2 = document.createElement('div'); r2.className = 'zzz14cs-feed-show zzz-rs-sites';
+    const l2 = document.createElement('span'); l2.className = 'zzz14cs-feed-show-lab'; l2.textContent = 'SITES'; r2.appendChild(l2);
+    hl.forEach(h => r2.appendChild(chip(h + ' ' + hosts[h], !!(s0.sites || {})[h], () => { s0.sites = Object.assign({}, s0.sites); if (s0.sites[h]) delete s0.sites[h]; else s0.sites[h] = 1; })));
+    box.appendChild(r2);
+  }
+  return box;
 }
 
 function zzz_rs_media_chip(it) {
@@ -50625,7 +50698,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-10 03:34';
+const VERSO_BUILD = '2026-11-10 03:51';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
