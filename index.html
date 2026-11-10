@@ -10305,6 +10305,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-rs-comm, .zzz-rs-diss { white-space: nowrap; }
   
   .zzz-rs-tree { display: flex; flex-direction: column; gap: 2px; }
+  .zzz-rs-heart { background: none; border: 0; color: #ef4444; font-size: 15px; padding: 0 4px; margin-left: 6px; cursor: pointer; }
+  .zzz-rs-readtag { color: #e8c86a; border: 1px solid #D4AF37; border-radius: 9px; padding: 2px 8px; font-size: 12px; overflow-wrap: anywhere; }
+  .zzz-rs-linked { cursor: pointer; }
   .zzz-rs-treerow { align-items: center; }
   .zzz-rs-move { background: none; border: 1px solid #555; color: #D4AF37; border-radius: 8px; padding: 0 8px; margin-left: 8px; line-height: 1.3; cursor: pointer; font-size: 14px; }
   
@@ -29159,7 +29162,7 @@ function zzz_rs_tree_rows(el, chip) {
   const focus = cur.c ? t.c.find(x => x.num === cur.c) : (cur.b ? t.b.find(x => x.num === cur.b) : null);
   if (focus) {
     const nn = ((zzzRs.diss || {})[focus.entry + '#' + focus.num] || []).length;
-    ra.appendChild(chip('💬 DISS ' + focus.name + (nn ? ' ' + nn : ''), false, () => zzz_rs_diss({ entry: focus.entry, num: focus.num, name: focus.name, link: '' }, () => zzz_rs_render())));
+    ra.appendChild(chip('💬 DISS ' + focus.name + (nn ? ' ' + nn : ''), false, () => zzz_rs_diss({ entry: focus.entry, num: focus.num, name: focus.name, link: '', readTag: zzz_rs_read_tag(el.path, cur.b, cur.c) }, () => zzz_rs_render())));
   }
   return box;
 }
@@ -29191,6 +29194,41 @@ function zzz_rs_move(it) {
   o.appendChild(b); o.addEventListener('click', (e) => { if (e.target === o) o.remove(); });
   document.body.appendChild(o);
 }
+
+function zzz_rs_has_tag(it, t) { return String((it.note && it.note.note_tags) || '').split(/\s+/).indexOf(t) >= 0; }
+async function zzz_rs_heart(it) {
+  const w = String((it.note && it.note.note_tags) || '').split(/\s+/).filter(Boolean);
+  const on = w.indexOf('fav') < 0; const nw = w.filter(x => x !== 'fav'); if (on) nw.push('fav');
+  const { error } = await sb.from('verso_chat_notes').update({ note_tags: nw.join(' ') }).eq('id', it.id);
+  if (error) { zzz_user_error('♥ was not saved - try again.', error, '[Zzz5-W10:RATING]'); return; }
+  if (it.note) it.note.note_tags = nw.join(' ');
+  zzz6f2_show_toast(on ? '♥ (only you see it)' : '♥ off', 'ok', 1200); zzz_rs_render();
+}
+
+function zzz_rs_slug(x) { return zzz10v1_normalize(String(x || '')).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
+function zzz_rs_read_tag(path, b, c) {
+  const el = zzzRs.els[zzz_rs_key(path)]; const t = el ? zzz_rs_tree_of(el.id) : { b: [], c: [] };
+  const bb = b ? t.b.find(x => x.num === b) : null, cc = c ? t.c.find(x => x.num === c) : null;
+  return 'read:' + [zzz_rs_slug(path), bb && zzz_rs_slug(bb.name), cc && zzz_rs_slug(cc.name)].filter(Boolean).join('/');
+}
+async function zzz_rs_linked(tag) {
+  try { const { data } = await sb.from('verso_chat_notes').select('id, entry_key, note_number, note_text, username, created_at, note_tags').ilike('note_tags', '%' + tag + '%').order('created_at', { ascending: false }).limit(60);
+    return (data || []).filter(n => String(n.note_tags || '').split(/\s+/).some(t => t === tag || t.indexOf(tag + '/') === 0)); } catch (e) { return []; }
+}
+function zzz_rs_read_hash() {
+  const m = /^#read=([a-z0-9\-\/]{1,200})$/.exec(String(location.hash || '')); if (!m) return;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  setTimeout(async () => {
+    await zzz_rs_load(); const parts = m[1].split('/');
+    const el = Object.values(zzzRs.els).find(x => zzz_rs_slug(x.path) === parts[0]); if (!el) { zzz6f2_show_toast('This READ place is not yours or not there any more.', 'warn'); return; }
+    zzzRs.path = el.path; const t = zzz_rs_tree_of(el.id), sl = zzz_rs_sel_of(el.id);
+    const b = parts[1] ? t.b.find(x => zzz_rs_slug(x.name) === parts[1]) : null; sl.b = b ? b.num : null;
+    const c = (b && parts[2]) ? t.c.find(x => x.parent === b.num && zzz_rs_slug(x.name) === parts[2]) : null; sl.c = c ? c.num : null;
+    zzz_rs_space_open(true);
+  }, 700);
+}
+window.addEventListener('hashchange', zzz_rs_read_hash);
+setTimeout(() => { try { zzz_rs_read_hash(); } catch (e) {} }, 3000);
 
 const zzzRsFolderBusy = {};
 async function zzz_rs_folder(path, create, quiet) {
@@ -29475,7 +29513,7 @@ function zzz_rs_feeder() {
   return w;
 }
 
-const ZZZ_RS_SORTS = [['new', 'NEWEST'], ['old', 'OLDEST'], ['az', 'A–Z'], ['site', 'SITE']];
+const ZZZ_RS_SORTS = [['new', 'NEWEST'], ['old', 'OLDEST'], ['az', 'A–Z'], ['site', 'SITE'], ['star', '★ TOP']];
 function zzz_rs_show() {
   if (zzzRs.show && zzzRs.show._u === zzz_rs_me()) return zzzRs.show;
   let p = {}; try { p = JSON.parse(localStorage.getItem(zzz_ukey('zzz_rs_show')) || '{}') || {}; } catch (e) { p = {}; }
@@ -29487,6 +29525,8 @@ function zzz_rs_line_time(it) { const t = Date.parse((it.note && it.note.created
 function zzz_rs_show_pass(it) {
   const s0 = zzz_rs_show();
   if (s0.notes && !((zzzRs.diss || {})[it.entry + '#' + it.num] || []).length) return false;
+  if (s0.fav && !zzz_rs_has_tag(it, 'fav')) return false;
+  if (s0.rated) { try { zzz_stars_want(it.id); if (!zzz_stars_count(it.id)) return false; } catch (e) { return false; } }
   const t = zzz_rs_line_time(it), now = Date.now();
   if (s0.today) { const d = new Date(); d.setHours(0, 0, 0, 0); if (t < d.getTime()) return false; }
   if (s0.week && t < now - 7 * 86400000) return false;
@@ -29503,6 +29543,7 @@ function zzz_rs_show_sort(arr) {
   const s0 = zzz_rs_show(), a = arr.slice();
   if (s0.sort === 'old') a.sort((x, y) => zzz_rs_line_time(x) - zzz_rs_line_time(y));
   else if (s0.sort === 'az') a.sort((x, y) => String(x.name || zzz_rs_host(x.link)).localeCompare(String(y.name || zzz_rs_host(y.link)), 'sk'));
+  else if (s0.sort === 'star') a.sort((x, y) => { try { return zzz_stars_avg(y.id) - zzz_stars_avg(x.id) || zzz_rs_line_time(y) - zzz_rs_line_time(x); } catch (e) { return 0; } });
   else if (s0.sort === 'site') a.sort((x, y) => zzz_rs_host(x.link).localeCompare(zzz_rs_host(y.link)) || zzz_rs_line_time(y) - zzz_rs_line_time(x));
   else a.sort((x, y) => zzz_rs_line_time(y) - zzz_rs_line_time(x));
   return a;
@@ -29516,12 +29557,16 @@ function zzz_rs_show_bar(inPath) {
   row.appendChild(chip('🔍', !!(s0.find || s0.q), () => { s0.find = !s0.find; if (!s0.find) s0.q = ''; }, 'Find in name, site, link, tags (a, b = or)'));
   const nNotes = inPath.filter(it => ((zzzRs.diss || {})[it.entry + '#' + it.num] || []).length).length;
   row.appendChild(chip('💬 NOTES' + (nNotes ? ' ' + nNotes : ''), !!s0.notes, () => { s0.notes = s0.notes ? 0 : 1; }, 'Only bundles with notes (DISS)'));
+  const nFav = inPath.filter(it => zzz_rs_has_tag(it, 'fav')).length;
+  row.appendChild(chip('♥' + (nFav ? ' ' + nFav : ''), !!s0.fav, () => { s0.fav = s0.fav ? 0 : 1; }, '♥ only your favourites'));
+  row.appendChild(chip('★', !!s0.rated, () => { s0.rated = s0.rated ? 0 : 1; }, '★ only rated pages'));
   row.appendChild(chip('TODAY', !!s0.today, () => { s0.today = s0.today ? 0 : 1; if (s0.today) s0.week = 0; }, 'Added today'));
   row.appendChild(chip('7 DAYS', !!s0.week, () => { s0.week = s0.week ? 0 : 1; if (s0.week) s0.today = 0; }, 'Added in the last 7 days'));
   const so = ZZZ_RS_SORTS.find(x => x[0] === s0.sort) || ZZZ_RS_SORTS[0];
-  row.appendChild(chip('⇅ ' + so[1], s0.sort !== 'new', () => { const i = ZZZ_RS_SORTS.findIndex(x => x[0] === s0.sort); s0.sort = ZZZ_RS_SORTS[(i + 1) % ZZZ_RS_SORTS.length][0]; }, 'Sort: tap = next (NEWEST · OLDEST · A–Z · SITE)'));
-  const any = s0.notes || s0.today || s0.week || s0.q || Object.keys(s0.sites || {}).length;
-  if (any) row.appendChild(chip('✕', false, () => { s0.notes = 0; s0.today = 0; s0.week = 0; s0.sites = {}; s0.q = ''; s0.find = false; }, 'Show everything again'));
+  row.appendChild(chip('⇅ ' + so[1], s0.sort !== 'new', () => { const i = ZZZ_RS_SORTS.findIndex(x => x[0] === s0.sort); s0.sort = ZZZ_RS_SORTS[(i + 1) % ZZZ_RS_SORTS.length][0]; }, 'Sort: tap = next (NEWEST · OLDEST · A–Z · SITE · ★ TOP)'));
+  row.appendChild(chip('🤖 VI', false, () => zzz6f2_show_toast('VI BOT in READ SPACE comes later - until then everything works by hand: SHOW chips, 🔍, BUNDLES / COLLS, ↳ MOVE, ⦿ NEXT UP.', 'info', 3500), 'VI BOT - its functions come later [GR:MANUAL-ALWAYS]'));
+  const any = s0.notes || s0.today || s0.week || s0.fav || s0.rated || s0.q || Object.keys(s0.sites || {}).length;
+  if (any) row.appendChild(chip('✕', false, () => { s0.notes = 0; s0.today = 0; s0.week = 0; s0.fav = 0; s0.rated = 0; s0.sites = {}; s0.q = ''; s0.find = false; }, 'Show everything again'));
   box.appendChild(row);
   if (s0.find || s0.q) {
     const fi = document.createElement('input'); fi.type = 'text'; fi.className = 'zzz-rs-show-find'; fi.setAttribute('data-zzz-nodraft', '1');
@@ -29564,6 +29609,12 @@ function zzz_rs_line(it) {
   const t = document.createElement('span'); t.className = 'zzz-rs-line-t'; t.textContent = it.name || zzz_rs_host(it.link); r.appendChild(t);
   const tp = zzz_rs_tree_path(it);
   const h = document.createElement('span'); h.className = 'zzz-rs-line-h'; h.textContent = zzz_rs_host(it.link) + (tp ? ' · ' + tp : '') + (it.keep ? ' · KEPT' : '') + (it.tags ? ' · ' + it.tags : ''); r.appendChild(h);
+
+  if (it.id) {
+    const hb = document.createElement('button'); hb.type = 'button'; hb.className = 'zzz-rs-heart' + (zzz_rs_has_tag(it, 'fav') ? ' is-on' : ''); hb.textContent = zzz_rs_has_tag(it, 'fav') ? '♥' : '♡'; hb.title = '♥ only for you';
+    hb.addEventListener('click', (e) => { e.stopPropagation(); zzz_rs_heart(it); }); h.appendChild(hb);
+    try { const st = zzz_stars_chip(it.id, { tag: 'button', count: true }); st.addEventListener('click', (e) => e.stopPropagation()); h.appendChild(st); } catch (e) {}
+  }
   if (it.elId && it.id) { const mv = document.createElement('button'); mv.type = 'button'; mv.className = 'zzz-rs-move'; mv.textContent = '↳'; mv.title = 'MOVE into a BUNDLE › COLLECTION'; mv.addEventListener('click', (e) => { e.stopPropagation(); zzz_rs_move(it); }); h.appendChild(mv); }
   r.title = it.link;
   r.addEventListener('click', () => zzz_rs_open_page(it));
@@ -29875,6 +29926,19 @@ function zzz_rs_diss(it, after) {
     ns.forEach(n => { const r = document.createElement('div'); r.className = 'zzz-rs-diss-r'; const w = document.createElement('b'); w.textContent = String(n.username || '') + ' '; r.appendChild(w); r.appendChild(document.createTextNode(String(n.note_text || ''))); list.appendChild(r); });
   };
   paint();
+  if (it.readTag) {
+    const tr = document.createElement('div'); tr.className = 'zzz-b26-row';
+    const tg = document.createElement('span'); tg.className = 'zzz-rs-readtag'; tg.textContent = it.readTag; tr.appendChild(tg);
+    const cp = document.createElement('button'); cp.type = 'button'; cp.className = 'zzz14cs-feed-mode'; cp.textContent = 'COPY TAG'; cp.title = 'Put this tag on any chatnote - it shows here as LINKED';
+    cp.addEventListener('click', () => { zzz_copy_text_to_clipboard_silent(it.readTag); zzz6f2_show_toast('Copied: ' + it.readTag, 'info', 1500); }); tr.appendChild(cp);
+    b.insertBefore(tr, list);
+    zzz_rs_linked(it.readTag).then(ns => {
+      if (!ns.length) return;
+      const h = document.createElement('div'); h.className = 'zzz-rs-set-h'; h.textContent = 'LINKED · ' + ns.length; list.appendChild(h);
+      ns.forEach(n => { const r = document.createElement('div'); r.className = 'zzz-rs-diss-r zzz-rs-linked'; const w = document.createElement('b'); w.textContent = (n.username || '') + ' · #' + n.entry_key + ' '; r.appendChild(w); r.appendChild(document.createTextNode(String(n.note_text || '').slice(0, 300)));
+        r.addEventListener('click', () => { o.remove(); zzz_rs_chat(n.entry_key); }); list.appendChild(r); });
+    });
+  }
   const inp = document.createElement('textarea'); inp.className = 'zzz-rs-diss-in'; inp.rows = 2; inp.placeholder = 'Note to this page…'; b.appendChild(inp);
   const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
   const no = document.createElement('button'); no.type = 'button'; no.className = 'zzz-media-btn'; no.textContent = 'CLOSE';
@@ -50951,7 +51015,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-10 13:33';
+const VERSO_BUILD = '2026-11-10 15:10';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
