@@ -28979,7 +28979,8 @@ async function zzz_rs_fetch(link) {
   const h = (typeof zzz_verso_fn_headers === 'function') ? zzz_verso_fn_headers() : null;
   if (!h) return { error: 'Log in to Verso first - VERSO READER reads pages only for a logged-in user.' };
   try {
-    const r = await fetch(SUPABASE_URL + '/functions/v1/verso-read-page?url=' + encodeURIComponent(link), { cache: 'no-store', headers: h });
+    const ac = new AbortController(); const tmo = setTimeout(() => ac.abort(), 20000);
+    const r = await fetch(SUPABASE_URL + '/functions/v1/verso-read-page?url=' + encodeURIComponent(link), { cache: 'no-store', headers: h, signal: ac.signal }).finally(() => clearTimeout(tmo));
     let j = null; try { j = await r.json(); } catch (e) {}
     if (r.status === 404) return { error: 'VERSO READER is not reachable on the Verso server yet. Hold the ▶ button = the original page.', down: true };
     if (!r.ok) return { error: (j && j.error) ? String(j.error) : 'The page could not be read (' + r.status + ').' };
@@ -29072,8 +29073,8 @@ async function zzz_rs_folder(path, create, quiet) {
   if (parts.length > 1) { const up = await zzz_rs_folder(parts.slice(0, -1).join(ZZZ_RS_SEP), true, true); if (!up) return null; }
   try {
     const at = await zzz6f2_get_next_entry_id_atomic();
-    let id = at && at.success ? at.id : 0;
-    if (!id) id = zzz6f2_compute_next_entry_id(await zzz6f2_get_known_entries());
+    let id = at && at.success ? Number(at.id) : 0;
+    if (!id) id = Number(zzz6f2_compute_next_entry_id(await zzz6f2_get_known_entries()));
     const fields = { r2: '2', r3: parts[0], r4: me, r5: 'read', r7: 'ano', r9: path, r22: 'READ SPACE' + ZZZ_RS_SEP + path + ' · #' + id, tags: 'read', rkey: key, rpath: path };
     const payload = { entry_id: id, r1: '', fields_json: JSON.stringify(fields), entry_date: zzz6f14_format_today(), username: zzz0r1_get_current_username(), updated_at: new Date().toISOString(), zzz_session_id: zzz_sessionId };
     const { error } = await sb.from('verso_entries').upsert(payload, { onConflict: 'entry_id' });
@@ -29201,14 +29202,15 @@ function zzz_rs_space_open(on) {
 }
 function zzz_rs_rows() {
   const byId = {}; Object.values(zzzRs.els).forEach(x => { byId[String(x.id)] = x; });
-  return zzz5w5cm_tab_list(ZZZ_RS_KEY).filter(it => { const el = byId[String(it.sourceEntryId || '')]; return !(el && zzz_rs_hidden(el.path)); }).map(it => {
+  return zzz5w5cm_tab_list(ZZZ_RS_KEY).filter(it => { const el = byId[String(it.sourceEntryId || '')]; if (!el && zzzRs.loadedOf && String((it.fields || {}).r5 || '').toLowerCase() === 'read') return false;
+    return !(el && zzz_rs_hidden(el.path)); }).map(it => {
     const f = it.fields || {}, id = it.sourceEntryId ? String(it.sourceEntryId) : '';
     const el = byId[id];
     const n = el ? zzzRs.lines.filter(x => x.entry === id).length : 0;
     const row = id && typeof zzz6f29_entry_row_of === 'function' ? zzz6f29_entry_row_of(id) : null;
     return {
       entry: id ? '#' + id : zzz14cs_cl_label(it), pnum: f.r2 || '', project: f.r3 || '', name: f.r4 || '',
-      desc: el ? el.path : (f.r9 || ''), tag: f.tags || '', content: el ? (n ? n + ' reads' : 'empty') : String(f.r10 || f.r13 || '').slice(0, 60),
+      desc: el ? el.path : (f.r9 || ''), tag: f.tags || '', content: el ? (n ? n + (n === 1 ? ' bundle' : ' bundles') : 'empty') : String(f.r10 || f.r13 || '').slice(0, 60),
       itemKey: it.zzz5w5cmKey || '',
       title: el ? 'READ' + ZZZ_RS_SEP + el.path + ' - tap = its pages' : (id ? '#' + id + ' - tap = its content' : 'draft CL'),
       attached: { cls: id ? zzz4_0_record_type_class(row) : 'zzz-rec-cl', title: (id ? '#' + id : 'Draft CL') + ' - tap = its record window, hold 3 s = remove from READ SPACE',
@@ -50622,7 +50624,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-10 02:32';
+const VERSO_BUILD = '2026-11-10 03:17';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -54594,8 +54596,8 @@ async function zzz_media_el(kind, name) {
     try { zzz_busy_start(label, true); } catch (e) {}
     try {
       const at = await zzz6f2_get_next_entry_id_atomic();
-      let id = at && at.success ? at.id : 0;
-      if (!id) id = zzz6f2_compute_next_entry_id(await zzz6f2_get_known_entries());
+      let id = at && at.success ? Number(at.id) : 0;
+      if (!id) id = Number(zzz6f2_compute_next_entry_id(await zzz6f2_get_known_entries()));
       const fields = { r2: '', r3: 'media', r4: me, r5: 'media', r7: 'ano', r9: label, tags: 'media ' + (kind === 'pls' ? 'playlist' : 'tab'), mkey: key };
       const payload = { entry_id: id, r1: '', fields_json: JSON.stringify(fields), entry_date: zzz6f14_format_today(), username: zzz0r1_get_current_username(), updated_at: new Date().toISOString(), zzz_session_id: zzz_sessionId };
       const { error } = await sb.from('verso_entries').upsert(payload, { onConflict: 'entry_id' });
