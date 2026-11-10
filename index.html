@@ -28813,7 +28813,7 @@ function zzz_rs_path_norm(p) { return String(p || '').split(/\s*[›>\/]\s*/).ma
 function zzz_rs_key(p) { return 'read:' + zzz_rs_path_norm(p).toLowerCase(); }
 function zzz_rs_host(link) { try { return new URL(link).hostname.replace(/^www\./, ''); } catch (e) { return String(link || '').slice(0, 40); } }
 
-const ZZZ_RS_SETUP_DEF = { store: 'off', keep: 'all', cache: 20, locked: [], img: 'verso', pages: 'auto' };
+const ZZZ_RS_SETUP_DEF = { store: 'off', keep: 'all', cache: 20, locked: [], img: 'verso', pages: 'auto', clip: 'on' };
 function zzz_rs_setup() {
   if (zzzRs.setup && zzzRs.setup._u === zzz_rs_me()) return zzzRs.setup;
   let p = {}; try { p = JSON.parse(localStorage.getItem(zzz_ukey('zzz_rs_setup')) || '{}') || {}; } catch (e) { p = {}; }
@@ -28830,7 +28830,7 @@ async function zzz_rs_setup_pull() {
   } catch (e) {}
 }
 async function zzz_rs_setup_save(p) {
-  const u = zzz_rs_me(); const clean = { store: p.store, keep: p.keep, cache: Number(p.cache) || 0, img: ['verso', 'tap', 'direct'].indexOf(p.img) >= 0 ? p.img : 'verso', pages: p.pages === 'verso' ? 'verso' : 'auto', locked: Array.isArray(p.locked) ? p.locked.slice(0, 200) : [] };
+  const u = zzz_rs_me(); const clean = { store: p.store, keep: p.keep, cache: Number(p.cache) || 0, img: ['verso', 'tap', 'direct'].indexOf(p.img) >= 0 ? p.img : 'verso', pages: p.pages === 'verso' ? 'verso' : 'auto', clip: p.clip === 'off' ? 'off' : 'on', locked: Array.isArray(p.locked) ? p.locked.slice(0, 200) : [] };
   zzzRs.setup = zzz_b26_apply('read_setup', Object.assign({}, clean, { _u: u }), clean);
   try { localStorage.setItem(zzz_ukey('zzz_rs_setup'), JSON.stringify(clean)); } catch (e) {}
   if (!u || typeof sb === 'undefined' || !sb) return;
@@ -29046,7 +29046,7 @@ async function zzz_rs_load(force) {
       notes.filter(n => n.note_part && /^verso:keep\b/.test(String(n.note_text || ''))).forEach(n => { keeps[n.entry_key + '#' + n.note_number] = n; });
       zzzRs.diss = {};
       notes.filter(n => n.note_part && !/^verso:keep\b/.test(String(n.note_text || ''))).forEach(n => { const k = n.entry_key + '#' + n.note_number; (zzzRs.diss[k] = zzzRs.diss[k] || []).push(n); });
-      zzzRs.lines = notes.filter(n => !n.note_part && /(^|\s)reads(\s|$)/.test(String(n.note_tags || '')) && !/(^|\s)trash(\s|$)/.test(String(n.note_tags || '')))
+      zzzRs.lines = notes.filter(n => !n.note_part && /(^|\s)(bundles|reads)(\s|$)/.test(String(n.note_tags || '')) && !/(^|\s)trash(\s|$)/.test(String(n.note_tags || '')))
         .map(n => zzz_rs_item(n, byId[String(n.entry_key)], keeps[n.entry_key + '#' + n.note_number]));
       zzzRs.loadedOf = me;
     } catch (e) { zzz_user_error('READ SPACE could not load your pages - check the connection and open it again.', e, '[Zzz5-W10:READ-MODEL]', 'warn'); }
@@ -29057,7 +29057,7 @@ async function zzz_rs_load(force) {
 function zzz_rs_item(n, el, keep) {
   const raw = String(n.note_text || '').trim().split(/\s+/)[0] || '';
   return { id: n.id, num: n.note_number, entry: String(n.entry_key), note: n, link: /^https?:\/\//i.test(raw) ? zzz_media_norm(raw) : raw,
-    name: String(n.note_name || '').trim(), tags: String(n.note_tags || '').split(/\s+/).filter(t => t && t !== 'reads').join(' '),
+    name: String(n.note_name || '').trim(), tags: String(n.note_tags || '').split(/\s+/).filter(t => t && t !== 'reads' && t !== 'bundles').join(' '),
     seen: n.note_status === 'done', path: el ? el.path : '', keep: keep || null };
 }
 
@@ -29105,14 +29105,43 @@ async function zzz_rs_add(link, path) {
   if (!el) return null;
   const d = await zzz_rs_fetch(link);
   const name = String((d && !d.error && d.title) || zzz_rs_host(link)).replace(/\s+/g, ' ').trim().slice(0, 60);
-  const n = await zzz1cn_add(String(el.id), link, true, null, name, true, false, [], 'reads');
+  const n = await zzz1cn_add(String(el.id), link, true, null, name, true, false, [], 'bundles');
   if (!n) return null;
-  const it = zzz_rs_item(Object.assign({ note_text: link, note_name: name, note_tags: 'reads', entry_key: String(el.id) }, n), el, null);
+  const it = zzz_rs_item(Object.assign({ note_text: link, note_name: name, note_tags: 'bundles', entry_key: String(el.id) }, n), el, null);
   zzzRs.lines.push(it);
   const st = zzz_rs_setup().store;
   if (st !== 'off' && d && !d.error) { try { await zzz_rs_keep(it, d, st); } catch (e) {} }
   return it;
 }
+
+let zzzRsClipBusy = false;
+async function zzz_rs_clip_auto() {
+  if (zzzRsClipBusy || !zzz_rs_me() || document.visibilityState !== 'visible' || !document.hasFocus()) return;
+  if (zzz_rs_setup().clip === 'off') return;
+  zzzRsClipBusy = true;
+  try {
+    let t = ''; try { t = await navigator.clipboard.readText(); } catch (e) { return; }
+    const m = String(t || '').match(/https?:\/\/[^\s<>"']+/);
+    if (!m) return;
+    let link = m[0];
+    try { if (typeof zzz_media_is_media_link === 'function' && zzz_media_is_media_link(link)) return; } catch (e) {}
+    let host = ''; try { host = new URL(link).hostname.toLowerCase(); } catch (e) { return; }
+    if (host === location.hostname || /(^|\.)vercel\.app$|(^|\.)supabase\.co$/.test(host)) return;
+    link = zzz_media_norm(link);
+    let last = ''; try { last = localStorage.getItem(zzz_ukey('zzz_rs_clip_last')) || ''; } catch (e) {}
+    if (link === last) return;
+    try { localStorage.setItem(zzz_ukey('zzz_rs_clip_last'), link); } catch (e) {}
+    await zzz_rs_load();
+    const have = zzzRs.lines.find(x => x.link === link);
+    if (have) { zzz6f2_show_toast('Copied link is already in READ SPACE' + ZZZ_RS_SEP + (have.path || ''), 'info', 2200); return; }
+    zzz6f2_show_toast('Copied link → READ SPACE' + ZZZ_RS_SEP + 'ACTUAL …', 'info', 1600);
+    const it = await zzz_rs_add(link, 'ACTUAL');
+    if (it) { zzz6f2_show_toast('READ SPACE' + ZZZ_RS_SEP + 'ACTUAL: ' + (it.name || zzz_rs_host(link)) + ' - open READ SPACE to read it.', 'info', 3000); if (zzzRs.open) zzz_rs_render(); }
+  } catch (e) {} finally { zzzRsClipBusy = false; }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(zzz_rs_clip_auto, 1300); });
+window.addEventListener('focus', () => setTimeout(zzz_rs_clip_auto, 1300));
+setTimeout(() => { try { zzz_rs_clip_auto(); } catch (e) {} }, 7000);
 
 async function zzz_rs_keep(it, d, range) {
   if (!it || !d || d.error) { zzz6f2_show_toast('Nothing to keep - the page was not read.', 'warn'); return false; }
@@ -29537,7 +29566,7 @@ function zzz_rs_setup_window() {
   const o = document.createElement('div'); o.className = 'zzz-media-confirm'; o.setAttribute('data-zzz-nodraft', '1');
   const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzz-rs-setup';
   const t = document.createElement('div'); t.className = 'zzz-media-confirm-text'; t.textContent = 'READ SETUP'; b.appendChild(t);
-  const cur = { store: s.store, keep: s.keep, cache: s.cache, img: s.img || 'verso', pages: s.pages || 'auto', locked: (s.locked || []).slice() };
+  const cur = { store: s.store, keep: s.keep, cache: s.cache, img: s.img || 'verso', pages: s.pages || 'auto', clip: s.clip || 'on', locked: (s.locked || []).slice() };
   const group = (label, key, opts, help) => {
     const g = document.createElement('div'); g.className = 'zzz-rs-set-g';
     const l = document.createElement('div'); l.className = 'zzz-rs-set-l'; l.textContent = label; g.appendChild(l);
@@ -29550,6 +29579,7 @@ function zzz_rs_setup_window() {
   };
 
   group('PAGES', 'pages', [['auto', 'AUTO'], ['verso', 'VIA VERSO']], 'AUTO = in the Verso app the phone reads the page itself (the site sees your IP, Verso does not see what you read); on the web the Verso server reads it (the site sees only Verso). Now here: ' + (zzz_rs_direct_able() ? 'DIRECT (Verso app).' : 'VIA VERSO (' + (zzz14b17_in_app() ? 'update the Verso app for DIRECT' : 'web version') + ').') + ' VIA VERSO = always the Verso server.');
+  group('COPIED LINKS', 'clip', [['on', 'TAKE'], ['off', 'OFF']], 'TAKE = a web link you copy anywhere (browser › Share › Copy link) comes into READ SPACE › ACTUAL by itself when Verso comes to the front. Media links (YouTube, Instagram …) go to MEDIA CENTER. Nothing else of the clipboard is kept.');
   group('A NEW PAGE STORES', 'store', [['off', 'NOTHING'], ['excerpt', 'EXCERPT'], ['text', 'TEXT'], ['all', 'TEXT + IMAGES']], 'Stored in the Verso database with the page line. NOTHING = only link + description; the content is read again when opened.');
   group('KEEP CONTENT STORES', 'keep', [['text', 'TEXT'], ['all', 'TEXT + IMAGES']], 'Images are stored only as their links.');
   group('IMAGES', 'img', [['verso', 'AUTO VIA VERSO'], ['tap', 'ON TAP'], ['direct', 'DIRECT']], 'AUTO VIA VERSO = shown at once, fetched by the Verso server (the site never sees your phone). DIRECT = like a normal browser (the site sees your IP). ON TAP = nothing until you tap.');
@@ -50592,7 +50622,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-10 02:25';
+const VERSO_BUILD = '2026-11-10 02:32';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
