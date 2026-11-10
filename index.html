@@ -29083,12 +29083,19 @@ function zzz_rs_item(n, el, keep) {
     seen: n.note_status === 'done', path: el ? el.path : '', keep: keep || null };
 }
 
+const zzzRsFolderBusy = {};
 async function zzz_rs_folder(path, create, quiet) {
   path = zzz_rs_path_norm(path);
   if (!path) return null;
   const key = zzz_rs_key(path), me = zzz_rs_me();
   if (zzzRs.els[key]) return zzzRs.els[key];
   if (!create || !me) return null;
+  if (zzzRsFolderBusy[key]) return zzzRsFolderBusy[key];
+  const run = zzz_rs_folder_make(path, key, me, quiet);
+  zzzRsFolderBusy[key] = run;
+  try { return await run; } finally { delete zzzRsFolderBusy[key]; }
+}
+async function zzz_rs_folder_make(path, key, me, quiet) {
 
   const parts = path.split(ZZZ_RS_SEP);
   if (parts.length > 1) { const up = await zzz_rs_folder(parts.slice(0, -1).join(ZZZ_RS_SEP), true, true); if (!up) return null; }
@@ -29123,14 +29130,23 @@ async function zzz_rs_add(link, path) {
   await zzz_rs_load();
   const have = zzzRs.lines.find(x => x.link === link);
   if (have) { zzz6f2_show_toast('Already in READ' + ZZZ_RS_SEP + (have.path || '') + ' - opened.', 'info'); zzz_rs_open_page(have); return have; }
+  if (zzzRsAddBusy[link]) return zzzRsAddBusy[link];
+  const run = zzz_rs_add_now(link, path);
+  zzzRsAddBusy[link] = run;
+  try { return await run; } finally { delete zzzRsAddBusy[link]; }
+}
+const zzzRsAddBusy = {};
+async function zzz_rs_add_now(link, path) {
   const el = await zzz_rs_folder(path || zzzRs.path || 'ACTUAL', true);
   if (!el) return null;
-  const d = await zzz_rs_fetch(link);
-  const name = String((d && !d.error && d.title) || zzz_rs_host(link)).replace(/\s+/g, ' ').trim().slice(0, 60);
+  let name = zzz_rs_host(link);
   const n = await zzz1cn_add(String(el.id), link, true, null, name, true, false, [], 'bundles');
-  if (!n) return null;
+  if (!n) { zzz6f2_show_toast('The link could not be saved - check the connection and try again.', 'warn', 2400); return null; }
   const it = zzz_rs_item(Object.assign({ note_text: link, note_name: name, note_tags: 'bundles', entry_key: String(el.id) }, n), el, null);
   zzzRs.lines.push(it);
+  const d = await zzz_rs_fetch(link);
+  const title = String((d && !d.error && d.title) || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (title && title !== name) { try { await zzz_rs_set_name(it, title); } catch (e) {} }
   const st = zzz_rs_setup().store;
   if (st !== 'off' && d && !d.error) { try { await zzz_rs_keep(it, d, st); } catch (e) {} }
   return it;
@@ -29329,7 +29345,7 @@ function zzz_rs_feeder() {
   w.appendChild(head);
   w.appendChild(zzz_rs_show_bar(inPath));
   const add = document.createElement('div'); add.className = 'zzz-rs-add';
-  const inp = document.createElement('input'); inp.type = 'url'; inp.className = 'zzz-rs-add-in'; inp.placeholder = 'ADD CONTENT - paste a link'; inp.autocomplete = 'off';
+  const inp = document.createElement('input'); inp.type = 'url'; inp.className = 'zzz-rs-add-in'; inp.placeholder = 'ADD CONTENT - paste a link'; inp.autocomplete = 'off'; inp.setAttribute('data-zzz-nodraft', '1');
   const go = document.createElement('button'); go.type = 'button'; go.className = 'zzz14cs-feed-send zzz-rs-add-go'; go.textContent = '+ ADD';
   go.title = 'Adds the page into ' + (zzzRs.path || 'ACTUAL') + ' - its title becomes the DESCRIPTION';
   const doAdd = async () => {
@@ -29400,7 +29416,8 @@ function zzz_rs_show_bar(inPath) {
   if (any) row.appendChild(chip('✕', false, () => { s0.notes = 0; s0.today = 0; s0.week = 0; s0.sites = {}; s0.q = ''; s0.find = false; }, 'Show everything again'));
   box.appendChild(row);
   if (s0.find || s0.q) {
-    const fi = document.createElement('input'); fi.type = 'text'; fi.className = 'zzz-rs-add-in zzz-rs-show-find'; fi.placeholder = 'SHOW only bundles with… (a, b = or)'; fi.value = s0.q || '';
+    const fi = document.createElement('input'); fi.type = 'text'; fi.className = 'zzz-rs-show-find'; fi.setAttribute('data-zzz-nodraft', '1');
+    fi.classList.add('zzz-rs-add-in'); fi.placeholder = 'SHOW only bundles with… (a, b = or)'; fi.value = s0.q || '';
     let t = null;
     fi.addEventListener('input', () => { s0.q = fi.value; zzz_rs_show_save(); clearTimeout(t); t = setTimeout(() => {
       const list = document.querySelector('#zzzRsSpace .zzz-rs-list'); if (!list) return;
@@ -50823,7 +50840,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-10 03:54';
+const VERSO_BUILD = '2026-11-10 12:41';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
