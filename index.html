@@ -30081,7 +30081,7 @@ function zzz_rdr_ws_btn(title, place) {
     const uniq = zzz_rdr_ws_rows(ws);
     zzz_rdr_list_show((ws && ws.zzzRdrPlace) || place, uniq);
   });
-  const x = title.querySelector('.zzz4-0-close-x');
+  const x = title.querySelector(':scope > .zzz4-0-close-x, :scope > .zzz5w5cm-close');
   if (x) title.insertBefore(b, x); else title.appendChild(b);
 }
 
@@ -30167,6 +30167,45 @@ function zzz_rdr_dom_items(root, fallback) {
     });
   });
   return items.filter(it => it.title);
+}
+
+function zzz_rdr_notes_items(st) {
+  if (!st) return [];
+  const byE = {}, order = [];
+  (st.list || []).forEach(n => { const ek = String(n.entry_key || ''); if (!byE[ek]) { byE[ek] = []; order.push(ek); } byE[ek].push(n); });
+  if (st.tab === 'credits') Object.keys(st.entryMap || {}).forEach(ek => { try { if (!byE[ek] && zzz6f22_credits_user(st.entryMap[ek].f, zzz0r1_get_current_username())) { byE[ek] = []; order.push(ek); } } catch (e) {} });
+  return order.map(ek => {
+    const c = (st.entryMap || {})[ek] || {};
+    const notes = byE[ek].slice().sort((a, b) => (Number(a.note_number) || 0) - (Number(b.note_number) || 0) || String(a.note_part || '').localeCompare(String(b.note_part || '')));
+    const nameOf = c.projectName || (c.f && (c.f.r3 || c.f.r9)) || '';
+    return {
+      group: String(nameOf || c.project || 'NO PROJECT').toUpperCase(),
+      title: '#' + ek + (nameOf ? ' · ' + nameOf : ''),
+      meta: [c.owner ? 'owner ' + c.owner : '', notes.length + ' notes'].filter(Boolean).join(' · '),
+      kind: 'DATA',
+      subs: notes.slice(0, 200).map(n => ({ kind: 'DATA', title: (n.note_part ? '  ↳ ' : '') + '#' + n.note_number + (n.note_part ? '/' + n.note_part : '') + ' · ' + (n.username || ''), info: String(n.note_text || '').replace(/\s+/g, ' ').slice(0, 400) + (n.is_private ? ' 🔒' : '') + (n.note_status === 'done' ? ' ✓' : '') })),
+      open: () => zzz_rdr_open(ek, { from: 'NOTES' })
+    };
+  });
+}
+
+function zzz_rdr_comm_items(wrap) {
+  const items = [];
+  const t = (el) => String(el ? el.textContent : '').replace(/\s+/g, ' ').trim();
+  try {
+    Array.from(wrap.querySelectorAll('.zzz5t0-tab')).forEach(b => {
+      const cnt = b.querySelector('.zzz5w5cm-count'); if (!cnt) return;
+      const lab = t(b.firstElementChild || b);
+      items.push({ group: 'TABS', title: lab + ' ' + t(cnt), kind: 'UI', meta: /active/.test(b.className) ? 'shown now' : '', open: () => { try { b.click(); } catch (e) {} } });
+    });
+  } catch (e) {}
+  try { (typeof zzz5w5cmMyContacts !== 'undefined' ? zzz5w5cmMyContacts : []).forEach(c => items.push({ group: 'CONTACTS', title: String(c.name || ''), info: [].concat(c.tags || []).join(', '), kind: 'DATA' })); } catch (e) {}
+  try { (typeof zzz5w5cmMyGroups !== 'undefined' ? zzz5w5cmMyGroups : []).forEach(g => items.push({ group: 'GROUPS', title: String(g.name || ''), info: [].concat(g.members || []).join(', '), kind: 'DATA' })); } catch (e) {}
+  try {
+    zzz_rdr_ws_rows(wrap).forEach(r => { const f = (typeof zzz_parse_fields_json === 'function' ? zzz_parse_fields_json(r) : r.fields_json) || {};
+      items.push({ group: 'ATTACHED RECORDS', title: '#' + r.entry_id + (f.r3 ? ' · ' + f.r3 : ''), info: String(f.r9 || ''), meta: String(f.r4 || r.username || ''), kind: 'DATA', open: () => zzz_rdr_open(r.entry_id, { from: 'COMMUNICATION' }) }); });
+  } catch (e) {}
+  return items.filter(x => x.title);
 }
 function zzz_rdr_list_show(place, rows) {
   const fr = zzz_rdr_frame(place, place + ' · ' + rows.length + ' records', place);
@@ -36980,6 +37019,10 @@ function open_communication_workspace() {
   workspace.innerHTML = '';
   const wrap = document.createElement('div');
   wrap.className = 'db-workspace communication-workspace';
+
+  wrap.setAttribute('data-zzz-rdr-ws', '1'); wrap.zzzRdrPlace = 'COMMUNICATION';
+  Object.defineProperty(wrap, 'zzzRdrTitle', { configurable: true, get: () => wrap.querySelector('.zzz5w5cm-module-label') });
+  wrap.zzzRdrItems = () => zzz_rdr_comm_items(wrap);
   workspace.appendChild(wrap);
   zzz5w5cm_render();
   zzz5w5cm_sync_button_gold();
@@ -45211,6 +45254,11 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
   title.title = 'Notes workspace - notes across all entries';
   head.appendChild(title);
 
+  win.setAttribute('data-zzz-rdr-ws', '1');
+  Object.defineProperty(win, 'zzzRdrPlace', { configurable: true, get: () => 'NOTES › ' + ((ZZZ1CN_WS_TABS.find(t => t.key === activeTab) || {}).label || activeTab) });
+  win.zzzRdrItems = () => zzz_rdr_notes_items(win.zzzRdrState);
+  setTimeout(() => zzz_rdr_ws_btn(head, 'NOTES'), 0);
+
   const view = { on: {}, q: '', from: 0, to: 0, at: 0, name: '', show: '', users: {}, usersq: '', extra: {},
                  tags: {},
                  subs: {},
@@ -45563,6 +45611,8 @@ async function zzz1cn_open_notes_workspace(anchorEl) {
   function render() {
     body.innerHTML = '';
     const list = visible();
+
+    win.zzzRdrState = { list, entryMap, tab: activeTab };
 
     const groups = {};
     list.forEach(n => {
@@ -51423,7 +51473,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-10 18:57';
+const VERSO_BUILD = '2026-11-10 19:16';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
