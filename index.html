@@ -30075,7 +30075,8 @@ function zzz_rdr_ws_btn(title, place) {
   b.addEventListener('pointerdown', (e) => e.stopPropagation());
   b.addEventListener('click', (e) => {
     e.stopPropagation();
-    const ws = title.closest('.db-workspace') || title.parentElement;
+    const ws = title.closest('[data-zzz-rdr-ws], .db-workspace') || title.parentElement;
+    if (ws && typeof ws.zzzRdrItems === 'function') { zzz_rdr_items_show(ws.zzzRdrPlace || place, ws.zzzRdrItems() || []); return; }
     const uniq = zzz_rdr_ws_rows(ws);
     zzz_rdr_list_show((ws && ws.zzzRdrPlace) || place, uniq);
   });
@@ -30091,6 +30092,10 @@ function zzz_rdr_ws_rows(ws) {
 
 function zzz_rdr_auto_scan() {
   const host = document.getElementById('versoWorkspaceSection'); if (!host) return;
+  host.querySelectorAll('[data-zzz-rdr-ws]').forEach(ws => {
+    if (typeof ws.zzzRdrItems !== 'function' || !ws.zzzRdrTitle || ws.zzzRdrTitle.querySelector('.zzz-rdr-wsbtn')) return;
+    zzz_rdr_ws_btn(ws.zzzRdrTitle, ws.zzzRdrPlace || 'WORKSPACE');
+  });
   host.querySelectorAll('.db-workspace').forEach(ws => {
     const t = ws.querySelector(':scope > .db-workspace-title'); if (!t || t.querySelector('.zzz-rdr-wsbtn')) return;
     if (!ws.zzzRdrRows && !ws.querySelector('.db-workspace-entry-row')) return;
@@ -30104,6 +30109,29 @@ function zzz_rdr_auto_scan() {
     try { new MutationObserver(() => { if (tm) return; tm = setTimeout(() => { tm = 0; try { zzz_rdr_auto_scan(); } catch (e) {} }, 250); }).observe(host, { childList: true, subtree: true }); } catch (e) {} };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
 })();
+
+function zzz_rdr_items_show(place, items) {
+  const fr = zzz_rdr_frame(place, place + ' · ' + items.length, place);
+  const { content, blk } = fr;
+  const groups = {}, order = [];
+  items.forEach(it => { const g = String(it.group || place).toUpperCase(); if (!groups[g]) { groups[g] = []; order.push(g); } groups[g].push(it); });
+  order.forEach(g => {
+    content.appendChild(blk('h2', 'zzz-rs-h', g + ' · ' + groups[g].length, 'GROUP ' + g));
+    groups[g].forEach((it, i) => {
+      const e = blk('div', 'zzz-rdr-line' + (it.open ? ' zzz-rdr-rec' : ''), undefined, g + ' › ' + String(it.title || i + 1).toUpperCase());
+      e.setAttribute('data-vkind', it.kind || 'UI');
+      if (it.meta) { const h = document.createElement('div'); h.className = 'zzz-rdr-lh'; h.textContent = it.meta; e.appendChild(h); }
+      const nm = document.createElement('b'); nm.textContent = it.title || ''; e.appendChild(nm);
+      if (it.info) { const d = document.createElement('div'); d.className = 'zzz-rdr-tx'; d.textContent = it.info; e.appendChild(d); }
+      (it.subs || []).forEach(sb2 => { const d = document.createElement('div'); d.className = 'zzz-rdr-sub'; d.setAttribute('data-vkind', sb2.kind || 'FN'); d.textContent = '↳ ' + (sb2.title || '') + (sb2.info ? ': ' + sb2.info : ''); e.appendChild(d); });
+      if (it.open) { e.title = 'Tap = open it'; e.addEventListener('click', (ev) => { ev.stopPropagation(); const o = document.getElementById('zzzRdr'); if (o) o.remove(); try { it.open(); } catch (er) {} }); }
+      content.appendChild(e);
+    });
+  });
+  if (!items.length) content.appendChild(blk('p', 'zzz-rs-meta', 'Nothing here yet.', 'EMPTY'));
+  fr.copyAll();
+  fr.finish();
+}
 function zzz_rdr_list_show(place, rows) {
   const fr = zzz_rdr_frame(place, place + ' · ' + rows.length + ' records', place);
   const { content, blk } = fr;
@@ -51355,7 +51383,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-10 17:25';
+const VERSO_BUILD = '2026-11-10 17:42';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -59457,9 +59485,24 @@ function open_apps_workspace() {
   const body = document.createElement('div'); body.className = 'zzz5w9-body';
   mod.append(head, tabs, body);
   wrap.appendChild(mod);
+
+  wrap.setAttribute('data-zzz-rdr-ws', '1'); wrap.zzzRdrPlace = 'APPS'; wrap.zzzRdrTitle = head; wrap.zzzRdrItems = zzz5w9_rdr_items;
   workspace.appendChild(wrap);
   zzz5w9_render();
   zzz5w9_load();
+}
+function zzz5w9_rdr_items() {
+  const apps = (zzz5w9Catalog && zzz5w9Catalog.apps) || [];
+  return apps.map(a => {
+    let st = null; try { st = zzz5w9_status(a); } catch (e) {}
+    return {
+      group: a.group === 'system' ? 'VERSO SYSTEM APPS' : (a.group === 'module' ? 'MODULE APPS' : String(a.group || 'OTHER').toUpperCase()),
+      title: a.name, info: a.info || '', meta: [a.kind === 'part' ? 'part of ' + ((zzz5w9_item(a.in) || {}).name || a.in) : '', st ? st.text : ''].filter(Boolean).join(' · '),
+      kind: a.kind === 'gated' || a.kind === 'apk' ? 'UI' : 'FN',
+      subs: (a.modules || []).map(m => ({ title: m.name, info: m.info || '', kind: 'FN' })),
+      open: () => { zzz5w9Focus = a.id; try { zzz5w9_render(); } catch (e) {} }
+    };
+  });
 }
 function close_apps_workspace() {
   const workspace = document.getElementById('versoWorkspaceSection');
