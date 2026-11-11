@@ -21648,6 +21648,7 @@ function zzz6f7_set_login_state(isLoggedIn) {
   const label = document.getElementById('zzz6f7UsernameLabel');
   if (!label) return;
   zzz6f7_isLoggedIn = isLoggedIn;
+  if (isLoggedIn) try { zzz_mem_step('login'); } catch (e) {}
   label.classList.toggle('zzz6-f7-active', !!isLoggedIn);
   if (isLoggedIn) { try { zzz10r2_user_switch_guard(); } catch (e) {   } }
   if (isLoggedIn) zzz0r1_sync_username_into_cl();
@@ -30195,6 +30196,7 @@ function zzz_rdr_pass(e, v, h) {
   return true;
 }
 function zzz_rdr_frame(root, headText, swTitle) {
+  try { zzz_mem_step('reader ' + root); } catch (e) {}
   const old = document.getElementById('zzzRdr'); if (old) old.remove();
   const ov = document.createElement('div'); ov.id = 'zzzRdr'; ov.className = 'zzz-rdr'; ov.setAttribute('data-zzz-nodraft', '1');
   const box = document.createElement('div'); box.className = 'zzz-rs-reader zzz-rdr-box'; box.setAttribute('data-vkind', 'UI'); box.setAttribute('data-vlabel', 'VERSO › ' + root);
@@ -30406,7 +30408,8 @@ function zzz_rdr_auto_scan() {
 }
 (function zzz_rdr_auto_watch() {
   let tm = 0;
-  const go = () => { const host = document.getElementById('versoWorkspaceSection'); if (!host) { setTimeout(go, 1000); return; }
+  const go = () => { if (typeof zzz_minimal === 'function' && zzz_minimal()) return;
+    const host = document.getElementById('versoWorkspaceSection'); if (!host) { setTimeout(go, 1000); return; }
     try { new MutationObserver(() => { if (tm) return; tm = setTimeout(() => { tm = 0; try { zzz_rdr_auto_scan(); } catch (e) {} }, 250); }).observe(host, { childList: true, subtree: true }); } catch (e) {} };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
 })();
@@ -42178,6 +42181,7 @@ function zzz1cn_notes_maxts(list) {
 }
 async function zzz1cn_notif_load(opts) {
   if (zzz1cnNotifBusy) return zzz1cnNotifMap;
+  try { zzz_mem_step('notifications'); } catch (e) {}
   zzz1cnNotifBusy = true;
   try {
     const meNow = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
@@ -43532,7 +43536,7 @@ function zzz16_bytes_b64u(buf) {
 const zzzIssueState = { sent: new Set(), n: 0, off: false };
 
 const ZZZ_MEM_KEY = 'zzz_mem_watch';
-const zzzMem = { samples: [], lastSent: 0 };
+const zzzMem = { samples: [], lastSent: 0, step: 'start', stepAt: Date.now() };
 function zzz_mem_on() { try { return localStorage.getItem(ZZZ_MEM_KEY + '_off') !== '1'; } catch (e) { return true; } }
 function zzz_mem_set_on(on) { try { localStorage.setItem(ZZZ_MEM_KEY + '_off', on ? '0' : '1'); } catch (e) {} }
 function zzz_mem_sample() {
@@ -43561,9 +43565,12 @@ function zzz_mem_tick() {
   }
 }
 
+function zzz_minimal() { try { if (/[?&#]minimal(=1)?\b/.test(location.search + location.hash)) localStorage.setItem('zzz_minimal', '1'); return localStorage.getItem('zzz_minimal') === '1'; } catch (e) { return false; } }
+function zzz_minimal_set(on, why) { try { localStorage.setItem('zzz_minimal', on ? '1' : '0'); } catch (e) {} try { zzz6f2_show_toast(on ? '⚡ MINIMAL MODE on' + (why ? ' - ' + why : '') + '. SETTINGS › Setup (first box) to switch off.' : 'MINIMAL MODE off - the next start is normal.', on ? 'warn' : 'ok', 6000); } catch (e) {} }
+function zzz_mem_step(label) { try { zzzMem.step = String(label || '').slice(0, 40); zzzMem.stepAt = Date.now(); } catch (e) {} }
 const ZZZ_MEM_ALIVE = 'zzz_mem_alive';
 
-function zzz_mem_alive_beat() { try { if (zzz_mem_on()) localStorage.setItem(ZZZ_MEM_ALIVE, JSON.stringify({ t: Date.now(), since: zzzMem.since || (zzzMem.since = Date.now()), build: typeof VERSO_BUILD === 'string' ? VERSO_BUILD : '', hidden: !!document.hidden, hiddenAt: document.hidden ? (zzzMem.hiddenAt || (zzzMem.hiddenAt = Date.now())) : (zzzMem.hiddenAt = 0), sample: zzz_mem_sample() })); } catch (e) {} }
+function zzz_mem_alive_beat() { try { if (zzz_mem_on()) localStorage.setItem(ZZZ_MEM_ALIVE, JSON.stringify({ t: Date.now(), since: zzzMem.since || (zzzMem.since = Date.now()), build: typeof VERSO_BUILD === 'string' ? VERSO_BUILD : '', step: zzzMem.step, hidden: !!document.hidden, hiddenAt: document.hidden ? (zzzMem.hiddenAt || (zzzMem.hiddenAt = Date.now())) : (zzzMem.hiddenAt = 0), sample: zzz_mem_sample() })); } catch (e) {} }
 try { document.addEventListener('visibilitychange', () => { if (!document.hidden) zzzMem.hiddenAt = 0; zzz_mem_alive_beat(); }); } catch (e) {}
 let zzzMemPrev = null;
 function zzz_mem_alive_check() {
@@ -43572,13 +43579,19 @@ function zzz_mem_alive_check() {
   if (typeof zzz6f7_isLoggedIn === 'undefined' || !zzz6f7_isLoggedIn) { setTimeout(zzz_mem_alive_check, 15000); return; }
   zzzMemPrev = null;
   const x = a.sample || {};
+  if (!a.hidden && a.t - (a.since || a.t) < 60000) {
+    let h = []; try { h = JSON.parse(localStorage.getItem('zzz_kill_hist') || '[]').filter(t => Date.now() - t < 15 * 60000); } catch (e) {}
+    h.push(Date.now()); try { localStorage.setItem('zzz_kill_hist', JSON.stringify(h)); } catch (e) {}
+    if (h.length >= 2 && !zzz_minimal()) zzz_minimal_set(true, 'Verso stopped twice at the start');
+  }
   const where = a.hidden ? 'in the BACKGROUND (hidden ' + Math.round((a.t - (a.hiddenAt || a.t)) / 60000) + ' min before - Android frees memory of hidden apps)' : 'while VISIBLE (in front)';
-  try { zzz_report_issue('page-killed', 'PAGE KILLED ' + where + ' · last: ' + (x.heap ? x.heap + ' of ' + x.limit + ' MB' : 'heap ?') + ' · ' + (x.nodes || 0) + ' elements · ran ' + Math.round((a.t - (a.since || a.t)) / 60000) + ' min · build ' + (a.build || '?'), { tags: ['page-killed', 'memory'], mem: a }); } catch (e) {}
+  try { zzz_report_issue('page-killed', 'PAGE KILLED ' + where + ' · last: ' + (x.heap ? x.heap + ' of ' + x.limit + ' MB' : 'heap ?') + ' · ' + (x.nodes || 0) + ' elements · ran ' + Math.round((a.t - (a.since || a.t)) / 1000) + ' s · last step: ' + (a.step || '?') + ' · build ' + (a.build || '?'), { tags: ['page-killed', 'memory'], mem: a }); } catch (e) {}
 }
 try {
   try { zzzMemPrev = JSON.parse(localStorage.getItem(ZZZ_MEM_ALIVE) || 'null'); } catch (e) { zzzMemPrev = null; }
   if (zzzMemPrev) setTimeout(zzz_mem_alive_check, 8000);
   setTimeout(() => { zzz_mem_alive_beat(); setInterval(zzz_mem_alive_beat, 20000); }, 3000);
+  for (let i = 1; i <= 25; i++) setTimeout(zzz_mem_alive_beat, 3000 + i * 2000);
   window.addEventListener('pagehide', () => { try { localStorage.removeItem(ZZZ_MEM_ALIVE); } catch (e) {} });
 } catch (e) {}
 try { setInterval(zzz_mem_tick, 60000); setTimeout(zzz_mem_tick, 20000); } catch (e) {}
@@ -44197,6 +44210,7 @@ const ZZZ_SET_REG = [
   { m: 'Translation · reading aloud', w: 'd', androidApp: true, scope: 'device', place: 'settings', help: 'Translation before reading aloud - in the Verso app (VERSO NOTIF MULTIREADER), language packs on this DEVICE.' },
   { m: 'NOTIFY READER', w: 'sd', scope: 'all', place: 'settings', help: 'How notifications are read aloud. Verso server per way of login; voices on this DEVICE.' },
   { m: 'CONTENT READER', w: 'sd', scope: 'all', place: 'settings', help: 'Reading texts aloud on request. Verso server per way of login; voices on this DEVICE.' },
+  { m: '⚡ MINIMAL MODE', w: 'd', scope: 'device', place: 'settings', help: 'Lighter start: the last windows are not reopened, automatic readers off. On by itself after two stops at the start (in front, < 1 min). Link #minimal turns it on. This DEVICE only. [Zzz14-SUPPORT:MINIMAL-MODE]' },
   { m: 'MEMORY WATCH · this device', w: 'd', scope: 'device', place: 'info', help: 'ℹ INFO (informative): notes every minute how much memory Verso uses on this DEVICE; high use goes quietly into your ISSUES record, the last value also goes with a crash report. Nothing else is stored or sent. Default ON. [Zzz14-SUPPORT:MEM-WATCH]' },
   { m: 'History is kept only on MY DEVICE', w: 'd', lock: true, scope: 'device', place: 'settings', help: 'Copied texts stay only on this DEVICE (in the Verso app encrypted by the phone’s security chip) - never sent anywhere, gone after a reinstall.' }
 ];
@@ -50968,6 +50982,19 @@ function open_settings_workspace() {
   } else if (zzz10_0ActiveTab === 'settings' && typeof zzz16_render_settings === 'function') {
     zzz16_render_settings(tabContent);
     try {
+      const mb = document.createElement('div'); mb.className = 'zzz16-box'; mb.id = 'zzzMinimalBox';
+      const mh = document.createElement('h3'); mh.textContent = '⚡ MINIMAL MODE'; mb.appendChild(mh);
+      const mr = document.createElement('div'); mr.className = 'zzz16-row';
+      const ml = document.createElement('div'); ml.textContent = 'Lighter start when Verso stops or is slow';
+      const ms = document.createElement('small'); ms.className = 'zzz14b2-now'; ms.textContent = 'Last windows are not reopened at start, automatic readers off. Your data, chats and notes stay. This device only; turns on by itself after two stops at the start.';
+      ml.appendChild(ms); mr.appendChild(ml);
+      const mbtn = document.createElement('button'); mbtn.type = 'button';
+      const paint = () => { const on = zzz_minimal(); mbtn.className = 'zzz16-btn' + (on ? ' is-on' : ''); mbtn.textContent = on ? 'ON' : 'OFF'; };
+      mbtn.addEventListener('click', () => { zzz_minimal_set(!zzz_minimal()); paint(); });
+      paint(); mr.appendChild(mbtn); mb.appendChild(mr);
+      tabContent.insertBefore(mb, tabContent.firstChild);
+    } catch (e) {}
+    try {
       const w = zzz16_who();
       const sh = document.createElement('div'); sh.className = 'zzz16-for';
       sh.textContent = 'SETTINGS FOR: ' + zzz16_runtime_label(w.rt) + ' \u00b7 ' + (w.u || '-')
@@ -52250,7 +52277,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-11 22:55';
+const VERSO_BUILD = '2026-11-11 23:06';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -53866,6 +53893,8 @@ window.addEventListener('pagehide', () => { if (zzzUi.restored) zzz_ui_save(true
 async function zzz_ui_restore() {
   const u = zzz_ui_user();
   if (!u) return;
+  if (zzz_minimal()) { zzz_mem_step('restore skipped (minimal)'); return; }
+  zzz_mem_step('restore');
   let st = null;
   try { st = JSON.parse(localStorage.getItem(ZZZ_UI_PREFIX + u) || 'null'); } catch (e) { st = null; }
   if (!st || !st.t || Date.now() - st.t > 7 * 24 * 3600 * 1000) return;
@@ -57630,6 +57659,7 @@ function zzz_verso_prompt(text, value, yes) {
   });
 }
 async function zzz_media_open() {
+  try { zzz_mem_step('media center'); } catch (e) {}
   let w = document.getElementById('zzzMediaWin');
   if (w) { w.remove(); zzz_media_place(); return; }
   w = document.createElement('div'); w.id = 'zzzMediaWin'; w.className = 'zzz-media-win';
