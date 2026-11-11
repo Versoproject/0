@@ -30137,7 +30137,8 @@ const ZZZ_RDR_PRESETS = {
   ORGANIZER:   [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }],
   NOTES:       [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'MINE · NEWEST', snap: { 'on:mine': true, sort: 'new' } }, { name: 'URGENT', snap: { 'on:urgent': true, sort: 'new' } }],
   RECORD:      [{ name: 'NEWEST', snap: { sort: 'new' } }, { name: 'MINE', snap: { 'on:mine': true } }, { name: 'URGENT', snap: { 'on:urgent': true } }],
-  'COMM SPACE': [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'URGENT', snap: { 'on:urgent': true, sort: 'new' } }]
+  'COMM SPACE': [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'URGENT', snap: { 'on:urgent': true, sort: 'new' } }],
+  'MEDIA CENTER': [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'UNREAD', snap: { 'on:open': true, sort: 'new' } }, { name: 'READ', snap: { 'on:done': true, sort: 'new' } }]
 };
 function zzz_rdr_place_key(root) { return String(root || '').replace(/\s+#\d+.*$/, '').split(' › ')[0].trim().toUpperCase() || 'READER'; }
 function zzz_rdr_presets_of(root) { const k = zzz_rdr_place_key(root); return ZZZ_RDR_PRESETS[k] || ZZZ_RDR_PRESETS['*']; }
@@ -30509,6 +30510,47 @@ function zzz_rdr_commspace_items() {
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else setTimeout(tick, 0);
 })();
+
+function zzz_rdr_media_items() {
+  const items = [];
+  let list = []; try { list = zzz_media_tablist_raw() || []; } catch (e) {}
+  const tab = String((typeof zzzMedia !== 'undefined' && zzzMedia.tab) || 'ACTUAL');
+  const where = zzz_media_tab_label(tab) + (zzzMedia.pls ? ' › ' + zzzMedia.pls : '') + (zzzMedia.view === 'fav' ? ' › ♥ FAVS' : '');
+  list.forEach((x, i) => {
+    const locked = zzz_media_locked_now(x);
+    const read = !!(x.seen || zzz_media_read_has(x.link));
+    const fav = zzz_media_tagw(x.tags).indexOf('fav') >= 0;
+    const file = /^verso-file:/.test(x.link || '');
+    items.push({ group: where, kind: 'DATA', t: (x.note && zzz1cn_time_of(x.note)) || 0,
+      title: locked ? '🔒 PRIVATE' : (x.name || zzz_media_link_name(x.link) || (file ? 'file' : x.link) || ('#' + (x.num || i + 1))),
+      info: locked ? '' : (file ? 'file on this device' : String(x.link || '')),
+      meta: ['#' + (x.num || i + 1), read ? 'READ' : 'UNREAD', fav ? '♥' : '', locked ? '' : zzz_media_tags_shown(x), (!locked && x.pls.length) ? '📂 ' + x.pls.join(', ') : '', zzz_media_is_problem(x) ? 'problem' : ''].filter(Boolean).join(' · '),
+      vf: { KIND: where, STATUS: read ? 'DONE' : 'OPEN', TAG: locked ? [] : zzz_media_own_tags(x) },
+      open: locked ? null : () => zzz_media_play(x, list) });
+  });
+  try {
+    zzz_media_playlists().forEach(pl => items.push({ group: 'PLAYLISTS · ' + zzz_media_tab_label(tab), kind: 'DATA', title: '📂 ' + pl.name, info: pl.items.length + ' media',
+      vf: { KIND: 'PLAYLIST' }, open: () => { zzzMedia.view = 'pls'; zzzMedia.pls = pl.name; zzz_media_redraw(); } }));
+  } catch (e) {}
+  return items;
+}
+function zzz_rdr_media_cover(w) {
+  const stages = () => Array.from(document.querySelectorAll('.zzz-media-stage'));
+  w.style.visibility = 'hidden'; stages().forEach(st => { st.style.visibility = 'hidden'; });
+  const iv = setInterval(() => {
+    if (document.getElementById('zzzRdr')) return;
+    clearInterval(iv); w.style.visibility = ''; stages().forEach(st => { st.style.visibility = ''; });
+    try { zzz_media_place(); } catch (e) {}
+  }, 250);
+}
+function zzz_rdr_media_hook(w, hr, x) {
+  try {
+    w.setAttribute('data-zzz-rdr-ws', '1'); w.zzzRdrPlace = 'MEDIA CENTER'; w.zzzRdrTitle = hr;
+    w.zzzRdrItems = () => { const it = zzz_rdr_media_items(); setTimeout(() => zzz_rdr_media_cover(w), 0); return it; };
+    zzz_rdr_ws_btn(hr, 'MEDIA CENTER');
+    const rb = hr.querySelector('.zzz-rdr-wsbtn'); if (rb && x) hr.insertBefore(rb, x);
+  } catch (e) {}
+}
 function zzz_rdr_list_show(place, rows) {
   const fr = zzz_rdr_frame(place, place + ' · ' + rows.length + ' records', place);
   const { content, blk } = fr;
@@ -52107,7 +52149,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-11 20:40';
+const VERSO_BUILD = '2026-11-11 20:59';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -57518,6 +57560,7 @@ async function zzz_media_open() {
       paint(); }); }
   const hr = document.createElement('span'); hr.className = 'zzz-media-head-r'; hr.append(fdB, modeB, x);
   head.append(ttl, hr); w.appendChild(head);
+  zzz_rdr_media_hook(w, hr, x);
   try { const vl = zzz_vi_line_el(); if (vl) w.appendChild(vl); } catch (e) {}
   const nowL = document.createElement('div'); nowL.className = 'zzz-media-now';
   { const nr = document.createElement('div'); nr.className = 'zzz-media-nowrow'; const grp = document.createElement('div'); grp.className = 'zzz-media-chipgrp'; grp.append(zzz_media_chip_button(), zzz_media_diss_bubble(), zzz_media_star_btn(), zzz_media_heart_btn()); nr.append(grp, nowL); w.appendChild(nr); }
