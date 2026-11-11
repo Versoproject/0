@@ -30127,8 +30127,10 @@ function zzz_rdr_item_btn(it, from) {
 
 const ZZZ_RDR_PRESETS = {
   '*':         [{ name: 'ALL · NEWEST', snap: { sort: 'new' } }],
-  ALL:         [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'ISSUES · BY DATE', snap: { 'limit:PROJECT CATEGORY': 'issues', sort: 'new' } }, { name: 'URGENT', snap: { 'on:urgent': true, sort: 'new' } }],
-  DATABASE:    [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'ISSUES · BY DATE', snap: { 'limit:PROJECT CATEGORY': 'issues', sort: 'new' } }],
+  ALL:         [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'ISSUES · BY DATE', snap: { 'limit:PROJECT CATEGORY': 'issues', sort: 'new' } }, { name: 'LOGS · BY DATE', snap: { 'limit:PROJECT CATEGORY': 'logs', sort: 'new' } }, { name: 'URGENT', snap: { 'on:urgent': true, sort: 'new' } }],
+  DATABASE:    [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'ISSUES · BY DATE', snap: { 'limit:PROJECT CATEGORY': 'issues', sort: 'new' } }, { name: 'LOGS · BY DATE', snap: { 'limit:PROJECT CATEGORY': 'logs', sort: 'new' } }],
+
+  PROCESSES:   [{ name: 'ALL', snap: { sort: 'old' }, def: true }].concat(['FN', 'UI', 'SETUP', 'DATA', 'CONN', 'SYS', 'EXT'].map(k => ({ name: k, snap: { 'limit:PROJECT CATEGORY': k } }))),
   DASHBOARD:   [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'URGENT', snap: { 'on:urgent': true, sort: 'new' } }, { name: 'ATTENTION', snap: { 'on:attention': true, sort: 'new' } }],
   'NOTIF LINE': [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'URGENT', snap: { 'on:urgent': true, sort: 'new' } }],
   NOTIFICATIONS: [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'URGENT', snap: { 'on:urgent': true, sort: 'new' } }],
@@ -30349,7 +30351,38 @@ function zzz_rdr_ws_btn(title, place) {
     const sb = document.createElement('button'); sb.type = 'button'; sb.className = 'zzz-rdr-ibtn zzz-rdr-wsbtn zzz-rdr-sumbtn'; sb.textContent = '📖Σ'; sb.title = 'ALL - notifications + records as one page, filter by kind / category / status …';
     sb.addEventListener('pointerdown', (e) => e.stopPropagation()); sb.addEventListener('click', (e) => { e.stopPropagation(); zzz_rdr_sum_open(); });
     title.insertBefore(sb, b);
+    if (String(zzz0r1_get_current_username() || '').toLowerCase() === 'verso') {
+      const pb = document.createElement('button'); pb.type = 'button'; pb.className = 'zzz-rdr-ibtn zzz-rdr-wsbtn'; pb.textContent = '📖⚙'; pb.title = 'PROCESSES - the map of all Verso functions (kind, module, needs / affects)';
+      pb.addEventListener('pointerdown', (e) => e.stopPropagation()); pb.addEventListener('click', (e) => { e.stopPropagation(); zzz_rdr_proc_open(); });
+      title.insertBefore(pb, sb);
+    }
   }
+}
+
+async function zzz_rdr_proc_open() {
+  zzz6f2_show_toast('📖⚙ loading…', 'info', 900);
+  const rows = [];
+  try {
+    for (let from = 0; from < 20000; from += 1000) {
+      const { data, error } = await sb.from('verso_process_map').select('name,kind,module,tags,needs,affects,info,size,built').order('name').range(from, from + 999);
+      if (error) throw error;
+      rows.push.apply(rows, data || []);
+      if (!data || data.length < 1000) break;
+    }
+  } catch (e) { zzz6f2_show_toast(zzz_user_error('The process map could not be loaded.', e), 'warn'); return; }
+  if (!rows.length) { zzz6f2_show_toast('PROCESSES - nothing here: the map is only for the system account, or it was not filled yet.', 'info', 3500); return; }
+  const last = rows.reduce((m, r) => (r.built > m ? r.built : m), '');
+  const cur = rows.filter(r => String(r.built).slice(0, 16) === String(last).slice(0, 16));
+  const list = (a) => { a = a || []; return a.slice(0, 12).join(', ') + (a.length > 12 ? ' … +' + (a.length - 12) : ''); };
+  const items = cur.map(r => {
+    const k = (r.kind || []).join(' ');
+    const subs = [];
+    if ((r.needs || []).length) subs.push({ title: 'needs ' + r.needs.length, info: list(r.needs), kind: 'FN' });
+    if ((r.affects || []).length) subs.push({ title: 'affects ' + r.affects.length, info: list(r.affects), kind: 'FN' });
+    return { group: r.module || 'OTHER', title: r.name, kind: (r.kind || [])[0] || 'FN', meta: k + ((r.tags || []).length ? ' · ' + r.tags.join(' ') : ''), info: r.info || '', subs,
+      vf: { CATEGORY: k, PROJECT: r.module || '', TAG: r.tags || [] }, t: Date.parse(r.built) || 0 };
+  });
+  zzz_rdr_items_show('PROCESSES', items);
 }
 
 function zzz_rdr_ws_rows(ws) {
@@ -52149,7 +52182,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-11 20:59';
+const VERSO_BUILD = '2026-11-11 22:05';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
