@@ -41792,9 +41792,22 @@ function zzz1cn_notif_linked(r, meN) {
   return !!(row && zzz10v1_normalize(String(row.username || '')) === meN);
 }
 
+function zzz_is_issue_line(n) { return !!n && zzz_is_system_author(n.username) && /^issue\b/i.test(String(n.note_name || '')); }
+function zzz_issue_line_quiet(n) {
+  if (!zzz_is_issue_line(n)) return false;
+  if (zzz1cn_prio_of(n) !== 'urgent') return true;
+  const m = String(n.note_text || '').match(/(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2})/);
+  const made = Date.parse(n.created_at || '') || 0;
+  if (!m || !made) return false;
+  let off = 60;
+  try { const z = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Bratislava', timeZoneName: 'shortOffset' }).formatToParts(new Date(made)).find(x => x.type === 'timeZoneName'); const mm = String((z && z.value) || '').match(/([+-])(\d+)(?::(\d+))?/); if (mm) off = (mm[1] === '-' ? -1 : 1) * (+mm[2] * 60 + (+mm[3] || 0)); } catch (e) {}
+  const issueAt = Date.UTC(+m[3], +m[2] - 1, +m[1], +m[4], +m[5]) - off * 60000;
+  return made - issueAt > 20 * 60000;
+}
 function zzz1cn_notif_kind(r, meN, seen) {
   const key = String((r && r.entry_key) || '');
   if (!key) return null;
+  if (zzz_issue_line_quiet(r)) return null;
   const t = Date.parse(r.created_at || '') || 0;
   if (!t) return null;
   if (!zzz1cn_notif_counts_self(meN) && zzz10v1_normalize(r.username || '') === meN && !zzz56_note_to_self(r, meN)) return null;
@@ -42104,6 +42117,8 @@ async function zzz1cn_notif_load(opts) {
       + (zzz1cn_opt_has('note_tags') ? ', note_tags' : '')
       + ', note_name' + (zzz1cn_opt_has('reply_to_id') ? ', reply_to_id' : '');
     let q = sb.from(ZZZ1CN_TABLE).select(cols);
+
+    if (zzz1cn_opt_has('note_priority')) q = q.or('username.neq.verso-system,note_name.is.null,note_name.not.like.issue*,note_priority.eq.urgent');
     if (!full) q = q.gte('created_at', new Date(zzz1cnDelta.maxTs - ZZZ1CN_DELTA_OVERLAP_MS).toISOString());
     const linksDue = full || Date.now() - zzz1cnDelta.linksAt > 5 * 60 * 1000;
     const [notes] = await Promise.all([
@@ -52092,7 +52107,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-11 20:19';
+const VERSO_BUILD = '2026-11-11 20:40';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
