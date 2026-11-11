@@ -6153,6 +6153,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-rdr-cats button { border: 1.5px solid #D4AF37; background: #171717; color: #D4AF37; border-radius: 14px; padding: 3px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
   .zzz-rdr-cats button.is-on { background: #D4AF37; color: #171717; }
   .zzz-rs-content .is-catoff { display: none !important; }
+  .zzz-rdr-frow { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; width: 100%; }
+  .zzz-rdr-flab { color: #888; font-size: 10px; font-weight: 800; min-width: 62px; }
+  .zzz-rdr-more { width: 100%; display: flex; flex-direction: column; gap: 5px; }
+  .zzz-rdr-ftog { border-style: dashed !important; }
+  .zzz-rdr-sumbtn { margin-left: auto; width: auto !important; padding: 0 6px !important; }
+  .zzz-rdr-sumbtn + .zzz-rdr-wsbtn { margin-left: 4px; }
   .zzz3d-rdr { margin-left: 6px; }
   .zzz-vi-to { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
   .zzz-vi-to-lab { color: #D4AF37; font-weight: 800; font-size: 12px; margin-right: 2px; }
@@ -30060,13 +30066,46 @@ function zzz_rdr_items_open(root, items) {
   if (!(items || []).length) content.appendChild(blk('p', '', 'Nothing here now.', 'EMPTY'));
   (items || []).forEach((it, i) => {
     const c = catOf(it);
-    const r = blk('div', 'zzz-rdr-line', undefined, 'ITEM ' + (i + 1)); r.setAttribute('data-vcat', c);
+    const r = blk('div', 'zzz-rdr-line', undefined, 'ITEM ' + (i + 1)); r.setAttribute('data-vf', JSON.stringify({ KIND: c, PRIORITY: String(it.prio || '').toUpperCase(), OWNER: String(it.who || '') }));
     const h = document.createElement('div'); h.className = 'zzz-rdr-lh';
     h.textContent = c + ' · ' + String(it.prio || '').toUpperCase() + (it.t ? ' · ' + zzz5w8_fmt_time(it.t) : '') + (it.who ? ' · ' + it.who : '');
     r.appendChild(h);
     const t = document.createElement('div'); t.className = 'zzz-rdr-lt'; t.textContent = String(it.text || ''); r.appendChild(t);
     try { const rb = zzz_rdr_item_btn(it, root); if (rb) r.appendChild(rb); } catch (e) {}
     content.appendChild(r);
+  });
+  fr.copyAll();
+  fr.finish();
+}
+
+async function zzz_rdr_sum_open() {
+  zzz6f2_show_toast('📖Σ loading…', 'info', 900);
+  let items = []; try { items = zzz3d_order(zzz5w8_collect()); } catch (e) {}
+  let map = {}; try { map = await zzz1cn_ws_load_entries(); } catch (e) {}
+  const recs = Object.keys(map).map(k => map[k]).sort((a, b) => Number(b.entry) - Number(a.entry)).slice(0, 400);
+  const fr = zzz_rdr_frame('ALL', 'ALL · ' + items.length + ' notifications · ' + recs.length + ' records', 'ALL');
+  const { content, blk } = fr;
+  const catOf = (it) => { const s0 = String(it.src || ''); return s0 === 'chat' ? 'CHAT' : s0 === 'reminder' ? 'NOTES' : s0 === 'schedule' ? 'SCHEDULE' : s0 === 'invite' ? 'INVITE' : s0 === 'op' ? 'SYSTEM' : (s0 ? s0.toUpperCase() : 'OTHER'); };
+  content.appendChild(blk('h2', 'zzz-rs-h', 'NOTIFICATIONS · ' + items.length, 'GROUP NOTIFICATIONS'));
+  items.forEach((it, i) => {
+    const c = catOf(it);
+    const r = blk('div', 'zzz-rdr-line', undefined, 'ITEM ' + (i + 1)); r.setAttribute('data-vf', JSON.stringify({ KIND: c, PRIORITY: String(it.prio || '').toUpperCase(), OWNER: String(it.who || '') }));
+    const h = document.createElement('div'); h.className = 'zzz-rdr-lh'; h.textContent = c + ' · ' + String(it.prio || '').toUpperCase() + (it.t ? ' · ' + zzz5w8_fmt_time(it.t) : '') + (it.who ? ' · ' + it.who : ''); r.appendChild(h);
+    const t = document.createElement('div'); t.className = 'zzz-rdr-lt'; t.textContent = String(it.text || ''); r.appendChild(t);
+    try { const rb = zzz_rdr_item_btn(it, 'ALL'); if (rb) r.appendChild(rb); } catch (e) {}
+    content.appendChild(r);
+  });
+  content.appendChild(blk('h2', 'zzz-rs-h', 'RECORDS · ' + recs.length, 'GROUP RECORDS'));
+  recs.forEach(rc => {
+    const f = rc.f || {};
+    const e = blk('div', 'zzz-rdr-line zzz-rdr-rec', undefined, 'RECORD #' + rc.entry);
+    e.setAttribute('data-vf', JSON.stringify({ KIND: 'RECORD', CATEGORY: String(f.r5 || '').trim().toUpperCase() || 'NO CATEGORY', OWNER: rc.owner, PROJECT: rc.projectName,
+      STATUS: String(f.r26 || '').trim().toUpperCase(), PRIORITY: String(f.r12 || '').trim().toUpperCase(), TAG: zzz1cn_tags_parse(rc.tag || '') }));
+    const h = document.createElement('div'); h.className = 'zzz-rdr-lh'; h.textContent = ['#' + rc.entry, rc.project ? 'PN ' + rc.project : '', rc.owner].filter(Boolean).join(' · '); e.appendChild(h);
+    const nm = document.createElement('b'); nm.textContent = rc.projectName || String(f.r9 || '').trim() || ('#' + rc.entry); e.appendChild(nm);
+    e.title = 'Tap = #' + rc.entry + ' in the RECORD READER';
+    e.addEventListener('click', (ev) => { ev.stopPropagation(); zzz_rdr_open(rc.entry, { back: { label: 'ALL', fn: zzz_rdr_sum_open }, from: 'ALL' }); });
+    content.appendChild(e);
   });
   fr.copyAll();
   fr.finish();
@@ -30107,14 +30146,36 @@ function zzz_rdr_frame(root, headText, swTitle) {
   const finish = () => {
 
     try {
-      const cats = []; content.querySelectorAll('[data-vcat]').forEach(e => { const c = e.getAttribute('data-vcat'); if (c && cats.indexOf(c) < 0) cats.push(c); });
-      if (cats.length > 1) {
-        const fr = document.createElement('div'); fr.className = 'zzz-rdr-cats'; fr.setAttribute('data-vlabel', 'VERSO › ' + root + ' › FILTER'); fr.setAttribute('data-vkind', 'FN');
-        const set = (c) => { fr.querySelectorAll('button').forEach(b => b.classList.toggle('is-on', b.dataset.c === c));
-          content.querySelectorAll('[data-vcat]').forEach(e => e.classList.toggle('is-catoff', !!c && e.getAttribute('data-vcat') !== c)); };
-        ['', ...cats].forEach(c => { const b = document.createElement('button'); b.type = 'button'; b.dataset.c = c; b.textContent = c || 'ALL';
-          b.addEventListener('click', (e) => { e.stopPropagation(); set(c); }); fr.appendChild(b); });
-        box.appendChild(fr); set('');
+      const vfOf = (e) => { let o = {}; try { o = JSON.parse(e.getAttribute('data-vf') || '{}') || {}; } catch (x) {} if (!o.KIND && e.getAttribute('data-vcat')) o.KIND = e.getAttribute('data-vcat'); return o; };
+      const blocks = Array.from(content.querySelectorAll('[data-vf], [data-vcat]')).filter(e => !e.matches('h2'));
+      const facets = {}; const ORDER = ['KIND', 'CATEGORY', 'STATUS', 'PRIORITY', 'OWNER', 'PROJECT', 'TAG'];
+      blocks.forEach(e => { const o = vfOf(e); e._vf = o; Object.keys(o).forEach(k => { [].concat(o[k]).forEach(v => { v = String(v || '').trim(); if (!v) return; (facets[k] = facets[k] || []).indexOf(v) < 0 && facets[k].push(v); }); }); });
+      const keys = Object.keys(facets).filter(k => facets[k].length > 1).sort((x, y) => (ORDER.indexOf(x) + 1 || 99) - (ORDER.indexOf(y) + 1 || 99));
+      if (keys.length) {
+        const lsKey = 'zzz_rdr_flt_' + root; let sel = Object.assign({}, api.preset || {});
+        try { const m = JSON.parse(localStorage.getItem(zzz_ukey(lsKey)) || 'null'); if (m) sel = m; } catch (x) {}
+        const wrapF = document.createElement('div'); wrapF.className = 'zzz-rdr-cats'; wrapF.setAttribute('data-vlabel', 'VERSO › ' + root + ' › FILTER'); wrapF.setAttribute('data-vkind', 'FN');
+        const apply = () => {
+          blocks.forEach(e => { const o = e._vf || {}; const ok = Object.keys(sel).every(k => !sel[k] || [].concat(o[k] || []).map(String).indexOf(sel[k]) >= 0); e.classList.toggle('is-catoff', !ok); });
+          content.querySelectorAll('h2.zzz-rs-h').forEach(h => { let n = h.nextElementSibling, any = false; while (n && !n.matches('h2')) { if (!n.classList.contains('is-catoff') && !n.classList.contains('is-hidden')) any = true; n = n.nextElementSibling; } h.classList.toggle('is-catoff', !any); });
+          wrapF.querySelectorAll('button[data-k]').forEach(b2 => b2.classList.toggle('is-on', (sel[b2.dataset.k] || '') === b2.dataset.v));
+          try { localStorage.setItem(zzz_ukey(lsKey), JSON.stringify(sel)); } catch (x) {}
+        };
+        const more = document.createElement('div'); more.className = 'zzz-rdr-more'; more.hidden = true;
+        keys.forEach(k => {
+          const row = document.createElement('div'); row.className = 'zzz-rdr-frow';
+          const lab = document.createElement('span'); lab.className = 'zzz-rdr-flab'; lab.textContent = k; row.appendChild(lab);
+          ['', ...facets[k].sort().slice(0, 40)].forEach(v => { const b2 = document.createElement('button'); b2.type = 'button'; b2.dataset.k = k; b2.dataset.v = v; b2.textContent = v || 'ALL';
+            b2.addEventListener('click', (e) => { e.stopPropagation(); sel[k] = (sel[k] === v || !v) ? '' : v; apply(); }); row.appendChild(b2); });
+          (k === 'KIND' ? wrapF : more).appendChild(row);
+        });
+        if (keys.some(k => k !== 'KIND')) {
+          const tg = document.createElement('button'); tg.type = 'button'; tg.className = 'zzz-rdr-ftog'; tg.textContent = 'FILTERS ▾';
+          tg.addEventListener('click', (e) => { e.stopPropagation(); more.hidden = !more.hidden; tg.textContent = more.hidden ? 'FILTERS ▾' : 'FILTERS ▴'; });
+          if (Object.keys(sel).some(k => k !== 'KIND' && sel[k])) { more.hidden = false; tg.textContent = 'FILTERS ▴'; }
+          wrapF.appendChild(tg); wrapF.appendChild(more);
+        }
+        box.appendChild(wrapF); apply();
       }
     } catch (e) {}
     box.appendChild(content); box.appendChild(sw);
@@ -30123,7 +30184,8 @@ function zzz_rdr_frame(root, headText, swTitle) {
     ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
     document.body.appendChild(ov);
   };
-  return { ov, box, content, sw, L, blk, btn, copyAll, finish };
+  const api = { ov, box, content, sw, L, blk, btn, copyAll, finish, preset: null };
+  return api;
 }
 function zzz_rdr_show(m, opts) {
   opts = opts || {};
@@ -30206,6 +30268,11 @@ function zzz_rdr_ws_btn(title, place) {
   });
   const x = title.querySelector(':scope > .zzz4-0-close-x, :scope > .zzz5w5cm-close, :scope > .zzz5t0-close');
   if (x) title.insertBefore(b, x); else title.appendChild(b);
+  if (/^DATABASE/.test(String(place || ''))) {
+    const sb = document.createElement('button'); sb.type = 'button'; sb.className = 'zzz-rdr-ibtn zzz-rdr-wsbtn zzz-rdr-sumbtn'; sb.textContent = '📖Σ'; sb.title = 'ALL - notifications + records as one page, filter by kind / category / status …';
+    sb.addEventListener('pointerdown', (e) => e.stopPropagation()); sb.addEventListener('click', (e) => { e.stopPropagation(); zzz_rdr_sum_open(); });
+    title.insertBefore(sb, b);
+  }
 }
 
 function zzz_rdr_ws_rows(ws) {
@@ -30380,6 +30447,8 @@ function zzz_rdr_list_show(place, rows) {
       const fnc = (cat === 'FUNCTIONS' && typeof zzz_fn_code === 'function') ? zzz_fn_code(f) : '';
       const e = blk('div', 'zzz-rdr-line zzz-rdr-rec', undefined, (fnc ? 'FUNCTION #' : 'RECORD #') + id);
       e.setAttribute('data-vkind', fnc ? 'FN' : 'DATA');
+      e.setAttribute('data-vf', JSON.stringify({ KIND: fnc ? 'FUNCTION' : (r.zzz_archived ? 'ARCHIVE' : (r.is_trashed ? 'TRASH' : 'RECORD')), CATEGORY: cat, OWNER: String(f.r4 || r.username || '').trim(),
+        PROJECT: String(f.r3 || '').trim(), STATUS: String(f.r26 || '').trim().toUpperCase(), PRIORITY: String(f.r12 || '').trim().toUpperCase(), TAG: zzz1cn_tags_parse(String(f.tags || '')) }));
       const head = document.createElement('div'); head.className = 'zzz-rdr-lh';
       head.textContent = ['#' + id, String(f.r2 || '').trim() ? 'PN ' + String(f.r2).trim() : '', String(f.r4 || r.username || '').trim(), String(r.entry_date || '').slice(0, 10), r.zzz_archived ? 'ARCHIVE' : (r.is_trashed ? 'TRASH' : '')].filter(Boolean).join(' · ');
       e.appendChild(head);
@@ -51934,7 +52003,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-11 17:57';
+const VERSO_BUILD = '2026-11-11 19:16';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
