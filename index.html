@@ -6148,6 +6148,13 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   
   .zzz-vicn-main { position: relative; }
   
+  .zzz-vi-to { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+  .zzz-vi-to-lab { color: #D4AF37; font-weight: 800; font-size: 12px; margin-right: 2px; }
+  .zzz-vi-to-chip { border: 1.5px solid #D4AF37; background: #171717; color: #D4AF37; border-radius: 14px; padding: 4px 10px; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .zzz-vi-to-chip.is-on { background: #D4AF37; color: #171717; }
+  .zzz-vi-to-num { width: 70px; border: 1.5px solid #D4AF37; background: #111; color: #fff; border-radius: 10px; padding: 4px 8px; font-size: 13px; }
+  .zzz-vi-to-go { border: 2px solid #4CAF50; background: #171717; color: #4CAF50; border-radius: 12px; padding: 4px 12px; font-size: 13px; font-weight: 800; cursor: pointer; }
+  
   .zzz14cs-tasker-chip { margin-right: auto; flex: 0 0 auto; border: 2px solid #D4AF37; background: #171717; color: #D4AF37; font-weight: 800; border-radius: 16px; padding: 4px 12px; font-size: 13px; cursor: pointer; }
   .zzz14cs-tasker-chip:active { background: #D4AF37; color: #171717; }
   .zzz-vicn-main > .zzz-vicn-bot { position: absolute; left: 6px; top: 6px; z-index: 2; width: 30px; height: 30px; padding: 0; font-size: 18px; line-height: 26px; border-radius: 50%; }
@@ -18249,7 +18256,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
   let cnTrTog = null;
   try { cnTrTog = zzz23tr_toggle(() => String(cnEntryKey || '')); } catch (e) {}
   cnRowMain.appendChild(notesArea);
-  try { zzz_vicn_attach(cnRowMain); } catch (e) {}
+  try { zzz_vicn_attach(cnRowMain, () => String(cnEntryKey || '').replace(/\D/g, '')); } catch (e) {}
 
   if (cnTrTog) cnMaxSlot.appendChild(cnTrTog);
   cnRow.appendChild(cnRowMain);
@@ -37591,9 +37598,9 @@ function zzz14cs_feed_paint(wrap, listOnly) {
   else zzz14cs_feed_target_paint(comp, items);
 }
 
-function zzz14cs_feed_vi(comp) { zzz_vicn_attach(comp && comp.querySelector('.zzz14cs-feed-cn .zzz1cn-rowmain')); }
+function zzz14cs_feed_vi(comp) { zzz_vicn_attach(comp && comp.querySelector('.zzz14cs-feed-cn .zzz1cn-rowmain'), () => { try { const n = zzz14cs_feed_target(zzz14cs_feed_items(zzz14cs_feed_prefs())); return n && n.entry_key; } catch (e) { return ''; } }); }
 
-function zzz_vicn_attach(main) {
+function zzz_vicn_attach(main, ekOf) {
   const ta = main && main.querySelector('textarea');
   if (!ta || main.querySelector('.zzz-vicn-bot')) return;
   main.classList.add('zzz-vicn-main');
@@ -37601,9 +37608,13 @@ function zzz_vicn_attach(main) {
   ta.placeholder = 'VI · chatnote';
   const bot = document.createElement('button'); bot.type = 'button'; bot.className = 'zzz-vi-bot zzz-vicn-bot';
   const paint = () => { const m = zzz_vi_get('mode', 'standby'); bot.textContent = '🤖'; bot.className = 'zzz-vi-bot zzz-vicn-bot ' + (m === 'on' ? 'is-on' : (m === 'off' ? 'is-off' : 'is-stby'));
-    bot.title = 'VI ' + (m === 'on' ? 'ON' : m === 'off' ? 'OFF' : 'STANDBY') + ' - tap = ON / STANDBY / OFF (the VI bot is coming)'; };
+    bot.title = 'VI ' + (m === 'on' ? 'ON' : m === 'off' ? 'OFF' : 'STANDBY') + ' - tap = ON / STANDBY / OFF · hold 1 s = VI SPACE for this chat'; };
   bot.addEventListener('mousedown', (e) => e.preventDefault());
-  bot.addEventListener('click', (e) => { e.preventDefault(); const M = ['on', 'standby', 'off'], m = zzz_vi_get('mode', 'standby'); zzz_vi_put('mode', M[(M.indexOf(m) + 1) % 3]); paint(); });
+  let bh = 0, bheld = false;
+  bot.addEventListener('pointerdown', () => { bheld = false; clearTimeout(bh); if (!ekOf) return; bh = setTimeout(() => { bheld = true; zzz_haptic_pulse(15); try { zzz_vi_win_open_for(ekOf() || ''); } catch (e) {} }, 1000); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => bot.addEventListener(ev, () => clearTimeout(bh)));
+  bot.addEventListener('contextmenu', (e) => e.preventDefault());
+  bot.addEventListener('click', (e) => { e.preventDefault(); if (bheld) { bheld = false; return; } const M = ['on', 'standby', 'off'], m = zzz_vi_get('mode', 'standby'); zzz_vi_put('mode', M[(M.indexOf(m) + 1) % 3]); paint(); });
   paint();
   main.insertBefore(bot, ta);
 }
@@ -51881,7 +51892,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-11 11:37';
+const VERSO_BUILD = '2026-11-11 13:17';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -53932,6 +53943,8 @@ function zzz_win_move(win, bar, key, isMax) {
   bar.addEventListener('pointerup', end); bar.addEventListener('pointercancel', end);
 }
 function zzz_vi_win_close() { if (zzzViWin) { zzzViWin.remove(); zzzViWin = null; } }
+
+function zzz_vi_win_open_for(ek) { try { zzz_vi_put('to', String(ek || '')); zzz_vi_put('toreply', ''); } catch (e) {} try { if (zzzViWin && zzzViWin.isConnected) zzz_vi_win_close(); } catch (e) {} zzz_vi_win_open(true); }
 async function zzz_vi_win_open(big) {
 
   if (zzzViWin && zzzViWin.isConnected) { zzz_vi_win_size(big ? 'max' : 'mid'); try { const ta0 = zzzViWin.querySelector('.zzz-vi-win-line textarea'); if (ta0) { ta0.value = zzz_vi_get('draft', ''); if (big) ta0.focus(); } } catch (e) {} return; }
@@ -53993,7 +54006,36 @@ async function zzz_vi_win_open(big) {
   line.append(ta, send);
 
   let mod = null; try { mod = zzz_vi_line_el(); mod.classList.add('zzz-vi-space-mod'); } catch (e) { mod = null; }
-  w.append(head, cmd, found, space, chat);
+
+  const toRow = document.createElement('div'); toRow.className = 'zzz-vi-to';
+  const paintTo = () => {
+    toRow.innerHTML = '';
+    const lab = document.createElement('span'); lab.className = 'zzz-vi-to-lab'; lab.textContent = 'TO'; toRow.appendChild(lab);
+    const cur = String(zzz_vi_get('to', '') || '');
+    const opts = [{ id: '', label: '🤖 VI' }];
+    try { (zzz14cs_feed_chats() || []).forEach(c => opts.push(c)); } catch (e) {}
+    try { const last = localStorage.getItem(zzz14cs_last_key()) || ''; if (last && !opts.some(o => o.id === String(last))) opts.push({ id: String(last), label: '#' + last + ' (last)' }); } catch (e) {}
+    if (cur && !opts.some(o => o.id === cur)) opts.push({ id: cur, label: '#' + cur });
+    opts.forEach(o => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-vi-to-chip' + (o.id === cur ? ' is-on' : ''); b.textContent = o.label;
+      b.addEventListener('click', () => { zzz_vi_put('to', o.id); paintTo(); }); toRow.appendChild(b); });
+    if (cur) {
+      const rn = document.createElement('input'); rn.type = 'text'; rn.inputMode = 'numeric'; rn.className = 'zzz-vi-to-num'; rn.placeholder = 'reply #'; rn.value = zzz_vi_get('toreply', '');
+      rn.title = 'Reply to message # = DISS under it (empty = a normal chat message)'; rn.setAttribute('data-zzz-nodraft', '1');
+      rn.addEventListener('input', () => zzz_vi_put('toreply', rn.value.replace(/\D/g, '')));
+      const toChat = document.createElement('button'); toChat.type = 'button'; toChat.className = 'zzz-vi-to-go'; toChat.textContent = '→ CHAT';
+      const toNotes = document.createElement('button'); toNotes.type = 'button'; toNotes.className = 'zzz-vi-to-go'; toNotes.textContent = '→ NOTES';
+      const put = async (save) => {
+        const text = String(ta.value || '').trim(); if (!text) { zzz6f2_show_toast('Write something first.', 'info'); return; }
+        const r = parseInt(zzz_vi_get('toreply', ''), 10) || 0;
+        const saved = await zzz1cn_add(cur, text, false, r ? { base: r } : null, '', !!save, zzz1cn_prio_level(zzz_vi_get('prio', 'open')) || zzz56_prio_mode(cur), []);
+        if (saved) { zzz6f2_show_toast((save ? 'Note saved' : (r ? 'DISS' : 'Chatnote')) + ' #' + zzz5w7_label_of(saved) + ' → #' + cur + '.'); ta.value = ''; zzz_vi_put('draft', ''); zzz_vi_put('toreply', ''); paintTo(); }
+      };
+      toChat.addEventListener('click', () => put(false)); toNotes.addEventListener('click', () => put(true));
+      toRow.append(rn, toChat, toNotes);
+    }
+  };
+  paintTo();
+  w.append(head, cmd, found, space, chat, toRow);
   if (mod) w.appendChild(mod);
   w.appendChild(line);
   zzzViFind = null;
