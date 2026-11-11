@@ -37436,12 +37436,13 @@ function zzz14cs_feed_items(p) {
   const on = new Set(zzz14cs_feed_chats().map(c => c.id).filter(id => !p.off[id]));
   let all = [];
   try { all = zzz5w8_collect(); } catch (e) { all = []; }
-  return all.filter(it => it.src === 'chat' && it.entry && on.has(String(it.entry)) && zzz5w8_in_mode(it, p.mode) && zzz14cs_feed_show_pass(it, p.show))
+
+  return all.filter(it => it.src === 'chat' && it.entry && on.has(String(it.entry)) && (p.mode === 'all' || zzz5w8_in_mode(it, p.mode)) && zzz14cs_feed_show_pass(it, p.show))
     .sort((a, b) => (a.t || 0) - (b.t || 0));
 }
 function zzz14cs_feed_counts(p) {
-  const c = { new: 0, shifted: 0, done: 0 };
-  ['new', 'shifted', 'done'].forEach(m => { c[m] = zzz14cs_feed_items(Object.assign({}, p, { mode: m })).length; });
+  const c = { new: 0, shifted: 0, done: 0, all: 0 };
+  ['new', 'shifted', 'done'].forEach(m => { c[m] = zzz14cs_feed_items(Object.assign({}, p, { mode: m })).length; c.all += c[m]; });
   return c;
 }
 
@@ -37500,7 +37501,8 @@ function zzz14cs_feed_paint(wrap, listOnly) {
   tt.addEventListener('click', () => { const q = zzz14cs_feed_prefs(); q.hide = !q.hide; zzz14cs_feed_save(q); zzz14cs_feed_paint(wrap); });
   head.appendChild(tt);
   const cnt = zzz14cs_feed_counts(p);
-  [['new', 'UNREAD'], ['shifted', 'SHIFTED'], ['done', 'DONE']].forEach(([m, lab]) => {
+
+  [['all', 'ALL'], ['new', 'UNREAD'], ['shifted', 'SHIFTED'], ['done', 'DONE']].forEach(([m, lab]) => {
     const b = document.createElement('button'); b.type = 'button';
     b.className = 'zzz14cs-feed-mode' + (p.mode === m ? ' is-on' : '');
     b.textContent = `${lab} ${cnt[m]}`;
@@ -37543,8 +37545,14 @@ function zzz14cs_feed_paint(wrap, listOnly) {
       const b = document.createElement('button'); b.type = 'button';
       b.className = 'zzz14cs-feed-chip' + (p.off[c.id] ? '' : ' is-on');
       b.textContent = c.label;
-      b.title = p.off[c.id] ? 'Hidden in COMM FEEDER - tap to show' : 'Shown in COMM FEEDER - tap to hide';
-      b.addEventListener('click', () => { const q = zzz14cs_feed_prefs(); if (q.off[c.id]) delete q.off[c.id]; else q.off[c.id] = 1; zzz14cs_feed_save(q); zzz14cs_feed_paint(wrap, true); });
+      b.title = (p.off[c.id] ? 'Hidden in COMM FEEDER - tap to show' : 'Shown in COMM FEEDER - tap to hide') + ' · hold = open this chat';
+
+      let ht = 0, held = false;
+      b.addEventListener('pointerdown', () => { held = false; clearTimeout(ht); ht = setTimeout(() => { held = true; zzz_haptic_pulse(15);
+        try { zzz14cs_last_remember(c.id); zzz14cs_open_comm_by_entry(c.id, { space: true }); } catch (e) {} }, 1000); });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => b.addEventListener(ev, () => clearTimeout(ht)));
+      b.addEventListener('contextmenu', (e) => e.preventDefault());
+      b.addEventListener('click', () => { if (held) { held = false; return; } const q = zzz14cs_feed_prefs(); if (q.off[c.id]) delete q.off[c.id]; else q.off[c.id] = 1; zzz14cs_feed_save(q); zzz14cs_feed_paint(wrap, true); });
       bar.appendChild(b);
     });
   }
@@ -37554,7 +37562,7 @@ function zzz14cs_feed_paint(wrap, listOnly) {
   list.innerHTML = '';
   if (!items.length) {
     const e = document.createElement('div'); e.className = 'zzz14cs-feed-empty';
-    e.textContent = p.mode === 'new' ? 'No new notifications in the attached chats.' : (p.mode === 'shifted' ? 'Nothing in SHIFTED.' : 'Nothing DONE yet.');
+    e.textContent = p.mode === 'all' ? 'No notifications in the attached chats.' : p.mode === 'new' ? 'No new notifications in the attached chats.' : (p.mode === 'shifted' ? 'Nothing in SHIFTED.' : 'Nothing DONE yet.');
     list.appendChild(e);
   }
 
@@ -38975,8 +38983,7 @@ function zzz14cs_space_open_last() {
 
   const viSpace = () => { try { if (typeof zzz_vi_win_open === 'function') zzz_vi_win_open(true); } catch (e) {} };
   if (!last) { viSpace(); return; }
-  const pinned = zzz5w5cm_tab_list(ZZZ14CS_SPACE_KEY).some(it => String(it.sourceEntryId) === String(last));
-  if (!pinned) { viSpace(); return; }
+
   if (document.querySelector('.zzz1r17b-comm-window.zzz1cn-fullpage')) return;
   zzz14cs_open_comm_by_entry(last, { space: true });
 }
@@ -51864,7 +51871,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-11 11:13';
+const VERSO_BUILD = '2026-11-11 11:19';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
