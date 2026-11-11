@@ -6148,6 +6148,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   
   .zzz-vicn-main { position: relative; }
   
+  
+  .zzz-rdr-cats { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; }
+  .zzz-rdr-cats button { border: 1.5px solid #D4AF37; background: #171717; color: #D4AF37; border-radius: 14px; padding: 3px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
+  .zzz-rdr-cats button.is-on { background: #D4AF37; color: #171717; }
+  .zzz-rs-content .is-catoff { display: none !important; }
+  .zzz3d-rdr { margin-left: 6px; }
   .zzz-vi-to { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
   .zzz-vi-to-lab { color: #D4AF37; font-weight: 800; font-size: 12px; margin-right: 2px; }
   .zzz-vi-to-chip { border: 1.5px solid #D4AF37; background: #171717; color: #D4AF37; border-radius: 14px; padding: 4px 10px; font-size: 13px; font-weight: 700; cursor: pointer; }
@@ -30045,6 +30051,26 @@ function zzz_rdr_of_item(it) {
   const r = it.raw || {};
   return { id, focus: (it.src === 'chat' && r.note_number) ? Number(r.note_number) : 0 };
 }
+
+function zzz_rdr_items_open(root, items) {
+  const fr = zzz_rdr_frame(root, root + ' · ' + (items || []).length, root);
+  const { content, blk } = fr;
+  const catOf = (it) => { const s = String(it.src || ''); if (/issue/i.test(s) || /issue|error|failed/i.test(String(it.kind || ''))) return 'ISSUES';
+    return s === 'chat' ? 'CHAT' : s === 'reminder' ? 'NOTES' : s === 'schedule' ? 'SCHEDULE' : s === 'invite' ? 'INVITE' : s === 'op' ? 'SYSTEM' : (s ? s.toUpperCase() : 'OTHER'); };
+  if (!(items || []).length) content.appendChild(blk('p', '', 'Nothing here now.', 'EMPTY'));
+  (items || []).forEach((it, i) => {
+    const c = catOf(it);
+    const r = blk('div', 'zzz-rdr-line', undefined, 'ITEM ' + (i + 1)); r.setAttribute('data-vcat', c);
+    const h = document.createElement('div'); h.className = 'zzz-rdr-lh';
+    h.textContent = c + ' · ' + String(it.prio || '').toUpperCase() + (it.t ? ' · ' + zzz5w8_fmt_time(it.t) : '') + (it.who ? ' · ' + it.who : '');
+    r.appendChild(h);
+    const t = document.createElement('div'); t.className = 'zzz-rdr-lt'; t.textContent = String(it.text || ''); r.appendChild(t);
+    try { const rb = zzz_rdr_item_btn(it, root); if (rb) r.appendChild(rb); } catch (e) {}
+    content.appendChild(r);
+  });
+  fr.copyAll();
+  fr.finish();
+}
 function zzz_rdr_item_btn(it, from) {
   const t = zzz_rdr_of_item(it); if (!t) return null;
   const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-rdr-ibtn'; b.textContent = '📖';
@@ -30079,6 +30105,18 @@ function zzz_rdr_frame(root, headText, swTitle) {
   const btn = (t, title2, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-rs-keep'; b.textContent = t; b.title = title2; b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); sw.appendChild(b); return b; };
   const copyAll = () => btn('COPY ALL', 'Copy the whole page as text', () => { const t = Array.from(content.querySelectorAll('.zzz-rs-blk:not(.is-hidden)')).map(x => x.innerText).join('\n'); zzz_copy_text_to_clipboard_silent(t); zzz6f2_show_toast('Copied.', 'info', 1200); });
   const finish = () => {
+
+    try {
+      const cats = []; content.querySelectorAll('[data-vcat]').forEach(e => { const c = e.getAttribute('data-vcat'); if (c && cats.indexOf(c) < 0) cats.push(c); });
+      if (cats.length > 1) {
+        const fr = document.createElement('div'); fr.className = 'zzz-rdr-cats'; fr.setAttribute('data-vlabel', 'VERSO › ' + root + ' › FILTER'); fr.setAttribute('data-vkind', 'FN');
+        const set = (c) => { fr.querySelectorAll('button').forEach(b => b.classList.toggle('is-on', b.dataset.c === c));
+          content.querySelectorAll('[data-vcat]').forEach(e => e.classList.toggle('is-catoff', !!c && e.getAttribute('data-vcat') !== c)); };
+        ['', ...cats].forEach(c => { const b = document.createElement('button'); b.type = 'button'; b.dataset.c = c; b.textContent = c || 'ALL';
+          b.addEventListener('click', (e) => { e.stopPropagation(); set(c); }); fr.appendChild(b); });
+        box.appendChild(fr); set('');
+      }
+    } catch (e) {}
     box.appendChild(content); box.appendChild(sw);
     fin.addEventListener('input', () => { zzzRs.q = fin.value; zzz_rs_filter(content, fcount); });
     ov.appendChild(box);
@@ -30115,9 +30153,9 @@ function zzz_rdr_show(m, opts) {
   const groups = {}; lines.forEach(n => { const k = zzz_rdr_kind(n); (groups[k] = groups[k] || []).push(n); });
   ZZZ_RDR_GROUPS.forEach(([k, lab]) => {
     const g = groups[k]; if (!g || !g.length) return;
-    content.appendChild(blk('h2', 'zzz-rs-h', lab + ' · ' + g.length, 'GROUP ' + lab));
+    { const gh = blk('h2', 'zzz-rs-h', lab + ' · ' + g.length, 'GROUP ' + lab); gh.setAttribute('data-vcat', lab.split(' ·')[0]); content.appendChild(gh); }
     g.forEach(n => {
-      const r = blk('div', 'zzz-rdr-line' + (opts.focus && Number(n.note_number) === Number(opts.focus) ? ' is-focus' : ''), undefined, 'LINE #' + id + '/' + n.note_number);
+      const r = blk('div', 'zzz-rdr-line' + (opts.focus && Number(n.note_number) === Number(opts.focus) ? ' is-focus' : ''), undefined, 'LINE #' + id + '/' + n.note_number); r.setAttribute('data-vcat', lab.split(' ·')[0]);
       const head = document.createElement('div'); head.className = 'zzz-rdr-lh';
       head.textContent = '#' + n.note_number + ' · ' + (n.username || '') + (n.created_at ? ' · ' + zzz_b26_time(n.created_at) : '') + (n.note_status === 'done' ? ' · ✓' : '') + (n.is_private ? ' · 🔒' : '');
       r.appendChild(head);
@@ -30594,6 +30632,8 @@ function zzz3d_render_now() {
     });
     head.appendChild(b);
   });
+  { const rd = document.createElement('button'); rd.type = 'button'; rd.className = 'zzz-rdr-ibtn zzz3d-rdr'; rd.textContent = '📖';
+    rd.title = 'READER - all DASHBOARD items as one page (filter by kind)'; rd.addEventListener('click', (ev) => { ev.stopPropagation(); zzz_rdr_items_open('DASHBOARD', list); }); head.appendChild(rd); }
   const w8 = document.createElement('button');
   w8.type = 'button';
   w8.className = 'zzz3d-w8';
@@ -51894,7 +51934,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-11 14:48';
+const VERSO_BUILD = '2026-11-11 17:57';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
