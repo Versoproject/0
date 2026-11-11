@@ -41871,15 +41871,31 @@ function zzz1cn_notif_linked(r, meN) {
 }
 
 function zzz_is_issue_line(n) { return !!n && zzz_is_system_author(n.username) && /^issue\b/i.test(String(n.note_name || '')); }
+
+const zzzIssueQuiet = new Map();
+let zzzBratFmt = null;
+function zzz_brat_offset_min(ms) {
+  try { if (!zzzBratFmt) zzzBratFmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Bratislava', timeZoneName: 'shortOffset' });
+    const z = zzzBratFmt.formatToParts(new Date(ms)).find(x => x.type === 'timeZoneName'); const mm = String((z && z.value) || '').match(/([+-])(\d+)(?::(\d+))?/);
+    if (mm) return (mm[1] === '-' ? -1 : 1) * (+mm[2] * 60 + (+mm[3] || 0)); } catch (e) {}
+  return 60;
+}
 function zzz_issue_line_quiet(n) {
+  if (!n) return false;
+  const ck = n.id ? n.id + '|' + (n.note_priority || '') : '';
+  if (ck && zzzIssueQuiet.has(ck)) return zzzIssueQuiet.get(ck);
+  const v = zzz_issue_line_quiet_calc(n);
+  if (ck) { if (zzzIssueQuiet.size > 5000) zzzIssueQuiet.clear(); zzzIssueQuiet.set(ck, v); }
+  return v;
+}
+function zzz_issue_line_quiet_calc(n) {
   if (n && zzz_is_system_author(n.username) && String(n.note_name || '') === 'log') return true;
   if (!zzz_is_issue_line(n)) return false;
   if (zzz1cn_prio_of(n) !== 'urgent') return true;
   const m = String(n.note_text || '').match(/(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2})/);
   const made = Date.parse(n.created_at || '') || 0;
   if (!m || !made) return false;
-  let off = 60;
-  try { const z = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Bratislava', timeZoneName: 'shortOffset' }).formatToParts(new Date(made)).find(x => x.type === 'timeZoneName'); const mm = String((z && z.value) || '').match(/([+-])(\d+)(?::(\d+))?/); if (mm) off = (mm[1] === '-' ? -1 : 1) * (+mm[2] * 60 + (+mm[3] || 0)); } catch (e) {}
+  const off = zzz_brat_offset_min(made);
   const issueAt = Date.UTC(+m[3], +m[2] - 1, +m[1], +m[4], +m[5]) - off * 60000;
   return made - issueAt > 20 * 60000;
 }
@@ -52277,7 +52293,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-11 23:06';
+const VERSO_BUILD = '2026-11-11 23:27';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
