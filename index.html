@@ -6149,14 +6149,15 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-vicn-main { position: relative; }
   
   
-  .zzz-rdr-cats { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; }
-  .zzz-rdr-cats button { border: 1.5px solid #D4AF37; background: #171717; color: #D4AF37; border-radius: 14px; padding: 3px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
-  .zzz-rdr-cats button.is-on { background: #D4AF37; color: #171717; }
   .zzz-rs-content .is-catoff { display: none !important; }
-  .zzz-rdr-frow { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; width: 100%; }
-  .zzz-rdr-flab { color: #888; font-size: 10px; font-weight: 800; min-width: 62px; }
-  .zzz-rdr-more { width: 100%; display: flex; flex-direction: column; gap: 5px; }
-  .zzz-rdr-ftog { border-style: dashed !important; }
+  .zzz-rdr-showbar { position: relative; overflow: visible; }
+  .zzz-rdr-showslot { flex: 0 0 auto; display: inline-flex; }
+  .zzz-rdr-showslot .zzz5w7-filterbox { left: 0; top: 36px; z-index: 30; }
+  .zzz-rdr-presets { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; padding: 5px 8px; border-bottom: 1px solid rgba(212,175,55,.35); }
+  .zzz-rdr-plab { color: #888; font-size: 10px; font-weight: 800; letter-spacing: .5px; }
+  .zzz-rdr-pchip { border: 1.5px solid #D4AF37; background: transparent; color: #D4AF37; border-radius: 14px; padding: 3px 9px; font-size: 12px; font-weight: 700; cursor: pointer; }
+  .zzz-rdr-pchip.is-on { background: #D4AF37; color: #171717; }
+  .zzz-rdr-shown { margin-left: auto; color: #888; font-size: 11px; }
   .zzz-rdr-sumbtn { margin-left: auto; width: auto !important; padding: 0 6px !important; }
   .zzz-rdr-sumbtn + .zzz-rdr-wsbtn { margin-left: 4px; }
   .zzz3d-rdr { margin-left: 6px; }
@@ -30067,6 +30068,7 @@ function zzz_rdr_items_open(root, items) {
   (items || []).forEach((it, i) => {
     const c = catOf(it);
     const r = blk('div', 'zzz-rdr-line', undefined, 'ITEM ' + (i + 1)); r.setAttribute('data-vf', JSON.stringify({ KIND: c, PRIORITY: String(it.prio || '').toUpperCase(), OWNER: String(it.who || '') }));
+    if (it.t) r.setAttribute('data-vt', String(it.t)); if (it.src === 'chat' && it.raw && it.raw.note_number) r._rdrNote = it.raw;
     const h = document.createElement('div'); h.className = 'zzz-rdr-lh';
     h.textContent = c + ' · ' + String(it.prio || '').toUpperCase() + (it.t ? ' · ' + zzz5w8_fmt_time(it.t) : '') + (it.who ? ' · ' + it.who : '');
     r.appendChild(h);
@@ -30090,6 +30092,7 @@ async function zzz_rdr_sum_open() {
   items.forEach((it, i) => {
     const c = catOf(it);
     const r = blk('div', 'zzz-rdr-line', undefined, 'ITEM ' + (i + 1)); r.setAttribute('data-vf', JSON.stringify({ KIND: c, PRIORITY: String(it.prio || '').toUpperCase(), OWNER: String(it.who || '') }));
+    if (it.t) r.setAttribute('data-vt', String(it.t)); if (it.src === 'chat' && it.raw && it.raw.note_number) r._rdrNote = it.raw;
     const h = document.createElement('div'); h.className = 'zzz-rdr-lh'; h.textContent = c + ' · ' + String(it.prio || '').toUpperCase() + (it.t ? ' · ' + zzz5w8_fmt_time(it.t) : '') + (it.who ? ' · ' + it.who : ''); r.appendChild(h);
     const t = document.createElement('div'); t.className = 'zzz-rdr-lt'; t.textContent = String(it.text || ''); r.appendChild(t);
     try { const rb = zzz_rdr_item_btn(it, 'ALL'); if (rb) r.appendChild(rb); } catch (e) {}
@@ -30099,6 +30102,7 @@ async function zzz_rdr_sum_open() {
   recs.forEach(rc => {
     const f = rc.f || {};
     const e = blk('div', 'zzz-rdr-line zzz-rdr-rec', undefined, 'RECORD #' + rc.entry);
+    e._rdrRec = rc;
     e.setAttribute('data-vf', JSON.stringify({ KIND: 'RECORD', CATEGORY: String(f.r5 || '').trim().toUpperCase() || 'NO CATEGORY', OWNER: rc.owner, PROJECT: rc.projectName,
       STATUS: String(f.r26 || '').trim().toUpperCase(), PRIORITY: String(f.r12 || '').trim().toUpperCase(), TAG: zzz1cn_tags_parse(rc.tag || '') }));
     const h = document.createElement('div'); h.className = 'zzz-rdr-lh'; h.textContent = ['#' + rc.entry, rc.project ? 'PN ' + rc.project : '', rc.owner].filter(Boolean).join(' · '); e.appendChild(h);
@@ -30121,71 +30125,143 @@ function zzz_rdr_item_btn(it, from) {
   return b;
 }
 
+const ZZZ_RDR_PRESETS = {
+  '*':         [{ name: 'ALL · NEWEST', snap: { sort: 'new' } }],
+  ALL:         [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'ISSUES · BY DATE', snap: { 'limit:PROJECT CATEGORY': 'issues', sort: 'new' } }, { name: 'URGENT', snap: { 'on:urgent': true, sort: 'new' } }],
+  DATABASE:    [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'ISSUES · BY DATE', snap: { 'limit:PROJECT CATEGORY': 'issues', sort: 'new' } }],
+  DASHBOARD:   [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'URGENT', snap: { 'on:urgent': true, sort: 'new' } }, { name: 'ATTENTION', snap: { 'on:attention': true, sort: 'new' } }],
+  'NOTIF LINE': [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'URGENT', snap: { 'on:urgent': true, sort: 'new' } }],
+  NOTIFICATIONS: [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'URGENT', snap: { 'on:urgent': true, sort: 'new' } }],
+  TRASH:       [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }],
+  ARCHIVE:     [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }],
+  ORGANIZER:   [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }],
+  NOTES:       [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'MINE · NEWEST', snap: { 'on:mine': true, sort: 'new' } }, { name: 'URGENT', snap: { 'on:urgent': true, sort: 'new' } }],
+  RECORD:      [{ name: 'NEWEST', snap: { sort: 'new' } }, { name: 'MINE', snap: { 'on:mine': true } }, { name: 'URGENT', snap: { 'on:urgent': true } }],
+  'COMM SPACE': [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'URGENT', snap: { 'on:urgent': true, sort: 'new' } }]
+};
+function zzz_rdr_place_key(root) { return String(root || '').replace(/\s+#\d+.*$/, '').split(' › ')[0].trim().toUpperCase() || 'READER'; }
+function zzz_rdr_presets_of(root) { const k = zzz_rdr_place_key(root); return ZZZ_RDR_PRESETS[k] || ZZZ_RDR_PRESETS['*']; }
+
+function zzz_rdr_data(e) {
+  if (e._rdrD) return e._rdrD;
+  let o = {}; try { o = JSON.parse(e.getAttribute('data-vf') || '{}') || {}; } catch (x) {}
+  if (!o.KIND && e.getAttribute('data-vcat')) o.KIND = e.getAttribute('data-vcat');
+  const n = e._rdrNote || null, rec = e._rdrRec || null;
+  let t = Number(e.getAttribute('data-vt')) || 0;
+  if (!t && n) t = zzz1cn_time_of(n) || 0;
+  if (!t && rec) { const d = Date.parse(rec.updated_at || rec.entry_date || ''); if (Number.isFinite(d)) t = d; }
+  const tags = n ? zzz1cn_tags_parse(n.note_tags || '') : [].concat(o.TAG || []).map(x => String(x || '').trim()).filter(Boolean);
+  e._rdrD = { o, n, rec, t, tags, user: String((n && n.username) || o.OWNER || '').trim(), text: String(e.textContent || '') };
+  return e._rdrD;
+}
+
+const ZZZ_RDR_LIMIT_FACET = { 'PROJECT CATEGORY': 'CATEGORY', 'PROJECT OWNER': 'OWNER', 'PROJECT NAME': 'PROJECT', STATUS: 'STATUS', PRIORITY: 'PRIORITY', TAG: 'TAG' };
+function zzz_rdr_limit_val(d, label) {
+  if (d.rec) { try { return zzz1cn_scrm_value(d.rec, label); } catch (e) {} }
+  const k = ZZZ_RDR_LIMIT_FACET[label]; return k ? [].concat(d.o[k] || []).join(' ') : '';
+}
+
+function zzz_rdr_pass(e, v, h) {
+  const d = zzz_rdr_data(e), n = d.n, o = v.on || {};
+  const st = n ? (zzz5w7_status_of(n) || 'open') : (String(d.o.STATUS || '').toLowerCase() || 'open');
+  const keys = ['open', 'progress', 'done', 'final'].filter(k => o[k]);
+  if (keys.length && !keys.includes(st)) return false;
+  const lvl = n ? zzz1cn_prio_of(n) : String(d.o.PRIORITY || '').toLowerCase();
+  if ((o.attention || o.urgent) && !((o.attention && lvl === 'attention') || (o.urgent && lvl === 'urgent'))) return false;
+  if (o.private && !(n && zzz56_is_private_note(n))) return false;
+  const me = zzz10v1_normalize(zzz0r1_get_current_username() || '');
+  if (o.mine && zzz10v1_normalize(d.user) !== me) return false;
+  const showQ = zzz10v1_normalize(String(v.show || '').trim());
+  if (showQ && !zzz10v1_normalize(d.text).includes(showQ)) return false;
+  if (zzz5w7_user_any(v.users, v.usersq) && !zzz5w7_user_picked(d.user, v.users, v.usersq)) return false;
+  if (v.dfrom || v.dto) { const day = d.t ? new Date(d.t - new Date(d.t).getTimezoneOffset() * 60000).toISOString().slice(0, 10) : ''; if (!day || (v.dfrom && day < v.dfrom) || (v.dto && day > v.dto)) return false; }
+  const tg = Object.keys(v.tags || {}).filter(t => v.tags[t]); if (tg.length && !tg.some(t => d.tags.indexOf(t) >= 0)) return false;
+  const lim = v.limit || {};
+  for (const label of Object.keys(lim)) {
+    const toks = String(lim[label] || '').split(',').map(t => zzz10v1_normalize(t.trim())).filter(Boolean);
+    if (!toks.length) continue;
+    const val = zzz10v1_normalize(zzz_rdr_limit_val(d, label));
+    if (!val || !toks.some(t => val.includes(t))) return false;
+  }
+  if (h) {
+    if (h[st]) return false;
+    if ((h.attention && lvl === 'attention') || (h.urgent && lvl === 'urgent')) return false;
+    if (d.user && zzz5w7_hide_user({ username: d.user }, h)) return false;
+    if (h.txt && zzz10v1_normalize(d.text).includes(zzz10v1_normalize(h.txt))) return false;
+  }
+  return true;
+}
 function zzz_rdr_frame(root, headText, swTitle) {
   const old = document.getElementById('zzzRdr'); if (old) old.remove();
   const ov = document.createElement('div'); ov.id = 'zzzRdr'; ov.className = 'zzz-rdr'; ov.setAttribute('data-zzz-nodraft', '1');
   const box = document.createElement('div'); box.className = 'zzz-rs-reader zzz-rdr-box'; box.setAttribute('data-vkind', 'UI'); box.setAttribute('data-vlabel', 'VERSO › ' + root);
   const L = (el, lab) => { el.setAttribute('data-vlabel', 'VERSO › ' + root + ' › ' + lab); if (!el.hasAttribute('data-vkind')) el.setAttribute('data-vkind', 'DATA'); return el; };
-  const show = document.createElement('div'); show.className = 'zzz-rs-showbar';
-  const st = document.createElement('span'); st.className = 'zzz-rs-show-t'; st.textContent = 'SHOW'; show.appendChild(st);
+  const show = document.createElement('div'); show.className = 'zzz-rs-showbar zzz-rdr-showbar';
+  const slot = document.createElement('span'); slot.className = 'zzz-rdr-showslot'; show.appendChild(slot);
   const tt = document.createElement('span'); tt.className = 'zzz-rs-show-title'; tt.textContent = headText; show.appendChild(tt);
   const xb = document.createElement('button'); xb.type = 'button'; xb.className = 'zzz5w5cm-close zzz-rs-x'; xb.textContent = '×'; xb.setAttribute('aria-label', 'Close the reader');
   xb.addEventListener('click', (e) => { e.stopPropagation(); ov.remove(); }); show.appendChild(xb);
-  const find = document.createElement('div'); find.className = 'zzz-rs-find'; find.hidden = true;
-  const fin = document.createElement('input'); fin.type = 'text'; fin.placeholder = 'SHOW only parts with… (a, b = or)';
-  const fcount = document.createElement('span'); fcount.className = 'zzz-rs-find-n';
-  find.appendChild(fin); find.appendChild(fcount);
-  show.addEventListener('click', (e) => { if (e.target.closest('button')) return; find.hidden = !find.hidden; if (!find.hidden) fin.focus(); });
-  box.appendChild(show); box.appendChild(find);
+  box.appendChild(show);
   const content = document.createElement('div'); content.className = 'zzz-rs-content';
   const blk = (tag, cls, text, lab) => { const e = document.createElement(tag); e.className = 'zzz-rs-blk' + (cls ? ' ' + cls : ''); if (text !== undefined) e.textContent = text; return L(e, lab); };
   const sw = document.createElement('div'); sw.className = 'zzz-rs-swipe';
   const swt = document.createElement('span'); swt.className = 'zzz-rs-sw-t'; swt.textContent = swTitle || 'READER'; sw.appendChild(swt);
   const btn = (t, title2, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-rs-keep'; b.textContent = t; b.title = title2; b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); sw.appendChild(b); return b; };
-  const copyAll = () => btn('COPY ALL', 'Copy the whole page as text', () => { const t = Array.from(content.querySelectorAll('.zzz-rs-blk:not(.is-hidden)')).map(x => x.innerText).join('\n'); zzz_copy_text_to_clipboard_silent(t); zzz6f2_show_toast('Copied.', 'info', 1200); });
+  const copyAll = () => btn('COPY ALL', 'Copy the whole page as text', () => { const t = Array.from(content.querySelectorAll('.zzz-rs-blk:not(.is-hidden):not(.is-catoff)')).map(x => x.innerText).join('\n'); zzz_copy_text_to_clipboard_silent(t); zzz6f2_show_toast('Copied.', 'info', 1200); });
   const finish = () => {
-
-    try {
-      const vfOf = (e) => { let o = {}; try { o = JSON.parse(e.getAttribute('data-vf') || '{}') || {}; } catch (x) {} if (!o.KIND && e.getAttribute('data-vcat')) o.KIND = e.getAttribute('data-vcat'); return o; };
-      const blocks = Array.from(content.querySelectorAll('[data-vf], [data-vcat]')).filter(e => !e.matches('h2'));
-      const facets = {}; const ORDER = ['KIND', 'CATEGORY', 'STATUS', 'PRIORITY', 'OWNER', 'PROJECT', 'TAG'];
-      blocks.forEach(e => { const o = vfOf(e); e._vf = o; Object.keys(o).forEach(k => { [].concat(o[k]).forEach(v => { v = String(v || '').trim(); if (!v) return; (facets[k] = facets[k] || []).indexOf(v) < 0 && facets[k].push(v); }); }); });
-      const keys = Object.keys(facets).filter(k => facets[k].length > 1).sort((x, y) => (ORDER.indexOf(x) + 1 || 99) - (ORDER.indexOf(y) + 1 || 99));
-      if (keys.length) {
-        const lsKey = 'zzz_rdr_flt_' + root; let sel = Object.assign({}, api.preset || {});
-        try { const m = JSON.parse(localStorage.getItem(zzz_ukey(lsKey)) || 'null'); if (m) sel = m; } catch (x) {}
-        const wrapF = document.createElement('div'); wrapF.className = 'zzz-rdr-cats'; wrapF.setAttribute('data-vlabel', 'VERSO › ' + root + ' › FILTER'); wrapF.setAttribute('data-vkind', 'FN');
-        const apply = () => {
-          blocks.forEach(e => { const o = e._vf || {}; const ok = Object.keys(sel).every(k => !sel[k] || [].concat(o[k] || []).map(String).indexOf(sel[k]) >= 0); e.classList.toggle('is-catoff', !ok); });
-          content.querySelectorAll('h2.zzz-rs-h').forEach(h => { let n = h.nextElementSibling, any = false; while (n && !n.matches('h2')) { if (!n.classList.contains('is-catoff') && !n.classList.contains('is-hidden')) any = true; n = n.nextElementSibling; } h.classList.toggle('is-catoff', !any); });
-          wrapF.querySelectorAll('button[data-k]').forEach(b2 => b2.classList.toggle('is-on', (sel[b2.dataset.k] || '') === b2.dataset.v));
-          try { localStorage.setItem(zzz_ukey(lsKey), JSON.stringify(sel)); } catch (x) {}
-        };
-        const more = document.createElement('div'); more.className = 'zzz-rdr-more'; more.hidden = true;
-        keys.forEach(k => {
-          const row = document.createElement('div'); row.className = 'zzz-rdr-frow';
-          const lab = document.createElement('span'); lab.className = 'zzz-rdr-flab'; lab.textContent = k; row.appendChild(lab);
-          ['', ...facets[k].sort().slice(0, 40)].forEach(v => { const b2 = document.createElement('button'); b2.type = 'button'; b2.dataset.k = k; b2.dataset.v = v; b2.textContent = v || 'ALL';
-            b2.addEventListener('click', (e) => { e.stopPropagation(); sel[k] = (sel[k] === v || !v) ? '' : v; apply(); }); row.appendChild(b2); });
-          (k === 'KIND' ? wrapF : more).appendChild(row);
-        });
-        if (keys.some(k => k !== 'KIND')) {
-          const tg = document.createElement('button'); tg.type = 'button'; tg.className = 'zzz-rdr-ftog'; tg.textContent = 'FILTERS ▾';
-          tg.addEventListener('click', (e) => { e.stopPropagation(); more.hidden = !more.hidden; tg.textContent = more.hidden ? 'FILTERS ▾' : 'FILTERS ▴'; });
-          if (Object.keys(sel).some(k => k !== 'KIND' && sel[k])) { more.hidden = false; tg.textContent = 'FILTERS ▴'; }
-          wrapF.appendChild(tg); wrapF.appendChild(more);
-        }
-        box.appendChild(wrapF); apply();
-      }
-    } catch (e) {}
+    try { zzz_rdr_show_mount(root, box, show, slot, content); } catch (e) { const x = document.createElement('span'); x.className = 'zzz-rs-show-t'; x.textContent = 'SHOW'; slot.appendChild(x); }
     box.appendChild(content); box.appendChild(sw);
-    fin.addEventListener('input', () => { zzzRs.q = fin.value; zzz_rs_filter(content, fcount); });
     ov.appendChild(box);
     ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
     document.body.appendChild(ov);
   };
-  const api = { ov, box, content, sw, L, blk, btn, copyAll, finish, preset: null };
+  const api = { ov, box, content, sw, L, blk, btn, copyAll, finish };
   return api;
+}
+
+function zzz_rdr_show_mount(root, box, show, slot, content) {
+  const place = zzz_rdr_place_key(root);
+  const blocks = Array.from(content.querySelectorAll('[data-vf], [data-vcat]')).filter(e => !e.matches('h2'));
+  const view = { on: {}, q: '', from: 0, to: 0, at: 0, name: '', show: '', users: {}, usersq: '', extra: {}, tags: {}, subs: {}, dfrom: '', dto: '', sort: '', limit: {} };
+  const hide = { txt: '', ord: false, ordq: 0, name: false, user: false, priv: false, time: false, priority: false, users: {}, usersq: '', open: false, progress: false, done: false, final: false, nameq: '' };
+  const presets = zzz_rdr_presets_of(root);
+  const pKey = 'zzz5w7_showpreset_rdr:' + place;
+  try { if (localStorage.getItem(pKey) === null) { const d = presets.find(p => p.def); if (d) localStorage.setItem(pKey, JSON.stringify({ on: true, snap: d.snap, name: d.name })); } } catch (e) {}
+  const count = document.createElement('span'); count.className = 'zzz-rdr-shown';
+  const apply = () => {
+    let shown = 0;
+    blocks.forEach(e => { const ok = zzz_rdr_pass(e, view, hide); e.classList.toggle('is-catoff', !ok); if (ok) shown++; });
+    if (view.sort === 'new' || view.sort === 'old') {
+      const groups = []; let cur = { h: null, items: [] };
+      Array.from(content.children).forEach(c => { if (c.matches('h2')) { groups.push(cur); cur = { h: c, items: [] }; } else cur.items.push(c); });
+      groups.push(cur);
+      groups.forEach(g => { const anchor = g.h; const ord = g.items.slice().sort((x, y) => { const a = zzz_rdr_data(x).t || 0, b = zzz_rdr_data(y).t || 0; return view.sort === 'new' ? b - a : a - b; });
+        let after = anchor; ord.forEach(c => { if (after) after.after(c); else content.insertBefore(c, content.firstChild); after = c; }); });
+    }
+    content.querySelectorAll('h2.zzz-rs-h').forEach(hh => { let x = hh.nextElementSibling, any = false; while (x && !x.matches('h2')) { if (!x.classList.contains('is-catoff')) any = true; x = x.nextElementSibling; } hh.classList.toggle('is-catoff', !any && !!hh.nextElementSibling); });
+    count.textContent = blocks.length ? shown + ' / ' + blocks.length : '';
+    paintChips();
+  };
+  const tagsAll = []; blocks.forEach(e => zzz_rdr_data(e).tags.forEach(t => { if (tagsAll.indexOf(t) < 0) tagsAll.push(t); }));
+  const users = []; blocks.forEach(e => { const u = zzz_rdr_data(e).user; if (u && users.indexOf(u) < 0) users.push(u); });
+  const sb = zzz5w7_build_filter_box(view, hide, () => apply(), {
+    presetKey: 'rdr:' + place, withOrder: false, limitPane: true, limitGroups: ZZZ5_6_LIMIT_GROUPS,
+    tagsList: () => tagsAll.slice(), extraUsers: () => users.slice()
+  });
+  slot.appendChild(sb.el);
+  try { sb.paint(users.map(u => ({ username: u })), zzz10v1_normalize(zzz0r1_get_current_username() || '')); } catch (e) {}
+  try { sb.paintTags(); } catch (e) {}
+
+  const row = document.createElement('div'); row.className = 'zzz-rdr-presets'; row.setAttribute('data-vkind', 'SETUP'); row.setAttribute('data-vlabel', 'VERSO › ' + root + ' › PRESETS');
+  const lab = document.createElement('span'); lab.className = 'zzz-rdr-plab'; lab.textContent = 'PRESET'; row.appendChild(lab);
+  const chips = presets.map(p => { const c = document.createElement('button'); c.type = 'button'; c.className = 'zzz-rdr-pchip'; c.textContent = p.name;
+    c.title = 'Preset „' + p.name + '“ - ' + Object.keys(p.snap).map(k => k.replace(/^limit:|^on:/, '') + (p.snap[k] === true ? '' : ' ' + p.snap[k])).join(' · ') + '. Tap again = off';
+    c.addEventListener('click', (e) => { e.stopPropagation(); const on = sb.presetName() === p.name; sb.usePreset(on ? null : p.snap, p.name); zzz6f2_show_toast(on ? 'Preset off - every criterion is free.' : 'Preset ' + p.name + ' - more criteria can be added in SHOW.', 'info', 1500); });
+    row.appendChild(c); return { c, p }; });
+  row.appendChild(count);
+  function paintChips() { const nm = sb.presetName(); chips.forEach(({ c, p }) => c.classList.toggle('is-on', nm === p.name)); }
+  show.after(row);
+  apply();
 }
 function zzz_rdr_show(m, opts) {
   opts = opts || {};
@@ -30217,7 +30293,7 @@ function zzz_rdr_show(m, opts) {
     const g = groups[k]; if (!g || !g.length) return;
     { const gh = blk('h2', 'zzz-rs-h', lab + ' · ' + g.length, 'GROUP ' + lab); gh.setAttribute('data-vcat', lab.split(' ·')[0]); content.appendChild(gh); }
     g.forEach(n => {
-      const r = blk('div', 'zzz-rdr-line' + (opts.focus && Number(n.note_number) === Number(opts.focus) ? ' is-focus' : ''), undefined, 'LINE #' + id + '/' + n.note_number); r.setAttribute('data-vcat', lab.split(' ·')[0]);
+      const r = blk('div', 'zzz-rdr-line' + (opts.focus && Number(n.note_number) === Number(opts.focus) ? ' is-focus' : ''), undefined, 'LINE #' + id + '/' + n.note_number); r.setAttribute('data-vcat', lab.split(' ·')[0]); r._rdrNote = n;
       const head = document.createElement('div'); head.className = 'zzz-rdr-lh';
       head.textContent = '#' + n.note_number + ' · ' + (n.username || '') + (n.created_at ? ' · ' + zzz_b26_time(n.created_at) : '') + (n.note_status === 'done' ? ' · ✓' : '') + (n.is_private ? ' · 🔒' : '');
       r.appendChild(head);
@@ -30311,6 +30387,8 @@ function zzz_rdr_items_show(place, items) {
     groups[g].forEach((it, i) => {
       const e = blk('div', 'zzz-rdr-line' + (it.open ? ' zzz-rdr-rec' : ''), undefined, g + ' › ' + String(it.title || i + 1).toUpperCase());
       e.setAttribute('data-vkind', it.kind || 'UI');
+      e.setAttribute('data-vf', JSON.stringify(Object.assign({ KIND: g }, it.vf || {})));
+      if (it.t) e.setAttribute('data-vt', String(it.t)); if (it.note) e._rdrNote = it.note; if (it.rec) e._rdrRec = it.rec;
       if (it.meta) { const h = document.createElement('div'); h.className = 'zzz-rdr-lh'; h.textContent = it.meta; e.appendChild(h); }
       const nm = document.createElement('b'); nm.textContent = it.title || ''; e.appendChild(nm);
       if (it.info) { const d = document.createElement('div'); d.className = 'zzz-rdr-tx'; d.textContent = it.info; e.appendChild(d); }
@@ -30375,6 +30453,9 @@ function zzz_rdr_notes_items(st) {
       title: '#' + ek + (nameOf ? ' · ' + nameOf : ''),
       meta: [c.owner ? 'owner ' + c.owner : '', notes.length + ' notes'].filter(Boolean).join(' · '),
       kind: 'DATA',
+
+      rec: c && c.f ? c : null, t: notes.reduce((m, n) => Math.max(m, zzz1cn_time_of(n) || 0), 0) || 0,
+      vf: { OWNER: c.owner || '', PROJECT: nameOf || '', CATEGORY: String(((c.f || {}).r5) || '').trim().toUpperCase() },
       subs: notes.slice(0, 200).map(n => ({ kind: 'DATA', title: (n.note_part ? '  ↳ ' : '') + '#' + n.note_number + (n.note_part ? '/' + n.note_part : '') + ' · ' + (n.username || ''), info: String(n.note_text || '').replace(/\s+/g, ' ').slice(0, 400) + (n.is_private ? ' 🔒' : '') + (n.note_status === 'done' ? ' ✓' : '') })),
       open: () => zzz_rdr_open(ek, { from: 'NOTES' })
     };
@@ -30448,7 +30529,8 @@ function zzz_rdr_list_show(place, rows) {
       const e = blk('div', 'zzz-rdr-line zzz-rdr-rec', undefined, (fnc ? 'FUNCTION #' : 'RECORD #') + id);
       e.setAttribute('data-vkind', fnc ? 'FN' : 'DATA');
       e.setAttribute('data-vf', JSON.stringify({ KIND: fnc ? 'FUNCTION' : (r.zzz_archived ? 'ARCHIVE' : (r.is_trashed ? 'TRASH' : 'RECORD')), CATEGORY: cat, OWNER: String(f.r4 || r.username || '').trim(),
-        PROJECT: String(f.r3 || '').trim(), STATUS: String(f.r26 || '').trim().toUpperCase(), PRIORITY: String(f.r12 || '').trim().toUpperCase(), TAG: zzz1cn_tags_parse(String(f.tags || '')) }));
+        PROJECT: String(f.r3 || '').trim(), STATUS: String(f.r26 || '').trim().toUpperCase(), PRIORITY: String(f.r12 || '').trim().toUpperCase(), TAG: zzz1cn_tags_parse(String(f.tags || '')) }))
+      e._rdrRec = { f, entry: id, entry_date: r.entry_date, updated_at: r.updated_at };
       const head = document.createElement('div'); head.className = 'zzz-rdr-lh';
       head.textContent = ['#' + id, String(f.r2 || '').trim() ? 'PN ' + String(f.r2).trim() : '', String(f.r4 || r.username || '').trim(), String(r.entry_date || '').slice(0, 10), r.zzz_archived ? 'ARCHIVE' : (r.is_trashed ? 'TRASH' : '')].filter(Boolean).join(' · ');
       e.appendChild(head);
@@ -47197,7 +47279,7 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
     });
     const on = !!(preset && preset.on);
     presetBtn.classList.toggle('is-on', on);
-    presetBtn.textContent = on ? 'PRESET ON' : 'PRESET';
+    presetBtn.textContent = on ? (preset.name ? '\u2713 ' + preset.name : 'PRESET ON') : 'PRESET';
 
     if (typeof opts.onPreset === 'function') opts.onPreset(on, presetMode());
     filterBtn.classList.toggle('has-preset', on);
@@ -47251,6 +47333,12 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
     onChange();
   };
   filterReset.addEventListener('click', doReset);
+
+  const usePreset = (snap, name) => {
+    const has = !!snap && Object.keys(snap).some(k => ctlIsSet(snap[k]));
+    preset = has ? { on: true, snap: Object.assign({}, snap), name: String(name || '') } : { on: false, snap: {}, name: '' };
+    presetStore(); doReset();
+  };
 
   const resetAll = () => {
     preset = null; presetStore();
@@ -47462,6 +47550,7 @@ function zzz5w7_build_filter_box(view, hide, onChange, opts) {
   setMode(zzz56HasMode && opts.searchMode() === 'content');
 
   return { el: filterSel, box: filterBox, btn: filterBtn, paint, enableMove,
+           usePreset, presetName: () => (preset && preset.on && preset.name) || '',
            paintTags,
            paintSubs: () => paintSubs(),
            foot: filterFoot,
@@ -52003,7 +52092,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-11 19:16';
+const VERSO_BUILD = '2026-11-11 20:19';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
