@@ -349,7 +349,9 @@ function zzz_ci_paint() {
     var a = e.querySelector('.zzz-ci-date'), c = e.querySelector('.zzz-ci-clock'), w = e.querySelector('.zzz-ci-wx');
     if (a && a.textContent !== dateLine) a.textContent = dateLine;
     if (c && c._zzzClock !== clock) { c.innerHTML = clock; c._zzzClock = clock; }
-    if (w && w._zzzWx !== wx) { w.innerHTML = wx; w._zzzWx = wx; }
+    if (w && w._zzzWx !== wx) { w.innerHTML = wx; w._zzzWx = wx;
+
+      try { var sv = w.querySelector('svg'); if (sv && sv.pauseAnimations) setTimeout(function () { try { sv.pauseAnimations(); } catch (e2) {} }, 6000); } catch (e1) {} }
     if (w && w.title !== title) w.title = title;
   }
   try { if (typeof zzz22_live_paint === 'function') zzz22_live_paint(); } catch (e) {}
@@ -3357,6 +3359,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     user-select: text;        
   }
   .zzz1cn-empty { font-size: 10px; color: #6b7280; }
+  .zzz1cn-older { display: block; width: 100%; margin: 2px 0 6px; padding: 6px 8px; border: 1px solid #b8962e; border-radius: 8px; background: #111; color: #d4af37; font-size: 11px; font-weight: 700; letter-spacing: .5px; cursor: pointer; } 
   
   
   
@@ -18079,10 +18082,13 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
 
     const cnFocus = String(cnView.threadFocus || '');
     const cnNameMode = !!String(cnView.name || '').trim();
+
+    const cnLimit = cnView.sort ? Infinity : (zzz1cnFeedLimit.get(String(cnEntryKey)) || ZZZ1CN_FEED_STEP);
+    let cnHiddenOlder = 0;
     if (!cnThreadMode) {
-      (cnView.sort ? zzz5w7_sort_time(notes, cnView) : notes).forEach((n) => {
-        const i = (cnOrdOf.get(n) || 1) - 1;
-        if (!cnPasses(n, i + 1)) return;
+      let cnList = (cnView.sort ? zzz5w7_sort_time(notes, cnView) : notes).filter((n) => cnPasses(n, cnOrdOf.get(n) || 1));
+      if (cnList.length > cnLimit) { cnHiddenOlder = cnList.length - cnLimit; cnList = cnList.slice(-cnLimit); }
+      cnList.forEach((n) => {
         cnShown++;
         cnFeed.appendChild(cnMakeRow(n));
       });
@@ -18107,6 +18113,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
       const lastAct = (r) => { const l = kids.get(String(r.id)); return Math.max(tms(r), l && l.length ? tms(l[l.length - 1]) : 0); };
       roots.sort((a, b) => lastAct(a) - lastAct(b));
       const seen = zzz1cn_thread_seen_map();
+      if (!cnFocus && roots.length > cnLimit) { cnHiddenOlder = roots.length - cnLimit; roots.splice(0, roots.length - cnLimit); }
       roots.forEach((r) => {
         const i = (cnOrdOf.get(r) || 1) - 1;
         const list = kids.get(String(r.id)) || [];
@@ -18192,6 +18199,21 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
         showList.forEach(n => box.appendChild(cnMakeRow(n)));
         cnFeed.appendChild(box);
       });
+    }
+    if (cnHiddenOlder > 0) {
+      const ob = document.createElement('button'); ob.type = 'button'; ob.className = 'zzz1cn-older';
+      ob.textContent = '\u25b2 OLDER \u00b7 ' + cnHiddenOlder + ' more';
+      ob.title = 'Tap = show 50 older messages · hold = show all ' + cnHiddenOlder;
+      let ht = 0, all = false;
+      ob.addEventListener('pointerdown', () => { all = false; clearTimeout(ht); ht = setTimeout(() => { all = true; }, 700); });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => ob.addEventListener(ev, () => clearTimeout(ht)));
+      ob.addEventListener('click', () => {
+        const k = String(cnEntryKey), add = all ? Infinity : ZZZ1CN_FEED_STEP;
+        zzz1cnFeedLimit.set(k, (zzz1cnFeedLimit.get(k) || ZZZ1CN_FEED_STEP) + add);
+        try { zzz_mem_step('older ' + (all ? 'all' : '+50')); } catch (e) {}
+        cnRefreshFeed().then(() => { try { cnFeed.scrollTop = 0; } catch (e) {} });
+      });
+      cnFeed.insertBefore(ob, cnFeed.firstChild);
     }
     if (!cnShown) {
       const none = document.createElement('div');
@@ -40466,6 +40488,8 @@ function zzz1cn_sender_pin(feed) {
     });
   } catch (e) {}
 }
+var ZZZ1CN_FEED_STEP = 50;
+var zzz1cnFeedLimit = new Map();
 function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   const wrap = document.createElement('div');
 
@@ -52332,7 +52356,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-12 11:17';
+const VERSO_BUILD = '2026-11-12 11:29';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
