@@ -3369,6 +3369,14 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     user-select: text;        
   }
   .zzz1cn-empty { font-size: 10px; color: #6b7280; }
+  .zzz1cn-limrow { display: flex; justify-content: flex-end; margin: 2px 0 2px; } 
+  .zzz-lim { display: inline-flex; align-items: center; gap: 4px; font: 700 10px system-ui, sans-serif; color: #d4af37; }
+  .zzz-lim-t { letter-spacing: .5px; }
+  .zzz-lim-b { min-width: 34px; height: 24px; padding: 0 6px; border-radius: 7px; border: 1px solid #b8962e; background: #111; color: #d4af37; font: 700 10px system-ui, sans-serif; cursor: pointer; }
+  .zzz-lim-b.is-on { background: #d4af37; color: #111; }
+  .zzz-lim.is-forced, .zzz-lim.is-forced .zzz-lim-t { color: #c0c0c0; }   
+  .zzz-lim.is-forced .zzz-lim-b { border-color: #8a8a8a; color: #c0c0c0; }
+  .zzz-lim.is-forced .zzz-lim-b.is-on { background: #c0c0c0; color: #111; }
   .zzz1cn-older { display: block; width: 100%; margin: 2px 0 6px; padding: 6px 8px; border: 1px solid #b8962e; border-radius: 8px; background: #111; color: #d4af37; font-size: 11px; font-weight: 700; letter-spacing: .5px; cursor: pointer; } 
   
   
@@ -18093,10 +18101,13 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     const cnFocus = String(cnView.threadFocus || '');
     const cnNameMode = !!String(cnView.name || '').trim();
 
-    const cnLimit = cnView.sort ? Infinity : (zzz1cnFeedLimit.get(String(cnEntryKey)) || ZZZ1CN_FEED_STEP);
+    const cnLim = zzz_lim_get('chat:' + cnEntryKey);
+    const cnLimit = cnView.sort ? Infinity : Math.max(zzz1cnFeedLimit.get(String(cnEntryKey)) || 0, cnLim.v);
+    let cnTotalRows = 0;
     let cnHiddenOlder = 0;
     if (!cnThreadMode) {
       let cnList = (cnView.sort ? zzz5w7_sort_time(notes, cnView) : notes).filter((n) => cnPasses(n, cnOrdOf.get(n) || 1));
+      cnTotalRows = cnList.length;
       if (cnList.length > cnLimit) { cnHiddenOlder = cnList.length - cnLimit; cnList = cnList.slice(-cnLimit); }
       cnList.forEach((n) => {
         cnShown++;
@@ -18123,6 +18134,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
       const lastAct = (r) => { const l = kids.get(String(r.id)); return Math.max(tms(r), l && l.length ? tms(l[l.length - 1]) : 0); };
       roots.sort((a, b) => lastAct(a) - lastAct(b));
       const seen = zzz1cn_thread_seen_map();
+      cnTotalRows = roots.length;
       if (!cnFocus && roots.length > cnLimit) { cnHiddenOlder = roots.length - cnLimit; roots.splice(0, roots.length - cnLimit); }
       roots.forEach((r) => {
         const i = (cnOrdOf.get(r) || 1) - 1;
@@ -18210,20 +18222,27 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
         cnFeed.appendChild(box);
       });
     }
+    if (cnTotalRows > 25 || cnHiddenOlder > 0) {
+      const lr = document.createElement('div'); lr.className = 'zzz1cn-limrow';
+      lr.appendChild(zzz_lim_chips('chat:' + cnEntryKey, () => { zzz1cnFeedLimit.delete(String(cnEntryKey)); cnRefreshFeed(); }));
+      cnFeed.insertBefore(lr, cnFeed.firstChild);
+    }
     if (cnHiddenOlder > 0) {
+      const step = cnLim.v === Infinity ? ZZZ_LIM_DEF : cnLim.v;
       const ob = document.createElement('button'); ob.type = 'button'; ob.className = 'zzz1cn-older';
       ob.textContent = '\u25b2 OLDER \u00b7 ' + cnHiddenOlder + ' more';
-      ob.title = 'Tap = show 50 older messages · hold = show all ' + cnHiddenOlder;
+      ob.title = 'Tap = show ' + step + ' older messages · hold = show all ' + cnHiddenOlder;
       let ht = 0, all = false;
       ob.addEventListener('pointerdown', () => { all = false; clearTimeout(ht); ht = setTimeout(() => { all = true; }, 700); });
       ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => ob.addEventListener(ev, () => clearTimeout(ht)));
       ob.addEventListener('click', () => {
-        const k = String(cnEntryKey), add = all ? Infinity : ZZZ1CN_FEED_STEP;
-        zzz1cnFeedLimit.set(k, (zzz1cnFeedLimit.get(k) || ZZZ1CN_FEED_STEP) + add);
-        try { zzz_mem_step('older ' + (all ? 'all' : '+50')); } catch (e) {}
+        const k = String(cnEntryKey), add = all ? Infinity : step;
+        zzz1cnFeedLimit.set(k, Math.max(zzz1cnFeedLimit.get(k) || 0, cnLimit) + add);
+        try { zzz_mem_step('older ' + (all ? 'all' : '+' + step)); } catch (e) {}
         cnRefreshFeed().then(() => { try { cnFeed.scrollTop = 0; } catch (e) {} });
       });
-      cnFeed.insertBefore(ob, cnFeed.firstChild);
+      const lrow = cnFeed.querySelector(':scope > .zzz1cn-limrow');
+      if (lrow) lrow.after(ob); else cnFeed.insertBefore(ob, cnFeed.firstChild);
     }
     if (!cnShown) {
       const none = document.createElement('div');
@@ -40513,6 +40532,34 @@ function zzz1cn_sender_pin(feed) {
   } catch (e) {}
 }
 var ZZZ1CN_FEED_STEP = 50;
+
+const ZZZ_LIM_VALUES = [25, 100, Infinity];
+const ZZZ_LIM_DEF = 100;
+function zzz_lim_label(v) { return v === Infinity ? 'ALL' : String(v); }
+function zzz_lim_settings() { try { const v = localStorage.getItem(zzz_ukey('zzz_lim_set')); return v === 'ALL' ? Infinity : (v ? Number(v) || 0 : 0); } catch (e) { return 0; } }
+function zzz_lim_set_settings(v) { try { if (!v) localStorage.removeItem(zzz_ukey('zzz_lim_set')); else localStorage.setItem(zzz_ukey('zzz_lim_set'), zzz_lim_label(v)); } catch (e) {} }
+function zzz_lim_own_all() { try { return JSON.parse(localStorage.getItem(zzz_ukey('zzz_lim_ws')) || '{}') || {}; } catch (e) { return {}; } }
+function zzz_lim_set_own(place, v) { const all = zzz_lim_own_all(); if (!v) delete all[place]; else all[place] = zzz_lim_label(v); try { localStorage.setItem(zzz_ukey('zzz_lim_ws'), JSON.stringify(all)); } catch (e) {} }
+function zzz_lim_get(place) {
+  try { if (typeof zzz_minimal === 'function' && zzz_minimal()) return { v: 25, src: 'MINIMAL', forced: true }; } catch (e) {}
+  const st = zzz_lim_settings(); if (st) return { v: st, src: 'SETTINGS', forced: true };
+  const own = zzz_lim_own_all()[place]; if (own) return { v: own === 'ALL' ? Infinity : Number(own) || ZZZ_LIM_DEF, src: 'SETUP', forced: false };
+  return { v: ZZZ_LIM_DEF, src: 'DEFAULT', forced: false };
+}
+function zzz_lim_chips(place, onChange) {
+  const r = zzz_lim_get(place);
+  const w = document.createElement('span'); w.className = 'zzz-lim' + (r.forced ? ' is-forced' : ''); w.setAttribute('data-vlabel', 'VERSO › ' + place + ' › LIMIT'); w.setAttribute('data-vkind', 'SETUP');
+  const t = document.createElement('span'); t.className = 'zzz-lim-t'; t.textContent = r.forced ? (r.src === 'MINIMAL' ? '⚡ LIMIT' : '⚙ LIMIT') : 'LIMIT'; w.appendChild(t);
+  ZZZ_LIM_VALUES.forEach(v => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-lim-b' + (r.v === v ? ' is-on' : ''); b.textContent = zzz_lim_label(v);
+    b.title = r.forced ? ('Set by ' + (r.src === 'MINIMAL' ? 'the system (⚡ MINIMAL MODE)' : 'SETTINGS › LIMIT') + ' - change it there') : ('Show the newest ' + zzz_lim_label(v) + ' here (this device)');
+    b.addEventListener('click', (e) => { e.stopPropagation();
+      if (r.forced) { zzz6f2_show_toast(r.src === 'MINIMAL' ? '⚡ MINIMAL MODE sets LIMIT 25 (system). Switch it off: SETTINGS › Setup › ⚡ MINIMAL MODE.' : 'LIMIT is set for everything in SETTINGS › Setup › LIMIT - choose „BY SETUP“ there to set it per chat / workspace.', 'info'); return; }
+      zzz_lim_set_own(place, v === ZZZ_LIM_DEF ? 0 : v); if (typeof onChange === 'function') onChange(); });
+    w.appendChild(b);
+  });
+  return w;
+}
 var zzz1cnFeedLimit = new Map();
 function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   const wrap = document.createElement('div');
@@ -43652,7 +43699,7 @@ function zzz_minimal_mark() {
     m = document.createElement('button'); m.type = 'button'; m.id = 'zzzMinimalMark'; m.textContent = '\u26a1 MINIMAL';
     m.style.cssText = 'position:fixed;left:50%;bottom:10px;transform:translateX(-50%);z-index:2147483000;padding:2px 9px;border-radius:9px;border:1px dashed #D4AF37;background:rgba(17,17,17,.82);color:#D4AF37;font:700 10px/1.4 system-ui,sans-serif;letter-spacing:.6px';
     m.title = 'MINIMAL MODE is on - tap for details';
-    m.addEventListener('click', () => { try { zzz6f2_show_toast('\u26a1 MINIMAL MODE is on (this device): last windows not reopened, automatic readers off, translator MULTI-LANGUAGE off. Switch off: SETTINGS \u203a Setup (first box).', 'warn', 9000); } catch (e) {} });
+    m.addEventListener('click', () => { try { zzz6f2_show_toast('\u26a1 MINIMAL MODE is on (this device): last windows not reopened, automatic readers off, translator MULTI-LANGUAGE off, LIMIT 25. Switch off: SETTINGS \u203a Setup (first box).', 'warn', 9000); } catch (e) {} });
     document.body.appendChild(m);
   } catch (e) {}
 }
@@ -43665,7 +43712,7 @@ const ZZZ_5S_WS = [
     'Tap a row = open it (chat on that message; an issue line opens in the READER alone). Swipe a row = READ / SHIFTED / ⏰ ALARM.',
     'The coloured numbers on top = counts per kind - tap = jump to the first one. 📖 = all items as one READER page. ⤢ = NOTIFICATIONS workspace.'] },
   { k: /NOTIF/, t: 'NOTIFICATIONS', i: ['All notifications by kind and time; the shift bar moves items to later (with ⏰ ALARM); 📖 READER in the title.'] },
-  { k: /COMM SPACE|FEEDER/, t: 'COMM SPACE', i: ['Your chats in one place: ATTACHED CHATS on top, the COMM FEEDER = the newest messages. Chats show the newest 50 messages - ▲ OLDER (hold = all).'] },
+  { k: /COMM SPACE|FEEDER/, t: 'COMM SPACE', i: ['Your chats in one place: ATTACHED CHATS on top, the COMM FEEDER = the newest messages. Chats show the newest messages by LIMIT (25 · 100 · ALL, chips on top: gold = set here, silver = set by SETTINGS / MINIMAL) - ▲ OLDER (hold = all).'] },
   { k: /COMMUNICATION|CHAT/, t: 'CHAT', i: ['A chat of one record: chat line at the bottom (ENTER sends), ⏰ = ALARM for a message, the translator button (hold = MULTI-LANGUAGE for this chat), ▲ OLDER = earlier messages.'] },
   { k: /SETTINGS|SETUP/, t: 'SETTINGS', i: ['All Verso settings by tab; „saved on this device: <model>“ = only this phone. ⚡ MINIMAL MODE (first box) = lighter start, only by hand. ℹ INFO = SYSTEM CHECK, 5S SUPPORT and other informative switches.'] },
   { k: /MEDIA/, t: 'MEDIA CENTER', i: ['Every medium is one line; READ stays forever. Tap ▶ = VERSO READER / player, hold 1-2 s = the original. PRIVATE tab is hidden in QUIET.'] },
@@ -44496,7 +44543,8 @@ const ZZZ_SET_REG = [
   { m: 'Translation · reading aloud', w: 'd', androidApp: true, scope: 'device', place: 'settings', help: 'Translation before reading aloud - in the Verso app (VERSO NOTIF MULTIREADER), language packs on this DEVICE.' },
   { m: 'NOTIFY READER', w: 'sd', scope: 'all', place: 'settings', help: 'How notifications are read aloud. Verso server per way of login; voices on this DEVICE.' },
   { m: 'CONTENT READER', w: 'sd', scope: 'all', place: 'settings', help: 'Reading texts aloud on request. Verso server per way of login; voices on this DEVICE.' },
-  { m: '⚡ MINIMAL MODE', w: 'd', scope: 'device', place: 'settings', help: 'Lighter start: the last windows are not reopened, automatic readers off, translator MULTI-LANGUAGE off. Only by hand (the automatic switch-on was removed 2026-11-12). Link #minimal turns it on. This DEVICE only. [Zzz14-SUPPORT:MINIMAL-MODE]' },
+  { m: 'LIMIT · chats and lists', w: 'd', scope: 'device', place: 'settings', deps: ['⚡ MINIMAL MODE'], help: 'BY SETUP (each chat / workspace sets 25 · 100 · ALL itself, gold chips, default 100) or one value for everything (the SETUP chips turn silver = set by SETTINGS). ⚡ MINIMAL MODE = 25 (system). This DEVICE. [Zzz1-CN:FEED-LIMIT-SETUP]' },
+  { m: '⚡ MINIMAL MODE', w: 'd', scope: 'device', place: 'settings', help: 'Lighter start: the last windows are not reopened, automatic readers off, translator MULTI-LANGUAGE off, LIMIT 25. Only by hand (the automatic switch-on was removed 2026-11-12). Link #minimal turns it on. This DEVICE only. [Zzz14-SUPPORT:MINIMAL-MODE]' },
   { m: '5S SUPPORT · this device', w: 'd', scope: 'device', place: 'info', help: 'ℹ INFO › OVERVIEW FUNCTIONS: hold any button or place 5 s = a Verso window with its instructions: this button, the buttons around it, and the workspace it is in (hold an empty part of a workspace = the workspace instructions). Buttons that have their own hold commands (secret, upload, delete, select …) keep them - 5S SUPPORT stays away. Default ON. [Zzz14-SUPPORT:5S]' },
   { m: 'SYSTEM CHECK · this device', w: 'd', scope: 'device', place: 'info', help: 'ℹ INFO › OVERVIEW FUNCTIONS: SYSTEM CHECK watches this DEVICE - memory, start steps, opened windows, taps (button names only, never what you type), what is on screen, loaded translator models. When Verso is stopped, these facts go into your ISSUES record so support can find the cause. Nothing else is stored or sent. Default ON. [Zzz14-SUPPORT:SYSTEM-CHECK]' },
   { m: 'History is kept only on MY DEVICE', w: 'd', lock: true, scope: 'device', place: 'settings', help: 'Copied texts stay only on this DEVICE (in the Verso app encrypted by the phone’s security chip) - never sent anywhere, gone after a reinstall.' }
@@ -51279,6 +51327,18 @@ function open_settings_workspace() {
       const paint = () => { const on = zzz_minimal(); mbtn.className = 'zzz16-btn' + (on ? ' is-on' : ''); mbtn.textContent = on ? 'ON' : 'OFF'; };
       mbtn.addEventListener('click', () => { zzz_minimal_set(!zzz_minimal()); paint(); });
       paint(); mr.appendChild(mbtn); mb.appendChild(mr);
+      try {
+        const lr = document.createElement('div'); lr.className = 'zzz16-row';
+        const ll = document.createElement('div'); ll.textContent = 'LIMIT · chats and lists';
+        const ls = document.createElement('small'); ls.className = 'zzz14b2-now';
+        ls.textContent = 'How many newest messages / rows a chat builds at once (▲ OLDER adds more). BY SETUP = each chat / workspace sets its own (gold chips there, default 100). 25 / 100 / ALL here = for everything, the SETUP chips turn silver. ⚡ MINIMAL MODE = 25. This device.';
+        ll.appendChild(ls); lr.appendChild(ll);
+        const lb = document.createElement('div'); lb.className = 'zzz14b2-voice';
+        const paintL = () => { const cur = zzz_lim_settings(); lb.querySelectorAll('button').forEach(b => b.classList.toggle('is-on', String(cur) === b.dataset.v || (!cur && b.dataset.v === '0'))); };
+        [[0, 'BY SETUP'], [25, '25'], [100, '100'], [Infinity, 'ALL']].forEach(([v, t]) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn'; b.textContent = t; b.dataset.v = String(v);
+          b.addEventListener('click', () => { zzz_lim_set_settings(v); paintL(); }); lb.appendChild(b); });
+        paintL(); lr.appendChild(lb); mb.appendChild(lr);
+      } catch (e) {}
       tabContent.insertBefore(mb, tabContent.firstChild);
     } catch (e) {}
     try {
@@ -52564,7 +52624,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-12 14:27';
+const VERSO_BUILD = '2026-11-12 14:29';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
