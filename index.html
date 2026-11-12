@@ -9764,6 +9764,23 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz5cal-empty, .zzz5cal-none { color: #8d8d8d; font-size: 13px; padding: 8px 2px; }
   .zzz5cal-none { padding: 2px 6px; font-size: 12px; }
   .zzz5cal-row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; background: #1f1f1f; border-left: 5px solid #2e9d4a; border-radius: 6px; color: #eee; cursor: pointer; min-width: 0; }
+  .zzz5cal-row { flex-wrap: wrap; touch-action: pan-y; -webkit-user-select: none; user-select: none; }   
+  .zzz5cal-row.is-sw-keep { background: #12351b; }
+  .zzz5cal-row.is-sw-shift { background: #16233f; }
+  .zzz5cal-body { touch-action: pan-y; }
+  .zzz5cal-body.is-in-r { animation: zzz5calInR .18s ease-out; }
+  .zzz5cal-body.is-in-l { animation: zzz5calInL .18s ease-out; }
+  @keyframes zzz5calInR { from { transform: translateX(28px); opacity: .3; } to { transform: none; opacity: 1; } }
+  @keyframes zzz5calInL { from { transform: translateX(-28px); opacity: .3; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .zzz5cal-body.is-in-r, .zzz5cal-body.is-in-l { animation: none; } }
+  .zzz5cal-more-btn { flex: 0 0 auto; width: 30px; height: 26px; border-radius: 6px; border: 1px solid #555; background: #171717; color: #D4AF37; font-size: 16px; line-height: 1; cursor: pointer; padding: 0; }
+  .zzz5cal-more-btn.is-open { background: #D4AF37; color: #171717; }
+  .zzz5cal-acts { flex: 1 0 100%; display: flex; flex-direction: column; gap: 6px; padding-top: 6px; cursor: default; }
+  .zzz5cal-acts-top { display: flex; flex-wrap: wrap; gap: 6px; }
+  .zzz5cal-cell.is-sel { border-color: #fff; box-shadow: 0 0 0 1px #fff inset; }
+  .zzz5cal-selhead { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: #D4AF37; font-size: 12px; font-weight: 800; letter-spacing: .06em; }
+  .zzz5cal-selhead span { flex: 1 1 auto; min-width: 0; }
+  .zzz5cal-hint { color: #8d8d8d; font-size: 11px; text-align: center; margin-top: 6px; }
   .zzz5cal-row.is-done { opacity: .6; }
   .zzz5cal-row.is-done .zzz5cal-text { text-decoration: line-through; }
   .zzz5cal-time { flex: 0 0 auto; font-size: 12px; font-weight: 700; color: #D4AF37; min-width: 44px; font-variant-numeric: tabular-nums; }
@@ -28909,7 +28926,7 @@ const ZZZ5CAL_PRESETS = [
 ];
 const ZZZ5CAL_DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 const ZZZ5CAL_MONTHS = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
-var zzz5calState = { view: 'day', anchor: new Date(), kinds: {}, prios: {}, done: true, preset: 'TODAY' };
+var zzz5calState = { view: 'day', anchor: new Date(), kinds: {}, prios: {}, done: true, preset: 'TODAY', sel: null, dir: 0 };
 function zzz5cal_day0(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
 function zzz5cal_add(d, n) { const x = zzz5cal_day0(d); x.setDate(x.getDate() + n); return x; }
 function zzz5cal_key(d) { return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
@@ -28921,7 +28938,7 @@ function zzz5cal_is_open() {
 }
 function zzz5cal_apply_preset(p) {
   const S = zzz5calState;
-  S.view = p.view; S.anchor = zzz5cal_day0(new Date()); S.done = !!p.done; S.preset = p.n;
+  S.view = p.view; S.anchor = zzz5cal_day0(new Date()); S.done = !!p.done; S.preset = p.n; S.sel = null; S.dir = 0;
   S.kinds = {}; ZZZ5CAL_KINDS.forEach(k => { S.kinds[k.k] = p.kinds.indexOf(k.k) >= 0; });
   S.prios = {}; ZZZ5CAL_PRIOS.forEach(k => { S.prios[k.k] = p.prios.indexOf(k.k) >= 0; });
 }
@@ -28972,7 +28989,7 @@ function zzz5cal_move(dir) {
   if (S.view === 'day') S.anchor = zzz5cal_add(a, dir);
   else if (S.view === 'week') S.anchor = zzz5cal_add(a, 7 * dir);
   else S.anchor = new Date(a.getFullYear(), a.getMonth() + dir, 1);
-  S.preset = '';
+  S.preset = ''; S.sel = null; S.dir = dir;
   zzz5cal_render();
 }
 function zzz5cal_row(it) {
@@ -28986,9 +29003,54 @@ function zzz5cal_row(it) {
   pill.style.color = it.prio === 'urgent' ? '#fff' : '#171717';
   r.appendChild(pill);
   r.appendChild(zzz5cal_el('span', 'zzz5cal-text', it.text || ''));
+
+  const more = zzz5cal_el('button', 'zzz5cal-more-btn', '⋯');
+  more.type = 'button'; more.title = 'Actions: open, read, shift, done, hide';
+  more.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const ex = r.querySelector(':scope > .zzz5cal-acts');
+    if (ex) { ex.remove(); more.classList.remove('is-open'); return; }
+    const box = zzz5cal_el('div', 'zzz5cal-acts');
+    box.addEventListener('click', (e2) => e2.stopPropagation());
+    const top = zzz5cal_el('div', 'zzz5cal-acts-top');
+    const mk = (txt, tip, fn) => { const b = zzz5cal_el('button', 'zzz5w5cm-chip', txt); b.type = 'button'; b.title = tip; b.addEventListener('click', (e3) => { e3.stopPropagation(); fn(); }); top.appendChild(b); };
+    mk('OPEN · CANCEL · DELETE', 'Opens the item window (change, cancel or delete it there)', () => { try { zzz5w8_open_item(it, r); } catch (e) { console.error('calendar open item', e); } });
+    mk('READ', 'Mark as read without opening', () => zzz5w8_swipe_read(it));
+    box.appendChild(top);
+    try { box.appendChild(zzz5w8_build_shift_bar(it)); } catch (e) {}
+    r.appendChild(box);
+    more.classList.add('is-open');
+  });
+  r.appendChild(more);
   r.title = pc.n + (it.done ? ' · DONE' : '');
-  r.addEventListener('click', () => { try { zzz5w8_open_item(it, r); } catch (e) { console.error('calendar open item', e); } });
+  r.addEventListener('click', () => { if (r._zzzSwiped) return; try { zzz5w8_open_item(it, r); } catch (e) { console.error('calendar open item', e); } });
+
+  try { zzz3sw_bind(r, () => it, { skip: 'button, input, .zzz5cal-acts' }); } catch (e) {}
   return r;
+}
+
+function zzz5cal_bind_nav(box) {
+  let x0 = null, y0 = 0, dx = 0, dy = 0, mv = false, pid = null;
+  box.addEventListener('pointerdown', (e) => {
+    if (e.button > 0 || (e.target && e.target.closest && e.target.closest('.zzz5cal-row, input'))) return;
+    x0 = e.clientX; y0 = e.clientY; dx = 0; dy = 0; mv = false; pid = e.pointerId;
+  });
+  box.addEventListener('pointermove', (e) => {
+    if (x0 === null || e.pointerId !== pid) return;
+    dx = e.clientX - x0; dy = e.clientY - y0;
+    if (!mv && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) { mv = true; try { box.setPointerCapture(pid); } catch (_) {} }
+  });
+  const end = (e) => {
+    if (x0 === null) return;
+    const d = dx, was = mv, cancel = e && e.type === 'pointercancel';
+    x0 = null; mv = false;
+    if (!was) return;
+    box._zzzSwiped = true; setTimeout(() => { box._zzzSwiped = false; }, 450);
+    if (!cancel && Math.abs(d) >= 56) zzz5cal_move(d < 0 ? 1 : -1);
+  };
+  box.addEventListener('pointerup', end);
+  box.addEventListener('pointercancel', end);
+  box.addEventListener('click', (e) => { if (box._zzzSwiped) { e.stopPropagation(); e.preventDefault(); } }, true);
 }
 function zzz5cal_goto(d) { zzz5calState.view = 'day'; zzz5calState.anchor = zzz5cal_day0(d); zzz5calState.preset = ''; zzz5cal_render(); }
 function zzz5cal_body_day(byDay) {
@@ -29027,11 +29089,18 @@ function zzz5cal_body_month(byDay) {
   ZZZ5CAL_DAYS.forEach(n => grid.appendChild(zzz5cal_el('div', 'zzz5cal-mh', n)));
   const first = new Date(S.anchor.getFullYear(), S.anchor.getMonth(), 1), start = zzz5cal_monday(first);
   const today = zzz5cal_key(new Date());
+
+  if (!S.sel || S.sel.m !== first.getFullYear() * 12 + first.getMonth()) {
+    const t = new Date(), inMonth = t.getFullYear() === first.getFullYear() && t.getMonth() === first.getMonth();
+    S.sel = { m: first.getFullYear() * 12 + first.getMonth(), d: inMonth ? t.getDate() : 1 };
+  }
+  const selDate = new Date(first.getFullYear(), first.getMonth(), S.sel.d);
   for (let i = 0; i < 42; i++) {
     const d = zzz5cal_add(start, i);
     if (i >= 35 && d.getMonth() !== first.getMonth()) break;
     const list = byDay[zzz5cal_key(d)] || [];
-    const c = zzz5cal_el('button', 'zzz5cal-cell' + (d.getMonth() !== first.getMonth() ? ' is-out' : '') + (zzz5cal_key(d) === today ? ' is-today' : ''));
+    const isSel = zzz5cal_key(d) === zzz5cal_key(selDate);
+    const c = zzz5cal_el('button', 'zzz5cal-cell' + (d.getMonth() !== first.getMonth() ? ' is-out' : '') + (zzz5cal_key(d) === today ? ' is-today' : '') + (isSel ? ' is-sel' : ''));
     c.type = 'button';
     c.appendChild(zzz5cal_el('span', 'zzz5cal-num', String(d.getDate())));
     if (list.length) {
@@ -29044,10 +29113,25 @@ function zzz5cal_body_month(byDay) {
       c.appendChild(dots);
       if (list.length > 4) c.appendChild(zzz5cal_el('span', 'zzz5cal-more', '+' + (list.length - 4)));
     }
-    c.addEventListener('click', () => zzz5cal_goto(d));
+
+    c.addEventListener('click', () => {
+      if (d.getMonth() !== first.getMonth()) { S.anchor = new Date(d.getFullYear(), d.getMonth(), 1); S.sel = { m: d.getFullYear() * 12 + d.getMonth(), d: d.getDate() }; S.preset = ''; zzz5cal_render(); return; }
+      if (isSel) { zzz5cal_goto(d); return; }
+      S.sel = { m: S.sel.m, d: d.getDate() }; zzz5cal_render();
+    });
     grid.appendChild(c);
   }
   box.appendChild(grid);
+
+  const sl = byDay[zzz5cal_key(selDate)] || [];
+  const hd = zzz5cal_el('div', 'zzz5cal-selhead');
+  hd.appendChild(zzz5cal_el('span', '', ZZZ5CAL_DAYS[(selDate.getDay() + 6) % 7] + ' ' + selDate.getDate() + '. ' + (selDate.getMonth() + 1) + '.' + (sl.length ? '  ·  ' + sl.length : '')));
+  const dv = zzz5cal_el('button', 'zzz5cal-chip', 'DAY ›'); dv.type = 'button'; dv.title = 'Open this day in the DAY view';
+  dv.addEventListener('click', () => zzz5cal_goto(selDate));
+  hd.appendChild(dv);
+  box.appendChild(hd);
+  if (!sl.length) box.appendChild(zzz5cal_el('div', 'zzz5cal-none', 'Nothing planned.'));
+  sl.forEach(it => box.appendChild(zzz5cal_row(it)));
   return box;
 }
 function zzz5cal_render() {
@@ -29089,7 +29173,11 @@ function zzz5cal_render() {
   mod.appendChild(cr);
 
   const byDay = zzz5cal_by_day(zzz5cal_items());
-  mod.appendChild(S.view === 'day' ? zzz5cal_body_day(byDay) : (S.view === 'week' ? zzz5cal_body_week(byDay) : zzz5cal_body_month(byDay)));
+  const bodyEl = S.view === 'day' ? zzz5cal_body_day(byDay) : (S.view === 'week' ? zzz5cal_body_week(byDay) : zzz5cal_body_month(byDay));
+  if (S.dir) { bodyEl.classList.add(S.dir > 0 ? 'is-in-r' : 'is-in-l'); S.dir = 0; }
+  zzz5cal_bind_nav(bodyEl);
+  mod.appendChild(bodyEl);
+  mod.appendChild(zzz5cal_el('div', 'zzz5cal-hint', '← swipe → = next / previous · on an item: left = SHIFT, right = DONE'));
   wrap.appendChild(mod);
 }
 function open_calendar_workspace() {
@@ -52943,7 +53031,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-12 15:25';
+const VERSO_BUILD = '2026-11-12 15:32';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
