@@ -43872,8 +43872,13 @@ function zzz23tr_def_out() { const l = String(zzz23tr_prefs().out || 'en'); retu
 function zzz23tr_chat(key) {
   let all = {}; try { all = JSON.parse(localStorage.getItem('zzz23tr_chat') || '{}') || {}; } catch (e) {}
   const c = all[String(key || '')] || {};
-  return { m: c.m === 'in' || c.m === 'out' || c.m === 'off' ? c.m : zzz23tr_def_mode(), to: zzz16_lang_known(String(c.to || '')) ? c.to : zzz23tr_def_out() };
+  const r = { m: c.m === 'in' || c.m === 'out' || c.m === 'off' ? c.m : zzz23tr_def_mode(), to: zzz16_lang_known(String(c.to || '')) ? c.to : zzz23tr_def_out() };
+  if (c.mu === 1 || c.mu === 0) r.mu = c.mu;
+  return r;
 }
+
+function zzz23tr_multi(key) { const c = key != null ? zzz23tr_chat(key) : {}; return c.mu === 1 ? true : c.mu === 0 ? false : zzz23tr_prefs().multi === true; }
+function zzz23tr_clear() { try { zzz23tr_reset(); } catch (e) {} try { zzz23trState.memo.clear(); } catch (e) {} try { zzz6f2_show_toast('Translator memory cleared - models load again when needed.', 'ok'); } catch (e) {} }
 function zzz23tr_set_chat(key, patch) {
   let all = {}; try { all = JSON.parse(localStorage.getItem('zzz23tr_chat') || '{}') || {}; } catch (e) {}
   all[String(key || '')] = Object.assign(zzz23tr_chat(key), patch);
@@ -44092,7 +44097,7 @@ function zzz23tr_attach(body, entryKey, note, me) {
     if (orig.trim().length < 2) return;
     const home = zzz16_home();
     const parts = zzz23tr_parts(orig);
-    {
+    if (!zzz23tr_multi(entryKey)) {
       const main = zzz23tr_detect(orig);
       parts.forEach(x => { if (!x.l || x.l === main) return;
         const set = ZZZ23TR_SETS[x.l]; const words = (String(x.t).toLowerCase().match(/[\p{L}']+/gu) || []);
@@ -44237,6 +44242,17 @@ function zzz23tr_pick(anchor, key, after) {
     grid.appendChild(btn);
   });
   box.appendChild(grid);
+  {
+    const h2 = document.createElement('div'); h2.className = 'zzz23tr-pick-h'; h2.textContent = 'MULTI-LANGUAGE \u00b7 THIS CHAT'; box.appendChild(h2);
+    const g2 = document.createElement('div'); g2.className = 'zzz23tr-pick-g';
+    const mk = (t, on, fn, title) => { const b2 = document.createElement('button'); b2.type = 'button'; b2.className = 'zzz23tr-pb' + (on ? ' is-on' : ''); b2.textContent = t; b2.title = title; b2.addEventListener('click', (e) => { e.stopPropagation(); fn(); box.remove(); if (after) after(); }); g2.appendChild(b2); };
+    const mu = zzz23tr_chat(key).mu;
+    mk('AS SET', mu == null, () => { let all = {}; try { all = JSON.parse(localStorage.getItem('zzz23tr_chat') || '{}') || {}; } catch (e) {} if (all[String(key)]) delete all[String(key)].mu; try { localStorage.setItem('zzz23tr_chat', JSON.stringify(all)); } catch (e) {} try { document.dispatchEvent(new CustomEvent('zzz23tr-changed', { detail: { key: String(key || '') } })); } catch (e) {} }, 'Follows SETTINGS \u203a VERSO TRANSLATOR \u203a MULTI-LANGUAGE (now ' + (zzz23tr_prefs().multi === true ? 'ON' : 'OFF') + ')');
+    mk('ON', mu === 1, () => zzz23tr_set_chat(key, { mu: 1 }), 'In this chat every sentence is translated from its own language into your home language');
+    mk('OFF', mu === 0, () => zzz23tr_set_chat(key, { mu: 0 }), 'In this chat a message is translated from its one main language');
+    mk('CLEAR', false, () => zzz23tr_clear(), 'Empty the translator memory (loaded models + remembered translations)');
+    box.appendChild(g2);
+  }
   const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz23tr-pick-x'; x.textContent = '×';
   x.addEventListener('click', (e) => { e.stopPropagation(); box.remove(); }); box.appendChild(x);
   document.body.appendChild(box);
@@ -44269,6 +44285,17 @@ function zzz23tr_settings(row) {
     oBox.appendChild(b);
   });
   row('TRANSLATOR · my messages in', 'Language of my sent messages in IN+OUT (a chat can have its own - hold its button 1-2 s). Received messages are always translated into the Home language above.', '', oBox);
+  {
+    const muBox = document.createElement('div'); muBox.className = 'zzz14b2-voice';
+    [[false, 'OFF'], [true, 'ON']].forEach(([v, t]) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn' + ((zzz23tr_prefs().multi === true) === v ? ' is-on' : ''); b.textContent = t;
+      b.addEventListener('click', () => { const p = zzz23tr_prefs(); p.multi = v; zzz23tr_save_prefs(p); muBox.querySelectorAll('button.zzz23tr-mu').forEach(x => x.classList.toggle('is-on', x === b)); try { document.dispatchEvent(new CustomEvent('zzz23tr-changed')); } catch (e) {} });
+      b.classList.add('zzz23tr-mu'); muBox.appendChild(b);
+    });
+    const cb = document.createElement('button'); cb.type = 'button'; cb.className = 'zzz16-btn'; cb.textContent = 'CLEAR'; cb.title = 'Empty the translator memory (loaded models + remembered translations)';
+    cb.addEventListener('click', () => zzz23tr_clear()); muBox.appendChild(cb);
+    row('TRANSLATOR \u00b7 MULTI-LANGUAGE', 'OFF = a message is translated from its one main language (lighter). ON = Verso finds several languages in one text by itself and translates every sentence into your Home language (one at a time, at most 2 language models in memory). One chat / record only: hold the translator button in that chat \u203a MULTI-LANGUAGE. CLEAR = empty the translator memory. System lines (VERSO SYSTEM) are never translated. This device.', '', muBox);
+  }
   const pBox = document.createElement('div'); pBox.className = 'zzz14b2-voice'; pBox.style.flexWrap = 'wrap';
   const paintPacks = () => {
     pBox.innerHTML = '';
@@ -44310,6 +44337,7 @@ const ZZZ_SET_REG = [
   { m: 'READ SETUP', w: 's', scope: 'all', place: 'settings', help: 'READ SPACE (⚙): what a new page stores (nothing / excerpt / text / text + images), what KEEP CONTENT stores, IMAGES (auto via Verso / on tap / direct), how many read pages this device keeps for reading offline; SEARCH shown (SearXNG / Claude later). Verso server; this device keeps a copy.' },
   { m: 'VERSO MEDIA CENTER', w: 'wd', scope: 'device', place: 'settings', deps: ['Media control'], help: 'ON / OFF, ONLINE / OFFLINE, copied links. Your media lines themselves are on the Verso server (ALL MEDIA).' },
   { m: 'TRANSLATOR · languages on this device', w: 'd', scope: 'device', place: 'settings', deps: ['VERSO TRANSLATOR'], help: 'Language packs of the chat translator, downloaded once to this DEVICE (checked against the checksum inside Verso) - download again on a new device.' },
+  { m: 'TRANSLATOR · MULTI-LANGUAGE', w: 'd', scope: 'device', place: 'settings', deps: ['VERSO TRANSLATOR'], help: 'OFF (default) = one main language per message; ON = several languages in one text found and translated into the Home language; per chat: hold the chat translator button. CLEAR empties the translator memory. [Zzz14-B23:TR-MULTI]' },
   { m: 'VERSO TRANSLATOR', w: 'w', scope: 'all', place: 'settings', deps: ['TRANSLATOR · languages on this device'], help: 'Translator in the chat (IN / OFF / IN+OUT). This browser now - saved on the Verso server with the coming settings backup.' },
   { m: 'TRANSLATOR · my messages in', w: 'w', scope: 'all', place: 'settings', help: 'Language of your sent messages. This browser now - server backup is coming.' },
   { m: 'TRANSLATOR · start in a chat', w: 'w', scope: 'all', place: 'settings', help: 'How a new chat starts (IN / OFF / IN+OUT). This browser now - server backup is coming.' },
@@ -52383,7 +52411,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-12 12:05';
+const VERSO_BUILD = '2026-11-12 12:33';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
