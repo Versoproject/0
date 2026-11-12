@@ -43583,10 +43583,27 @@ function zzz_mem_tick() {
 
 function zzz_minimal() { try { if (/[?&#]minimal(=1)?\b/.test(location.search + location.hash)) localStorage.setItem('zzz_minimal', '1'); return localStorage.getItem('zzz_minimal') === '1'; } catch (e) { return false; } }
 function zzz_minimal_set(on, why) { try { localStorage.setItem('zzz_minimal', on ? '1' : '0'); } catch (e) {} try { zzz6f2_show_toast(on ? '⚡ MINIMAL MODE on' + (why ? ' - ' + why : '') + '. SETTINGS › Setup (first box) to switch off.' : 'MINIMAL MODE off - the next start is normal.', on ? 'warn' : 'ok', 6000); } catch (e) {} }
-function zzz_mem_step(label) { try { zzzMem.step = String(label || '').slice(0, 40); zzzMem.stepAt = Date.now(); } catch (e) {} }
+function zzz_mem_step(label) { try { zzzMem.step = String(label || '').slice(0, 40); zzzMem.stepAt = Date.now(); (zzzMem.trail = zzzMem.trail || []).push(Math.round((Date.now() - (zzzMem.since || zzzMem.stepAt)) / 1000) + 's ' + zzzMem.step); if (zzzMem.trail.length > 8) zzzMem.trail.shift(); } catch (e) {} }
+
+function zzz_mem_scene() {
+  const o = {};
+  try { o.at = (String(location.hash || '').match(/^#([a-z0-9_-]+)/i) || [])[1] || '-'; } catch (e) {}
+  try { const fr = Array.from(document.querySelectorAll('iframe')); o.frames = fr.length; o.hosts = Array.from(new Set(fr.map(f => { try { return new URL(f.src, location.href).hostname.replace(/^www\./, ''); } catch (e) { return '?'; } }))).slice(0, 4).join(','); } catch (e) {}
+  try { o.anim = document.getAnimations ? document.getAnimations().filter(a => a.playState === 'running').length : -1; } catch (e) {}
+  try { const cv = Array.from(document.getElementsByTagName('canvas')); o.canv = cv.length; o.canvMpx = Math.round(cv.reduce((n, c) => n + (c.width * c.height || 0), 0) / 1e5) / 10; } catch (e) {}
+  try { const im = Array.from(document.images).filter(i => i.complete && i.naturalWidth); o.img = im.length; o.imgMpx = Math.round(im.reduce((n, i) => n + i.naturalWidth * i.naturalHeight, 0) / 1e5) / 10; } catch (e) {}
+  try { const md = Array.from(document.querySelectorAll('video,audio')); o.media = md.length; o.playing = md.filter(m => !m.paused).length; } catch (e) {}
+  try { o.fx = document.querySelectorAll('[style*="filter"],[class*="blur"],[class*="glass"]').length; } catch (e) {}
+  try { o.trail = (zzzMem.trail || []).slice(-6).join(' > '); } catch (e) {}
+  return o;
+}
+function zzz_mem_scene_txt(sc) {
+  if (!sc) return '';
+  return ' · scene: at ' + (sc.at || '?') + ' · frames ' + (sc.frames || 0) + (sc.hosts ? ' (' + sc.hosts + ')' : '') + ' · animations ' + (sc.anim != null ? sc.anim : '?') + ' · canvas ' + (sc.canv || 0) + ' / ' + (sc.canvMpx || 0) + ' Mpx · images ' + (sc.img || 0) + ' / ' + (sc.imgMpx || 0) + ' Mpx · video+audio ' + (sc.media || 0) + ' (' + (sc.playing || 0) + ' playing) · effects ' + (sc.fx || 0) + (sc.trail ? ' · steps: ' + sc.trail : '');
+}
 const ZZZ_MEM_ALIVE = 'zzz_mem_alive';
 
-function zzz_mem_alive_beat() { try { if (zzz_mem_on()) localStorage.setItem(ZZZ_MEM_ALIVE, JSON.stringify({ t: Date.now(), since: zzzMem.since || (zzzMem.since = Date.now()), build: typeof VERSO_BUILD === 'string' ? VERSO_BUILD : '', step: zzzMem.step, hidden: !!document.hidden, hiddenAt: document.hidden ? (zzzMem.hiddenAt || (zzzMem.hiddenAt = Date.now())) : (zzzMem.hiddenAt = 0), sample: zzz_mem_sample() })); } catch (e) {} }
+function zzz_mem_alive_beat() { try { if (zzz_mem_on()) localStorage.setItem(ZZZ_MEM_ALIVE, JSON.stringify({ t: Date.now(), since: zzzMem.since || (zzzMem.since = Date.now()), build: typeof VERSO_BUILD === 'string' ? VERSO_BUILD : '', step: zzzMem.step, hidden: !!document.hidden, hiddenAt: document.hidden ? (zzzMem.hiddenAt || (zzzMem.hiddenAt = Date.now())) : (zzzMem.hiddenAt = 0), sample: zzz_mem_sample(), scene: zzz_mem_scene() })); } catch (e) {} }
 try { document.addEventListener('visibilitychange', () => { if (!document.hidden) zzzMem.hiddenAt = 0; zzz_mem_alive_beat(); }); } catch (e) {}
 let zzzMemPrev = null;
 function zzz_mem_alive_check() {
@@ -43601,7 +43618,7 @@ function zzz_mem_alive_check() {
     if (h.length >= 2 && !zzz_minimal()) zzz_minimal_set(true, 'Verso stopped twice at the start');
   }
   const where = a.hidden ? 'in the BACKGROUND (hidden ' + Math.round((a.t - (a.hiddenAt || a.t)) / 60000) + ' min before - Android frees memory of hidden apps)' : 'while VISIBLE (in front)';
-  try { zzz_report_issue('page-killed', 'PAGE KILLED ' + where + ' · last: ' + (x.heap ? x.heap + ' of ' + x.limit + ' MB' : 'heap ?') + ' · ' + (x.nodes || 0) + ' elements · ran ' + Math.round((a.t - (a.since || a.t)) / 1000) + ' s · last step: ' + (a.step || '?') + ' · build ' + (a.build || '?'), { tags: ['page-killed', 'memory'], mem: a }); } catch (e) {}
+  try { zzz_report_issue('page-killed', 'PAGE KILLED ' + where + ' · last: ' + (x.heap ? x.heap + ' of ' + x.limit + ' MB' : 'heap ?') + ' · ' + (x.nodes || 0) + ' elements · ran ' + Math.round((a.t - (a.since || a.t)) / 1000) + ' s · last step: ' + (a.step || '?') + zzz_mem_scene_txt(a.scene) + ' · build ' + (a.build || '?'), { tags: ['page-killed', 'memory'], mem: a }); } catch (e) {}
 }
 try {
   try { zzzMemPrev = JSON.parse(localStorage.getItem(ZZZ_MEM_ALIVE) || 'null'); } catch (e) { zzzMemPrev = null; }
@@ -52293,7 +52310,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-11 23:53';
+const VERSO_BUILD = '2026-11-12 10:45';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
