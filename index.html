@@ -26411,6 +26411,7 @@ function zzz5w8_swipe_read(it) {
   if (it.checked) { zzz6f2_show_toast('Already READ.', 'ok'); return; }
   if ((it.src === 'reminder' || it.src === 'schedule') && !it.due) { zzz6f2_show_toast('Not due yet - READ works when it rings; swipe left = SHIFT moves it.', 'warn'); return; }
   const isMsg = it.src === 'chat' || it.src === 'reminder' || it.src === 'schedule';
+  if (zzz_ops_is_info(it)) { zzz_ops_info_ok(it); return; }
   if (!isMsg) { zzz6f2_show_toast('READ works for messages and reminders - SHIFT this one.', 'warn'); return; }
   if (it.src === 'chat' && zzz5w8ShiftMissing) { zzz6f2_show_toast(zzz_not_ready('READ', ZZZ5W8_SHIFT_SQL, '[Zzz5-W8:SWIPE-READ]'), 'warn'); return; }
   zzz5w8_to_checked(it);
@@ -28566,6 +28567,11 @@ function zzz5w8_render_inner() {
   x.setAttribute('aria-label', 'Close');
   x.textContent = '×';
   x.addEventListener('click', () => { close_notification_workspace(); zzz6f40_workspaceOpener = null; });
+  if (zzz3dBackFull) {
+    const bd = document.createElement('button'); bd.type = 'button'; bd.className = 'zzz5w5cm-chip zzz5w8-backdash'; bd.textContent = '\u25c0 DASHBOARD'; bd.title = 'Back to the full DASHBOARD';
+    bd.addEventListener('click', () => { close_notification_workspace(); zzz6f40_workspaceOpener = null; });
+    acts.insertBefore(bd, acts.firstChild);
+  }
   acts.appendChild(x);
   label.appendChild(acts);
   mod.appendChild(label);
@@ -28812,6 +28818,7 @@ function close_notification_workspace() {
   workspace.innerHTML = '';
   zzz5w8_set_full(false);
   zzz5w8_sync_button_gold();
+  if (zzz3dBackFull) zzz3d_back_to_dash();
 }
 
 (function bindZzz2R31NotificationsButton() {
@@ -31254,13 +31261,21 @@ async function zzz3d_focus_missed(noteId, chatKey, waited) {
   document.body.appendChild(box);
   box.style.top = Math.max(8, Math.round(window.innerHeight * 0.2)) + 'px';
 }
+
+var zzz3dBackFull = false;
+function zzz_ops_is_info(it) { return !!(it && it.src === 'op' && /^updated(app)?:/.test(String(it.key || ''))); }
+function zzz_ops_info_ok(it, quiet) { try { zzz_ops_set(it.key, { done: true }); zzz5w8_render(); } catch (e) {} try { zzz3dSig = ''; zzz3d_render(); } catch (e) {} if (!quiet) zzz6f2_show_toast('OK - READ.', 'ok', 1200); }
+function zzz3d_back_to_dash() { zzz3dBackFull = false; try { zzz3d_full(true); } catch (e) {} }
 function zzz3d_open(it, el) {
   const bx = document.getElementById('versoDashboardSection');
-  if (bx && bx.classList.contains('zzz3d-full')) zzz3d_full(false);
+  if (zzz_ops_is_info(it)) { zzz_ops_info_ok(it); return; }
+  const wasFull = !!(bx && bx.classList.contains('zzz3d-full'));
+  if (wasFull) zzz3d_full(false);
+  zzz3dBackFull = false;
   try {
     const r = (it && it.raw) || {};
 
-    if (it.src === 'reminder' || it.src === 'schedule') { zzz5w8_open_ws_for(it); zzz3d_render(); return; }
+    if (it.src === 'reminder' || it.src === 'schedule') { zzz3dBackFull = wasFull; zzz5w8_open_ws_for(it); zzz3d_render(); return; }
     if (it.src !== 'chat') { zzz5w8_open_item(it, el); zzz3d_render(); return; }
     if (it.back) zzz5w8_put_state(it, { until: null }).catch(() => {});
     const key = String(r.entry_key || it.key || '');
@@ -31431,6 +31446,7 @@ function zzz3sw_act(it, lv, anchor) {
 
 function zzz3sw_done(it, quiet) {
   if (!it) return;
+  if (zzz_ops_is_info(it)) { zzz_ops_info_ok(it, quiet); return; }
   if (it.src === 'op') { if (!quiet) zzz6f2_show_toast('DONE works for messages and reminders - SHIFT this one.', 'warn'); return; }
   if (it.hidden) { zzz5w8_hide(it, false); return; }
   if (it.done) { if (!quiet) zzz6f2_show_toast('Already DONE.', 'ok'); return; }
@@ -52624,7 +52640,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-12 14:29';
+const VERSO_BUILD = '2026-11-12 14:42';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -52894,12 +52910,14 @@ function zzz_ops_items(now) {
       });
     }
   } catch (e) {}
-  Object.keys(st).filter(k => k.indexOf('updatedapp:') === 0).forEach(k => {
+  const zzzNewestOf = (pre) => { let best = ''; Object.keys(st).filter(k => k.indexOf(pre) === 0 && !st[k].done).forEach(k => { if (!best || (st[k].t || 0) > (st[best].t || 0)) best = k; }); return best; };
+  const zzzNewApp = zzzNewestOf('updatedapp:'), zzzNewWeb = zzzNewestOf('updated:');
+  Object.keys(st).filter(k => k.indexOf('updatedapp:') === 0 && k === zzzNewApp).forEach(k => {
     const o = st[k];
     if (now - (o.t || 0) > 3 * 86400000) return;
     mk(k, 'open', `System updated - Verso app 1.0.${k.slice(11)}${o.from ? ' (was 1.0.' + o.from + ')' : ''}. Tap = OK`, 'OK', () => { zzz_ops_set(k, { done: true }); zzz5w8_render(); zzz3dSig = ''; zzz3d_render(); }, o.t);
   });
-  Object.keys(st).filter(k => k.indexOf('updated:') === 0).forEach(k => {
+  Object.keys(st).filter(k => k.indexOf('updated:') === 0 && k === zzzNewWeb).forEach(k => {
     const o = st[k];
     if (now - (o.t || 0) > 3 * 86400000) return;
     mk(k, 'open', `System updated - Verso version ${k.slice(8)}${o.from ? ' (was ' + o.from + ')' : ''}. Tap = OK`, 'OK', () => { zzz_ops_set(k, { done: true }); zzz5w8_render(); zzz3dSig = ''; zzz3d_render(); }, o.t);
