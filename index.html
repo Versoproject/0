@@ -43678,11 +43678,12 @@ function zzz_mem_panel(box) {
   box.textContent = '';
   const m = zzz_mem_last(), cur = zzz_mem_sample();
   const row = (t, v) => { const d = document.createElement('div'); d.className = 'zzz16-row'; const l = document.createElement('div'); l.textContent = t; const sm = document.createElement('small'); sm.className = 'zzz14b2-now'; sm.textContent = v; l.appendChild(sm); d.appendChild(l); box.appendChild(d); return d; };
-  const sw = row('MEMORY WATCH · this device', zzz_mem_on() ? 'ON - notes memory every minute; high use goes to your ISSUES quietly' : 'OFF');
+  const sw = row('SYSTEM CHECK · this device', zzz_mem_on() ? 'ON - watches this device: memory, start steps, opened windows, taps (button names only) and what was on screen; a stop is reported to your ISSUES with these facts' : 'OFF');
   const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn' + (zzz_mem_on() ? ' is-on' : ''); b.textContent = zzz_mem_on() ? 'ON' : 'OFF';
   b.addEventListener('click', () => { zzz_mem_set_on(!zzz_mem_on()); zzz_mem_panel(box); });
   sw.appendChild(b);
   row('Now', (cur.heap ? cur.heap + ' MB of ' + cur.limit + ' MB' : 'memory not shown by this browser') + ' · ' + cur.nodes + ' elements');
+  try { const sc = zzz_mem_scene(); row('Last steps', sc.trail || '-'); row('On screen now', zzz_mem_scene_txt(sc).replace(/^ · scene: /, '').replace(/ · steps:.*$/, '')); row('Translator', (zzz23trState.loaded.size || 0) + ' language model(s) loaded (max ' + ZZZ23TR_MAX_PAIRS + ')'); } catch (e) {}
   if (m && m.peak) row('Peak (24 h)', (m.peak.heap ? m.peak.heap + ' MB' : '?') + ' · ' + m.peak.nodes + ' elements · ' + new Date(m.peak.t).toLocaleString('sk-SK', { timeZone: 'Europe/Bratislava' }));
 }
 function zzz_app_crash_flush() {
@@ -44010,12 +44011,29 @@ function zzz23tr_engine() {
   zzz23trState.ready.catch(() => { zzz23trState.ready = null; });
   return zzz23trState.ready;
 }
-async function zzz23tr_translate(text, from, to) {
+
+var ZZZ23TR_MAX_PAIRS = 2;
+function zzz23tr_reset() {
+  try { if (zzz23trState.worker) zzz23trState.worker.terminate(); } catch (e) {}
+  zzz23trState.wait.forEach(p => { try { p.rej(new Error('translator restarted')); } catch (e) {} }); zzz23trState.wait.clear();
+  zzz23trState.worker = null; zzz23trState.ready = null; zzz23trState.loaded.clear();
+  try { zzz_mem_step('translator restart'); } catch (e) {}
+}
+function zzz23tr_translate(text, from, to) {
+  const run = () => zzz23tr_translate_now(text, from, to);
+  const p = (zzz23trState.chain || Promise.resolve()).then(run, run);
+  zzz23trState.chain = p.catch(() => {});
+  return p;
+}
+async function zzz23tr_translate_now(text, from, to) {
   const t = String(text || '').trim();
   if (!t || from === to) return t;
   if (!zzz23tr_can(from, to)) throw new Error('language not downloaded');
   const k = from + '>' + to + '|' + t;
   if (zzz23trState.memo.has(k)) return zzz23trState.memo.get(k);
+  { const needPairs = zzz23tr_pairs_for(from, to).filter(p => !zzz23trState.loaded.has(p));
+    if (needPairs.length && zzz23trState.loaded.size + needPairs.length > ZZZ23TR_MAX_PAIRS) zzz23tr_reset();
+    if (needPairs.length) { try { zzz_mem_step('translator load ' + needPairs.join('+').slice(0, 20)); } catch (e) {} } }
   await zzz23tr_engine();
   for (const p of zzz23tr_pairs_for(from, to)) {
     if (zzz23trState.loaded.has(p)) continue;
@@ -44066,6 +44084,7 @@ function zzz23tr_parts(text) {
 function zzz23tr_attach(body, entryKey, note, me) {
   try {
     if (!body || !note || !zzz23tr_on()) return;
+    if (zzz_is_system_author(note.username)) return;
     const mode = zzz23tr_chat(entryKey).m;
     if (mode === 'off') return;
     if (zzz10v1_normalize(note.username || '') === me && !zzz56_note_to_self(note, me)) return;
@@ -44073,6 +44092,13 @@ function zzz23tr_attach(body, entryKey, note, me) {
     if (orig.trim().length < 2) return;
     const home = zzz16_home();
     const parts = zzz23tr_parts(orig);
+    {
+      const main = zzz23tr_detect(orig);
+      parts.forEach(x => { if (!x.l || x.l === main) return;
+        const set = ZZZ23TR_SETS[x.l]; const words = (String(x.t).toLowerCase().match(/[\p{L}']+/gu) || []);
+        const clear = set ? words.filter(w => set.has(w)).length >= 3 : /[\u0400-\u04ff\u4e00-\u9fff\u0900-\u097f]/.test(x.t);
+        if (!clear) x.l = main; });
+    }
     const froms = Array.from(new Set(parts.map(x => x.l).filter(l => zzz16_lang_known(l) && l !== home)));
     if (!froms.length) return;
     const chip = document.createElement('button'); chip.type = 'button'; chip.className = 'zzz23tr-chip';
@@ -44115,6 +44141,7 @@ function zzz23tr_attach(body, entryKey, note, me) {
 function zzz23tr_attach_quiet(el, entryKey, note) {
   try {
     if (!el || !note || !zzz23tr_on() || zzz23tr_chat(entryKey).m === 'off') return;
+    if (zzz_is_system_author(note.username)) return;
     const me = zzz10v1_normalize((zzz0r1_get_current_username() || '').trim());
     if (zzz10v1_normalize(note.username || '') === me && !zzz56_note_to_self(note, me)) return;
     const text = String(el.textContent || ''); const home = zzz16_home(); const from = zzz23tr_detect(text);
@@ -44290,7 +44317,7 @@ const ZZZ_SET_REG = [
   { m: 'NOTIFY READER', w: 'sd', scope: 'all', place: 'settings', help: 'How notifications are read aloud. Verso server per way of login; voices on this DEVICE.' },
   { m: 'CONTENT READER', w: 'sd', scope: 'all', place: 'settings', help: 'Reading texts aloud on request. Verso server per way of login; voices on this DEVICE.' },
   { m: '⚡ MINIMAL MODE', w: 'd', scope: 'device', place: 'settings', help: 'Lighter start: the last windows are not reopened, automatic readers off, notification counts / sounds off (test). On by itself after two stops at the start (in front, < 1 min). Link #minimal turns it on. This DEVICE only. [Zzz14-SUPPORT:MINIMAL-MODE]' },
-  { m: 'MEMORY WATCH · this device', w: 'd', scope: 'device', place: 'info', help: 'ℹ INFO (informative): notes every minute how much memory Verso uses on this DEVICE; high use goes quietly into your ISSUES record, the last value also goes with a crash report. Nothing else is stored or sent. Default ON. [Zzz14-SUPPORT:MEM-WATCH]' },
+  { m: 'SYSTEM CHECK · this device', w: 'd', scope: 'device', place: 'info', help: 'ℹ INFO › OVERVIEW FUNCTIONS: SYSTEM CHECK watches this DEVICE - memory, start steps, opened windows, taps (button names only, never what you type), what is on screen, loaded translator models. When Verso is stopped, these facts go into your ISSUES record so support can find the cause. Nothing else is stored or sent. Default ON. [Zzz14-SUPPORT:SYSTEM-CHECK]' },
   { m: 'History is kept only on MY DEVICE', w: 'd', lock: true, scope: 'device', place: 'settings', help: 'Copied texts stay only on this DEVICE (in the Verso app encrypted by the phone’s security chip) - never sent anywhere, gone after a reinstall.' }
 ];
 function zzz_set_entry(label) {
@@ -52356,7 +52383,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-12 11:51';
+const VERSO_BUILD = '2026-11-12 12:05';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
