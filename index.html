@@ -7256,6 +7256,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-heartb.has { border-color: #ef4444; color: #ef4444; }
   .zzz-media-diss.is-full { max-width: none; width: calc(100vw - 16px); height: calc(100vh - 60px); display: flex; flex-direction: column; }   
   .zzz-media-diss.is-full .zzz-media-diss-l { max-height: none; flex: 1 1 auto; }
+  .zzz-media-nline { cursor: pointer; border-left: 4px solid #3f3f46; }   
+  .zzz-media-nline.is-unread { border-left-color: #ef4444; } .zzz-media-nline.is-read { border-left-color: #22c55e; } .zzz-media-nline.is-shifted { border-left-color: #a1a1aa; }
+  .zzz-media-nlink { font-size: 11px; opacity: .7; word-break: break-all; }
   .zzz-media-numc { cursor: pointer; white-space: nowrap; position: relative; font-weight: 700; }   
   .zzz-media-numc.is-lockc::after, .zzz-media-numc.is-unlockc::after { content: '\1F512'; position: absolute; right: -2px; top: -4px; font-size: 8px; }
   .zzz-media-numc.is-unlockc::after { content: '\1F513'; }
@@ -53329,7 +53332,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-14 00:03';
+const VERSO_BUILD = '2026-11-14 00:05';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -57202,12 +57205,54 @@ function zzz_media_diss_bubble() {
   return b;
 }
 
+function zzz_media_notif_state(x) { return zzz_media_is_shifted(x) ? 'SHIFTED' : x.seen ? 'READ' : 'UNREAD'; }
+function zzz_media_notif_presets() {
+  const tabs = ZZZ_MEDIA_TABS.filter(t => t !== 'TRASH');
+  return [{ name: 'ALL', snap: { sort: 'new' }, def: true }, { name: 'UNREAD', snap: { 'limit:STATUS': 'is-unread', sort: 'new' } }, { name: 'SHIFTED', snap: { 'limit:STATUS': 'is-shifted', sort: 'new' } },
+    { name: 'READ', snap: { 'limit:STATUS': 'is-read', sort: 'new' } }, { name: '\u2665 FAVS', snap: { 'limit:TAG': 'fav', sort: 'new' } }, { name: '\u2605 RATINGS', snap: { 'limit:TAG': 'rated', sort: 'new' } }]
+    .concat(tabs.map(t => ({ name: zzz_media_tab_label(t), snap: { 'limit:PROJECT CATEGORY': t.toLowerCase(), sort: 'new' } })));
+}
+async function zzz_media_notif_open() {
+  try { zzz_mem_step('media notifications'); } catch (e) {}
+  if (zzzMedia.loadedOf !== zzz_media_me()) { try { await zzz_media_load(); } catch (e) {} }
+  ZZZ_RDR_PRESETS['MEDIA NOTIFICATIONS'] = zzz_media_notif_presets();
+  const all = (zzzMedia.all || []).filter(x => !x.trash && x.link && !zzz_media_locked_now(x));
+  try { zzz_stars_want(all.map(x => x.id)); } catch (e) {}
+  const fr = zzz_rdr_frame('MEDIA NOTIFICATIONS', 'MEDIA NOTIFICATIONS \u00b7 ' + all.length, 'MEDIA');
+  const { content, blk } = fr;
+  const time = (x) => { const n = x.note || {}; const d = Date.parse(n.updated_at || n.created_at || ''); return Number.isFinite(d) ? d : 0; };
+  ['UNREAD', 'SHIFTED', 'READ'].forEach(stName => {
+    const part = all.filter(x => zzz_media_notif_state(x) === stName).sort((a, b) => time(b) - time(a));
+    content.appendChild(blk('h2', 'zzz-rs-h', stName + ' \u00b7 ' + part.length, 'GROUP ' + stName));
+    part.forEach(x => {
+      const w = zzz_media_tagw(x.tags), tabs = ZZZ_MEDIA_TABS.filter(t => t !== 'TRASH' && zzz_media_in_tab(x, t)), stars = (() => { try { return zzz_stars_mine(x.id); } catch (e) { return 0; } })();
+      const tg = tabs.map(t => t.toLowerCase()).concat(w.indexOf('fav') >= 0 ? ['fav'] : []).concat(stars ? ['rated'] : []).concat(x.pls.map(p => 'pls:' + p));
+      const r = blk('div', 'zzz-rdr-line zzz-media-nline', undefined, 'MEDIUM #' + x.num);
+      r.setAttribute('data-vf', JSON.stringify({ KIND: 'MEDIUM', STATUS: 'is-' + stName.toLowerCase(), CATEGORY: tabs.map(t => t.toLowerCase()).join(' ') || 'all media', OWNER: zzz_media_me(), TAG: tg }));
+      const tt = time(x); if (tt) r.setAttribute('data-vt', String(tt));
+      const h = document.createElement('div'); h.className = 'zzz-rdr-lh';
+      h.textContent = ['#' + x.num, stName, tabs.map(zzz_media_tab_label).join(' ') || 'ALL MEDIA', w.indexOf('fav') >= 0 ? '\u2665' : '', stars ? '\u2605'.repeat(stars) : '', tt ? zzz5w8_fmt_time(tt) : ''].filter(Boolean).join(' \u00b7 ');
+      r.appendChild(h);
+      const nm = document.createElement('b'); nm.textContent = zzz_media_title(x); r.appendChild(nm);
+      const lk = document.createElement('div'); lk.className = 'zzz-rdr-lt zzz-media-nlink'; lk.textContent = x.link; r.appendChild(lk);
+      r.classList.add(stName === 'READ' ? 'is-read' : stName === 'SHIFTED' ? 'is-shifted' : 'is-unread');
+      const d = document.createElement('button'); d.type = 'button'; d.className = 'zzz-rdr-ibtn'; d.textContent = '\uD83D\uDCAC'; d.title = 'DISS of this medium (★ + comments)';
+      d.addEventListener('click', (ev) => { ev.stopPropagation(); zzz_media_diss(x, null, false); }); r.appendChild(d);
+      r.title = 'Tap = play it in MEDIA CENTER';
+      r.addEventListener('click', (ev) => { ev.stopPropagation(); try { document.getElementById('zzzRdr').remove(); } catch (e) {} try { zzz_media_play(x, all.filter(y => zzz_media_notif_state(y) === stName)); } catch (e) {} });
+      content.appendChild(r);
+    });
+  });
+  fr.copyAll();
+  fr.finish();
+}
+
 function zzz_media_chip_button() {
   const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-btn zzz-media-chipb';
   let ht = 0, held = false;
   b.addEventListener('pointerdown', () => { held = false; clearTimeout(ht); ht = setTimeout(() => { held = true; try { navigator.vibrate && navigator.vibrate(20); } catch (e) {} if (zzzMedia.cur) zzz_media_open_orig(); else zzz_media_chip_org(); }, 600); });
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => b.addEventListener(ev, () => clearTimeout(ht)));
-  b.addEventListener('click', (e) => { e.stopPropagation(); if (held) { held = false; return; } zzz_media_btn_tap(); });
+  b.addEventListener('click', (e) => { e.stopPropagation(); if (held) { held = false; return; } zzz_media_notif_open(); });
   b.addEventListener('contextmenu', (e) => e.preventDefault());
   setTimeout(zzz_media_chip_paint, 0);
   return b;
