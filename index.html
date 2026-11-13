@@ -422,6 +422,7 @@ function zzz_ci_weather() {
     }).catch(function (e) {
       if (pl !== ZZZ_CI_PLACE) return;
       zzzCiWxErr = { detail: String((e && e.message) || e || 'unknown'), at: Date.now() };
+      try { if (navigator.onLine !== false && typeof zzz22_issue === 'function') zzz22_issue('Weather not loaded: ' + zzzCiWxErr.detail, { step: 'weather' }); } catch (e2) {}
       zzz_ci_paint();
     });
   } catch (e) {}
@@ -45684,7 +45685,12 @@ function zzz22_set_place(p) {
 function zzz22_live_paint() {
   const L = zzz22Live;
   if (!L) return;
-  if (!L.box.isConnected) { if (L.tick) clearInterval(L.tick); zzz22Live = null; return; }
+
+  if (!L.box.isConnected) {
+    if (L.shown || Date.now() - L.born > 60000) { if (L.tick) clearInterval(L.tick); zzz22Live = null; }
+    return;
+  }
+  L.shown = true;
   const d = zzz_now();
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   L.timeEl.textContent = d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
@@ -45710,6 +45716,17 @@ function zzz22_live_paint() {
   const placeLine = P.name + (P.area ? ' · ' + P.area : '') + (isDefault ? ' (default)' : '');
   if (L.placeNow.textContent !== 'Now: ' + placeLine) L.placeNow.textContent = 'Now: ' + placeLine;
 }
+
+function zzz22_issue(msg, extra) {
+  try { if (typeof zzz_report_issue === 'function') zzz_report_issue('live-data', msg, Object.assign({ place: 'SETTINGS › SETTINGS › LIVE DATA', tags: ['live-data', 'weather'] }, extra || {})); } catch (e) {}
+}
+
+const ZZZ22_CITIES = [
+  ['Bratislava', 48.1486, 17.1077, 'Slovakia'], ['Trnava', 48.3774, 17.5872, 'Slovakia'], ['Nitra', 48.3069, 18.0864, 'Slovakia'],
+  ['Trenčín', 48.8945, 18.0444, 'Slovakia'], ['Žilina', 49.2231, 18.7394, 'Slovakia'], ['Banská Bystrica', 48.7363, 19.1462, 'Slovakia'],
+  ['Prešov', 48.9984, 21.2339, 'Slovakia'], ['Košice', 48.7164, 21.2611, 'Slovakia'],
+  ['Wien', 48.2082, 16.3738, 'Austria'], ['Praha', 50.0755, 14.4378, 'Czechia'], ['Budapest', 47.4979, 19.0402, 'Hungary']
+];
 function zzz22_render_live_data(host) {
   const foreign = zzz16_mode() === 'foreign';
   if (!document.getElementById('zzz22Css')) {
@@ -45722,6 +45739,8 @@ function zzz22_render_live_data(host) {
       .zzz22-right{display:flex;align-items:center;gap:8px;flex:0 0 auto}
       .zzz22-place{display:flex;gap:8px;padding:7px 0 2px}
       .zzz22-place input{flex:1 1 auto;min-width:0;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.5);background:#111;color:#fff;font-size:15px}
+      .zzz22-chips{display:flex;flex-wrap:wrap;gap:6px;padding-top:8px}
+      .zzz22-chip{padding:6px 10px;border-radius:14px;border:1px solid #c9a44f;background:#111;color:#c9a44f;font-size:13px;font-weight:600}
       .zzz22-results{display:flex;flex-direction:column;gap:6px;padding-top:6px}
       .zzz22-res{text-align:left;padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.35);background:#1b1b1b;color:#fff;font-size:14px}
       .zzz22-res small{display:block;opacity:.7;font-size:12px}
@@ -45761,43 +45780,67 @@ function zzz22_render_live_data(host) {
   inp.autocomplete = 'off'; inp.setAttribute('aria-label', 'City for the weather');
   const sb = document.createElement('button'); sb.type = 'button'; sb.className = 'zzz16-btn'; sb.textContent = 'SEARCH';
   form.appendChild(inp); form.appendChild(sb); pr.appendChild(form);
+
+  const chips = document.createElement('div'); chips.className = 'zzz22-chips';
+  ZZZ22_CITIES.forEach(([n, la, lo, c]) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz22-chip'; b.textContent = n;
+    b.addEventListener('click', () => {
+      if (zzz22_set_place({ name: n, lat: la, lon: lo, area: c })) { results.innerHTML = ''; inp.value = ''; say('Saved on this device: ' + n + '.'); }
+    });
+    chips.appendChild(b);
+  });
+  pr.appendChild(chips);
   const results = document.createElement('div'); results.className = 'zzz22-results'; pr.appendChild(results);
   const pmsg = document.createElement('div'); pmsg.className = 'zzz16-msg'; pmsg.style.display = 'none'; pr.appendChild(pmsg);
   box.appendChild(pr);
   const say = (txt, warn) => { pmsg.textContent = txt || ''; pmsg.className = 'zzz16-msg' + (warn ? ' warn' : ''); pmsg.style.display = txt ? '' : 'none'; };
   if (foreign) {
-    inp.disabled = true; sb.disabled = true;
+    inp.disabled = true; sb.disabled = true; chips.querySelectorAll('button').forEach(b => { b.disabled = true; });
     say('FOREIGN device: the place cannot be changed or saved here, so nothing about you stays on this device. The weather shows ' + ZZZ_CI_PLACE.name + '.', true);
   }
   let searching = false;
+  const geo = (q) => {
+    const geoH = zzz_verso_fn_headers();
+    if (!geoH) return Promise.reject(Object.assign(new Error('no session'), { noSession: true }));
+    const url = SUPABASE_URL + '/functions/v1/verso-weather?a=geo&q=' + encodeURIComponent(q.slice(0, 60));
+    return fetch(url, { cache: 'no-store', headers: geoH }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(j => (j && Array.isArray(j.results)) ? j.results.filter(x => typeof x.latitude === 'number' && typeof x.longitude === 'number') : []);
+  };
+  const show = (list) => {
+    list.forEach(x => {
+      const area = [x.admin1, x.country].filter(Boolean).join(', ');
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz22-res';
+      b.textContent = x.name;
+      const s = document.createElement('small'); s.textContent = area || (x.latitude.toFixed(2) + ', ' + x.longitude.toFixed(2)); b.appendChild(s);
+      b.addEventListener('click', () => {
+        if (zzz22_set_place({ name: String(x.name), lat: x.latitude, lon: x.longitude, area: area })) {
+          results.innerHTML = ''; inp.value = '';
+          say('Saved on this device: ' + x.name + '.');
+        }
+      });
+      results.appendChild(b);
+    });
+  };
   const search = () => {
     if (foreign || searching) return;
     const q = (inp.value || '').trim();
     results.innerHTML = '';
     if (q.length < 2) { say('Type at least 2 letters of the city.', true); return; }
     searching = true; sb.disabled = true; say('Searching…');
-    const url = SUPABASE_URL + '/functions/v1/verso-weather?a=geo&q=' + encodeURIComponent(q.slice(0, 60));
-    const geoH = zzz_verso_fn_headers();
-    if (!geoH) { searching = false; sb.disabled = false; say('Log in to Verso to search places.', true); return; }
-    fetch(url, { cache: 'no-store', headers: geoH }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(j => {
-      const list = (j && Array.isArray(j.results)) ? j.results.filter(x => typeof x.latitude === 'number' && typeof x.longitude === 'number') : [];
-      if (!list.length) { say('No place found for "' + q + '". Check the spelling or try a bigger town nearby.', true); return; }
-      say('Tap the right place:');
-      list.forEach(x => {
-        const area = [x.admin1, x.country].filter(Boolean).join(', ');
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz22-res';
-        b.textContent = x.name;
-        const s = document.createElement('small'); s.textContent = area || (x.latitude.toFixed(2) + ', ' + x.longitude.toFixed(2)); b.appendChild(s);
-        b.addEventListener('click', () => {
-          if (zzz22_set_place({ name: String(x.name), lat: x.latitude, lon: x.longitude, area: area })) {
-            results.innerHTML = ''; inp.value = '';
-            say('Saved on this device: ' + x.name + '.');
-          }
-        });
-        results.appendChild(b);
+
+    const short = q.length > 5 ? q.slice(0, 5) : (q.length > 3 ? q.slice(0, q.length - 1) : '');
+    geo(q).then(list => {
+      if (list.length) { say('Tap the right place:'); show(list); return; }
+      if (!short) { say('No place found. Check the spelling or tap a town in the list above.', true); return; }
+      return geo(short).then(l2 => {
+        if (l2.length) { say('No exact match - similar places:'); show(l2); }
+        else say('No place found. Check the spelling or tap a town in the list above.', true);
       });
     }).catch(e => {
-      say('The city search failed - check the internet connection and try again. (Open-Meteo geocoding: ' + String((e && e.message) || e) + ')', true);
+      if (e && e.noSession) { say('Log in to Verso to search places.', true); return; }
+      const det = String((e && e.message) || e);
+      say('The city search failed - check the internet connection and try again, or tap a town in the list above. (Open-Meteo geocoding via Verso: ' + det + ')', true);
+      zzz22_issue('Place search failed: ' + det, { step: 'geocoding' });
     }).finally(() => { searching = false; sb.disabled = false; });
   };
   sb.addEventListener('click', search);
@@ -45813,8 +45856,13 @@ function zzz22_render_live_data(host) {
   attr.appendChild(ext); box.appendChild(attr);
 
   host.insertBefore(box, host.firstChild);
-  zzz22Live = { box, timeEl, timeSub, wxName, wxSub, wxIcon, wxErr, placeNow, tick: setInterval(() => zzz22_live_paint(), 1000) };
+  zzz22Live = { box, timeEl, timeSub, wxName, wxSub, wxIcon, wxErr, placeNow, born: Date.now(), shown: false, tick: setInterval(() => zzz22_live_paint(), 1000) };
   zzz22_live_paint();
+
+  const born = zzz22Live;
+  setTimeout(() => {
+    try { if (box.isConnected && !timeEl.textContent) zzz22_issue('LIVE DATA shown but time empty after 3 s', { live: !!zzz22Live, same: zzz22Live === born }); } catch (e) {}
+  }, 3000);
   if (!zzzCiWx && !zzzCiExt.wx) zzz_ci_weather();
 }
 
@@ -53198,7 +53246,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-13 01:26';
+const VERSO_BUILD = '2026-11-13 01:39';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
