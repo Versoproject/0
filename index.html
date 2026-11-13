@@ -43615,7 +43615,7 @@ async function zzz_native_launch(url) {
 function zzz_native_cmd_able(url) {
 
   try {
-    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|buzz|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|mediaact|mediatab|mediadone|mcnow|readfetch|vipacks|qcb|ring|relaunch)\b/.test(String(url || 'intent://quick/quiet'))
+    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|buzz|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|mediaact|mediatab|mediaplaces|mediapend|mediadone|mcnow|readfetch|vipacks|qcb|ring|relaunch)\b/.test(String(url || 'intent://quick/quiet'))
       && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator;
   } catch (e) { return false; }
 }
@@ -53329,7 +53329,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-13 23:44';
+const VERSO_BUILD = '2026-11-13 23:54';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -57483,6 +57483,7 @@ async function zzz_media_load() {
   zzz_media_chip_pull();
   zzz_media_tabs_pull();
   try { if (zzz_media_native()) zzz_native_go(zzz_media_intent('mediadone')); } catch (e) {}
+  try { if (zzz_media_native() && zzz14b17_app_code() >= ZZZ_PIN_NATIVE_APP) setTimeout(() => zzz_native_go(zzz_media_intent('mediapend')), 1500); } catch (e) {}
   const e = await zzz_media_entry(false);
   if (!e) { zzzMedia.all = []; zzzMedia.list = []; return; }
   try {
@@ -58186,6 +58187,57 @@ async function zzz_media_tab_to_app() {
   } catch (e) {}
 }
 setInterval(zzz_media_tab_to_app, 6000);
+
+const ZZZ_PIN_NATIVE_APP = 333;
+function zzz_media_places() {
+  const out = [];
+  ZZZ_MEDIA_TABS.filter(t => t !== 'ACTUAL' && t !== 'TRASH').forEach(t => out.push({ k: t.toLowerCase(), n: zzz_media_tab_label(t) }));
+  const seen = new Set();
+  (zzzMedia.plsDefs || []).concat(zzzMedia.list || []).forEach(x => (x.plsDef ? [x.plsDef] : (x.pls || [])).forEach(n => {
+    const tab = ZZZ_MEDIA_TABS.find(tb => tb !== 'ACTUAL' && zzz_media_in_tab(x, tb)) || '';
+    const k = 'pls:' + String(n).toLowerCase() + (tab ? ' ' + tab.toLowerCase() : '');
+    if (!seen.has(k)) { seen.add(k); out.push({ k, n: '\uD83D\uDDC2\uFE0F ' + n + (tab ? ' \u00b7 ' + zzz_media_tab_label(tab) : '') }); } }));
+  out.push({ k: 'fav', n: '\u2665 FAV' });
+  return out.slice(0, 120);
+}
+async function zzz_media_places_to_app() {
+  try {
+    if (!zzz14b17_in_app() || zzz14b17_app_code() < ZZZ_PIN_NATIVE_APP || !zzz_media_me() || !zzzMedia.all || zzzMedia.loadedOf !== zzz_media_me()) return;
+    let last = []; try { last = JSON.parse(localStorage.getItem(zzz_ukey('zzz_media_last_place')) || '[]'); } catch (e) { last = []; }
+    const js = JSON.stringify(zzz_media_places()), lk = last.join(' '), sig = zzz_media_me() + '|' + lk + '|' + js;
+    if (sig === zzzMedia.plSent) return;
+    const url = 'intent://quick/mediaplaces?q=' + zzz_media_b64(js).replace(/=+$/, '') + '&last=' + encodeURIComponent(lk);
+    if (!zzz_native_cmd_able(url)) return;
+    zzz_native_cmd(await zzz_cmd_sign(url));
+    zzzMedia.plSent = sig;
+  } catch (e) {}
+}
+setInterval(zzz_media_places_to_app, 6000);
+function zzz_mpend_hash(tries) {
+  const m = String(location.hash || '').match(/^#mpend=([A-Za-z0-9_-]{1,60000})$/);
+  if (!m) return;
+  if (!zzz_media_me()) { if ((tries || 0) < 60) setTimeout(() => zzz_mpend_hash((tries || 0) + 1), 500); return; }
+  try { history.replaceState(null, '', location.pathname + location.search + '#media'); } catch (e) {}
+  let list = []; try { list = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/'))))); } catch (e) { list = []; }
+  (async () => {
+    if (zzzMedia.loadedOf !== zzz_media_me()) { try { await zzz_media_load(); } catch (e) {} }
+    let n = 0, dup = 0;
+    for (const o of (Array.isArray(list) ? list : []).slice(0, 200)) {
+      const link = zzz_media_norm(String(o && o.u || '')); if (!/^https?:\/\//i.test(link) || !zzz_media_is_mediaish(link)) continue;
+      const ks = (Array.isArray(o.k) ? o.k : []).map(x => String(x).toLowerCase().trim()).filter(Boolean).join(' ').split(/\s+/).filter(Boolean);
+      if (!ks.length) continue;
+      const had = zzz_media_line({ link });
+      try {
+        if (!had) { if (await zzz_media_add(link, String(o.t || '').slice(0, 160), ks.join(' '))) n++; }
+        else { const w = zzz_media_tagw(had.tags).filter(x => x !== 'trash'); const more = ks.filter(x => w.indexOf(x) < 0); if (!more.length) dup++; else if (await zzz_media_set_tags(had, w.concat(more))) n++; }
+      } catch (e) {}
+    }
+    try { zzz_media_redraw(); } catch (e) {}
+    if (n || dup) zzz6f2_show_toast('\uD83D\uDCCC ' + n + ' pinned from MM / MMM' + (dup ? ' \u00b7 ' + dup + ' already there' : ''), dup && !n ? 'warn' : 'info', 2600);
+  })();
+}
+window.addEventListener('hashchange', () => zzz_mpend_hash(0));
+window.addEventListener('load', () => setTimeout(() => zzz_mpend_hash(0), 900));
 
 async function zzz_media_add_play_app(it) {
   try {
@@ -61073,7 +61125,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 332;
+const ZZZ14B17_APP_LATEST = 333;
 function zzz14b17_app_code() {
 
   try {
