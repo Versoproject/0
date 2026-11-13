@@ -7246,15 +7246,16 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-chipgrp { display: flex; flex: 0 0 auto; align-items: stretch; }
   .zzz-media-chipgrp > .zzz-media-chipb { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
   .zzz-media-dissb { position: relative; flex: 0 0 auto; margin-left: 3px; padding: 2px 9px; min-height: 0; font-size: 11px; white-space: nowrap; border-radius: 12px 12px 12px 3px; font-variant-numeric: tabular-nums; max-width: 34vw; overflow: hidden; text-overflow: ellipsis; }
-  .zzz-media-dissb.is-playing { border-color: #22C55E; color: #22C55E; }
   .zzz-media-dissb.has { box-shadow: 0 0 0 1px #16a34a inset; }
   .zzz-media-chipb.has { border-color: #D4AF37; background: #D4AF37; color: #000; }
   .zzz-media-plsrow { align-items: center; margin-bottom: 3px; }   
   .zzz-media-plstab { color: #D4AF37; font-size: 11px; font-weight: 800; margin-right: 2px; white-space: nowrap; }
   .zzz-media-starb { flex: 0 0 auto; padding: 2px 8px; min-height: 0; font-size: 11px; white-space: nowrap; color: #D4AF37; margin-left: 3px; }   
   .zzz-media-starb.has { border-color: #D4AF37; }
-  .zzz-media-heartb { flex: 0 0 auto; padding: 2px 8px; min-height: 0; font-size: 13px; color: #f87171; margin-left: 3px; }   
-  .zzz-media-heartb.has { border-color: #ef4444; }
+  .zzz-media-heartb { flex: 0 0 auto; padding: 0 9px; min-height: 0; font-size: 22px; line-height: 1; color: #ef4444; margin-left: 3px; }   
+  .zzz-media-heartb.has { border-color: #ef4444; color: #ef4444; }
+  .zzz-media-diss.is-full { max-width: none; width: calc(100vw - 16px); height: calc(100vh - 60px); display: flex; flex-direction: column; }   
+  .zzz-media-diss.is-full .zzz-media-diss-l { max-height: none; flex: 1 1 auto; }
   .zzz-media-numc { cursor: pointer; white-space: nowrap; position: relative; font-weight: 700; }   
   .zzz-media-numc.is-lockc::after, .zzz-media-numc.is-unlockc::after { content: '\1F512'; position: absolute; right: -2px; top: -4px; font-size: 8px; }
   .zzz-media-numc.is-unlockc::after { content: '\1F513'; }
@@ -53328,7 +53329,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-13 21:08';
+const VERSO_BUILD = '2026-11-13 21:16';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -56853,7 +56854,15 @@ function zzz_media_fb_noembed(u) {
 }
 
 function zzz_media_ok_first(l) { const a = (l || []).filter(x => x && x.link); return a.find(x => !zzz_media_is_problem(x)) || null; }
-function zzz_media_is_problem(it) { const l = it && it.link ? zzz_media_line(it) : null; return !!(l && zzz_media_tagw(l.tags).indexOf('problem') >= 0); }
+function zzz_media_is_problem(it) { if (it && it.link && !zzz_media_is_mediaish(it.link)) return true; const l = it && it.link ? zzz_media_line(it) : null; return !!(l && zzz_media_tagw(l.tags).indexOf('problem') >= 0); }
+
+const ZZZ_MEDIA_PORTALS = /(^|\.)(twitch\.tv|dailymotion\.com|dai\.ly|mixcloud\.com|bandcamp\.com|deezer\.com|music\.apple\.com|podcasts\.apple\.com|tidal\.com|rumble\.com|odysee\.com|kick\.com|ted\.com|archive\.org|v\.redd\.it|music\.youtube\.com|audiomack\.com|beatport\.com|nts\.live|radio\.garden|tunein\.com)$/i;
+function zzz_media_is_mediaish(link) {
+  const l = String(link || '');
+  if (!/^https?:/i.test(l)) return true;
+  if (zzz_media_web_ok({ link: l })) return true;
+  try { return ZZZ_MEDIA_PORTALS.test(new URL(l).hostname.replace(/^www\.|^m\./, '')); } catch (e) { return false; }
+}
 async function zzz_media_problem(it, on) {
   const l = it && it.link ? zzz_media_line(it) : null; if (!l || !l.id) return;
   const w = zzz_media_tagw(l.tags), has = w.indexOf('problem') >= 0; if (has === !!on) return;
@@ -57011,6 +57020,7 @@ async function zzz_media_mark_read(it, quiet) {
   } catch (e) { zzz_user_error('READ not saved - check the connection and try again.', e, '[Zzz14-B17:MEDIA-READ]'); return false; }
   it.seen = true;
   try { zzz_media_read_add(it.link); } catch (e) {}
+  for (const y of zzz_media_dups(it)) { if (y !== it && !y.seen) { try { await zzz_media_mark_read(y, true); } catch (e) {} } }
   zzz6f2_show_toast('READ \u00b7 #' + it.num + ' ' + zzz_media_title(it), 'info');
   return true;
 }
@@ -57140,13 +57150,14 @@ function zzz_media_bubble_paint() {
     const it = zzzMedia.cur ? (zzz_media_line({ link: zzzMedia.cur.link }) || null) : null;
     const pos = zzz_media_pos();
     let txt, n = 0;
-    if (zzzMedia.cur) { n = it ? ((zzzMedia.diss || {})[it.num] || []).length : 0; txt = '💬 ' + (zzz_media_playing() ? '▶' : '❚❚') + (n ? ' · ' + n : '');
 
-      b.title = 'Tap = play / stop · 2× tap = DISS of „' + zzz_media_title(zzzMedia.cur) + '“'; }
+    if (zzzMedia.cur) { n = it ? ((zzzMedia.diss || {})[it.num] || []).length : 0; txt = '💬' + (n ? ' ' + n : '');
 
-    else { const k = zzz_media_el_key(zzzMedia.pls ? 'pls' : 'tab', zzzMedia.pls || zzzMedia.tab), el = (zzzMedia.els || {})[k]; n = el ? el.n : 0; txt = '💬' + (zzzMedia.pls ? ' \uD83D\uDDC2\uFE0F ' + zzzMedia.pls : '') + (n ? ' · ' + n : ''); b.title = 'Tap = play (ACTUAL first) · 2× tap = chat of ' + (zzzMedia.pls ? 'the playlist ' + zzzMedia.pls : 'the tab ' + zzzMedia.tab); }
+      b.title = 'Tap = quick DISS (★ + comment) · 2× tap = the whole chat of „' + zzz_media_title(zzzMedia.cur) + '“'; }
+
+    else { const k = zzz_media_el_key(zzzMedia.pls ? 'pls' : 'tab', zzzMedia.pls || zzzMedia.tab), el = (zzzMedia.els || {})[k]; n = el ? el.n : 0; txt = '💬' + (zzzMedia.pls ? ' \uD83D\uDDC2\uFE0F ' + zzzMedia.pls : '') + (n ? ' · ' + n : ''); b.title = 'Tap = chat of ' + (zzzMedia.pls ? 'the playlist ' + zzzMedia.pls : 'the tab ' + zzzMedia.tab); }
     if (b.textContent !== txt) b.textContent = txt;
-    b.classList.toggle('has', n > 0); b.classList.toggle('is-playing', !!zzzMedia.cur && zzz_media_playing());
+    b.classList.toggle('has', n > 0);
   });
 }
 
@@ -57170,8 +57181,9 @@ function zzz_media_heart_btn() {
   b.title = '♥ FAVS: tap = what plays into / out of your favourites';
   b.addEventListener('click', async (e) => { e.stopPropagation(); const x = it();
     if (!x || x.id == null) { zzz6f2_show_toast('Play a medium first - then ♥ marks it.', 'info'); return; }
-    const on = !zzz_media_tagw(x.tags).includes('fav'); const w = zzz_media_tagw(x.tags).filter(t => t !== 'fav'); if (on) w.push('fav');
-    try { await zzz_media_set_tags(x, w); zzz6f2_show_toast(on ? '\u2665 in ♥ FAVS' : '\u2665 off', 'ok', 1500); } catch (er) { zzz_user_error('♥ was not saved - try again.', er, '[Zzz14-B17:MC-HEART]'); }
+    const on = !zzz_media_tagw(x.tags).includes('fav');
+
+    try { for (const y of zzz_media_dups(x)) { const w = zzz_media_tagw(y.tags).filter(t => t !== 'fav'); if (on) w.push('fav'); await zzz_media_set_tags(y, w); } zzz_media_redraw(); zzz6f2_show_toast(on ? '\u2665 in ♥ FAVS' : '\u2665 off', 'ok', 1500); } catch (er) { zzz_user_error('♥ was not saved - try again.', er, '[Zzz14-B17:MC-HEART]'); }
     paint(); });
   const iv = setInterval(() => { if (!b.isConnected) { clearInterval(iv); return; } paint(); }, 1500);
   setTimeout(paint, 0);
@@ -57179,7 +57191,12 @@ function zzz_media_heart_btn() {
 }
 function zzz_media_diss_bubble() {
   const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-btn zzz-media-dissb';
-  b.addEventListener('click', (e) => { e.stopPropagation(); zzz_media_btn_tap(); });
+  let t1 = 0;
+  b.addEventListener('click', (e) => { e.stopPropagation();
+    const open = document.querySelector('.zzz-media-confirm .zzz-media-diss');
+    if (t1) { clearTimeout(t1); t1 = 0; if (open) open.closest('.zzz-media-confirm').remove(); zzz_media_diss_now(null, true); return; }
+    if (open) { open.closest('.zzz-media-confirm').remove(); try { zzz_media_redraw(); } catch (x) {} return; }
+    t1 = setTimeout(() => { t1 = 0; zzz_media_diss_now(null, false); }, 320); });
   const iv = setInterval(() => { if (!b.isConnected) { clearInterval(iv); return; } zzz_media_bubble_paint(); try { if (zzzMedia.cur) zzz_media_chip_paint(); } catch (e) {} }, 1000);
   setTimeout(zzz_media_bubble_paint, 0);
   return b;
@@ -57211,12 +57228,12 @@ function zzz_media_btn_tap() {
     if (a0) zzz_media_play(a0, a); else zzz6f2_show_toast(a.length ? 'Only grey media here - tap one in the list to try it.' : 'Nothing to play yet - paste a link and ▶ PLAY.', 'info');
   }, 300);
 }
-function zzz_media_diss_now(link) {
+function zzz_media_diss_now(link, full) {
   const l = link || (zzzMedia.cur && zzzMedia.cur.link);
   if (l) {
     const it = zzz_media_line({ link: l });
     if (!it) { zzz6f2_show_toast('This medium is not in ALL MEDIA yet - + ADD it, then it has its DISS.', 'info'); return; }
-    zzz_media_diss(it, () => { try { zzz_media_redraw(); } catch (x) {} });
+    zzz_media_diss(it, () => { try { zzz_media_redraw(); } catch (x) {} }, full);
     return;
   }
   zzz_media_el(zzzMedia.pls ? 'pls' : 'tab', zzzMedia.pls || zzzMedia.tab);
@@ -57533,7 +57550,9 @@ function zzz_media_verso_ref(text) {
   const it = own ? (zzzMedia.list || []).find(x => String(x.num) === m[2]) || null : null;
   return { en: m[1], n: m[2], own, it };
 }
-async function zzz_media_add(link, name, tags) {
+async function zzz_media_add(link, name, tags, opts) {
+  if (!(opts && opts.page) && /^https?:\/\//i.test(String(link || '').trim()) && !zzz_media_is_mediaish(String(link).trim())) {
+    zzz6f2_show_toast('Not a medium (a web page / app link) - not added to VERSO MEDIA CENTER.', 'info'); return null; }
   { const tw = String(tags || '').toLowerCase().split(/\s+/).filter(Boolean); if (!tw.some(w => ZZZ_MEDIA_TABWORDS.indexOf(w) >= 0)) { const a = zzz_media_autotag(link); if (a) tags = (tw.concat([a])).join(' '); } }
   link = String(link || '').trim();
   if (!/^https?:\/\//i.test(link)) { zzz6f2_show_toast('A link must start with https://', 'warn'); return null; }
@@ -57636,6 +57655,7 @@ async function zzz_media_tag_where(l) {
   const w = zzz_media_tagw(l.tags).filter(t => t !== 'trash'), more = zzz_media_where_tags().filter(t => w.indexOf(t) < 0);
   return more.length ? zzz_media_set_tags(l, w.concat(more)) : true;
 }
+function zzz_media_dups(it) { if (!it || !it.link) return []; const n = zzz_media_norm(it.link); const l = (zzzMedia.all || []).filter(x => !x.trash && x.link && zzz_media_norm(x.link) === n); return l.indexOf(it) >= 0 ? l : [it].concat(l); }
 function zzz_media_line(it) { if (!it || !it.link) return null; const n = zzz_media_norm(it.link); return (zzzMedia.all || []).find(x => x.link === n) || null; }
 async function zzz_media_toggle_tag(it, tag, on) {
   let l = zzz_media_line(it) || await zzz_media_add(it.link, it.name || '', zzz_media_where_tags().join(' '));
@@ -58166,6 +58186,20 @@ async function zzz_media_tab_to_app() {
   } catch (e) {}
 }
 setInterval(zzz_media_tab_to_app, 6000);
+
+async function zzz_media_add_play_app(it) {
+  try {
+    if (!it || !it.link || !zzz14b17_in_app() || zzz14b17_app_code() < ZZZ_MM_WEBPLAYER_APP) return;
+    if (zzzMedia.cur && zzz_media_playing()) return;
+    if (!zzz_media_app_playable(it, zzz_media_offline())) return;
+    zzz_media_hist_add({ link: it.link });
+    zzzMedia.actSent = ''; zzz_media_actual_to_app();
+    const url = 'intent://quick/media?i=0&q=' + zzz_media_b64(JSON.stringify([{ t: zzz_media_title(it), u: it.link, s: zzz_media_stat(it) }]));
+    if (!zzz_native_cmd_able(url)) return;
+    zzz_native_cmd(await zzz_cmd_sign(url));
+    zzz6f2_show_toast('\u25B6 plays in MM (VERSO PLAYER) - MEDIA CENTER stays as it is.', 'info', 1800);
+  } catch (e) {}
+}
 
 function zzz_media_stat(x) {
   if (!x) return '';
@@ -58698,9 +58732,9 @@ function zzz_stars_pass(n, o) {
     clearTimeout(t); t = setTimeout(() => { try { zzz_media_redraw(); } catch (e) {} }, 150);
   }); }
 
-function zzz_media_diss(it, redraw) {
+function zzz_media_diss(it, redraw, full) {
   const o = document.createElement('div'); o.className = 'zzz-media-confirm';
-  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzz-media-diss';
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzz-media-diss' + (full ? ' is-full' : '');
   const t = document.createElement('div'); t.className = 'zzz-media-diss-t'; t.textContent = 'DISS \u00b7 #' + it.num + ' ' + zzz_media_title(it); b.appendChild(t);
   const sub = document.createElement('div'); sub.className = 'zzz-media-diss-s';
   sub.textContent = it.pub ? '\uD83C\uDF10 PUBLIC line - everybody who sees it reads the comments' : '\uD83D\uDD12 PRIVATE line - the comments are only yours';
@@ -58743,7 +58777,9 @@ function zzz_media_diss(it, redraw) {
     } finally { send.disabled = false; }
   });
   b.appendChild(rowB); o.appendChild(b); document.body.appendChild(o);
-  o.addEventListener('click', (ev) => { if (ev.target === o) { o.remove(); if (redraw) redraw(); } });
+  const born = Date.now();
+  b.addEventListener('click', (ev) => { if (Date.now() - born < 450) { ev.stopPropagation(); ev.preventDefault(); } }, true);
+  o.addEventListener('click', (ev) => { if (Date.now() - born < 450) return; if (ev.target === o) { o.remove(); if (redraw) redraw(); } });
   setTimeout(() => { try { ta.focus(); } catch (e) {} }, 60);
 }
 
@@ -58950,11 +58986,12 @@ async function zzz_media_open() {
       const w0 = zzz_media_tagw(had.tags).filter(t => t !== 'trash');
       const more = want.filter(t => w0.indexOf(t) < 0);
       if (!more.length && !had.trash) { zzz6f2_show_toast('#' + had.num + ' is already here (' + want.join(' ') + ').', 'info'); inp.value = ''; readyPaint(); return; }
-      if (await zzz_media_set_tags(had, w0.concat(more))) { zzzMedia.newId = had.id; inp.value = ''; readyPaint(); zzz6f2_show_toast('#' + had.num + ' added to ' + want.join(' ').toUpperCase() + '.', 'ok'); draw(); }
+      if (await zzz_media_set_tags(had, w0.concat(more))) { zzzMedia.newId = had.id; inp.value = ''; readyPaint(); zzz6f2_show_toast('#' + had.num + ' added to ' + want.join(' ').toUpperCase() + '.', 'ok'); draw(); zzz_media_add_play_app(had); }
       return;
     }
+    if (!zzz_media_is_mediaish(u)) { zzz6f2_show_toast('Not a medium (a web page / app link) - not added to VERSO MEDIA CENTER.', 'info'); return; }
     const it = await zzz_media_add(u, '', want.join(' '));
-    if (it) { zzzMedia.newId = it.id; inp.value = ''; readyPaint(); zzz6f2_show_toast('Added as #' + it.num + ' (' + want.join(' ') + ') - hold the row = name / tags.', 'ok'); draw(); }
+    if (it) { zzzMedia.newId = it.id; inp.value = ''; readyPaint(); zzz6f2_show_toast('Added as #' + it.num + ' (' + want.join(' ') + ') - hold the row = name / tags.', 'ok'); draw(); zzz_media_add_play_app(it); }
     else zzz6f2_show_toast('+ ADD failed - the link was not saved. Check the connection and try again.', 'warn');
   });
 
@@ -59542,7 +59579,7 @@ async function zzz_media_actual_in() {
     for (const o of list) {
       upto = Math.max(upto, Number(o.t));
       const link = zzz_media_norm(o.u), had = zzz_media_line({ link });
-      try { if (had) await zzz_media_tag_where(had); else await zzz_media_add(link, '', zzz_media_where_tags().join(' ')); zzz_media_hist_add({ link }); n++; } catch (e) {}
+      try { if (had) await zzz_media_tag_where(had); else await zzz_media_add(link, '', zzz_media_where_tags().join(' '), { page: true }); zzz_media_hist_add({ link }); n++; } catch (e) {}
     }
     if (n) { zzz6f2_show_toast('PAGE MODE: ' + n + (n === 1 ? ' page' : ' pages') + ' added to ACTUAL.', 'info'); zzz_media_redraw(); }
     const url = 'intent://quick/mediaactual?upto=' + Math.floor(upto);
@@ -61034,7 +61071,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 330;
+const ZZZ14B17_APP_LATEST = 331;
 function zzz14b17_app_code() {
 
   try {
