@@ -7256,6 +7256,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-heartb.has { border-color: #ef4444; color: #ef4444; }
   .zzz-media-diss.is-full { max-width: none; width: calc(100vw - 16px); height: calc(100vh - 60px); display: flex; flex-direction: column; }   
   .zzz-media-diss.is-full .zzz-media-diss-l { max-height: none; flex: 1 1 auto; }
+  .zzz-vi-to-commlist { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; padding: 4px 0; }   
   .zzz-media-nline { cursor: pointer; border-left: 4px solid #3f3f46; }   
   .zzz-media-nline.is-unread { border-left-color: #ef4444; } .zzz-media-nline.is-read { border-left-color: #22c55e; } .zzz-media-nline.is-shifted { border-left-color: #a1a1aa; }
   .zzz-media-nlink { font-size: 11px; opacity: .7; word-break: break-all; }
@@ -53332,7 +53333,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-14 00:05';
+const VERSO_BUILD = '2026-11-14 00:33';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -55406,7 +55407,8 @@ async function zzz_vi_win_open(big) {
   head.addEventListener('click', () => { if (Date.now() - (w._zzzMovedAt || 0) < 350) return; const t = Date.now(); if (t - tapAt < 350) { tapAt = 0; zzz_haptic_pulse(10);
     zzz_vi_win_size(w.classList.contains('is-max') || w.classList.contains('is-min') ? 'mid' : 'min'); } else tapAt = t; });
   const mode = document.createElement('span'); mode.className = 'zzz-vi-win-mode';
-  head.append(ttl, mode, bMin, bMax, bX);
+
+  head.append(ttl, bMin, bMax, bX);
 
   const cmd = document.createElement('div'); cmd.className = 'zzz-vi-win-cmd';
   const cmdMode = document.createElement('span'); cmdMode.className = 'zzz-vi-win-cmd-mode'; cmdMode.textContent = '\u2315 FIND';
@@ -55457,12 +55459,22 @@ async function zzz_vi_win_open(big) {
     toRow.innerHTML = '';
     const lab = document.createElement('span'); lab.className = 'zzz-vi-to-lab'; lab.textContent = 'TO'; toRow.appendChild(lab);
     const cur = String(zzz_vi_get('to', '') || '');
-    const opts = [{ id: '', label: '🤖 VI' }];
+
+    const opts = [];
     try { (zzz14cs_feed_chats() || []).forEach(c => opts.push(c)); } catch (e) {}
     try { const last = localStorage.getItem(zzz14cs_last_key()) || ''; if (last && !opts.some(o => o.id === String(last))) opts.push({ id: String(last), label: '#' + last + ' (last)' }); } catch (e) {}
     if (cur && !opts.some(o => o.id === cur)) opts.push({ id: cur, label: '#' + cur });
-    opts.forEach(o => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-vi-to-chip' + (o.id === cur ? ' is-on' : ''); b.textContent = o.label;
-      b.addEventListener('click', () => { zzz_vi_put('to', o.id); paintTo(); }); toRow.appendChild(b); });
+    const mk = (o, box) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-vi-to-chip' + (o.id === cur ? ' is-on' : ''); b.textContent = o.label;
+      b.addEventListener('click', () => { zzz_vi_put('to', o.id); zzz_vi_put('commopen', ''); paintTo(); }); box.appendChild(b); return b; };
+    mk({ id: '', label: '🤖 VI' }, toRow);
+    const curO = opts.find(o => o.id === cur);
+    const cs = document.createElement('button'); cs.type = 'button'; cs.className = 'zzz-vi-to-chip zzz-vi-to-comm' + (curO ? ' is-on' : '');
+    const open = zzz_vi_get('commopen', '') === '1';
+    cs.textContent = '💬 ' + (curO ? curO.label : 'COMM SPACE') + ' ' + (open ? '▴' : '▾') + (opts.length ? ' · ' + opts.length : '');
+    cs.title = 'COMM SPACE chats - tap = open / close the list';
+    cs.addEventListener('click', () => { zzz_vi_put('commopen', open ? '' : '1'); paintTo(); });
+    toRow.appendChild(cs);
+    if (open) { const box = document.createElement('div'); box.className = 'zzz-vi-to-alist zzz-vi-to-commlist'; opts.forEach(o => mk(o, box)); if (!opts.length) box.textContent = 'No COMM SPACE chats yet.'; toRow.appendChild(box); }
 
     const au = document.createElement('button'); au.type = 'button'; au.className = 'zzz-vi-to-chip zzz-vi-to-author'; au.textContent = '📒 AUTHOR';
     au.title = 'Choose one of your AUTHOR CREDITS records - → NOTES then saves there';
@@ -55500,7 +55512,7 @@ async function zzz_vi_win_open(big) {
     }
   };
   paintTo();
-  w.append(head, cmd, found, space, chat, toRow);
+  w.append(head, chat, toRow);
   if (mod) w.appendChild(mod);
   w.appendChild(line);
   zzzViFind = null;
@@ -55537,9 +55549,10 @@ async function zzz_vi_win_open(big) {
 async function zzz_vi_win_render() {
   const w = zzzViWin; if (!w || !w.isConnected) return;
   const m = zzz_vi_get('mode', 'standby');
-  const md = w.querySelector('.zzz-vi-win-mode'); md.textContent = 'VI ' + (m === 'on' ? 'ON' : m === 'off' ? 'OFF' : 'STBY'); md.className = 'zzz-vi-win-mode is-' + m;
+  const md = w.querySelector('.zzz-vi-win-mode'); if (md) { md.textContent = 'VI ' + (m === 'on' ? 'ON' : m === 'off' ? 'OFF' : 'STBY'); md.className = 'zzz-vi-win-mode is-' + m; }
 
-  const space = w.querySelector('.zzz-vi-win-space'); space.innerHTML = '';
+  const space = w.querySelector('.zzz-vi-win-space');
+  if (space) { space.innerHTML = '';
   const st = document.createElement('div'); st.className = 'zzz-vi-win-sub'; st.textContent = 'VI SPACE';
   const rowsRaw = zzz5w5cm_tab_list(ZZZ_VI_SPACE_KEY);
   const hint = document.createElement('span'); hint.className = 'zzz-vi-win-hint';
@@ -55570,6 +55583,7 @@ async function zzz_vi_win_render() {
     chips.appendChild(b);
   });
   space.appendChild(chips);
+  }
 
   const e = await zzz_vi_home();
   const hm = w.querySelector('.zzz-vi-win-home'), list = w.querySelector('.zzz-vi-win-list');
@@ -55799,15 +55813,16 @@ function zzz_vi_line_el() {
     const off = !!c0 && rpOff === rpKey(c0);
     rpIt = off ? null : c0;
     rp.classList.toggle('is-on', !!rpIt); rp.classList.toggle('is-off', off);
-    if (c0 && !rpIt) { rp.textContent = '↩ ' + (c0.from ? String(c0.from).slice(0, 10) : '#' + c0.entry); }
-    if (rpIt) rp.textContent = '↩ ' + (rpIt.from ? String(rpIt.from).slice(0, 10) : '#' + rpIt.entry);
+
+    const lab = (x) => '↩ ✉ ' + (x.from ? String(x.from).slice(0, 14) : '?') + ' · #' + x.entry;
+    if (c0) rp.textContent = lab(c0);
     inp.placeholder = rpIt ? 'answer #' + rpIt.entry : 'VI · chatnote';
   };
   { let ht = 0, held = false;
-    rp.title = 'ANSWER LINK · tap = next message of the NOTIF LINE · hold = not used / used again';
+    rp.title = 'ANSWER LINK · tap = next message of the NOTIF LINE · hold = remove this chip (the line goes to your chips / VI record)';
     rp.addEventListener('pointerdown', () => { held = false; clearTimeout(ht); ht = setTimeout(() => { held = true; zzz_haptic_pulse(25);
-      const c = window.zzzLineCur, k = rpKey(c); if (!k) return; rpOff = rpOff === k ? '' : k; paintRp();
-      zzz6f2_show_toast(rpOff ? 'ANSWER LINK off - the line goes to your chips / VI record' : 'ANSWER LINK on - the line answers this message', 'info', 1600); }, 600); });
+      const c = window.zzzLineCur, k = rpKey(c); if (!k) return; rpDrop = k; rpOff = ''; paintRp();
+      zzz6f2_show_toast('Answer chip removed - the line goes to your chips / VI record.', 'info', 1600); }, 600); });
     ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => rp.addEventListener(ev, () => clearTimeout(ht)));
     rp.addEventListener('contextmenu', (e) => e.preventDefault());
     rp.addEventListener('click', () => { if (held) { held = false; return; }
