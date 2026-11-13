@@ -43614,7 +43614,7 @@ async function zzz_native_launch(url) {
 function zzz_native_cmd_able(url) {
 
   try {
-    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|buzz|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|mediaact|mediadone|readfetch|vipacks|qcb|ring|relaunch)\b/.test(String(url || 'intent://quick/quiet'))
+    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|buzz|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|mediaact|mediadone|mcnow|readfetch|vipacks|qcb|ring|relaunch)\b/.test(String(url || 'intent://quick/quiet'))
       && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator;
   } catch (e) { return false; }
 }
@@ -53328,7 +53328,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-13 13:04';
+const VERSO_BUILD = '2026-11-13 19:14';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -57994,7 +57994,7 @@ function zzz_media_attach_pick(items, done, opts) {
   const o = document.createElement('div'); o.className = 'zzz-media-confirm is-prompt';
   const b = document.createElement('div'); b.className = 'zzz-media-confirm-box is-prompt';
   const t = document.createElement('div'); t.style.cssText = 'color:#D4AF37;font-weight:800;margin-bottom:6px;'; t.textContent = opts.title || ('\u2192 TAB \u00b7 TAG \u00b7 ' + items.length + (items.length === 1 ? ' row' : ' rows')); b.appendChild(t);
-  const pick = new Set();
+  const pick = new Set((opts.pre || []).filter(x => x && x !== 'actual'));
   const sec = (title) => { const h = document.createElement('div'); h.style.cssText = 'color:#9CA3AF;font-size:11px;margin:6px 0 3px;'; h.textContent = title; b.appendChild(h); const r = document.createElement('div'); r.className = 'zzz-media-tagbar'; b.appendChild(r); return r; };
   let renderPls = () => {};
   const chip = (row, label, words, isTab) => { const c = document.createElement('button'); c.type = 'button'; c.className = 'zzz-media-tagchip'; c.textContent = label; const k = words.join(' ');
@@ -58045,6 +58045,7 @@ function zzz_media_attach_pick(items, done, opts) {
 
     if ((np || opts.link) && !add.some(x => ZZZ_MEDIA_TABS.map(t => t.toLowerCase()).indexOf(x) >= 0)) add.push(zzzMedia.tab && zzzMedia.tab !== 'TRASH' ? zzzMedia.tab.toLowerCase() : 'actual');
     o.remove(); let n = 0;
+    if (opts.link) { try { localStorage.setItem(zzz_ukey('zzz_media_last_place'), JSON.stringify(add.filter(x => x !== 'actual' && x !== 'fav').slice(0, 6))); } catch (e) {} }
     if (opts.link) {
       if (zzzMedia.loadedOf !== zzz_media_me()) await zzz_media_load();
       const had = zzz_media_line({ link: opts.link });
@@ -58114,12 +58115,11 @@ async function zzz_media_actual_to_app() {
     if (!zzz14b17_in_app() || zzz14b17_app_code() < ZZZ_MM_ACTUAL_APP || !zzz_media_me() || !zzzMedia.all || zzzMedia.loadedOf !== zzz_media_me()) return;
     const off = zzz_media_offline();
 
-    if (zzzMedia.tab === 'TRASH') return;
-    const l = zzz_media_tablist_raw().filter(x => !x.trash && !zzz_media_locked_now(x))
+    const l = zzz_media_actual_of(zzzMedia.list.filter(x => zzz_media_mode_fits(x))).filter(x => !x.trash && !zzz_media_locked_now(x))
       .filter(x => x.link && (zzz_media_has_file(x) || (!off && /^https?:/i.test(x.link) && !zzz_media_embed(x.link) && zzz_media_streamish(x)))).slice(0, 40);
 
     zzz_stars_want(l.map(x => x.id).filter(x => x != null));
-    const js0 = JSON.stringify(l.map(x => { const av = x.id != null ? zzz_stars_avg(x.id) : 0; return { t: zzz_media_title(x) + (av ? ' \u2605' + zzz_stars_fmt(av) : ''), u: x.link }; })), js = js0, sig = zzz_media_me() + '|' + zzz_media_src_mode() + '|' + js;
+    const js0 = JSON.stringify(l.map(x => { const av = x.id != null ? zzz_stars_avg(x.id) : 0; return { t: zzz_media_title(x) + (av ? ' \u2605' + zzz_stars_fmt(av) : ''), u: x.link, s: zzz_media_stat(x) }; })), js = js0, sig = zzz_media_me() + '|' + zzz_media_src_mode() + '|' + js;
     if (sig === zzzMedia.actSent) return;
     const url = 'intent://quick/mediaact?q=' + zzz_media_b64(js).replace(/=+$/, '');
     if (!zzz_native_cmd_able(url)) return;
@@ -58128,6 +58128,27 @@ async function zzz_media_actual_to_app() {
   } catch (e) {}
 }
 setInterval(zzz_media_actual_to_app, 6000);
+
+function zzz_media_stat(x) {
+  if (!x) return '';
+  if (x.seen) return 'r';
+  let n = 0; try { ZZZ_MEDIA_TABS.forEach(tb => { if (tb !== 'ACTUAL' && tb !== 'TRASH' && zzz_media_in_tab(x, tb)) n++; }); n += (x.pls || []).length; } catch (e) {}
+  return n > 1 ? 'd' : 'u';
+}
+
+function zzz_media_mcnow() {
+  try {
+    if (!zzz14b17_in_app()) return;
+    const it = zzzMedia.cur, p = it ? (zzz_media_playing() ? 1 : 0) : 0;
+    const t = it ? zzz_media_title(it) : '', u = it && /^https?:/i.test(it.link || '') ? it.link : '';
+    const sig = p + '|' + t + '|' + u;
+    if (sig === zzzMedia.mcSent) return;
+    const url = 'intent://quick/mcnow?p=' + p + '&t=' + encodeURIComponent(t.slice(0, 150)) + '&u=' + encodeURIComponent(u) + '&s=' + zzz_media_stat(it ? zzz_media_line(it) : null);
+    if (!zzz_native_cmd_able(url)) return;
+    zzz_native_cmd(url); zzzMedia.mcSent = sig;
+  } catch (e) {}
+}
+setInterval(zzz_media_mcnow, 2000);
 function zzz_media_playlists() {
   const map = new Map();
   (zzzMedia.plsDefs || []).filter(d => zzz_media_in_tab(d, zzzMedia.tab)).forEach(d => { const k = d.plsDef.toLowerCase(); if (!map.has(k)) map.set(k, { name: d.plsDef, items: [], link: '' }); });
@@ -59296,14 +59317,42 @@ function zzz_media_hash() {
       zzz_stars_scale_open(it.id, window.innerWidth / 2, window.innerHeight / 2); };
     go(); return;
   }
+  const ctl = h.match(/^#media-ctl=(toggle|pause|next|prev)/i);
+  if (ctl) {
+    try { history.replaceState(null, '', location.pathname + location.search + '#media'); } catch (e) {}
+    const cmd = ctl[1].toLowerCase();
+    const go = async () => { if (!zzz_media_me()) { setTimeout(go, 1000); return; }
+      if (!document.getElementById('zzzMediaWin')) await zzz_media_open();
+      if (zzzMedia.loadedOf !== zzz_media_me()) { try { await zzz_media_load(); } catch (e) {} }
+      if (!zzzMedia.cur) { const l = zzz_media_tablist(), l0 = zzz_media_ok_first(l); if (l0 && cmd !== 'pause') zzz_media_play(l0, l); return; }
+      if (cmd === 'next') zzz_media_next(1); else if (cmd === 'prev') zzz_media_next(-1);
+      else if (cmd === 'pause') { if (zzz_media_playing()) zzz_media_toggle(); } else zzz_media_toggle(); };
+    go(); return;
+  }
   const sv = h.match(/^#media-save=([^&]+)/i);
   if (sv) {
+    const svLast = /&last=1\b/.test(h), svAct = /&actual=1\b/.test(h);
     let link = ''; try { link = zzz_media_norm(decodeURIComponent(sv[1])); } catch (e) {}
     try { history.replaceState(null, '', location.pathname + location.search + '#media'); } catch (e) {}
     const back = () => { if (zzzMediaFromPanel) { const w = document.getElementById('zzzMediaWin'); if (w) w.remove(); } };
     const go = async () => { if (!zzz_media_me()) { setTimeout(go, 1000); return; } if (!/^https?:\/\//i.test(link)) { zzz6f2_show_toast('No web link to save - copy a link first.', 'info'); return; }
       if (!document.getElementById('zzzMediaWin')) await zzz_media_open();
-      zzz_media_attach_pick([], () => setTimeout(back, 900), { link, title: 'SAVE TO \u00b7 ' + link.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48), cancel: back }); };
+      if (zzzMedia.loadedOf !== zzz_media_me()) { try { await zzz_media_load(); } catch (e) {} }
+
+      const had = zzz_media_line({ link });
+      if (had) zzz6f2_show_toast('Already in MEDIA CENTER #' + had.num + ' (' + (zzz_media_tagw(had.tags).filter(x => x !== 'actual').join(' ').toUpperCase() || 'ALL MEDIA') + ')', 'warn', 3200);
+      let last = []; try { last = JSON.parse(localStorage.getItem(zzz_ukey('zzz_media_last_place')) || '[]'); } catch (e) { last = []; }
+      if (svLast && last.length) {
+        const w = had ? zzz_media_tagw(had.tags) : [];
+        if (!had) await zzz_media_add(link, '', last.join(' ')); else if (last.some(x => w.indexOf(x) < 0)) await zzz_media_set_tags(had, w.concat(last.filter(x => w.indexOf(x) < 0)));
+        try { zzz_media_redraw(); } catch (e) {}
+      }
+      if (svAct) {
+        const l2 = zzz_media_line({ link });
+        if (!l2) await zzz_media_add(link, '', 'actual'); else if (zzz_media_tagw(l2.tags).indexOf('actual') < 0) await zzz_media_set_tags(l2, zzz_media_tagw(l2.tags).concat(['actual']));
+        try { zzz_media_redraw(); } catch (e) {}
+      }
+      zzz_media_attach_pick([], () => setTimeout(back, 900), { link, pre: svLast ? last : [], title: (svAct ? 'PIN WINDOW \u00b7 ' : (svLast && last.length ? 'SAVED TO ' + last.join(' ').toUpperCase() + ' \u00b7 MORE? \u00b7 ' : 'SAVE TO \u00b7 ')) + link.replace(/^https?:\/\/(www\.)?/, '').slice(0, 40), cancel: back }); };
     go(); return;
   }
   const add = h.match(/^#media-add=([^&]+)/i);
@@ -60943,7 +60992,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 326;
+const ZZZ14B17_APP_LATEST = 327;
 function zzz14b17_app_code() {
 
   try {
