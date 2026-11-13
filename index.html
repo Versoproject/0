@@ -53337,7 +53337,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-14 00:40';
+const VERSO_BUILD = '2026-11-14 00:49';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -55325,6 +55325,39 @@ async function zzz_qcb_to_app() {
 }
 setInterval(() => { const u = zzz_media_me(); if (!u) return; if (zzzQcbPulled !== u) zzz_qcb_pull(); else zzz_qcb_to_app(); }, 20000);
 setInterval(() => { if (zzz_media_me()) zzz_qcb_pull(); }, 120000);
+
+async function zzz_vi_me_after(text, wasSave) {
+  text = String(text || '').trim(); if (!text) return;
+  document.querySelectorAll('.zzz-vi-meafter').forEach(x => x.remove());
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm zzz-vi-meafter';
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box';
+  const h = document.createElement('div'); h.className = 'zzz-media-confirm-t'; h.textContent = '\uD83D\uDCD2 Saved in your VI record · save also into another record?'; b.appendChild(h);
+  const q = document.createElement('input'); q.type = 'text'; q.className = 'zzz-media-tagq'; q.style.width = '100%'; q.placeholder = 'EN number or name…'; q.setAttribute('data-zzz-nodraft', '1'); b.appendChild(q);
+  const list = document.createElement('div'); list.style.cssText = 'max-height:46vh;overflow:auto;margin-top:6px;'; b.appendChild(list);
+  const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
+  const no = document.createElement('button'); no.type = 'button'; no.className = 'zzz-media-btn is-on'; no.textContent = 'NO'; no.addEventListener('click', () => o.remove());
+  row.appendChild(no); b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
+  o.addEventListener('click', (e) => { if (e.target === o) o.remove(); });
+  const me = zzz0r1_get_current_username();
+  let rows = [], auth = new Set();
+  try { rows = await zzz_vi_find_rows(); } catch (e) {}
+  try { const map = await zzz1cn_ws_load_entries(); Object.keys(map).forEach(k => { const r = map[k]; try { if (zzz6f22_credits_user(r.f || {}, me)) { auth.add(String(r.entry)); if (!rows.some(x => String(x.entry_id) === String(r.entry))) rows.push({ entry_id: r.entry, fields_json: r.f, _auth: true }); } } catch (e) {} }); } catch (e) {}
+  const nameOf = (r) => { let f = r.fields_json || {}; if (typeof f === 'string') { try { f = JSON.parse(f); } catch (e) { f = {}; } } return String(f.r3 || f.r9 || '').trim(); };
+  const paint = () => {
+    list.innerHTML = '';
+    const t = zzz10v1_normalize(q.value || '');
+    const hit = rows.filter(r => !t || String(r.entry_id).indexOf(t) === 0 || zzz10v1_normalize(nameOf(r)).includes(t))
+      .sort((a, c) => (auth.has(String(c.entry_id)) - auth.has(String(a.entry_id))) || (Number(c.entry_id) - Number(a.entry_id))).slice(0, 40);
+    if (!hit.length) { const n = document.createElement('div'); n.style.cssText = 'color:#9CA3AF;font-size:12px;'; n.textContent = 'No record found.'; list.appendChild(n); }
+    hit.forEach(r => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-vi-nrw-row';
+      x.textContent = (auth.has(String(r.entry_id)) ? '\uD83D\uDCD2 AUTHOR · ' : '') + '#' + r.entry_id + (nameOf(r) ? ' ' + nameOf(r).slice(0, 40) : '');
+      x.addEventListener('click', async () => { o.remove();
+        const sv = await zzz1cn_add(String(r.entry_id), text, false, null, '', true, zzz1cn_prio_level(zzz_vi_get('prio', 'open')) || zzz56_prio_mode(String(r.entry_id)), []);
+        if (sv) zzz6f2_show_toast('NOTE #' + zzz5w7_label_of(sv) + ' also saved in #' + r.entry_id + '.', 'info', 1800); });
+      list.appendChild(x); });
+  };
+  q.addEventListener('input', paint); paint();
+}
 async function zzz_vi_post_bar(text, prio, q, save) {
   const names = [], miss = []; let me = false;
   for (const x of (q || []).slice(0, 40)) {
@@ -55864,7 +55897,8 @@ function zzz_vi_line_el() {
   const go = document.createElement('button'); go.type = 'button'; go.className = 'zzz-vi-go'; go.textContent = '➤'; go.title = 'Send (only sends - VI SPACE is ⛶)';
   let busy = false;
   const send = async (save) => { if (busy) return; busy = true; go.disabled = true; save = save === true;
-    try { const qt = qTargets(); const ok = rpIt ? await zzz_vi_reply(rpIt, inp.value, zzz_vi_get('prio', 'open'), save) : (qt.length ? await zzz_vi_post_bar(inp.value, zzz_vi_get('prio', 'open'), qt, save) : await zzz_vi_post(inp.value, zzz_vi_get('prio', 'open'), '', save));
+    try { const qt = qTargets(); const ok = (rpIt && !meMode()) ? await zzz_vi_reply(rpIt, inp.value, zzz_vi_get('prio', 'open'), save) : (qt.length ? await zzz_vi_post_bar(inp.value, zzz_vi_get('prio', 'open'), qt, save) : await zzz_vi_post(inp.value, zzz_vi_get('prio', 'open'), '', save));
+      if (ok && meMode()) { try { zzz_vi_me_after(inp.value, save); } catch (e) {} }
       if (ok) { inp.value = ''; zzz_vi_put('draft', '');   if (rpIt) { rpDrop = rpKey(rpIt); rpSel = null; paintRp(); } } } finally { busy = false; go.disabled = false; } };
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
 
@@ -55876,8 +55910,14 @@ function zzz_vi_line_el() {
     go.addEventListener('click', () => { if (gHeld) { gHeld = false; return; } send(false); }); }
 
   const tool = (lab, title, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = lab; b.title = title; b.className = 'zzz-vi-tool'; b.addEventListener('click', fn); return b; };
-  const meB = tool('\uD83D\uDD12 me', '🔒 me: the line also goes to your own VI record (private)', () => { const s2 = qSel(); const i = s2.indexOf(''); if (i >= 0) s2.splice(i, 1); else s2.push(''); qSave(qList(), s2); paintMe(); paintPk(); if (bar.isConnected) paintBar(false); });
-  function paintMe() { meB.classList.toggle('is-on', qSel().includes('')); }
+
+  const ME_STATES = ['', 'me', 'vi', 'mevi'], ME_LAB = { '': '\uD83D\uDD12 me', me: '\uD83D\uDD12 ME', vi: '\uD83E\uDD16 VI', mevi: '\uD83D\uDD12 ME/VI' };
+  const meMode = () => { const m = String(zzz_vi_get('memode', '') || ''); return qSel().includes('') ? (ME_STATES.indexOf(m) > 0 ? m : 'me') : ''; };
+  const meB = tool('\uD83D\uDD12 me', '🔒 me: tap = OFF → ME → VI (your VI bot) → ME / VI → OFF · on = the line also goes into your VI record (private)', () => {
+    const nx = ME_STATES[(ME_STATES.indexOf(meMode()) + 1) % ME_STATES.length]; zzz_vi_put('memode', nx);
+    const s2 = qSel().filter(x => x !== ''); if (nx) s2.push(''); qSave(qList(), s2); paintMe(); paintPk(); if (bar.isConnected) paintBar(false);
+    zzz6f2_show_toast(nx ? ME_LAB[nx] + ' - the line also goes into your VI record' + (nx !== 'me' ? ' (for your VI bot - it does not answer yet)' : '') : 'me off - the line goes to the chat you answer / your chips', 'info', 1800); });
+  function paintMe() { const m = meMode(); meB.textContent = ME_LAB[m]; meB.classList.toggle('is-on', !!m); }
   const spaceB = tool('\u26f6', 'VI SPACE (your VI chat + pinned records)', () => zzz_vi_win_open(true));
   spaceB.classList.add('zzz-vi-space');
   const alB = tool('\u23f0', 'ALARM MODULE - set it, it is added to your next VI LINE message', (e) => zzz_vi_alarm_arm(e && e.currentTarget));
