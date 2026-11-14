@@ -7258,6 +7258,11 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-diss.is-full .zzz-media-diss-l { max-height: none; flex: 1 1 auto; }
   .zzz-vi-nrw-row { display: block; width: 100%; text-align: left; background: #1a1a1a; color: #fff; border: 1px solid #3f3f46; border-radius: 10px; padding: 8px 10px; margin: 4px 0; font-size: 13px; }   
   .zzz-vi-nrw-row.is-on { border-color: #D4AF37; color: #D4AF37; }
+  .zzz-vi-nrw-sec { color: #D4AF37; font-size: 11px; font-weight: 700; letter-spacing: .05em; margin: 10px 0 2px; }   
+  .zzz-vi-nrw-none { color: #9CA3AF; font-size: 12px; margin: 2px 0 4px; }
+  .zzz-vi-mn-ta { width: 100%; box-sizing: border-box; background: #000; color: #fff; border: 1px dashed #D4AF37; border-radius: 8px; padding: 6px 8px; font-size: 14px; margin-top: 4px; }   
+  .zzz-vi-mn-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: stretch; }
+  .zzz-vi-mn-row input { flex: 1 1 5em; min-width: 4.5em; background: #000; color: #fff; border: 1px dashed #D4AF37; border-radius: 8px; padding: 4px 6px; font-size: 13px; }
   .zzz-vi-win-side { display: flex; flex-direction: column; gap: 4px; width: 7.5em; }   
   .zzz-vi-win-side input { width: 100%; box-sizing: border-box; background: #000; color: #fff; border: 1px dashed #D4AF37; border-radius: 8px; padding: 4px 6px; font-size: 13px; }
   .zzz-vi-to-commlist { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; padding: 4px 0; }   
@@ -53330,7 +53335,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-14 13:54';
+const VERSO_BUILD = '2026-11-14 14:25';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -55319,50 +55324,61 @@ async function zzz_qcb_to_app() {
 setInterval(() => { const u = zzz_media_me(); if (!u) return; if (zzzQcbPulled !== u) zzz_qcb_pull(); else zzz_qcb_to_app(); }, 20000);
 setInterval(() => { if (zzz_media_me()) zzz_qcb_pull(); }, 120000);
 
-const ZZZ_VI_STUCK_APP = 340;
-function zzz_vistuck_hash() {
-  const m = String(location.hash || '').match(/^#vistuck=([A-Za-z0-9_-]{1,4000})$/);
-  if (!m) return;
-  try { history.replaceState(null, '', location.pathname + location.search + (zzzViWin && zzzViWin.isConnected ? '#vi' : '')); } catch (e) {}
-  try {
-    const o = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/')))));
-    if (!o || !o.entry) return;
-    window.zzzStuckNative = { src: 'chat', entry: String(o.entry), from: String(o.who || ''), text: String(o.text || ''), project: String(o.where || ''), raw: { id: 'app:' + String(o.k || o.entry), entry_key: String(o.entry) } };
-    document.querySelectorAll('.zzz-vi-line').forEach(el => { try { el._viRepaint && el._viRepaint(); } catch (e) {} });
-  } catch (e) {}
-}
-window.addEventListener('hashchange', zzz_vistuck_hash);
-async function zzz_vi_me_after(text, wasSave) {
-  text = String(text || '').trim(); if (!text) return;
+async function zzz_vi_notes_pick(text) {
+  text = String(text || '').trim();
   document.querySelectorAll('.zzz-vi-meafter').forEach(x => x.remove());
   const o = document.createElement('div'); o.className = 'zzz-media-confirm zzz-vi-meafter';
-  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box';
-  const h = document.createElement('div'); h.className = 'zzz-media-confirm-t'; h.textContent = '\uD83D\uDCD2 Saved in your VI record · save also into another record?'; b.appendChild(h);
-  const q = document.createElement('input'); q.type = 'text'; q.className = 'zzz-media-tagq'; q.style.width = '100%'; q.placeholder = 'EN number or name…'; q.setAttribute('data-zzz-nodraft', '1'); b.appendChild(q);
-  const list = document.createElement('div'); list.style.cssText = 'max-height:46vh;overflow:auto;margin-top:6px;'; b.appendChild(list);
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box'; b.style.maxHeight = '90vh'; b.style.overflow = 'auto';
+  const h = document.createElement('div'); h.className = 'zzz-media-confirm-t'; h.textContent = '\uD83D\uDCD2 MY NOTES · save into a record'; b.appendChild(h);
+  const modes = document.createElement('div'); modes.className = 'zzz-media-confirm-row'; modes.style.justifyContent = 'flex-start';
+  let mode = zzz_vi_get('notesmode', 'my');
+  const q = document.createElement('input'); q.type = 'text'; q.className = 'zzz-media-tagq'; q.style.width = '100%'; q.placeholder = 'EN number or project name…'; q.setAttribute('data-zzz-nodraft', '1');
+  const list = document.createElement('div'); list.style.cssText = 'max-height:34vh;overflow:auto;margin-top:6px;';
+  const form = document.createElement('div'); form.className = 'zzz-vi-mn-form'; form.hidden = true;
+  const sel = document.createElement('div'); sel.className = 'zzz-vi-nrw-sec';
+  const ta = document.createElement('textarea'); ta.rows = 3; ta.value = text; ta.placeholder = 'chatnote…'; ta.setAttribute('data-zzz-nodraft', '1'); ta.className = 'zzz-vi-mn-ta';
+  const fr = document.createElement('div'); fr.className = 'zzz-vi-mn-row';
+  const rnum = document.createElement('input'); rnum.type = 'text'; rnum.inputMode = 'numeric'; rnum.placeholder = '# reply'; rnum.setAttribute('data-zzz-nodraft', '1');
+  rnum.addEventListener('input', () => { rnum.value = rnum.value.replace(/\D/g, ''); });
+  const rname = document.createElement('input'); rname.type = 'text'; rname.placeholder = 'NAME'; rname.maxLength = 60; rname.setAttribute('data-zzz-nodraft', '1');
+  const nb = document.createElement('button'); nb.type = 'button'; nb.className = 'zzz-media-btn'; nb.textContent = '\uD83D\uDCD6 NOTES';
+  const en = document.createElement('button'); en.type = 'button'; en.className = 'zzz-media-btn is-on'; en.innerHTML = 'ENTER<br>CHATNOTE'; en.title = 'Tap = into the chat of the record · hold 1 s = SAVE NOTE (chat + Notes)';
+  fr.append(rnum, rname, nb, en); form.append(sel, ta, fr);
   const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
-  const no = document.createElement('button'); no.type = 'button'; no.className = 'zzz-media-btn is-on'; no.textContent = 'NO'; no.addEventListener('click', () => o.remove());
-  row.appendChild(no); b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
+  const no = document.createElement('button'); no.type = 'button'; no.className = 'zzz-media-btn'; no.textContent = 'CLOSE'; no.addEventListener('click', () => o.remove());
+  row.appendChild(no);
+  b.append(modes, q, list, form, row); o.appendChild(b); document.body.appendChild(o);
   o.addEventListener('click', (e) => { if (e.target === o) o.remove(); });
-  const me = zzz0r1_get_current_username();
-  let rows = [], auth = new Set();
-  try { rows = await zzz_vi_find_rows(); } catch (e) {}
-  try { const map = await zzz1cn_ws_load_entries(); Object.keys(map).forEach(k => { const r = map[k]; try { if (zzz6f22_credits_user(r.f || {}, me)) { auth.add(String(r.entry)); if (!rows.some(x => String(x.entry_id) === String(r.entry))) rows.push({ entry_id: r.entry, fields_json: r.f, _auth: true }); } } catch (e) {} }); } catch (e) {}
-  const nameOf = (r) => { let f = r.fields_json || {}; if (typeof f === 'string') { try { f = JSON.parse(f); } catch (e) { f = {}; } } return String(f.r3 || f.r9 || '').trim(); };
+  const me = zzz0r1_get_current_username(), mine = (r) => zzz10v1_normalize(String(r.owner || '')) === zzz10v1_normalize(me) || auth.has(String(r.entry));
+  let all = [], auth = new Set(), pick = null;
+  try { const map = await zzz1cn_ws_load_entries(); all = Object.keys(map).map(k => map[k]); all.forEach(r => { try { if (zzz6f22_credits_user(r.f || {}, me)) auth.add(String(r.entry)); } catch (e) {} }); } catch (e) {}
+  const paintModes = () => { modes.innerHTML = ''; [['my', 'MY'], ['others', 'OTHERS'], ['both', 'BOTH']].forEach(([k, l]) => { const m = document.createElement('button'); m.type = 'button'; m.className = 'zzz-media-btn' + (mode === k ? ' is-on' : ''); m.textContent = l; m.addEventListener('click', () => { mode = k; zzz_vi_put('notesmode', k); paintModes(); paint(); }); modes.appendChild(m); }); };
   const paint = () => {
     list.innerHTML = '';
     const t = zzz10v1_normalize(q.value || '');
-    const hit = rows.filter(r => !t || String(r.entry_id).indexOf(t) === 0 || zzz10v1_normalize(nameOf(r)).includes(t))
-      .sort((a, c) => (auth.has(String(c.entry_id)) - auth.has(String(a.entry_id))) || (Number(c.entry_id) - Number(a.entry_id))).slice(0, 40);
-    if (!hit.length) { const n = document.createElement('div'); n.style.cssText = 'color:#9CA3AF;font-size:12px;'; n.textContent = 'No record found.'; list.appendChild(n); }
-    hit.forEach(r => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-vi-nrw-row';
-      x.textContent = (auth.has(String(r.entry_id)) ? '\uD83D\uDCD2 AUTHOR · ' : '') + '#' + r.entry_id + (nameOf(r) ? ' ' + nameOf(r).slice(0, 40) : '');
-      x.addEventListener('click', async () => { o.remove();
-        const sv = await zzz1cn_add(String(r.entry_id), text, false, null, '', true, zzz1cn_prio_level(zzz_vi_get('prio', 'open')) || zzz56_prio_mode(String(r.entry_id)), []);
-        if (sv) zzz6f2_show_toast('NOTE #' + zzz5w7_label_of(sv) + ' also saved in #' + r.entry_id + '.', 'info', 1800); });
+    const hit = all.filter(r => mode === 'both' || (mode === 'my' ? mine(r) : !mine(r)))
+      .filter(r => !t || String(r.entry).indexOf(t) === 0 || zzz10v1_normalize(r.projectName || '').includes(t) || zzz10v1_normalize(r.project || '').indexOf(t) === 0)
+      .sort((a, c) => (auth.has(String(c.entry)) - auth.has(String(a.entry))) || (Number(c.entry) - Number(a.entry))).slice(0, 50);
+    if (!hit.length) { const n = document.createElement('div'); n.className = 'zzz-vi-nrw-none'; n.textContent = 'No record found.'; list.appendChild(n); }
+    hit.forEach(r => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-vi-nrw-row' + (pick && pick.entry === r.entry ? ' is-on' : '');
+      x.textContent = (auth.has(String(r.entry)) ? '\uD83D\uDCD2 ' : '') + '#' + r.entry + (r.project ? ' · PN ' + r.project : '') + (r.projectName ? ' · ' + r.projectName.slice(0, 40) : '') + (mine(r) ? '' : ' · ' + (r.owner || '?'));
+      x.addEventListener('click', () => { pick = r; form.hidden = false; sel.textContent = 'INTO #' + r.entry + (r.projectName ? ' ' + r.projectName : '') + ' · # = reply under that message, NAME = new thread'; paint(); try { ta.focus(); } catch (e) {} });
       list.appendChild(x); });
   };
-  q.addEventListener('input', paint); paint();
+  nb.addEventListener('click', () => { if (!pick) return; try { o.remove(); zzz1cn_open_list(String(pick.entry), null); } catch (e) { zzz6f2_show_toast('Open the record #' + pick.entry + ' › Notes.', 'info'); } });
+  const go = async (save) => {
+    if (!pick) return; const tx = String(ta.value || '').trim(); if (!tx) { zzz6f2_show_toast('Write something first.', 'info'); return; }
+    const r = parseInt(rnum.value, 10) || 0;
+    en.disabled = true;
+    try {
+      const sv = await zzz1cn_add(String(pick.entry), tx, false, r ? { base: r } : null, r ? '' : String(rname.value || '').trim(), !!save, zzz1cn_prio_level(zzz_vi_get('prio', 'open')) || zzz56_prio_mode(String(pick.entry)), []);
+      if (sv) { zzz6f2_show_toast((save ? 'NOTE' : (r ? 'DISS' : 'Chatnote')) + ' #' + zzz5w7_label_of(sv) + ' → #' + pick.entry + '.', 'info', 1800); o.remove(); }
+    } finally { en.disabled = false; }
+  };
+  { let t0 = 0, held = false; en.addEventListener('pointerdown', () => { held = false; clearTimeout(t0); t0 = setTimeout(() => { held = true; zzz_haptic_pulse(25); go(true); }, 1000); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => en.addEventListener(ev, () => clearTimeout(t0)));
+    en.addEventListener('click', () => { if (held) { held = false; return; } go(false); }); }
+  q.addEventListener('input', paint); paintModes(); paint();
 }
 async function zzz_vi_post_bar(text, prio, q, save) {
   const names = [], miss = []; let me = false;
@@ -55528,8 +55544,11 @@ async function zzz_vi_win_open(big) {
     if (open) { const box = document.createElement('div'); box.className = 'zzz-vi-to-alist zzz-vi-to-commlist'; opts.forEach(o => mk(o, box)); if (!opts.length) box.textContent = 'No COMM SPACE chats yet.'; toRow.appendChild(box); }
 
     const au = document.createElement('button'); au.type = 'button'; au.className = 'zzz-vi-to-chip zzz-vi-to-author'; au.textContent = '📒 AUTHOR';
-    au.title = 'Choose one of your AUTHOR CREDITS records - → NOTES then saves there';
+    au.title = 'Tap = choose one of your AUTHOR CREDITS records as TO · hold 1 s = MY NOTES (search your / others\' records, # / NAME / ENTER CHATNOTE)';
+    { let t0 = 0; au.addEventListener('pointerdown', () => { au._held = false; clearTimeout(t0); t0 = setTimeout(() => { au._held = true; zzz_haptic_pulse(25); try { zzz_vi_notes_pick(ta.value); } catch (e) {} }, 1000); });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => au.addEventListener(ev, () => clearTimeout(t0))); }
     au.addEventListener('click', async () => {
+      if (au._held) { au._held = false; return; }
       if (toRow.querySelector('.zzz-vi-to-alist')) { toRow.querySelector('.zzz-vi-to-alist').remove(); return; }
       const box = document.createElement('div'); box.className = 'zzz-vi-to-alist'; box.textContent = 'loading…'; toRow.appendChild(box);
       try {
@@ -55595,7 +55614,7 @@ async function zzz_vi_win_open(big) {
       if (!saved) throw new Error('not saved');
       ta.value = ''; zzz_vi_put('draft', '');
       zzz6f2_show_toast((save ? 'Note saved' : 'VI ✓') + ' → #' + e.entry_id, 'info');
-      if (save) { try { zzz_vi_me_after(text, true); } catch (x) {} }
+      if (save) { try { zzz_vi_notes_pick(text); } catch (x) {} }
       await zzz_vi_win_render();
       const m = zzz_vi_get('mode', 'standby');
       if (m !== 'off') { const n = document.createElement('div'); n.className = 'zzz-vi-win-bot'; n.textContent = 'VI · the VI bot does not answer yet - your line ' + (saved.zzz0ob_pending ? 'waits on this device for #' : 'is saved in #') + e.entry_id + '.'; list.appendChild(n); list.scrollTop = list.scrollHeight; }
@@ -55875,14 +55894,14 @@ function zzz_vi_line_el() {
     rpIt = off ? null : c0;
     rp.classList.toggle('is-on', !!rpIt); rp.classList.toggle('is-off', off);
 
-    const lab = (x) => '↩ ✉ ' + (x.from ? String(x.from).slice(0, 14) : '?') + ' · #' + x.entry + (x.project ? ' ' + String(x.project).slice(0, 24) : '');
+    const lab = (x) => '↩ ' + (x.from ? '✉ ' + String(x.from).slice(0, 14) + ' · ' : '💬 ') + '#' + x.entry + (x.project ? ' ' + String(x.project).slice(0, 24) : '');
     if (c0) rp.textContent = lab(c0);
     inp.placeholder = rpIt ? 'answer #' + rpIt.entry : 'VI · chatnote';
   };
   row._viRepaint = () => paintRp();
   { let ht = 0, held = false;
 
-    rp.title = 'ANSWER LINK · tap = next message of the NOTIF LINE · hold 1 s = NOTIF REPLY (choose / remove)';
+    rp.title = 'ANSWER LINK · tap = next message of the NOTIF LINE · hold 1 s = SEND TO (messages · COMM SPACE chats · contacts · remove)';
     rp.addEventListener('pointerdown', () => { held = false; clearTimeout(ht); ht = setTimeout(() => { held = true; zzz_haptic_pulse(25); rpWin(); }, 1000); });
     ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => rp.addEventListener(ev, () => clearTimeout(ht)));
     rp.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -55892,21 +55911,37 @@ function zzz_vi_line_el() {
       if (L.length < 2 || typeof zzz3d_step !== 'function') { zzz6f2_show_toast('No other message waits in the NOTIF LINE.', 'info'); return; }
       for (let i = 0; i < L.length; i++) { zzz3d_step(L, 1); if (window.zzzLineCur && window.zzzLineCur !== start) break; }
       paintRp(); }); }
+
   function rpWin() {
     document.querySelectorAll('.zzz-vi-nrw').forEach(x => x.remove());
     const o = document.createElement('div'); o.className = 'zzz-media-confirm zzz-vi-nrw';
-    const b = document.createElement('div'); b.className = 'zzz-media-confirm-box';
-    const h = document.createElement('div'); h.className = 'zzz-media-confirm-t'; h.textContent = '↩ NOTIF REPLY · where your answer goes'; b.appendChild(h);
-    const L = (window.zzzLineList || []).filter(x => x && x.src === 'chat' && rpKey(x));
+    const b = document.createElement('div'); b.className = 'zzz-media-confirm-box'; b.style.maxHeight = '86vh'; b.style.overflow = 'auto';
+    const h = document.createElement('div'); h.className = 'zzz-media-confirm-t'; h.textContent = '↩ SEND TO · where your line goes'; b.appendChild(h);
+    const sec = (t) => { const x = document.createElement('div'); x.className = 'zzz-vi-nrw-sec'; x.textContent = t; b.appendChild(x); };
+    const row = (txt, on, fn) => { const r = document.createElement('button'); r.type = 'button'; r.className = 'zzz-vi-nrw-row' + (on ? ' is-on' : ''); r.textContent = txt; r.addEventListener('click', () => { fn(); o.remove(); }); b.appendChild(r); };
     const curK = rpIt ? rpKey(rpIt) : '';
-    if (!L.length) { const n = document.createElement('div'); n.style.cssText = 'color:#9CA3AF;font-size:13px;margin:6px 0;'; n.textContent = 'No chat message waits in the NOTIF LINE.'; b.appendChild(n); }
-    L.slice(0, 40).forEach(x => { const r = document.createElement('button'); r.type = 'button'; r.className = 'zzz-vi-nrw-row' + (rpKey(x) === curK ? ' is-on' : '');
-      r.textContent = '✉ ' + (x.from || '?') + ' · #' + x.entry + ' · ' + String(x.text || '').slice(0, 70);
-      r.addEventListener('click', () => { rpSel = x; rpDrop = ''; rpOff = ''; paintRp(); o.remove(); zzz6f2_show_toast('Answer → ' + (x.from || '#' + x.entry) + ' · #' + x.entry, 'info', 1500); });
-      b.appendChild(r); });
+    sec('NOTIF LINE · answer under the message');
+    const L = (window.zzzLineList || []).filter(x => x && x.src === 'chat' && rpKey(x));
+    if (window.zzzStuckNative && !L.some(x => rpKey(x) === rpKey(window.zzzStuckNative))) L.unshift(window.zzzStuckNative);
+    if (!L.length) { const n = document.createElement('div'); n.className = 'zzz-vi-nrw-none'; n.textContent = 'No message waits.'; b.appendChild(n); }
+    L.slice(0, 30).forEach(x => row('✉ ' + (x.from || '?') + ' · #' + x.entry + (x.project ? ' ' + x.project : '') + ' · ' + String(x.text || '').slice(0, 60), rpKey(x) === curK,
+      () => { rpSel = x; rpDrop = ''; rpOff = ''; paintRp(); zzz6f2_show_toast('Answer → ' + (x.from || '#' + x.entry) + ' · #' + x.entry, 'info', 1500); }));
+    sec('COMM SPACE · a new message in the chat');
+    let chats = []; try { chats = (zzz14cs_feed_chats() || []).slice(); } catch (e) {}
+    try { const last = localStorage.getItem(zzz14cs_last_key()) || ''; if (last && !chats.some(c => String(c.id) === String(last))) chats.push({ id: String(last), label: '#' + last + ' (last)' }); } catch (e) {}
+    if (!chats.length) { const n = document.createElement('div'); n.className = 'zzz-vi-nrw-none'; n.textContent = 'No COMM SPACE chats yet.'; b.appendChild(n); }
+    chats.slice(0, 30).forEach(c => row('💬 ' + c.label, curK === 'cs:' + c.id, () => {
+      rpSel = { src: 'chat', entry: String(c.id), from: '', text: '', project: String(c.label || '').replace(/^#\d+\s*/, ''), raw: { id: 'cs:' + c.id, entry_key: String(c.id) } };
+      rpDrop = ''; rpOff = ''; paintRp(); zzz6f2_show_toast('Send → ' + c.label, 'info', 1500); }));
+    sec('CONTACTS · the line goes to that person');
+    const ql = qList();
+    if (!ql.length) { const n = document.createElement('div'); n.className = 'zzz-vi-nrw-none'; n.textContent = 'No contacts pinned yet (PACKS › hold = pin).'; b.appendChild(n); }
+    ql.slice(0, 40).forEach(x => row('👤 ' + (x.l || x.n) + (x.v ? ' · PRIVATE' : ''), !rpIt && qSel().includes(x.n), () => {
+      const c = rpSel || window.zzzLineCur || window.zzzStuckNative, k = rpKey(c); if (k) rpDrop = k; rpSel = null; rpOff = '';
+      qSave(qList(), [x.n]); paintRp(); paintPk(); if (bar.isConnected) paintBar(false); zzz6f2_show_toast('Send → ' + (x.l || x.n), 'info', 1500); }));
     const row2 = document.createElement('div'); row2.className = 'zzz-media-confirm-row';
     const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'zzz-media-btn'; rm.textContent = '✕ REMOVE CHIP';
-    rm.addEventListener('click', () => { const c = rpSel || window.zzzLineCur, k = rpKey(c); if (k) rpDrop = k; rpSel = null; rpOff = ''; paintRp(); o.remove();
+    rm.addEventListener('click', () => { const c = rpSel || window.zzzLineCur || window.zzzStuckNative, k = rpKey(c); if (k) rpDrop = k; rpSel = null; rpOff = ''; paintRp(); o.remove();
       zzz6f2_show_toast('Answer chip removed - the line goes to your chips / VI record.', 'info', 1600); });
     const cl = document.createElement('button'); cl.type = 'button'; cl.className = 'zzz-media-btn is-on'; cl.textContent = 'CLOSE'; cl.addEventListener('click', () => o.remove());
     row2.append(rm, cl); b.appendChild(row2); o.appendChild(b);
@@ -55918,9 +55953,9 @@ function zzz_vi_line_el() {
   const go = document.createElement('button'); go.type = 'button'; go.className = 'zzz-vi-go'; go.textContent = '➤'; go.title = 'Send (only sends - VI SPACE is ⛶)';
   let busy = false;
   const send = async (save) => { if (busy) return; busy = true; go.disabled = true; save = save === true;
-    try { const qt = qTargets(); const ok = (rpIt && (!meMode() || save)) ? await zzz_vi_reply(rpIt, inp.value, zzz_vi_get('prio', 'open'), save) : (qt.length ? await zzz_vi_post_bar(inp.value, zzz_vi_get('prio', 'open'), qt, save) : await zzz_vi_post(inp.value, zzz_vi_get('prio', 'open'), '', save));
+    try { const qt = qTargets(); const ok = rpIt ? await zzz_vi_reply(rpIt, inp.value, zzz_vi_get('prio', 'open'), save) : (qt.length ? await zzz_vi_post_bar(inp.value, zzz_vi_get('prio', 'open'), qt, save) : await zzz_vi_post(inp.value, zzz_vi_get('prio', 'open'), '', save));
 
-      if (ok && meMode() && save && !rpIt) { try { zzz_vi_me_after(inp.value, save); } catch (e) {} }
+      if (ok && meMode() && (rpIt || save)) { try { zzz_vi_notes_pick(inp.value); } catch (e) {} }
       if (ok) { inp.value = ''; zzz_vi_put('draft', '');   if (rpIt) { rpDrop = rpKey(rpIt); rpSel = null; paintRp(); } } } finally { busy = false; go.disabled = false; } };
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
 
