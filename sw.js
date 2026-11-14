@@ -130,6 +130,14 @@ async function versoSwDisplay() {
 }
 async function versoSwShow(d) {
   d = d || {};
+
+  try {
+    if (d.entry && d.project && typeof d.body === 'string') {
+      const pj = String(d.project), tag = '#' + d.entry + ' ' + pj;
+      if (d.body.indexOf(pj + ' \u2013 ') === 0) d.body = tag + d.body.slice(pj.length);
+      else if (d.body.endsWith(' \u00b7 ' + pj)) d.body = d.body.slice(0, d.body.length - pj.length) + tag;
+    }
+  } catch (e) {}
   const tier = d.prio === 'urgent' ? 'u' : (d.prio === 'attention' ? 'a' : 'o');
   const disp = await versoSwDisplay();
   const lvl = disp.native ? 'full' : (disp[tier] || 'full');
