@@ -138,6 +138,14 @@ async function versoSwShow(d) {
       else if (d.body.endsWith(' \u00b7 ' + pj)) d.body = d.body.slice(0, d.body.length - pj.length) + tag;
     }
   } catch (e) {}
+
+  try {
+    const k = String(d.entry || '') + '|' + String(d.body || '').replace(/^\u{1F512}\s*/u, '').trim(), now = Date.now();
+    self.versoSwRecent = self.versoSwRecent || {};
+    Object.keys(self.versoSwRecent).forEach(x => { if (now - self.versoSwRecent[x] > 90000) delete self.versoSwRecent[x]; });
+    if (k.length > 1 && self.versoSwRecent[k]) return;
+    self.versoSwRecent[k] = now;
+  } catch (e) {}
   const tier = d.prio === 'urgent' ? 'u' : (d.prio === 'attention' ? 'a' : 'o');
   const disp = await versoSwDisplay();
   const lvl = disp.native ? 'full' : (disp[tier] || 'full');
