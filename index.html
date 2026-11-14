@@ -7259,6 +7259,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-vi-nrw-row { display: block; width: 100%; text-align: left; background: #1a1a1a; color: #fff; border: 1px solid #3f3f46; border-radius: 10px; padding: 8px 10px; margin: 4px 0; font-size: 13px; }   
   .zzz-vi-nrw-row.is-on { border-color: #D4AF37; color: #D4AF37; }
   .zzz-vi-nrw-sec { color: #D4AF37; font-size: 11px; font-weight: 700; letter-spacing: .05em; margin: 10px 0 2px; }   
+  .zzz-feed-row { border-style: dashed !important; }   
+  .zzz-feed-src { color: #D4AF37; font-size: 11px; white-space: nowrap; max-width: 30%; overflow: hidden; text-overflow: ellipsis; }
+  .zzz-feed-head { cursor: pointer; color: #D4AF37; }
+  .zzz-feed-el { color: #fff; font-size: 13px; flex: 1 1 8em; }
   .zzz-mymedia-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; max-height: 30vh; overflow: auto; }   
   .zzz-vi-nrw-none { color: #9CA3AF; font-size: 12px; margin: 2px 0 4px; }
   .zzz-vi-mn-ta { width: 100%; box-sizing: border-box; background: #000; color: #fff; border: 1px dashed #D4AF37; border-radius: 8px; padding: 6px 8px; font-size: 14px; margin-top: 4px; }   
@@ -53364,7 +53368,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-14 17:29';
+const VERSO_BUILD = '2026-11-14 19:31';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -58447,10 +58451,103 @@ function zzz_media_mode_fits(it) {
   const web = /^https?:\/\//i.test(it.link || '');
   return zzz_media_offline() ? file : (zzz_media_srcall() ? (file || web) : web);
 }
+
+function zzz_feeder_cfg() {
+  let c = null; try { c = JSON.parse(localStorage.getItem(zzz_ukey('zzz_feeder_cfg')) || 'null'); } catch (e) {}
+  c = c && typeof c === 'object' ? c : {};
+  return { my: c.my !== false, space: c.space !== false, followed: c.followed !== false, follow: c.follow || {}, ignore: c.ignore || {} };
+}
+function zzz_feeder_save(c) { try { localStorage.setItem(zzz_ukey('zzz_feeder_cfg'), JSON.stringify(c)); } catch (e) {} zzzMedia.feedAt = 0; }
+function zzz_feeder_ids(c) {
+  c = c || zzz_feeder_cfg();
+  const own = String((zzzMedia.entry && zzzMedia.entry.entry_id) || ''), out = {};
+  if (c.space) { try { zzz14cs_feed_chats().forEach(x => { out[x.id] = x.label + ' · MEDIA SPACE'; }); } catch (e) {} }
+  if (c.followed) Object.keys(c.follow).forEach(id => { if (!out[id]) out[id] = c.follow[id] || ('#' + id); });
+  Object.keys(c.ignore).forEach(id => { delete out[id]; });
+  delete out[own];
+  return out;
+}
+async function zzz_feeder_load(force) {
+  const c = zzz_feeder_cfg(), ids = zzz_feeder_ids(c), keys = Object.keys(ids);
+  if (!keys.length) { zzzMedia.feed = []; return []; }
+  if (!force && zzzMedia.feedAt && Date.now() - zzzMedia.feedAt < 60000 && zzzMedia.feedKey === keys.join(',')) return zzzMedia.feed || [];
+  zzzMedia.feedAt = Date.now(); zzzMedia.feedKey = keys.join(',');
+  try {
+    const { data } = await sb.from('verso_chat_notes').select('id, entry_key, note_number, note_part, note_text, note_name, note_tags, username, created_at').in('entry_key', keys).is('note_part', null).order('created_at', { ascending: false }).limit(300);
+    const mine = new Set((zzzMedia.all || []).map(x => x.link)), seen = new Set(), out = [];
+    (data || []).forEach(n => {
+      const m = String(n.note_text || '').match(/https?:\/\/\S+/i); if (!m) return;
+      let link = m[0]; try { link = zzz_media_norm(link); } catch (e) {}
+      if (seen.has(link) || !zzz_media_is_mediaish(link)) return; seen.add(link);
+      if (/(^|\s)trash(\s|$)/i.test(String(n.note_tags || ''))) return;
+      out.push({ id: '', num: 0, link, name: String(n.note_name || '').trim(), tags: '', tag: '', pls: [], seen: false, trash: false, foreign: { entry: String(n.entry_key), who: String(n.username || ''), label: ids[String(n.entry_key)] || ('#' + n.entry_key) }, mine: mine.has(link) });
+    });
+    zzzMedia.feed = out;
+  } catch (e) { zzzMedia.feed = zzzMedia.feed || []; }
+  return zzzMedia.feed;
+}
+function zzz_feeder_rows(list, draw) {
+  const c = zzz_feeder_cfg(); if (!c.space && !c.followed) return;
+  const f = (zzzMedia.feed || []).filter(x => !x.mine && zzz_media_mode_fits(x));
+  if (!zzzMedia.feedAt) { zzz_feeder_load().then(() => { if ((zzzMedia.feed || []).length) draw(); }); return; }
+  if (!f.length) return;
+  const open = zzzMedia.feedOpen !== false;
+  const h = document.createElement('div'); h.className = 'zzz-media-row is-lab zzz-feed-head'; h.textContent = '📡 FEEDER · ' + f.length + (open ? ' ▾' : ' ▸') + ' · hold 📡 = sources';
+  h.addEventListener('click', () => { zzzMedia.feedOpen = !open; draw(); }); list.appendChild(h);
+  if (!open) return;
+  f.slice(0, 60).forEach(it => {
+    const r = document.createElement('div'); r.className = 'zzz-media-row is-gold zzz-feed-row';
+    const a = document.createElement('div'); a.textContent = it.foreign.label; a.className = 'zzz-feed-src'; r.appendChild(a);
+    const n = document.createElement('div'); n.textContent = (it.name || zzz_media_link_name(it.link) || it.link) + (it.foreign.who ? ' · ' + it.foreign.who : ''); r.appendChild(n);
+    const pb = document.createElement('button'); pb.type = 'button'; pb.className = 'zzz-media-pl'; pb.textContent = '▶︎'; pb.title = 'Play (it stays in its record)';
+    pb.addEventListener('click', (e) => { e.stopPropagation(); zzz_media_play(it, f); }); r.appendChild(pb);
+    const sv = document.createElement('button'); sv.type = 'button'; sv.className = 'zzz-media-fb'; sv.textContent = '📌'; sv.title = 'SAVE = your own line in MY MEDIA (ACTUAL)';
+    sv.addEventListener('click', async (e) => { e.stopPropagation(); const x = await zzz_media_add(it.link, it.name, 'actual'); if (x) { zzz6f2_show_toast('📌 saved into your MY MEDIA.', 'info', 1600); try { await zzz_media_load(); } catch (er) {} it.mine = true; draw(); } });
+    r.appendChild(sv);
+    list.appendChild(r);
+  });
+}
+function zzz_feeder_open(onChange) {
+  document.querySelectorAll('.zzz-feed-win').forEach(x => x.remove());
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm zzz-feed-win';
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box'; b.style.maxHeight = '88vh'; b.style.overflow = 'auto';
+  o.appendChild(b); document.body.appendChild(o);
+  o.addEventListener('click', (e) => { if (e.target === o) { o.remove(); if (onChange) onChange(); } });
+  const paint = () => {
+    const c = zzz_feeder_cfg(); b.innerHTML = '';
+    const h = document.createElement('div'); h.className = 'zzz-media-confirm-t'; h.textContent = '📡 FEEDER · where your media come from'; b.appendChild(h);
+    const sec = (t) => { const x = document.createElement('div'); x.className = 'zzz-vi-nrw-sec'; x.textContent = t; b.appendChild(x); };
+    const row = () => { const r = document.createElement('div'); r.className = 'zzz-media-confirm-row'; r.style.justifyContent = 'flex-start'; r.style.flexWrap = 'wrap'; b.appendChild(r); return r; };
+    const tg = (r, label, on, fn, tip) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn' + (on ? ' is-on' : ''); x.textContent = label; if (tip) x.title = tip; x.addEventListener('click', () => { fn(); paint(); }); r.appendChild(x); return x; };
+    sec('SOURCES');
+    const r1 = row(), all = c.my && c.space && c.followed;
+    tg(r1, 'MY', c.my, () => { c.my = !c.my; zzz_feeder_save(c); }, 'your own MY MEDIA');
+    tg(r1, 'MEDIA SPACE', c.space, () => { c.space = !c.space; zzz_feeder_save(c); }, 'media of the ELs attached in COMM SPACE');
+    tg(r1, 'FOLLOWED', c.followed, () => { c.followed = !c.followed; zzz_feeder_save(c); }, 'media of the ELs you follow');
+    tg(r1, 'ALL', all, () => { const v = !all; c.my = v || true; c.space = v; c.followed = v; zzz_feeder_save(c); }, 'all sources on (MY stays on)');
+    const r2 = row();
+    tg(r2, '📡ˢ SERVER MEDIA CONTROL', zzz_media_smc(), () => { zzz_media_set_smc(!zzz_media_smc()); }, 'Verso’s server finds the video behind Facebook share links');
+    sec('MEDIA SPACE · ELs attached in COMM SPACE');
+    let cs = []; try { cs = zzz14cs_feed_chats(); } catch (e) {}
+    if (!cs.length) { const n = document.createElement('div'); n.className = 'zzz-vi-nrw-none'; n.textContent = 'No EL attached in COMM SPACE yet.'; b.appendChild(n); }
+    const elRow = (id, label) => { const r = row(); const t = document.createElement('span'); t.className = 'zzz-feed-el'; t.textContent = label; r.appendChild(t);
+      tg(r, c.follow[id] ? '✓ FOLLOWED' : 'FOLLOW', !!c.follow[id], () => { if (c.follow[id]) delete c.follow[id]; else { c.follow[id] = label; delete c.ignore[id]; } zzz_feeder_save(c); });
+      tg(r, c.ignore[id] ? '✕ IGNORED' : 'IGNORE', !!c.ignore[id], () => { if (c.ignore[id]) delete c.ignore[id]; else { c.ignore[id] = 1; delete c.follow[id]; } zzz_feeder_save(c); }); };
+    cs.forEach(x => elRow(x.id, x.label));
+    sec('FOLLOWED · other ELs');
+    Object.keys(c.follow).filter(id => !cs.some(x => x.id === id)).forEach(id => elRow(id, c.follow[id] || ('#' + id)));
+    const r3 = row(); const inp = document.createElement('input'); inp.type = 'text'; inp.inputMode = 'numeric'; inp.placeholder = 'EN to follow…'; inp.className = 'zzz-media-tagq'; inp.setAttribute('data-zzz-nodraft', '1');
+    r3.appendChild(inp); tg(r3, '+ FOLLOW', false, () => { const id = String(inp.value || '').replace(/\D/g, ''); if (!id) return; c.follow[id] = '#' + id; delete c.ignore[id]; zzz_feeder_save(c); });
+    const r4 = row(); r4.style.justifyContent = 'flex-end';
+    const cl = document.createElement('button'); cl.type = 'button'; cl.className = 'zzz-media-btn is-on'; cl.textContent = 'CLOSE'; cl.addEventListener('click', () => { o.remove(); if (onChange) onChange(); }); r4.appendChild(cl);
+  };
+  paint();
+}
+
 function zzz_media_tablist_raw() {
   if (zzzMedia.tab === 'TRASH') return (zzzMedia.all || []).filter(x => x.trash);
   const base = zzzMedia.list.filter(x => zzz_media_mode_fits(x));
-  if (zzzMedia.tab === 'ACTUAL') return zzz_media_actual_of(base);
+  if (zzzMedia.tab === 'ACTUAL') return zzz_feeder_cfg().my ? zzz_media_actual_of(base) : [];
   const l = base.filter(x => zzz_media_in_tab(x, zzzMedia.tab));
 
   const inPl = (x) => x.pls.some(p => p.toLowerCase() === String(zzzMedia.pls).toLowerCase());
@@ -59204,13 +59301,13 @@ async function zzz_media_open() {
 
   const fdB = document.createElement('button'); fdB.type = 'button'; fdB.className = 'zzz-media-btn zzz-media-feeder'; fdB.textContent = '\uD83D\uDCE1';
 
-  fdB.title = '📡 SOURCE MODE: tap = ONLINE (links) → OFFLINE (files) → ALL (both) · API / APP later · hold = SERVER MEDIA CONTROL on / off';
+  fdB.title = '📡 SOURCE MODE: tap = ONLINE (links) → OFFLINE (files) → ALL (both) · hold = FEEDER window (MY · MEDIA SPACE · FOLLOWED · ALL, SERVER MEDIA CONTROL)';
   { const k = () => zzz_ukey('zzz_media_feeder'); const isOn = () => { try { return localStorage.getItem(k()) === '1'; } catch (e) { return false; } };
     const setFeed = (n) => { try { localStorage.setItem(k(), n ? '1' : '0'); } catch (e) {} };
     const paint = () => { const f = zzz_media_srcall(), off = zzz_media_offline(); fdB.textContent = '\uD83D\uDCE1' + (f && !off ? '+' : '') + (zzz_media_smc() ? '\u02E2' : ''); fdB.classList.toggle('is-on', f && !off); fdB.classList.toggle('is-sat-off', off); fdB.classList.toggle('is-smc', zzz_media_smc()); };
     fdB._satPaint = paint; paint();
     let ht = 0, held = false;
-    fdB.addEventListener('pointerdown', () => { held = false; clearTimeout(ht); ht = setTimeout(() => { held = true; zzz_haptic_pulse(15); zzz_media_set_smc(!zzz_media_smc()); paint(); }, 1200); });
+    fdB.addEventListener('pointerdown', () => { held = false; clearTimeout(ht); ht = setTimeout(() => { held = true; zzz_haptic_pulse(15); zzz_feeder_open(() => { paint(); zzz_feeder_load(true).then(() => { try { zzz_media_redraw(); } catch (e) {} }); }); }, 900); });
     ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => fdB.addEventListener(ev, () => clearTimeout(ht)));
     fdB.addEventListener('contextmenu', (e) => e.preventDefault());
     fdB.addEventListener('click', () => { if (held) { held = false; return; } const off = zzz_media_offline(), f = isOn();
@@ -59506,6 +59603,7 @@ async function zzz_media_open() {
       });
 
     }
+    if (actual) { try { zzz_feeder_rows(list, draw); } catch (e) {} }
     if (!l.length) { const e = document.createElement('div'); e.className = 'zzz-media-empty'; e.textContent = actual ? 'Nothing played yet - what you play shows here.' : 'Nothing here yet - paste a link + ADD.'; list.appendChild(e); }
     l.forEach(it => {
       const seen = it.seen;
@@ -61447,7 +61545,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 345;
+const ZZZ14B17_APP_LATEST = 346;
 function zzz14b17_app_code() {
 
   try {
