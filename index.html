@@ -7259,6 +7259,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-vi-nrw-row { display: block; width: 100%; text-align: left; background: #1a1a1a; color: #fff; border: 1px solid #3f3f46; border-radius: 10px; padding: 8px 10px; margin: 4px 0; font-size: 13px; }   
   .zzz-vi-nrw-row.is-on { border-color: #D4AF37; color: #D4AF37; }
   .zzz-vi-nrw-sec { color: #D4AF37; font-size: 11px; font-weight: 700; letter-spacing: .05em; margin: 10px 0 2px; }   
+  .zzz-mymedia-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; max-height: 30vh; overflow: auto; }   
   .zzz-vi-nrw-none { color: #9CA3AF; font-size: 12px; margin: 2px 0 4px; }
   .zzz-vi-mn-ta { width: 100%; box-sizing: border-box; background: #000; color: #fff; border: 1px dashed #D4AF37; border-radius: 8px; padding: 6px 8px; font-size: 14px; margin-top: 4px; }   
   .zzz-vi-mn-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: stretch; }
@@ -48824,6 +48825,23 @@ async function zzz1cn_open_list(entryKey, anchorEl, focusNote, openOpts) {
     : 'NOTES - click = new note (note line with reply # and name) / hold 1-2s = sub-note / double tap = full screen';
   head.appendChild(title);
 
+  try {
+    if (zzzMedia && zzzMedia.entry && String(zzzMedia.entry.entry_id) === String(entryKey)) {
+      const sb0 = document.createElement('button'); sb0.type = 'button'; sb0.className = 'zzz1cn-note-btn zzz-mymedia-subs'; sb0.textContent = '\uD83C\uDFB5 SUBS';
+      sb0.title = 'MY MEDIA chips: ACTUAL · media / playlists / favs of every tab';
+      sb0.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const old = win.querySelector('.zzz-mymedia-chips'); if (old) { old.remove(); return; }
+        const row = document.createElement('div'); row.className = 'zzz-mymedia-chips';
+        const chip = (t, preset) => { const c = document.createElement('button'); c.type = 'button'; c.className = 'zzz-vi-to-chip'; c.textContent = t; c.addEventListener('click', (ev) => { ev.stopPropagation(); zzz_media_notif_open(preset); }); row.appendChild(c); };
+        chip('ACTUAL', zzz_media_tab_label('ACTUAL'));
+        ZZZ_MEDIA_TABS.filter(t => t !== 'TRASH' && t !== 'ACTUAL').forEach(t => { const l = zzz_media_tab_label(t); chip(l + ' MEDIA', l); chip(l + ' PLAYLISTS', l + ' PLAYLISTS'); chip(l + ' FAVS', l + ' FAVS'); });
+        head.insertAdjacentElement('afterend', row);
+      });
+      head.appendChild(sb0);
+    }
+  } catch (e) {}
+
   if (/^\d+$/.test(String(entryKey))) {
     const doChatu = document.createElement('button');
     doChatu.type = 'button';
@@ -53346,7 +53364,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-14 16:34';
+const VERSO_BUILD = '2026-11-14 17:29';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -57463,12 +57481,16 @@ function zzz_media_notif_presets() {
   const tabs = ZZZ_MEDIA_TABS.filter(t => t !== 'TRASH');
   return [{ name: 'ALL', snap: { sort: 'new' }, def: true }, { name: 'UNREAD', snap: { 'limit:STATUS': 'is-unread', sort: 'new' } }, { name: 'SHIFTED', snap: { 'limit:STATUS': 'is-shifted', sort: 'new' } },
     { name: 'READ', snap: { 'limit:STATUS': 'is-read', sort: 'new' } }, { name: '\u2665 FAVS', snap: { 'limit:TAG': 'fav', sort: 'new' } }, { name: '\u2605 RATINGS', snap: { 'limit:TAG': 'rated', sort: 'new' } }]
-    .concat(tabs.map(t => ({ name: zzz_media_tab_label(t), snap: { 'limit:PROJECT CATEGORY': t.toLowerCase(), sort: 'new' } })));
+    .concat(tabs.map(t => ({ name: zzz_media_tab_label(t), snap: { 'limit:PROJECT CATEGORY': t.toLowerCase(), sort: 'new' } })))
+
+    .concat(tabs.reduce((a, t) => a.concat([{ name: zzz_media_tab_label(t) + ' PLAYLISTS', snap: { 'limit:TAG': 'pls-' + t.toLowerCase(), sort: 'new' } },
+      { name: zzz_media_tab_label(t) + ' FAVS', snap: { 'limit:TAG': 'fav-' + t.toLowerCase(), sort: 'new' } }]), []));
 }
-async function zzz_media_notif_open() {
+async function zzz_media_notif_open(presetName) {
   try { zzz_mem_step('media notifications'); } catch (e) {}
   if (zzzMedia.loadedOf !== zzz_media_me()) { try { await zzz_media_load(); } catch (e) {} }
   ZZZ_RDR_PRESETS['MEDIA NOTIFICATIONS'] = zzz_media_notif_presets();
+  if (presetName) { try { const ps = ZZZ_RDR_PRESETS['MEDIA NOTIFICATIONS'].find(x => x.name === presetName); if (ps) localStorage.setItem('zzz5w7_showpreset_rdr:MEDIA NOTIFICATIONS', JSON.stringify({ on: true, snap: ps.snap, name: ps.name })); } catch (e) {} }
   const all = (zzzMedia.all || []).filter(x => !x.trash && x.link && !zzz_media_locked_now(x));
   try { zzz_stars_want(all.map(x => x.id)); } catch (e) {}
   const fr = zzz_rdr_frame('MEDIA NOTIFICATIONS', 'MEDIA NOTIFICATIONS \u00b7 ' + all.length, 'MEDIA');
@@ -57479,7 +57501,8 @@ async function zzz_media_notif_open() {
     content.appendChild(blk('h2', 'zzz-rs-h', stName + ' \u00b7 ' + part.length, 'GROUP ' + stName));
     part.forEach(x => {
       const w = zzz_media_tagw(x.tags), tabs = ZZZ_MEDIA_TABS.filter(t => t !== 'TRASH' && zzz_media_in_tab(x, t)), stars = (() => { try { return zzz_stars_mine(x.id); } catch (e) { return 0; } })();
-      const tg = tabs.map(t => t.toLowerCase()).concat(w.indexOf('fav') >= 0 ? ['fav'] : []).concat(stars ? ['rated'] : []).concat(x.pls.map(p => 'pls:' + p));
+      const tg = tabs.map(t => t.toLowerCase()).concat(w.indexOf('fav') >= 0 ? ['fav'] : []).concat(stars ? ['rated'] : []).concat(x.pls.map(p => 'pls:' + p))
+        .concat(w.indexOf('fav') >= 0 ? tabs.map(t => 'fav-' + t.toLowerCase()) : []).concat(x.pls.length ? tabs.map(t => 'pls-' + t.toLowerCase()) : []);
       const r = blk('div', 'zzz-rdr-line zzz-media-nline', undefined, 'MEDIUM #' + x.num);
       r.setAttribute('data-vf', JSON.stringify({ KIND: 'MEDIUM', STATUS: 'is-' + stName.toLowerCase(), CATEGORY: tabs.map(t => t.toLowerCase()).join(' ') || 'all media', OWNER: zzz_media_me(), TAG: tg }));
       const tt = time(x); if (tt) r.setAttribute('data-vt', String(tt));
@@ -57754,7 +57777,8 @@ async function zzz_media_entry(create) {
   try {
     const { data } = await sb.from('verso_entries').select('*').eq('is_trashed', false).ilike('username', me).order('entry_id', { ascending: true });
 
-    const row = (data || []).find(r => { const f = zzz_parse_fields_json(r); return String(f.r3 || '').trim().toLowerCase() === 'media' && !f.mkey; });
+    const isAll = (r) => { const f = zzz_parse_fields_json(r); const n = String(f.r3 || '').trim().toLowerCase(); return (n === 'my media' || n === 'media') && !f.mkey; };
+    const row = (data || []).find(isAll);
     zzz_media_els_take(data || []);
     if (row) { zzzMedia.entry = row; zzzMedia.entryOf = me; try { submittedEntriesFullCache[row.entry_id] = row; } catch (e) {} return row; }
   } catch (e) {}
@@ -57762,7 +57786,7 @@ async function zzz_media_entry(create) {
   const at = await zzz6f2_get_next_entry_id_atomic();
   let id = at && at.success ? at.id : 0;
   if (!id) { try { id = zzz6f2_compute_next_entry_id(await zzz6f2_get_known_entries()); } catch (e) { return null; } }
-  const fields = { r2: '', r3: 'media', r4: me, r5: 'media', r7: 'ano', r9: ZZZ_MEDIA_DESC, tags: 'media' };
+  const fields = { r2: '0', r3: 'My Media', r4: me, r5: 'media', r7: 'ano', r9: ZZZ_MEDIA_DESC, tags: 'media' };
   const payload = { entry_id: id, r1: '', fields_json: JSON.stringify(fields), entry_date: zzz6f14_format_today(), username: zzz0r1_get_current_username(), updated_at: new Date().toISOString(),
     zzz_session_id: zzz_sessionId };
   try {
@@ -57770,7 +57794,7 @@ async function zzz_media_entry(create) {
     if (error) throw error;
     try { submittedEntriesFullCache[id] = payload; } catch (e) {}
     zzzMedia.entry = payload; zzzMedia.entryOf = me;
-    zzz6f2_show_toast('VERSO MEDIA: your record ALL MEDIA (#' + id + ') is ready - every link is a line in its SUBS.', 'info');
+    zzz6f2_show_toast('VERSO MEDIA: your record MY MEDIA (#' + id + ') is ready - every link is a line in its SUBS.', 'info');
     return payload;
   } catch (e) { zzz_user_error('VERSO MEDIA: the ALL MEDIA record could not be created - check the connection and try again.', e, '[Zzz14-B17:MEDIA-ENTRY]'); return null; }
 }
@@ -61423,7 +61447,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 344;
+const ZZZ14B17_APP_LATEST = 345;
 function zzz14b17_app_code() {
 
   try {
