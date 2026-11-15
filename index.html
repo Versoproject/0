@@ -53660,7 +53660,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-16 00:23';
+const VERSO_BUILD = '2026-11-16 00:33';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -54870,6 +54870,12 @@ function zzz_media_back_guard() {
     if (!document.getElementById('zzzMediaWin')) return false;
     { const mw = document.getElementById('zzzMediaWin');
       if (mw.classList.contains('is-pmini') || mw.classList.contains('is-pmax')) { zzz_media_psize(mw, 1); zzzMediaGuardAt = Date.now(); return true; } }
+
+    if (typeof zzzMedia !== 'undefined' && (zzzMedia.pls || zzzMedia.view === 'pls' || zzzMedia.view === 'fav')) {
+      if (zzzMedia.pls) zzzMedia.pls = ''; else zzzMedia.view = 'media';
+      try { zzz_media_redraw(); } catch (e) {}
+      zzzMediaGuardAt = Date.now(); return true;
+    }
     const vv = window.visualViewport;
     if (vv && vv.scale > 1.05) {
       const m = document.querySelector('meta[name="viewport"]');
@@ -59050,11 +59056,12 @@ setInterval(zzz_media_mcnow, 2000);
 function zzz_media_playlists() {
   const map = new Map();
   (zzzMedia.plsDefs || []).filter(d => zzz_media_in_tab(d, zzzMedia.tab)).forEach(d => { const k = d.plsDef.toLowerCase(); if (!map.has(k)) map.set(k, { name: d.plsDef, items: [], link: '' }); });
+
   zzzMedia.list.filter(x => zzz_media_in_tab(x, zzzMedia.tab)).forEach(x => x.pls.forEach(n => {
     const k = n.toLowerCase();
-    if (!map.has(k)) map.set(k, { name: n, items: [], link: '' });
+    if (!map.has(k)) map.set(k, { name: n, items: [], link: '', off: 0 });
     const pl = map.get(k);
-    if (/\bPLAYLIST\b/.test(x.tag) && x.link) pl.link = x.link; else pl.items.push(x);
+    if (/\bPLAYLIST\b/.test(x.tag) && x.link) pl.link = x.link; else if (zzz_media_mode_fits(x)) pl.items.push(x); else pl.off = (pl.off || 0) + 1;
   }));
   return Array.from(map.values());
 }
@@ -59903,7 +59910,7 @@ async function zzz_media_open() {
       if (!pls.length) { const e = document.createElement('div'); e.className = 'zzz-media-empty'; e.textContent = 'No playlist yet - type a name above and + ADD.'; list.appendChild(e); }
       pls.forEach(pl => {
         const r = document.createElement('div'); r.className = 'zzz-media-row is-pls ' + (pl.link ? 'is-gold' : 'is-silver');
-        cell(r, '☰'); cell(r, pl.name); cell(r, pl.items.length + (pl.items.length === 1 ? ' row' : ' rows') + (pl.link ? ' · own link' : ''));
+        cell(r, '☰'); cell(r, pl.name); cell(r, pl.items.length + (pl.items.length === 1 ? ' row' : ' rows') + (pl.off ? ' \u00b7 +' + pl.off + ' \uD83D\uDCC1 ' + (zzz_media_offline() ? 'online' : 'offline') : '') + (pl.link ? ' · own link' : ''));
         const pb = cell(r, '\u25B6\uFE0E'); pb.className = 'zzz-media-pl';
 
         const def = (zzzMedia.plsDefs || []).find(d => d.plsDef.toLowerCase() === pl.name.toLowerCase());
@@ -59918,7 +59925,7 @@ async function zzz_media_open() {
           if (zzzMedia.selecting) { zzzMedia.selPls = zzzMedia.selPls || new Set(); if (zzzMedia.selPls.has(pl.name)) zzzMedia.selPls.delete(pl.name); else zzzMedia.selPls.add(pl.name); draw(); return; }
           zzzMedia.pls = pl.name; draw();
         });
-        pb.addEventListener('click', (e) => { e.stopPropagation(); if (pl.link) zzz_media_play({ id: '', name: pl.name, link: pl.link, tag: 'PLAYLIST' }, []); else if (zzz_media_ok_first(pl.items)) zzz_media_play(zzz_media_ok_first(pl.items), pl.items); else if (pl.items.length) zzz6f2_show_toast('Only grey media in this playlist - open it and tap one to try.', 'info'); else zzz6f2_show_toast('Empty playlist - open it and + ADD links.', 'info'); });
+        pb.addEventListener('click', (e) => { e.stopPropagation(); if (!pl.link && !pl.items.length && pl.off) { zzz6f2_show_toast('\uD83D\uDDC2\uFE0F ' + pl.name + ': ' + pl.off + ' phone files only - \uD83D\uDCE1 ' + (zzz_media_offline() ? 'ONLINE / BOTH' : 'OFFLINE / BOTH') + ' plays them.', 'info', 3500); return; }     if (pl.link) zzz_media_play({ id: '', name: pl.name, link: pl.link, tag: 'PLAYLIST' }, []); else if (zzz_media_ok_first(pl.items)) zzz_media_play(zzz_media_ok_first(pl.items), pl.items); else if (pl.items.length) zzz6f2_show_toast('Only grey media in this playlist - open it and tap one to try.', 'info'); else zzz6f2_show_toast('Empty playlist - open it and + ADD links.', 'info'); });
         list.appendChild(r);
       });
       zzz_media_paint();
@@ -59942,10 +59949,10 @@ async function zzz_media_open() {
     if (zzzMedia.minStar && !trashTab) { zzz_stars_want(l.map(x => x.id).filter(x => x != null)); l = l.filter(x => x.id != null && zzz_stars_avg(x.id) >= zzzMedia.minStar); }
 
     if (!actual && !trashTab && !plsView && !favView && !(zzzMedia.tagFilter && zzzMedia.tagFilter.size)) {
-      const pls = zzz_media_playlists().filter(pl => pl.items.length || pl.link);
+      const pls = zzz_media_playlists().filter(pl => pl.items.length || pl.link || pl.off);
       pls.forEach(pl => {
         const r = document.createElement('div'); r.className = 'zzz-media-row is-folder is-gold'; r.dataset.orgPls = pl.name;
-        cell(r, '\uD83D\uDDC2\uFE0F'); cell(r, pl.name); cell(r, pl.items.length + (pl.items.length === 1 ? ' row' : ' rows'));
+        cell(r, '\uD83D\uDDC2\uFE0F'); cell(r, pl.name); cell(r, pl.items.length + (pl.items.length === 1 ? ' row' : ' rows') + (pl.off ? ' \u00b7 +' + pl.off + ' \uD83D\uDCC1 ' + (zzz_media_offline() ? 'online' : 'offline') : ''));
         const pb = cell(r, '\u25B6\uFE0E'); pb.className = 'zzz-media-pl'; cell(r, '\u203A');
         cell(r, '').className = 'zzz-media-starcell';
         { const cc = cell(r, ''); cc.className = 'zzz-media-elcell'; cc.appendChild(zzz_media_el_chip('pls', pl.name)); }
@@ -59953,7 +59960,7 @@ async function zzz_media_open() {
         { const def = (zzzMedia.plsDefs || []).find(d => d.plsDef.toLowerCase() === pl.name.toLowerCase()); const target = def || pl.items[0];
           if (target) zzz_media_bind_swipe(r, Object.assign({}, target, { name: '\uD83D\uDDC2\uFE0F ' + pl.name }), draw); }
         r.addEventListener('click', () => { if (r._zzzSwiped) return; zzzMedia.pls = pl.name; zzzMedia.view = 'pls'; draw(); });
-        pb.addEventListener('click', (e) => { e.stopPropagation(); const its = pl.items.filter(x => !zzz_media_locked_now(x)); if (pl.link) zzz_media_play({ id: '', name: pl.name, link: pl.link, tag: 'PLAYLIST' }, []); else if (zzz_media_ok_first(its)) zzz_media_play(zzz_media_ok_first(its), its); else if (its.length) zzz6f2_show_toast('Only grey media in this playlist - open it and tap one to try.', 'info'); });
+        pb.addEventListener('click', (e) => { e.stopPropagation(); if (!pl.link && !pl.items.length && pl.off) { zzz6f2_show_toast('\uD83D\uDDC2\uFE0F ' + pl.name + ': ' + pl.off + ' phone files only - \uD83D\uDCE1 ' + (zzz_media_offline() ? 'ONLINE / BOTH' : 'OFFLINE / BOTH') + ' plays them.', 'info', 3500); return; }     const its = pl.items.filter(x => !zzz_media_locked_now(x)); if (pl.link) zzz_media_play({ id: '', name: pl.name, link: pl.link, tag: 'PLAYLIST' }, []); else if (zzz_media_ok_first(its)) zzz_media_play(zzz_media_ok_first(its), its); else if (its.length) zzz6f2_show_toast('Only grey media in this playlist - open it and tap one to try.', 'info'); });
         list.appendChild(r);
       });
 
@@ -61913,7 +61920,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 363;
+const ZZZ14B17_APP_LATEST = 364;
 function zzz14b17_app_code() {
 
   try {
