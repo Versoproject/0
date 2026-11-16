@@ -14653,19 +14653,23 @@ async function zzz_final_act(entryId, chip) {
   const id = Number(String(entryId || '').replace(/\D/g, ''));
   if (!id) return false;
   const titles = { final: 'FINAL · MULTIVERIFICATION', permanent: 'PERMANENT FINAL · MULTIVERIFICATION', revoke: 'REVOKE FINAL · MULTIVERIFICATION',
-    auto_on: 'AUTO FINAL · MULTIVERIFICATION', auto_off: 'AUTO FINAL OFF · MULTIVERIFICATION' };
+    auto_on: 'AUTO FINAL · MULTIVERIFICATION', auto_off: 'AUTO FINAL OFF · MULTIVERIFICATION',
+    dispute_revoke: 'DISPUTE · REVOKE FINAL · MULTIVERIFICATION', dispute_privacy: 'DISPUTE · PRIVACY · MULTIVERIFICATION' };
   const prj = (() => { const f = zzz_final_fields(zzz6f29_entry_row_of(id)); return `${String(f.r2 || '').trim()} · ${String(f.r4 || '').trim()}`; })();
   const texts = {
     final: `Your FINAL consent for record #${id}. When all its users gave FINAL, the record is locked: no TRASH, no delete, no changes (also privacy) - until all revoke it together.`,
     permanent: `Your PERMANENT FINAL for record #${id}. It can never be revoked - the record stays FINAL forever once all its users gave FINAL.`,
     revoke: `Your REVOKE of the FINAL of record #${id}. The record opens again only when every user of it revoked too.`,
     auto_on: `AUTO FINAL for project ${prj}: from now on you count as „gave FINAL“ in every FINAL request of this project - you are not asked each time. You can switch it off any time (records already FINAL stay FINAL).`,
-    auto_off: `AUTO FINAL off for project ${prj}: from now on every FINAL of this project asks you again.`
+    auto_off: `AUTO FINAL off for project ${prj}: from now on every FINAL of this project asks you again.`,
+
+    dispute_revoke: `DISPUTE: you ask to REVOKE the FINAL of record #${id}, but some users did not revoke. The AUTHORITY (Verso) replaces their consent PROVISIONALLY - it is recorded, the record stays locked until the dispute is resolved, and it can never be deleted.`,
+    dispute_privacy: `DISPUTE: you ask to CHANGE PRIVACY of the FINAL record #${id} without the other users' consent. The AUTHORITY (Verso) replaces it PROVISIONALLY - recorded, the record stays locked until the dispute is resolved, and it can never be deleted.`
   };
   const h = zzz_verso_fn_headers();
   if (!h) { zzz6f2_show_toast('Log in first - FINAL needs your Verso session.', 'warn'); return false; }
   for (let tries = 0; tries < 5; tries++) {
-    const got = await zzz_final_mv(titles[chip], texts[chip], chip === 'revoke' ? 'REVOKE' : chip === 'auto_on' ? 'AUTO ON' : chip === 'auto_off' ? 'AUTO OFF' : 'GIVE FINAL');
+    const got = await zzz_final_mv(titles[chip], texts[chip], chip === 'revoke' ? 'REVOKE' : chip === 'auto_on' ? 'AUTO ON' : chip === 'auto_off' ? 'AUTO OFF' : String(chip).startsWith('dispute') ? 'OPEN DISPUTE' : 'GIVE FINAL');
     if (!got) return false;
     let r = null;
     zzz6f2_show_toast('Checking…');
@@ -14686,6 +14690,7 @@ async function zzz_final_act(entryId, chip) {
       zzz_haptic_pulse(30);
       const s = r.state || {};
       zzzFinal.st[id] = s;
+      if (String(chip).startsWith('dispute')) { zzz6f2_show_toast(`✓ DISPUTE recorded for #${id} - AUTHORITY granted it provisionally; the record stays locked until resolved.`); zzz_final_paint(); return true; }
       zzz6f2_show_toast(chip === 'revoke'
         ? (s.is_final ? `✓ Revoke saved - #${id} opens when all its users revoked.` : `✓ FINAL of #${id} revoked.`)
         : (s.is_final ? `✓ #${id} is FINAL (f${s.f_no || 1}${s.permanent ? ', permanent' : ''}).` : `✓ FINAL saved - #${id} waits for the other users.`));
@@ -14696,6 +14701,7 @@ async function zzz_final_act(entryId, chip) {
     const msg = why === 'wrong_mv_phrase' ? 'The MV PHRASE does not match.' + (typeof r.attemptsLeft === 'number' ? ' ' + r.attemptsLeft + ' tries left.' : '')
       : why === 'locked' ? `Too many wrong tries - FINAL is locked for ${r.minutes || 15} min.`
       : why === 'mv_phrase_not_set' ? 'Set your MV PHRASE first: Login setup › CHANGE PASSWORD › MV PHRASE.'
+      : why === 'not_allowed' && String(chip).startsWith('dispute') ? 'DISPUTE only for the owner of a FINAL record shared with other users, once per FINAL.'
       : why === 'not_allowed' ? (String(chip).startsWith('auto_') ? 'AUTO FINAL needs a record with PROJECT NUMBER and PROJECT OWNER, and you as its user.' : 'Not possible now - you are not a user of this record, or you already gave this step.')
       : why === 'no_session' ? 'Your session ended - log in again.'
       : why === 'network' ? 'The Verso server cannot be reached - nothing was saved. Try again.'
@@ -14744,6 +14750,13 @@ function zzz_final_box(entryId) {
       btns.appendChild(mk('REVOKE FINAL', 'revoke', 'Revoke together: the record opens when all its users revoked (MV PHRASE)', 'is-red'));
     }
     if (s && !part) { const n = document.createElement('span'); n.className = 'zzzfin-note'; n.textContent = 'Only the owner and the users of this record give FINAL.'; btns.appendChild(n); }
+
+    const own0 = zzz10v1_normalize(String(zzz_final_fields(row).r4 || '').trim());
+    if (s && part && s.is_final && own0 === me && (s.need || []).length > 1 && !(row && zzz_final_is_system(row))) {
+      const others = (s.need || []).filter(u => zzz10v1_normalize(u) !== me && !(s.revoked || []).map(zzz10v1_normalize).includes(zzz10v1_normalize(u)));
+      if (!s.permanent && others.length) btns.appendChild(mk('DISPUTE · REVOKE', 'dispute_revoke', 'The others did not revoke - ask the AUTHORITY (provisional, recorded, MV PHRASE)', 'is-red'));
+      btns.appendChild(mk('DISPUTE · PRIVACY', 'dispute_privacy', 'Change privacy without the others - ask the AUTHORITY (provisional, recorded, MV PHRASE)', 'is-red'));
+    }
 
     const f0 = zzz_final_fields(row);
     if (s && part && String(f0.r2 || '').trim() && String(f0.r4 || '').trim() && !(row && zzz_final_is_system(row))) {
@@ -53900,7 +53913,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-16 03:28';
+const VERSO_BUILD = '2026-11-16 03:52';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
