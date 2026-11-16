@@ -7496,6 +7496,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-grip.is-swipe > i { width: 120px; opacity: 1; }
   
   .zzz-media-win.is-feeding .zzz-media-tab:not(.is-actual), .zzz-media-win.is-feeding .zzz-media-row.is-folder { outline: 2px dashed #D4AF37; outline-offset: 1px; }
+  .zzz-ms-add { display: flex; gap: 6px; align-items: center; padding: 6px 8px; } .zzz-ms-add input { flex: 1 1 auto; min-width: 0; }   
   .zzz-media-win.is-commsrc { outline: 2px solid #22c55e; outline-offset: -2px; } .zzz-media-win.is-commsrc .zzz-media-tabs, .zzz-media-win.is-commsrc .zzz-media-tools, .zzz-media-win.is-commsrc .zzz-media-tagbar { display: none !important; }   
   .zzz-media-srcline { margin: 2px 0 4px; padding: 3px 8px; border-radius: 8px; background: #0e3b2e; color: #fff; font-size: 12px; font-weight: 700; }
   .zzz-pls-card { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; border: 1.5px solid #D4AF37; border-radius: 10px; padding: 5px 8px; background: #1a1607; }   
@@ -29866,6 +29867,29 @@ function zzz_ms_els() {
     const own = (typeof zzz5w5cmMyTagByEntry !== 'undefined' && zzz5w5cmMyTagByEntry || {})[id] || '';
     return { id, owner: String(f.r4 || '').trim(), label: '#' + id + (String(f.r3 || '').trim() ? ' ' + String(f.r3).trim() : '') + (String(f.r4 || '').trim() ? ' · ' + String(f.r4).trim() : '') + (own ? ' · ' + own : ''), it }; });
 }
+
+const zzzMs = { media: {}, at: 0, denied: {} };
+async function zzz_ms_media_load(force) {
+  const els = zzz_ms_els(); if (!els.length) { zzzMs.media = {}; return zzzMs.media; }
+  if (!force && zzzMs.at && Date.now() - zzzMs.at < 60000) return zzzMs.media;
+  zzzMs.at = Date.now();
+  const ok = [];
+  for (const el of els) { try { await zzz1cn_openadd_load(el.id); } catch (e) {} if (zzz_media_comm_allowed(el)) ok.push(el.id); else zzzMs.denied[el.id] = true; }
+  const out = {}; ok.forEach(id => { out[id] = []; delete zzzMs.denied[id]; });
+  if (ok.length) {
+    try {
+      const { data } = await sb.from('verso_chat_notes').select('entry_key, note_text, note_name, note_tags, username, created_at').in('entry_key', ok).is('note_part', null).order('created_at', { ascending: false }).limit(600);
+      const seen = {};
+      (data || []).forEach(n => { const id = String(n.entry_key); if (!out[id] || /(^|\s)trash(\s|$)/i.test(String(n.note_tags || ''))) return;
+        const m = String(n.note_text || '').match(/https?:\/\/\S+/i); if (!m) return;
+        let link = m[0]; try { link = zzz_media_norm(link); } catch (e) {}
+        const k = id + '|' + link; if (seen[k] || !zzz_media_is_mediaish(link)) return; seen[k] = 1;
+        out[id].push({ id: '', num: 0, link, name: String(n.note_name || '').trim(), tags: '', tag: '', pls: [], seen: false, trash: false, foreign: { entry: id, who: String(n.username || '') } }); });
+    } catch (e) {}
+  }
+  zzzMs.media = out;
+  return out;
+}
 function zzz_ms_rows() {
   return zzz5w5cm_tab_list(ZZZ_MS_KEY).map(it => {
     const f = it.fields || {}, id = it.sourceEntryId ? String(it.sourceEntryId) : '';
@@ -29873,6 +29897,7 @@ function zzz_ms_rows() {
     return {
       entry: id ? '#' + id : zzz14cs_cl_label(it), pnum: f.r2 || '', project: f.r3 || '', name: f.r4 || '',
       mytag: id ? (zzz5w5cmMyTagByEntry || {})[id] || '' : '',
+      cnt: !id ? '' : zzzMs.denied[id] ? '\uD83D\uDD12 not allowed' : (zzzMs.media[id] ? zzzMs.media[id].length + ' \u266B' : '\u2026'),
       itemKey: it.zzz5w5cmKey || '',
       title: id ? '#' + id + ' - tap = its media in MEDIA CENTER (COMM MEDIA)' : 'draft CL',
       attached: { cls: id ? zzz4_0_record_type_class(row) : 'zzz-rec-cl', title: (id ? '#' + id : 'Draft CL') + ' - tap = its record window, hold 3 s = out of MEDIA SPACE',
@@ -29882,7 +29907,7 @@ function zzz_ms_rows() {
     };
   });
 }
-const ZZZ_MS_COLS = [{ k: 'entry', label: 'ENTRY NUMBER' }, { k: 'pnum', label: 'PROJECT NUMBER' }, { k: 'project', label: 'PROJECT NAME' }, { k: 'name', label: 'PROJECT OWNER' }, { k: 'mytag', label: 'COMM OWN TAG' }];
+const ZZZ_MS_COLS = [{ k: 'entry', label: 'ENTRY NUMBER' }, { k: 'pnum', label: 'PROJECT NUMBER' }, { k: 'project', label: 'PROJECT NAME' }, { k: 'name', label: 'PROJECT OWNER' }, { k: 'mytag', label: 'COMM OWN TAG' }, { k: 'cnt', label: 'MEDIA' }];
 function zzz_ms_unpin(it) {
   zzz5w5cmTabAttachments[ZZZ_MS_KEY] = zzz5w5cm_tab_list(ZZZ_MS_KEY).filter(x => x !== it);
   if (it.sourceEntryId) zzz5w5cm_place_remove(ZZZ_MS_KEY, it.sourceEntryId);
@@ -29910,7 +29935,18 @@ function zzz_ms_render() {
   body.innerHTML = '';
   if (!rows.length) { const none = document.createElement('div'); none.className = 'zzz5w5cm-view-empty'; none.style.cssText = 'padding:8px;color:#888;';
     none.textContent = 'Nothing here yet. Hold any record row still for a moment, then pull it onto the MEDIA SPACE button at the bottom and let go - or ATTACH › MEDIA SPACE. Its media links then play in MEDIA CENTER (⏯ = COMM MEDIA).'; body.appendChild(none); }
+
+  const addRow = document.createElement('div'); addRow.className = 'zzz-ms-add';
+  const inp = document.createElement('input'); inp.type = 'text'; inp.placeholder = '+ entry number or Verso link (#en=…)'; inp.className = 'zzz5w7-search';
+  const go = document.createElement('button'); go.type = 'button'; go.className = 'zzz-media-btn'; go.textContent = '+ ADD';
+  const add = async () => { const m = String(inp.value || '').match(/(?:en=|#)?\s*(\d{1,9})/); if (!m) { zzz6f2_show_toast('Type an entry number (e.g. 371) or paste a Verso link with #en=…', 'info'); return; }
+    try { const { data } = await sb.from('verso_entries').select('entry_id, entry_date, fields_json, username').eq('entry_id', Number(m[1])).maybeSingle();
+      if (!data) { zzz6f2_show_toast('#' + m[1] + ' not found (or not visible for you).', 'warn'); return; }
+      zzz5w5cm_attach_to_tab(ZZZ_MS_KEY, zzz14cs_pair_payload(data)); inp.value = ''; zzzMs.at = 0; zzz6f2_show_toast('#' + m[1] + ' is in MEDIA SPACE.', 'ok'); } catch (e) { zzz6f2_show_toast('Not added - try again.', 'warn'); } };
+  go.addEventListener('click', (e) => { e.stopPropagation(); add(); }); inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+  addRow.append(inp, go); body.appendChild(addRow);
   body.appendChild(zzz5w5cm_build_ccl(ZZZ_MS_KEY, rows, { cols: ZZZ_MS_COLS }));
+  if (!zzzMs.at || Date.now() - zzzMs.at > 60000) zzz_ms_media_load().then(() => { if (zzzMsOpen) zzz_ms_render(); });
 }
 function zzz_ms_open(on) {
   zzzMsOpen = !!on;
@@ -53864,7 +53900,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-16 02:47';
+const VERSO_BUILD = '2026-11-16 03:28';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -59304,6 +59340,9 @@ async function zzz_media_actpls_to_app() {
     const out = (zzzMedia.plsDefs || []).filter(d => zzz_media_tagw(d.tags).indexOf('actual') >= 0).map(d => ({ n: d.plsDef,
       i: (zzzMedia.list || []).filter(x => !x.plsDef && !x.trash && x.pls.some(p => p.toLowerCase() === d.plsDef.toLowerCase()) && !zzz_media_locked_now(x) && zzz_media_app_playable(x, off)).slice(0, 80)
         .map(x => { const o = { t: zzz_media_title(x).slice(0, 34), u: x.link, s: zzz_media_stat(x) }; if (zzz_media_tagw(x.tags).includes('fav')) o.f = 1; return o; }) }));
+
+    try { const ms = await zzz_ms_media_load(); zzz_ms_els().forEach(el => { const its = (ms[el.id] || []).filter(x => zzz_media_app_playable(x, off)).slice(0, 80); if (!its.length) return;
+      out.push({ n: '\u266B ' + el.label.slice(0, 40), i: its.map(x => ({ t: String(x.name || zzz_media_link_name(x.link) || x.link).slice(0, 34), u: x.link, s: 'u' })) }); }); } catch (e) {}
     const js = JSON.stringify(out), sig = zzz_media_me() + '|' + zzz_media_src_mode() + '|' + js + '|' + zzz14b17_app_code();
     if (sig === zzzMedia.plsActSent && Date.now() - (zzzMedia.plsActAt || 0) < 600000) return;
     let b64 = zzz_media_b64(js).replace(/=+$/, ''), extra = '';
