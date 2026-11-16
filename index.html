@@ -10549,6 +10549,17 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   body.zzz-no-comm #zzzRsSpace { display: none !important; }
   .zzz14rs-handle.is-open { background: rgba(232, 200, 106, .55); }
   
+  .zzz-ms-handle { position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); width: 72px; height: 26px; z-index: 1910; padding: 0;
+    border: 1.5px solid rgba(232, 200, 106, .75); border-bottom: none; border-radius: 12px 12px 0 0; background: rgba(232, 200, 106, .14);
+    -webkit-backdrop-filter: blur(1.5px); backdrop-filter: blur(1.5px); color: rgba(232, 200, 106, .95); font-size: 14px; line-height: 24px; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  .zzz-ms-handle.is-open { background: rgba(232, 200, 106, .55); color: #111; }
+  .zzz-ms-handle.is-drop { background: #14532d; border-color: #22c55e; color: #fff; height: 40px; }
+  body.zzz-no-comm .zzz-ms-handle, body:has(.zzz14cs-login-overlay) .zzz-ms-handle { display: none !important; }
+  .zzz-ms-space { position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: #101010; box-shadow: 0 -6px 18px rgba(0,0,0,.45);
+    transform: translateY(100%); transition: transform .18s ease-out; z-index: 1900; display: flex; flex-direction: column; overscroll-behavior: contain; }
+  .zzz-ms-space.is-open { transform: translateY(0); }
+  body.zzz-no-comm #zzzMsSpace { display: none !important; }
+  
   .zzz14rs-handle { width: 36px; height: 72px; }
   .zzz14rs-handle::after { left: 11px; top: 20px; bottom: 20px; width: 3px; }
   .zzz-rs-bar { padding-left: 40px; }
@@ -29828,6 +29839,81 @@ function zzz3d_label(it, list) {
   return it.entry ? '#' + it.entry : (it.project || '');
 }
 
+const ZZZ_MS_KEY = 'mediaspace';
+let zzzMsOpen = false;
+function zzz_ms_drop_zone(x, y) { const h = document.getElementById('zzzMsHandle'); if (!h || !h.offsetParent) return false; const r = h.getBoundingClientRect(); return y > r.top - 40 && x > r.left - 40 && x < r.right + 40; }
+function zzz_ms_els() {
+  return (typeof zzz5w5cm_tab_list === 'function' ? zzz5w5cm_tab_list(ZZZ_MS_KEY) : []).filter(it => it.sourceEntryId).map(it => { const f = it.fields || {}, id = String(it.sourceEntryId);
+    const own = (typeof zzz5w5cmMyTagByEntry !== 'undefined' && zzz5w5cmMyTagByEntry || {})[id] || '';
+    return { id, label: '#' + id + (String(f.r3 || '').trim() ? ' ' + String(f.r3).trim() : '') + (String(f.r4 || '').trim() ? ' · ' + String(f.r4).trim() : '') + (own ? ' · ' + own : ''), it }; });
+}
+function zzz_ms_rows() {
+  return zzz5w5cm_tab_list(ZZZ_MS_KEY).map(it => {
+    const f = it.fields || {}, id = it.sourceEntryId ? String(it.sourceEntryId) : '';
+    const row = id && typeof zzz6f29_entry_row_of === 'function' ? zzz6f29_entry_row_of(id) : null;
+    return {
+      entry: id ? '#' + id : zzz14cs_cl_label(it), pnum: f.r2 || '', project: f.r3 || '', name: f.r4 || '',
+      mytag: id ? (zzz5w5cmMyTagByEntry || {})[id] || '' : '',
+      itemKey: it.zzz5w5cmKey || '',
+      title: id ? '#' + id + ' - tap = its media in MEDIA CENTER (COMM MEDIA)' : 'draft CL',
+      attached: { cls: id ? zzz4_0_record_type_class(row) : 'zzz-rec-cl', title: (id ? '#' + id : 'Draft CL') + ' - tap = its record window, hold 3 s = out of MEDIA SPACE',
+        onTap: () => { if (id) zzz6f29_open_entry_number_window(id); }, onHold3: () => zzz_ms_unpin(it) },
+      onOpen: () => { if (!id) return; const el = zzz_ms_els().find(x => x.id === id) || { id, label: '#' + id };
+        zzz_ms_open(false); zzz_media_src_set(true, el); try { if (!document.getElementById('zzzMediaWin')) zzz_media_open(); } catch (e) {} zzz_media_comm_load(true).then(() => zzz_media_redraw()); }
+    };
+  });
+}
+const ZZZ_MS_COLS = [{ k: 'entry', label: 'ENTRY NUMBER' }, { k: 'pnum', label: 'PROJECT NUMBER' }, { k: 'project', label: 'PROJECT NAME' }, { k: 'name', label: 'PROJECT OWNER' }, { k: 'mytag', label: 'COMM OWN TAG' }];
+function zzz_ms_unpin(it) {
+  zzz5w5cmTabAttachments[ZZZ_MS_KEY] = zzz5w5cm_tab_list(ZZZ_MS_KEY).filter(x => x !== it);
+  if (it.sourceEntryId) zzz5w5cm_place_remove(ZZZ_MS_KEY, it.sourceEntryId);
+  zzz_haptic_pulse(40); zzz6f2_show_toast('Out of MEDIA SPACE (the record stays).', 'info'); zzz_ms_render();
+}
+function zzz_ms_build() {
+  if (document.getElementById('zzzMsSpace')) return;
+  const panel = document.createElement('div'); panel.id = 'zzzMsSpace'; panel.className = 'zzz-ms-space';
+  const bar = document.createElement('div'); bar.className = 'zzz14cs-space-bar';
+  const title = document.createElement('span'); title.textContent = 'MEDIA SPACE ';
+  const cnt = document.createElement('span'); cnt.className = 'zzz14cs-space-count'; cnt.textContent = '(0)'; title.appendChild(cnt); bar.appendChild(title);
+  const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz5w5cm-close'; x.setAttribute('aria-label', 'Close'); x.textContent = '×';
+  x.addEventListener('click', () => zzz_ms_open(false)); bar.appendChild(x); panel.appendChild(bar);
+  const body = document.createElement('div'); body.className = 'zzz14cs-space-body zzz-ms-body'; panel.appendChild(body);
+  document.body.appendChild(panel);
+}
+function zzz_ms_render() {
+  const panel = document.getElementById('zzzMsSpace'), handle = document.getElementById('zzzMsHandle');
+  if (handle) handle.classList.toggle('is-open', zzzMsOpen);
+  if (!panel) return;
+  panel.classList.toggle('is-open', zzzMsOpen);
+  if (!zzzMsOpen) return;
+  const body = panel.querySelector('.zzz-ms-body'), rows = zzz_ms_rows();
+  const cnt = panel.querySelector('.zzz14cs-space-count'); if (cnt) cnt.textContent = '(' + rows.length + ')';
+  body.innerHTML = '';
+  if (!rows.length) { const none = document.createElement('div'); none.className = 'zzz5w5cm-view-empty'; none.style.cssText = 'padding:8px;color:#888;';
+    none.textContent = 'Nothing here yet. Hold any record row still for a moment, then pull it onto the MEDIA SPACE button at the bottom and let go - or ATTACH › MEDIA SPACE. Its media links then play in MEDIA CENTER (⏯ = COMM MEDIA).'; body.appendChild(none); }
+  body.appendChild(zzz5w5cm_build_ccl(ZZZ_MS_KEY, rows, { cols: ZZZ_MS_COLS }));
+}
+function zzz_ms_open(on) {
+  zzzMsOpen = !!on;
+  if (zzzMsOpen) {
+    try { if (typeof zzz14csSpaceOpen !== 'undefined' && zzz14csSpaceOpen) zzz14cs_space_open(false); } catch (e) {}
+    try { if (typeof zzzRs !== 'undefined' && zzzRs.open) zzz_rs_space_open(false); } catch (e) {}
+    { const mw = document.getElementById('zzzMediaWin'); if (mw) { mw.remove(); try { zzz_media_place(); } catch (e) {} } }
+    zzz_ms_build();
+    if (typeof zzz5w5cm_load_tab_placements === 'function') zzz5w5cm_load_tab_placements(true).then(() => zzz_ms_render()).catch(() => {});
+    try { zzz_outside_back_arm(); } catch (e) {}
+    zzz_haptic_pulse(15);
+  }
+  zzz_ms_render();
+}
+function zzz_ms_handle_build() {
+  if (document.getElementById('zzzMsHandle')) return;
+  const b = document.createElement('button'); b.type = 'button'; b.id = 'zzzMsHandle'; b.className = 'zzz-ms-handle zzz-ms-x';
+  b.setAttribute('aria-label', 'MEDIA SPACE'); b.title = 'MEDIA SPACE button - tap = open / close MEDIA SPACE · pull a record onto it = its media in MEDIA CENTER';
+  b.textContent = '♫';
+  b.addEventListener('click', (e) => { e.stopPropagation(); zzz_ms_open(!zzzMsOpen); });
+  document.body.appendChild(b);
+}
 function zzz14rs_handle_build() {
   if (document.getElementById('zzz14rsHandle')) return;
   const b = document.createElement('button'); b.type = 'button'; b.id = 'zzz14rsHandle'; b.className = 'zzz14rs-handle';
@@ -33939,6 +34025,7 @@ function zzz14cs_build_pin_section(win, rows, closeWin) {
     cielInGroup({ key: ZZZ14CS_SPACE_KEY, label: 'COMM SPACE' });
     cielInGroup({ key: ZZZ_VI_SPACE_KEY, label: 'VI SPACE' });
     cielInGroup({ key: ZZZ_RS_KEY, label: 'READ SPACE' });
+    cielInGroup({ key: ZZZ_MS_KEY, label: 'MEDIA SPACE' });
     group('CONTACTS', true, () => ZZZ5W5CM_CONTACT_TABS.filter(t => contactKeys.indexOf(t.key) >= 0).forEach(cielInGroup));
     group('TABS', false, () => ZZZ5W5CM_CONTACT_TABS.filter(t => contactKeys.indexOf(t.key) < 0).forEach(cielInGroup));
   });
@@ -38601,6 +38688,7 @@ function zzz5w5cm_attach_targets() {
   list.push({ id: 'tab:' + ZZZ14CS_SPACE_KEY, label: 'COMM SPACE - the comm CRM on the right' });
   list.push({ id: 'tab:' + ZZZ_VI_SPACE_KEY, label: 'VI SPACE - your records for VI (VI WINDOW)' });
   list.push({ id: 'tab:' + ZZZ_RS_KEY, label: 'READ SPACE - pages to read (left screen)' });
+  list.push({ id: 'tab:' + ZZZ_MS_KEY, label: 'MEDIA SPACE - media sources for MEDIA CENTER (bottom button)' });
   ZZZ5W5CM_CONTACT_TABS.forEach(t => list.push({ id: 'tab:' + t.key, label: 'M4a ' + t.label }));
   return list;
 }
@@ -39709,6 +39797,7 @@ function zzz14cs_space_build() {
   document.body.appendChild(handle);
   zzz14cs_handle_autoplace(handle);
   zzz14rs_handle_build();
+  zzz_ms_handle_build();
 
   let x0 = 0, y0 = 0, zOkraja = false, vnutri = false;
   document.addEventListener('touchstart', (e) => {
@@ -39893,6 +39982,7 @@ function zzz5w5cm_attach_to_tab(tabKey, payload) {
   if (tabKey === ZZZ14CS_SPACE_KEY) zzz14cs_space_open(true);
   if (tabKey === ZZZ_VI_SPACE_KEY) { try { zzz_vi_win_render(); } catch (e) {} }
   if (tabKey === ZZZ_RS_KEY) { try { if (zzzRs.open) zzz_rs_render(); } catch (e) {} }
+  if (tabKey === ZZZ_MS_KEY) { try { zzz_ms_render(); } catch (e) {} }
 }
 
 function zzz5w5cm_detach_everywhere(key, exceptTabKey) {
@@ -39995,6 +40085,7 @@ let zzz14csDragTimer = null;
 let zzz14csDragChip = null;
 let zzz14csDragFrom = null;
 let zzz14csDropToSpace = false;
+let zzz14csDropToMedia = false;
 let zzz14csPinTimer = null, zzz14csPinReady = null;
 const ZZZ14CS_PIN_MS = 1000;
 
@@ -40061,8 +40152,9 @@ function zzz14cs_drag_move(x, y) {
   if (!zzz14csDragChip) return;
   zzz14csDragChip.style.left = `${Math.round(x) + 10}px`;
   zzz14csDragChip.style.top = `${Math.round(y) - 14}px`;
-  const blizko = x > window.innerWidth - ZZZ14CS_EDGE_PX;
+  const blizko = x > window.innerWidth - ZZZ14CS_EDGE_PX || zzz_ms_drop_zone(x, y);
   zzz14csDragChip.classList.toggle('is-ready', blizko);
+  { const mh = document.getElementById('zzzMsHandle'); if (mh) mh.classList.toggle('is-drop', zzz_ms_drop_zone(x, y)); }
 }
 
 let zzz14csSwallowClick = false;
@@ -40077,13 +40169,21 @@ document.addEventListener('click', (e) => {
   e.preventDefault();
 }, true);
 
-function zzz14cs_drag_drop(x) {
+function zzz14cs_drag_drop(x, y) {
   const btn = zzz14csDragBtn;
   const zRiadku = zzz14csDragRow;
-  const pri_okraji = x > window.innerWidth - ZZZ14CS_EDGE_PX;
+  const toMedia = y != null && zzz_ms_drop_zone(x, y);
+  const pri_okraji = !toMedia && x > window.innerWidth - ZZZ14CS_EDGE_PX;
   const bolTah = !!zzz14csDragChip;
   zzz14cs_drag_cancel();
+  { const mh = document.getElementById('zzzMsHandle'); if (mh) mh.classList.remove('is-drop'); }
   if (bolTah) zzz14cs_swallow_next_click();
+  if (toMedia) {
+    const pay = zRiadku || null;
+    if (pay) { zzz5w5cm_attach_to_tab(ZZZ_MS_KEY, pay); zzz6f2_show_toast((pay.sourceEntryId ? '#' + pay.sourceEntryId : 'CL') + ' is in MEDIA SPACE.', 'ok'); zzz_ms_open(true); return; }
+    if (btn) { zzz14csDropToMedia = true; zzz14csSwallowClick = false; btn.click(); zzz14cs_swallow_next_click(); zzz_ms_open(true); }
+    return;
+  }
   if (!pri_okraji) return;
 
   if (zRiadku) {
@@ -40198,7 +40298,7 @@ document.addEventListener('pointermove', (e) => {
 
 document.addEventListener('pointerup', (e) => {
   const pr = zzz14csPinReady; zzz14csPinReady = null;
-  if (zzz14csDragChip) zzz14cs_drag_drop(e.clientX);
+  if (zzz14csDragChip) zzz14cs_drag_drop(e.clientX, e.clientY);
   else {
     zzz14cs_drag_cancel();
     if (pr && !((window.zzzLongPressFiredAt || 0) >= pr.downAt)) { zzz14cs_swallow_next_click(); zzz14cs_open_pin_for_row(pr.riadok); }
@@ -40218,6 +40318,7 @@ function zzz14cs_attach_route(payload) {
     return;
   }
 
+  if (zzz14csDropToMedia) { zzz14csDropToMedia = false; zzz14csFromComm = false; zzz5w5cm_attach_to_tab(ZZZ_MS_KEY, payload); return; }
   if (zzz14csDropToSpace) {
     zzz14csDropToSpace = false;
     zzz14csFromComm = false;
@@ -53707,7 +53808,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-16 02:13';
+const VERSO_BUILD = '2026-11-16 02:27';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -57971,7 +58072,8 @@ function zzz_media_src_pick(done) {
   const b = document.createElement('div'); b.className = 'zzz-media-confirm-box'; b.style.maxHeight = '80vh'; b.style.overflow = 'auto'; o.appendChild(b);
   const t = document.createElement('div'); t.className = 'zzz-media-confirm-t'; t.textContent = '💬 COMM MEDIA · choose the EL / CL'; b.appendChild(t);
   const cur = zzz_media_src_el(); let els = [];
-  try { els = zzz14cs_feed_chats(); } catch (e) {}
+  try { els = zzz_ms_els().map(x => ({ id: x.id, label: '\u266B ' + x.label })); } catch (e) {}
+  try { zzz14cs_feed_chats().forEach(x => { if (!els.some(y => y.id === x.id)) els.push(x); }); } catch (e) {}
   try { const c = zzz_feeder_cfg(); Object.keys(c.follow || {}).forEach(id => { if (!els.some(x => x.id === id)) els.push({ id, label: c.follow[id] || ('#' + id) }); }); } catch (e) {}
   if (!els.length) { const n = document.createElement('div'); n.className = 'zzz-vi-nrw-none'; n.textContent = 'No EL / CL in COMM SPACE yet - attach one in COMM SPACE (or FOLLOW it in the 📡 FEEDER window).'; b.appendChild(n); }
   els.forEach(x => { const r = document.createElement('button'); r.type = 'button'; r.className = 'zzz-media-btn' + (cur && cur.id === x.id ? ' is-on' : ''); r.style.cssText = 'display:block;width:100%;text-align:left;margin:3px 0;';
@@ -58960,7 +59062,7 @@ function zzz_feeder_save(c) { try { localStorage.setItem(zzz_ukey('zzz_feeder_cf
 function zzz_feeder_ids(c) {
   c = c || zzz_feeder_cfg();
   const own = String((zzzMedia.entry && zzzMedia.entry.entry_id) || ''), out = {};
-  if (c.space) { try { zzz14cs_feed_chats().forEach(x => { out[x.id] = x.label + ' · MEDIA SPACE'; }); } catch (e) {} }
+  if (c.space) { try { zzz_ms_els().forEach(x => { out[x.id] = x.label + ' · MEDIA SPACE'; }); zzz14cs_feed_chats().forEach(x => { if (!out[x.id]) out[x.id] = x.label + ' · COMM SPACE'; }); } catch (e) {} }
   if (c.followed) Object.keys(c.follow).forEach(id => { if (!out[id]) out[id] = c.follow[id] || ('#' + id); });
   Object.keys(c.ignore).forEach(id => { delete out[id]; });
   delete out[own];
