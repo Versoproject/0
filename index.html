@@ -14736,7 +14736,7 @@ function zzz_final_box(entryId) {
     else if (s.is_final) line.textContent = `FINAL f${s.f_no || 1}${s.permanent ? ' · PERMANENT (never withdrawn)' : ''} · ${(s.need || []).join(', ')}`;
     else if (s.disputed) {
       const waits = (s.need || []).filter(u => !(s.gave || []).includes(u));
-      line.textContent = `FINAL f${s.f_no || 1} · DISPUTE (not valid) · locked + private until resolved · withdrawn: ${(s.revoked || []).join(', ') || '-'}` + (waits.length ? ` · waits for: ${waits.join(', ')}` : '');
+      line.textContent = `FINAL f${s.f_no || 1} · DISPUTE (not valid) · locked + private until resolved · VERSO SYSTEM consent stands in for: ${(s.revoked || []).join(', ') || '-'} (DISPUTE)` + (waits.length ? ` · waits for: ${waits.join(', ')}` : '');
     }
     else {
       const waits = (s.need || []).filter(u => !(s.gave || []).includes(u) && !(s.auto || []).includes(u));
@@ -14784,7 +14784,7 @@ function zzz_final_box(entryId) {
     }
     box.appendChild(btns);
     const n2 = document.createElement('div'); n2.className = 'zzzfin-note';
-    n2.textContent = 'FINAL = all users gave it; then no TRASH, no delete, no changes (also privacy). Withdrawing a consent after FINAL = FINAL DISPUTE (locked, private, logged for the authority) until every consent is valid again. Each step needs your MV PHRASE. Lines f1, f2 … are written in SUBS by VERSO SYSTEM.';
+    n2.textContent = 'FINAL = all users gave it; then no TRASH, no delete, no changes (also privacy). Withdrawing a consent after FINAL = FINAL DISPUTE: the VERSO SYSTEM consent stands in, the record is locked and private, logged by VERSO SYSTEM, until every consent is valid again. Each step needs your MV PHRASE. Lines f1, f2 … are written in SUBS by VERSO SYSTEM.';
     box.appendChild(n2);
   };
   box._repaint = paint;
@@ -14795,24 +14795,35 @@ function zzz_final_box(entryId) {
 
 async function zzz_final_open_mine() {
   const me = (zzz0r1_get_current_username() || '').trim();
-  let rows = [], autos = [], disputes = [];
+  let rows = [], autos = [], disputes = [], sysRows = [];
   try {
     const a = await sb.from('verso_task_values').select('entry_id, chip, created_at').eq('type_id', 'final').ilike('username', me).order('id', { ascending: false }).limit(500);
     if (a.error) throw a.error; rows = a.data || [];
     const b = await sb.from('verso_final_auto').select('project_owner, project_number, active, created_at').ilike('username', me).order('id', { ascending: false }).limit(200);
     autos = (b && !b.error && b.data) || [];
+
+    const sy = await sb.from('verso_task_values').select('entry_id, chip, created_at').eq('type_id', 'final').in('chip', ['system', 'system_off']).ilike('field', me).order('id', { ascending: false }).limit(200);
+    sysRows = (sy && !sy.error && sy.data) || [];
     const c = await sb.from('verso_final_disputes').select('id, entry_id, f_no, opened_by, opened_at, closed_at').order('id', { ascending: false }).limit(200);
     disputes = (c && !c.error && c.data) || [];
   } catch (e) { zzz6f2_show_toast('MY FINAL CONSENTS not loaded - check the connection.', 'warn'); return; }
   try { await zzz_final_load(true); } catch (e) {}
-  const fr = zzz_rdr_frame('MY FINAL CONSENTS', 'MY FINAL CONSENTS · ' + (rows.length + autos.length + disputes.length), 'FINAL');
+  const fr = zzz_rdr_frame('MY FINAL CONSENTS', 'MY FINAL CONSENTS · ' + (rows.length + autos.length + disputes.length + sysRows.length), 'FINAL');
   const { content, blk } = fr;
-  if (!rows.length && !autos.length && !disputes.length) content.appendChild(blk('div', '', 'You have not given any FINAL consent yet.', 'EMPTY'));
+  if (!rows.length && !autos.length && !disputes.length && !sysRows.length) content.appendChild(blk('div', '', 'You have not given any FINAL consent yet.', 'EMPTY'));
   rows.forEach(r => {
     const st = zzz_final_state(r.entry_id);
     const fin = !!(st && st.is_final);
     const e = blk('div', 'zzzfin-item', `#${r.entry_id} · ${String(r.chip).toUpperCase()} · ${zzz5w8_fmt_time(Date.parse(r.created_at || '') || Date.now())}` + (st ? (fin ? ` · FINAL f${st.f_no || 1}` : ' · not FINAL') : ''), 'CONSENT');
     e.setAttribute('data-vf', JSON.stringify({ CATEGORY: String(r.chip).toLowerCase(), STATUS: fin ? 'final' : 'open', PROJECT: '#' + r.entry_id }));
+    e.setAttribute('data-vt', String(Date.parse(r.created_at || '') || 0));
+    e.addEventListener('click', () => { fr.ov.remove(); try { location.hash = 'en=' + r.entry_id; } catch (x) {} });
+    content.appendChild(e);
+  });
+  sysRows.forEach(r => {
+    const on = String(r.chip) === 'system';
+    const e = blk('div', 'zzzfin-item', `#${r.entry_id} · VERSO SYSTEM · DISPUTE consent for you · ${on ? 'stands in' : 'ended - your own consent again'} · ${zzz5w8_fmt_time(Date.parse(r.created_at || '') || Date.now())}`, 'SYSTEM');
+    e.setAttribute('data-vf', JSON.stringify({ CATEGORY: 'dispute system', STATUS: on ? 'open' : 'closed', PROJECT: '#' + r.entry_id }));
     e.setAttribute('data-vt', String(Date.parse(r.created_at || '') || 0));
     e.addEventListener('click', () => { fr.ov.remove(); try { location.hash = 'en=' + r.entry_id; } catch (x) {} });
     content.appendChild(e);
@@ -53952,7 +53963,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-16 14:54';
+const VERSO_BUILD = '2026-11-16 16:19';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
