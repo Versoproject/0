@@ -7540,6 +7540,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzzfin-head { color: #C0C0C0; font-weight: 800; letter-spacing: .06em; font-size: 12px; margin-bottom: 4px; }
   .zzzfin-state { color: #e5e7eb; margin: 2px 0 6px; word-break: break-word; }
   .zzzfin-state.is-final { color: #D4AF37; font-weight: 700; }
+  .zzzfin-state.is-dispute { color: #fca5a5; font-weight: 700; }
   .zzzfin-btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .zzzfin-btn { background: #000; color: #D4AF37; border: 1px solid #D4AF37; border-radius: 14px; padding: 5px 10px; font-size: 11px; font-weight: 800; letter-spacing: .03em; }
   .zzzfin-btn.is-perm { color: #000; background: #D4AF37; }
@@ -14555,6 +14556,7 @@ function zzz1r5_is_final(row) {
 }
 
 const ZZZ_FINAL_EXCEPT = ['media'];
+const ZZZ_FINAL_AUTHORITY = 'verso1';
 const zzzFinal = { st: {}, at: 0, busy: null };
 let zzzFinalClId = '';
 function zzz_final_fields(row) { try { return row ? (zzz_parse_fields_json(row) || {}) : {}; } catch (e) { return {}; } }
@@ -14571,7 +14573,7 @@ function zzz_final_is(id, row) {
   if (r && zzz_final_is_system(r)) return true;
   if (r && ZZZ_FINAL_EXCEPT.includes(String(zzz_final_fields(r).r5 || '').trim().toLowerCase())) return false;
   const s = zzz_final_state(key);
-  return !!(s && s.is_final);
+  return !!(s && (s.is_final || s.disputed));
 }
 
 async function zzz_final_load(force, onlyId) {
@@ -14600,7 +14602,9 @@ async function zzz_final_load(force, onlyId) {
 
 function zzz_final_mark_text(id) {
   const s = zzz_final_state(id);
-  if (!s || !s.is_final) return '';
+  if (!s) return '';
+  if (s.disputed) return 'f' + (s.f_no || 1) + ' ⚠';
+  if (!s.is_final) return '';
   return 'f' + (s.f_no || 1) + (s.permanent ? ' ∞' : '');
 }
 function zzz_final_slot(row) {
@@ -14652,24 +14656,26 @@ function zzz_final_mv(title, text, okLabel) {
 async function zzz_final_act(entryId, chip) {
   const id = Number(String(entryId || '').replace(/\D/g, ''));
   if (!id) return false;
-  const titles = { final: 'FINAL · MULTIVERIFICATION', permanent: 'PERMANENT FINAL · MULTIVERIFICATION', revoke: 'REVOKE FINAL · MULTIVERIFICATION',
-    auto_on: 'AUTO FINAL · MULTIVERIFICATION', auto_off: 'AUTO FINAL OFF · MULTIVERIFICATION',
-    dispute_revoke: 'DISPUTE · REVOKE FINAL · MULTIVERIFICATION', dispute_privacy: 'DISPUTE · PRIVACY · MULTIVERIFICATION' };
+  const titles = { final: 'FINAL · MULTIVERIFICATION', permanent: 'PERMANENT FINAL · MULTIVERIFICATION', revoke: 'WITHDRAW MY CONSENT · MULTIVERIFICATION',
+    auto_on: 'AUTO FINAL · MULTIVERIFICATION', auto_off: 'AUTO FINAL OFF · MULTIVERIFICATION' };
   const prj = (() => { const f = zzz_final_fields(zzz6f29_entry_row_of(id)); return `${String(f.r2 || '').trim()} · ${String(f.r4 || '').trim()}`; })();
+  const st0 = zzz_final_state(id) || {};
   const texts = {
-    final: `Your FINAL consent for record #${id}. When all its users gave FINAL, the record is locked: no TRASH, no delete, no changes (also privacy) - until all revoke it together.`,
-    permanent: `Your PERMANENT FINAL for record #${id}. It can never be revoked - the record stays FINAL forever once all its users gave FINAL.`,
-    revoke: `Your REVOKE of the FINAL of record #${id}. The record opens again only when every user of it revoked too.`,
-    auto_on: `AUTO FINAL for project ${prj}: from now on you count as „gave FINAL“ in every FINAL request of this project - you are not asked each time. You can switch it off any time (records already FINAL stay FINAL).`,
-    auto_off: `AUTO FINAL off for project ${prj}: from now on every FINAL of this project asks you again.`,
+    final: st0.disputed ? `Your consent again for record #${id}. When every user's consent is valid again, the FINAL DISPUTE is resolved and the record is FINAL again.`
+                        : `Your FINAL consent for record #${id}. When all its users gave FINAL, the record is locked: no TRASH, no delete, no changes (also privacy).`,
+    permanent: `Your PERMANENT FINAL for record #${id}. It can never be withdrawn - the record is FINAL once all its users gave FINAL.`,
 
-    dispute_revoke: `DISPUTE: you ask to REVOKE the FINAL of record #${id}, but some users did not revoke. The AUTHORITY (Verso) replaces their consent PROVISIONALLY - it is recorded, the record stays locked until the dispute is resolved, and it can never be deleted.`,
-    dispute_privacy: `DISPUTE: you ask to CHANGE PRIVACY of the FINAL record #${id} without the other users' consent. The AUTHORITY (Verso) replaces it PROVISIONALLY - recorded, the record stays locked until the dispute is resolved, and it can never be deleted.`
+    revoke: (st0.is_final || st0.disputed)
+      ? `Please consider your FINAL DISPUTE wisely. Withdrawing your consent breaks the FINAL of record #${id}: it stays FINAL but is no longer valid, the record stays locked and private until resolved. The issue will be discreetly logged by the VERSO SYSTEM, stepping in on your behalf for the time needed to resolve it - without any detailed information, so only the appropriate authority will be able to resolve it. Every member who gave consent is told.`
+      : `Withdraw your FINAL consent for record #${id}. The record is not FINAL yet - only the owner is told.`,
+    auto_on: `AUTO FINAL for project ${prj}: from now on you count as „gave FINAL“ in every FINAL request of this project - you are not asked each time. You can switch it off any time (records already FINAL stay FINAL).`,
+    auto_off: `AUTO FINAL off for project ${prj}: from now on every FINAL of this project asks you again.`
   };
   const h = zzz_verso_fn_headers();
   if (!h) { zzz6f2_show_toast('Log in first - FINAL needs your Verso session.', 'warn'); return false; }
   for (let tries = 0; tries < 5; tries++) {
-    const got = await zzz_final_mv(titles[chip], texts[chip], chip === 'revoke' ? 'REVOKE' : chip === 'auto_on' ? 'AUTO ON' : chip === 'auto_off' ? 'AUTO OFF' : String(chip).startsWith('dispute') ? 'OPEN DISPUTE' : 'GIVE FINAL');
+    if (chip === 'revoke' && (st0.is_final || st0.disputed)) zzz6f2_show_toast('FINAL DISPUTE - please read the warning before you confirm.', 'warn');
+    const got = await zzz_final_mv(titles[chip], texts[chip], chip === 'revoke' ? 'WITHDRAW' : chip === 'auto_on' ? 'AUTO ON' : chip === 'auto_off' ? 'AUTO OFF' : 'GIVE CONSENT');
     if (!got) return false;
     let r = null;
     zzz6f2_show_toast('Checking…');
@@ -14690,10 +14696,9 @@ async function zzz_final_act(entryId, chip) {
       zzz_haptic_pulse(30);
       const s = r.state || {};
       zzzFinal.st[id] = s;
-      if (String(chip).startsWith('dispute')) { zzz6f2_show_toast(`✓ DISPUTE recorded for #${id} - AUTHORITY granted it provisionally; the record stays locked until resolved.`); zzz_final_paint(); return true; }
       zzz6f2_show_toast(chip === 'revoke'
-        ? (s.is_final ? `✓ Revoke saved - #${id} opens when all its users revoked.` : `✓ FINAL of #${id} revoked.`)
-        : (s.is_final ? `✓ #${id} is FINAL (f${s.f_no || 1}${s.permanent ? ', permanent' : ''}).` : `✓ FINAL saved - #${id} waits for the other users.`));
+        ? (s.disputed ? `✓ Consent withdrawn - #${id} is in a FINAL DISPUTE (locked, private, logged for the authority).` : `✓ Consent withdrawn - only the owner of #${id} is told.`)
+        : (s.is_final ? `✓ #${id} is FINAL (f${s.f_no || 1}${s.permanent ? ', permanent' : ''}).` : s.disputed ? `✓ Consent given again - #${id} waits for the other users.` : `✓ FINAL saved - #${id} waits for the other users.`));
       zzz_final_paint();
       return true;
     }
@@ -14701,8 +14706,7 @@ async function zzz_final_act(entryId, chip) {
     const msg = why === 'wrong_mv_phrase' ? 'The MV PHRASE does not match.' + (typeof r.attemptsLeft === 'number' ? ' ' + r.attemptsLeft + ' tries left.' : '')
       : why === 'locked' ? `Too many wrong tries - FINAL is locked for ${r.minutes || 15} min.`
       : why === 'mv_phrase_not_set' ? 'Set your MV PHRASE first: Login setup › CHANGE PASSWORD › MV PHRASE.'
-      : why === 'not_allowed' && String(chip).startsWith('dispute') ? 'DISPUTE only for the owner of a FINAL record shared with other users, once per FINAL.'
-      : why === 'not_allowed' ? (String(chip).startsWith('auto_') ? 'AUTO FINAL needs a record with PROJECT NUMBER and PROJECT OWNER, and you as its user.' : 'Not possible now - you are not a user of this record, or you already gave this step.')
+      : why === 'not_allowed' ? (String(chip).startsWith('auto_') ? 'AUTO FINAL needs a record with PROJECT NUMBER and PROJECT OWNER, and you as its user.' : 'Not possible now - you are not a user of this record, your consent is already in this state, or it is PERMANENT.')
       : why === 'no_session' ? 'Your session ended - log in again.'
       : why === 'network' ? 'The Verso server cannot be reached - nothing was saved. Try again.'
       : 'FINAL did not go through - nothing was saved. Try again.';
@@ -14729,34 +14733,34 @@ function zzz_final_box(entryId) {
     if (row && zzz_final_is_system(row)) line.textContent = 'FINAL by the system (ISSUES / LOGS) - never trashed or deleted.';
     else if (row && ZZZ_FINAL_EXCEPT.includes(String(zzz_final_fields(row).r5 || '').trim().toLowerCase())) line.textContent = 'Category media: only links - FINAL does not lock it (you manage your own media).';
     else if (!s) line.textContent = 'Loading…';
-    else if (s.is_final) line.textContent = `FINAL f${s.f_no || 1}${s.permanent ? ' · PERMANENT (never revoked)' : ''} · ${(s.need || []).join(', ')}`
-      + ((s.revoked || []).length ? ` · revoke given: ${(s.revoked || []).join(', ')}` : '');
+    else if (s.is_final) line.textContent = `FINAL f${s.f_no || 1}${s.permanent ? ' · PERMANENT (never withdrawn)' : ''} · ${(s.need || []).join(', ')}`;
+    else if (s.disputed) {
+      const waits = (s.need || []).filter(u => !(s.gave || []).includes(u));
+      line.textContent = `FINAL f${s.f_no || 1} · DISPUTE (not valid) · locked + private until resolved · withdrawn: ${(s.revoked || []).join(', ') || '-'}` + (waits.length ? ` · waits for: ${waits.join(', ')}` : '');
+    }
     else {
       const waits = (s.need || []).filter(u => !(s.gave || []).includes(u) && !(s.auto || []).includes(u));
       line.textContent = `not FINAL · users: ${(s.need || []).join(', ') || '-'}` + ((s.gave || []).length ? ` · gave: ${(s.gave || []).join(', ')}` : '')
         + ((s.auto || []).length ? ` · AUTO: ${(s.auto || []).join(', ')}` : '') + (waits.length ? ` · waits for: ${waits.join(', ')}` : '');
     }
     line.classList.toggle('is-final', !!(s && s.is_final));
+    line.classList.toggle('is-dispute', !!(s && s.disputed));
     box.appendChild(line);
     const btns = document.createElement('div'); btns.className = 'zzzfin-btns';
     const mk = (txt, chip, tip, cls) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzzfin-btn' + (cls ? ' ' + cls : ''); b.textContent = txt; b.title = tip;
       b.addEventListener('click', async (e) => { e.stopPropagation(); b.disabled = true; await zzz_final_act(id, chip); await zzz_final_load(true, id); paint(); }); return b; };
     const part = s && (s.need || []).map(zzz10v1_normalize).includes(me);
-    if (s && part && !s.is_final && !(s.gave || []).map(zzz10v1_normalize).includes(me)) {
-      btns.appendChild(mk('FINAL · EVERY TIME', 'final', 'My FINAL consent for this record only (MV PHRASE)'));
-      btns.appendChild(mk('PERMANENT FINAL', 'permanent', 'My permanent FINAL - never revoked (MV PHRASE)', 'is-perm'));
+    const gaveMe = s && (s.gave || []).map(zzz10v1_normalize).includes(me);
+    const permMe = s && (s.perm_users || []).map(zzz10v1_normalize).includes(me);
+    if (s && part && !gaveMe) {
+      btns.appendChild(mk(s.disputed ? 'GIVE CONSENT AGAIN' : 'FINAL · EVERY TIME', 'final', 'My FINAL consent for this record (MV PHRASE)'));
+      btns.appendChild(mk('PERMANENT FINAL', 'permanent', 'My permanent FINAL - never withdrawn (MV PHRASE)', 'is-perm'));
     }
-    if (s && part && s.is_final && !s.permanent && !(s.revoked || []).map(zzz10v1_normalize).includes(me)) {
-      btns.appendChild(mk('REVOKE FINAL', 'revoke', 'Revoke together: the record opens when all its users revoked (MV PHRASE)', 'is-red'));
+
+    if (s && part && gaveMe && !permMe) {
+      btns.appendChild(mk('WITHDRAW MY CONSENT', 'revoke', (s.is_final || s.disputed) ? 'FINAL DISPUTE: FINAL stays but is not valid, locked + private, logged for the authority (MV PHRASE)' : 'Withdraw before FINAL - only the owner is told (MV PHRASE)', 'is-red'));
     }
     if (s && !part) { const n = document.createElement('span'); n.className = 'zzzfin-note'; n.textContent = 'Only the owner and the users of this record give FINAL.'; btns.appendChild(n); }
-
-    const own0 = zzz10v1_normalize(String(zzz_final_fields(row).r4 || '').trim());
-    if (s && part && s.is_final && own0 === me && (s.need || []).length > 1 && !(row && zzz_final_is_system(row))) {
-      const others = (s.need || []).filter(u => zzz10v1_normalize(u) !== me && !(s.revoked || []).map(zzz10v1_normalize).includes(zzz10v1_normalize(u)));
-      if (!s.permanent && others.length) btns.appendChild(mk('DISPUTE · REVOKE', 'dispute_revoke', 'The others did not revoke - ask the AUTHORITY (provisional, recorded, MV PHRASE)', 'is-red'));
-      btns.appendChild(mk('DISPUTE · PRIVACY', 'dispute_privacy', 'Change privacy without the others - ask the AUTHORITY (provisional, recorded, MV PHRASE)', 'is-red'));
-    }
 
     const f0 = zzz_final_fields(row);
     if (s && part && String(f0.r2 || '').trim() && String(f0.r4 || '').trim() && !(row && zzz_final_is_system(row))) {
@@ -14772,9 +14776,15 @@ function zzz_final_box(entryId) {
     my.title = 'Every FINAL consent you gave (search back)';
     my.addEventListener('click', (e) => { e.stopPropagation(); zzz_final_open_mine(); });
     btns.appendChild(my);
+    if (me === ZZZ_FINAL_AUTHORITY) {
+      const au = document.createElement('button'); au.type = 'button'; au.className = 'zzzfin-btn is-ghost'; au.textContent = 'AUTHORITY CASES';
+      au.title = 'FINAL DISPUTES logged for the authority (record #, project, who, when)';
+      au.addEventListener('click', (e) => { e.stopPropagation(); zzz_final_open_cases(); });
+      btns.appendChild(au);
+    }
     box.appendChild(btns);
     const n2 = document.createElement('div'); n2.className = 'zzzfin-note';
-    n2.textContent = 'FINAL = all users gave it; then no TRASH, no delete, no changes (also privacy). Each step needs your MV PHRASE. Lines f1, f2 … are written in SUBS by VERSO SYSTEM.';
+    n2.textContent = 'FINAL = all users gave it; then no TRASH, no delete, no changes (also privacy). Withdrawing a consent after FINAL = FINAL DISPUTE (locked, private, logged for the authority) until every consent is valid again. Each step needs your MV PHRASE. Lines f1, f2 … are written in SUBS by VERSO SYSTEM.';
     box.appendChild(n2);
   };
   box._repaint = paint;
@@ -14785,17 +14795,19 @@ function zzz_final_box(entryId) {
 
 async function zzz_final_open_mine() {
   const me = (zzz0r1_get_current_username() || '').trim();
-  let rows = [], autos = [];
+  let rows = [], autos = [], disputes = [];
   try {
     const a = await sb.from('verso_task_values').select('entry_id, chip, created_at').eq('type_id', 'final').ilike('username', me).order('id', { ascending: false }).limit(500);
     if (a.error) throw a.error; rows = a.data || [];
     const b = await sb.from('verso_final_auto').select('project_owner, project_number, active, created_at').ilike('username', me).order('id', { ascending: false }).limit(200);
     autos = (b && !b.error && b.data) || [];
+    const c = await sb.from('verso_final_disputes').select('id, entry_id, f_no, opened_by, opened_at, closed_at').order('id', { ascending: false }).limit(200);
+    disputes = (c && !c.error && c.data) || [];
   } catch (e) { zzz6f2_show_toast('MY FINAL CONSENTS not loaded - check the connection.', 'warn'); return; }
   try { await zzz_final_load(true); } catch (e) {}
-  const fr = zzz_rdr_frame('MY FINAL CONSENTS', 'MY FINAL CONSENTS · ' + (rows.length + autos.length), 'FINAL');
+  const fr = zzz_rdr_frame('MY FINAL CONSENTS', 'MY FINAL CONSENTS · ' + (rows.length + autos.length + disputes.length), 'FINAL');
   const { content, blk } = fr;
-  if (!rows.length && !autos.length) content.appendChild(blk('div', '', 'You have not given any FINAL consent yet.', 'EMPTY'));
+  if (!rows.length && !autos.length && !disputes.length) content.appendChild(blk('div', '', 'You have not given any FINAL consent yet.', 'EMPTY'));
   rows.forEach(r => {
     const st = zzz_final_state(r.entry_id);
     const fin = !!(st && st.is_final);
@@ -14805,10 +14817,36 @@ async function zzz_final_open_mine() {
     e.addEventListener('click', () => { fr.ov.remove(); try { location.hash = 'en=' + r.entry_id; } catch (x) {} });
     content.appendChild(e);
   });
+  disputes.forEach(d => {
+    const e = blk('div', 'zzzfin-item', `DISPUTE #${d.id} · record #${d.entry_id} · FINAL f${d.f_no} · by ${d.opened_by} · ${zzz5w8_fmt_time(Date.parse(d.opened_at || '') || Date.now())} · ${d.closed_at ? 'resolved' : 'OPEN'}`, 'DISPUTE');
+    e.setAttribute('data-vf', JSON.stringify({ CATEGORY: 'dispute', STATUS: d.closed_at ? 'closed' : 'open', PROJECT: '#' + d.entry_id }));
+    e.setAttribute('data-vt', String(Date.parse(d.opened_at || '') || 0));
+    e.addEventListener('click', () => { fr.ov.remove(); try { location.hash = 'en=' + d.entry_id; } catch (x) {} });
+    content.appendChild(e);
+  });
   autos.forEach(a => {
     const e = blk('div', 'zzzfin-item', `AUTO FINAL ${a.active ? 'ON' : 'OFF'} · project ${a.project_number} · ${a.project_owner} · ${zzz5w8_fmt_time(Date.parse(a.created_at || '') || Date.now())}`, 'AUTO');
     e.setAttribute('data-vf', JSON.stringify({ CATEGORY: a.active ? 'auto on' : 'auto off', STATUS: 'open', PROJECT: String(a.project_number) }));
     e.setAttribute('data-vt', String(Date.parse(a.created_at || '') || 0));
+    content.appendChild(e);
+  });
+  fr.sw.appendChild(fr.copyAll());
+  fr.finish();
+}
+
+async function zzz_final_open_cases() {
+  let rows = [];
+  try {
+    const r = await sb.from('verso_final_disputes').select('id, entry_id, project_owner, project_name, project_number, opened_by, task_value_id, f_no, opened_at, closed_at, closed_how').order('id', { ascending: false }).limit(500);
+    if (r.error) throw r.error; rows = r.data || [];
+  } catch (e) { zzz6f2_show_toast('AUTHORITY CASES not loaded - check the connection.', 'warn'); return; }
+  const fr = zzz_rdr_frame('AUTHORITY CASES', 'AUTHORITY CASES · ' + rows.length, 'FINAL');
+  const { content, blk } = fr;
+  if (!rows.length) content.appendChild(blk('div', '', 'No FINAL DISPUTE yet.', 'EMPTY'));
+  rows.forEach(d => {
+    const e = blk('div', 'zzzfin-item', `CASE #${d.id} · record #${d.entry_id} · project ${d.project_number || '-'} · ${d.project_name || '-'} · owner ${d.project_owner || '-'} · FINAL f${d.f_no} · withdrawn by ${d.opened_by} · task row ${d.task_value_id || '-'} · ${zzz5w8_fmt_time(Date.parse(d.opened_at || '') || Date.now())} · ${d.closed_at ? 'RESOLVED (' + (d.closed_how || '') + ')' : 'OPEN'}`, 'CASE');
+    e.setAttribute('data-vf', JSON.stringify({ CATEGORY: 'dispute', STATUS: d.closed_at ? 'closed' : 'open', PROJECT: String(d.project_number || '') }));
+    e.setAttribute('data-vt', String(Date.parse(d.opened_at || '') || 0));
     content.appendChild(e);
   });
   fr.sw.appendChild(fr.copyAll());
@@ -31174,7 +31212,8 @@ const ZZZ_RDR_PRESETS = {
 
   'MY FINAL CONSENTS': [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'FINAL NOW', snap: { 'on:final': true, sort: 'new' } },
     { name: 'PERMANENT', snap: { 'limit:PROJECT CATEGORY': 'permanent', sort: 'new' } }, { name: 'REVOKES', snap: { 'limit:PROJECT CATEGORY': 'revoke', sort: 'new' } },
-    { name: 'AUTO', snap: { 'limit:PROJECT CATEGORY': 'auto', sort: 'new' } }],
+    { name: 'AUTO', snap: { 'limit:PROJECT CATEGORY': 'auto', sort: 'new' } }, { name: 'DISPUTES', snap: { 'limit:PROJECT CATEGORY': 'dispute', sort: 'new' } }],
+  'AUTHORITY CASES': [{ name: 'OPEN', snap: { show: 'OPEN', sort: 'new' }, def: true }, { name: 'ALL · NEWEST', snap: { sort: 'new' } }, { name: 'RESOLVED', snap: { show: 'RESOLVED', sort: 'new' } }],
   'MEDIA CENTER': [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'UNREAD', snap: { 'on:open': true, sort: 'new' } }, { name: 'READ', snap: { 'on:done': true, sort: 'new' } }]
 };
 function zzz_rdr_place_key(root) { return String(root || '').replace(/\s+#\d+.*$/, '').split(' › ')[0].trim().toUpperCase() || 'READER'; }
@@ -53913,7 +53952,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-16 03:52';
+const VERSO_BUILD = '2026-11-16 14:54';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
