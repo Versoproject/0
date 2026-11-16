@@ -7496,6 +7496,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-grip.is-swipe > i { width: 120px; opacity: 1; }
   
   .zzz-media-win.is-feeding .zzz-media-tab:not(.is-actual), .zzz-media-win.is-feeding .zzz-media-row.is-folder { outline: 2px dashed #D4AF37; outline-offset: 1px; }
+  .zzz-media-win.is-commsrc { outline: 2px solid #22c55e; outline-offset: -2px; } .zzz-media-win.is-commsrc .zzz-media-tabs, .zzz-media-win.is-commsrc .zzz-media-tools, .zzz-media-win.is-commsrc .zzz-media-tagbar { display: none !important; }   
+  .zzz-media-srcline { margin: 2px 0 4px; padding: 3px 8px; border-radius: 8px; background: #0e3b2e; color: #fff; font-size: 12px; font-weight: 700; }
   .zzz-pls-card { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; border: 1.5px solid #D4AF37; border-radius: 10px; padding: 5px 8px; background: #1a1607; }   
   .zzz-pls-card > b { color: #D4AF37; } .zzz-pls-links { flex-basis: 100%; white-space: pre-wrap; word-break: break-all; font-size: 11px; color: #bbb; }
   .zzz-pls-mini { padding: 0 4px; margin: 0 1px; }
@@ -15137,6 +15139,7 @@ const ZZZ1CN_NOTIFY_KEYS = { owner: 'notify_owner', delegate: 'notify_delegate',
 
 const ZZZ1CN_SETUP_DEF = {
   contacts: 'owner', chats: 'owner', tags: 'owner', private: 'all', copy: 'all',
+  media: 'owner',
   lines: 'private',
 
   blocked: 'owner',
@@ -15160,6 +15163,7 @@ function zzz1cn_setup_parse(raw) {
     }
     if (/^notify_(owner|delegate|users)$/.test(k)) { if (v === 'all' || v === 'mentions') out[k] = v; return; }
     if (k === 'lines') { if (v === 'private' || v === 'open') out.lines = v; return; }
+    if (k === 'media') { if (ZZZ1CN_LEVELS.indexOf(v) >= 0) out.media = v; return; }
     if ((k === 'contacts' || k === 'chats' || k === 'tags' || k === 'private' || k === 'copy')
         && ZZZ1CN_LEVELS.indexOf(v) >= 0) out[k] = v;
   });
@@ -15168,7 +15172,7 @@ function zzz1cn_setup_parse(raw) {
 function zzz1cn_setup_build(s) {
   const v = Object.assign({}, ZZZ1CN_SETUP_DEF, s || {});
   return `contacts:${v.contacts}, chats:${v.chats}, tags:${v.tags}, private:${v.private}, copy:${v.copy}, `
-       + `notify_owner:${v.notify_owner}, notify_delegate:${v.notify_delegate}, notify_users:${v.notify_users}, lines:${v.lines === 'open' ? 'open' : 'private'}`;
+       + `notify_owner:${v.notify_owner}, notify_delegate:${v.notify_delegate}, notify_users:${v.notify_users}, lines:${v.lines === 'open' ? 'open' : 'private'}, media:${ZZZ1CN_LEVELS.indexOf(v.media) >= 0 ? v.media : 'owner'}`;
 }
 
 function zzz1cn_role_of(entryKey, name) {
@@ -15545,6 +15549,18 @@ function zzz1cn_open_comm_setup(host, api) {
       b._p = paint; rw.appendChild(b); };
     mk('private', '\uD83D\uDD12 PRIVATE'); mk('open', '\uD83C\uDF10 OPEN \u00b7 REPLY / DISCUSS');
     const nt = document.createElement('span'); nt.textContent = own ? '(others reply without being contacts; one line: hold its 💬)' : '(only the owner changes it)'; rw.appendChild(nt);
+    win.appendChild(rw); } catch (e) {}
+
+  try { const key = api && api.key ? api.key() : ''; const own = api && api.isOwner ? api.isOwner() : false;
+    const rw = document.createElement('div'); rw.className = 'zzz1cn-setup-lines'; rw.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 8px;font-size:11px;color:#9CA3AF';
+    const lb = document.createElement('span'); lb.textContent = 'MEDIA (MC):'; lb.style.fontWeight = '800'; rw.appendChild(lb);
+    const cur = () => { const m = (api && api.setup ? (api.setup() || {}).media : 'owner'); return ZZZ1CN_LEVELS.indexOf(m) >= 0 ? m : 'owner'; };
+    const mk = (v, t) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-tagchip'; b.textContent = t; b.disabled = !own;
+      const paint = () => b.classList.toggle('is-on', cur() === v); paint();
+      b.addEventListener('click', (e) => { e.stopPropagation(); if (!own) return; Promise.resolve(zzz1cn_setup_set(key, { media: v })).then(() => { rw.querySelectorAll('button').forEach(x => x._p && x._p()); }); setTimeout(() => rw.querySelectorAll('button').forEach(x => x._p && x._p()), 300); });
+      b._p = paint; rw.appendChild(b); };
+    mk('owner', '\uD83D\uDD12 OWNER'); mk('delegate', 'DELEGATE'); mk('all', '\uD83D\uDC65 ALL');
+    const nt = document.createElement('span'); nt.textContent = own ? '(who may play this record\u2019s media in MEDIA CENTER)' : '(only the owner changes it)'; rw.appendChild(nt);
     win.appendChild(rw); } catch (e) {}
 
   let setupLastTap = 0;
@@ -29848,7 +29864,7 @@ function zzz_ms_drop_zone(x, y) { const h = document.getElementById('zzzMsHandle
 function zzz_ms_els() {
   return (typeof zzz5w5cm_tab_list === 'function' ? zzz5w5cm_tab_list(ZZZ_MS_KEY) : []).filter(it => it.sourceEntryId).map(it => { const f = it.fields || {}, id = String(it.sourceEntryId);
     const own = (typeof zzz5w5cmMyTagByEntry !== 'undefined' && zzz5w5cmMyTagByEntry || {})[id] || '';
-    return { id, label: '#' + id + (String(f.r3 || '').trim() ? ' ' + String(f.r3).trim() : '') + (String(f.r4 || '').trim() ? ' · ' + String(f.r4).trim() : '') + (own ? ' · ' + own : ''), it }; });
+    return { id, owner: String(f.r4 || '').trim(), label: '#' + id + (String(f.r3 || '').trim() ? ' ' + String(f.r3).trim() : '') + (String(f.r4 || '').trim() ? ' · ' + String(f.r4).trim() : '') + (own ? ' · ' + own : ''), it }; });
 }
 function zzz_ms_rows() {
   return zzz5w5cm_tab_list(ZZZ_MS_KEY).map(it => {
@@ -53848,7 +53864,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-16 02:36';
+const VERSO_BUILD = '2026-11-16 02:47';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -58054,12 +58070,27 @@ async function zzz_media_notif_open(presetName) {
 function zzz_media_src_el() { try { const v = JSON.parse(localStorage.getItem(zzz_ukey('zzz_media_src_el')) || 'null'); return v && v.id ? v : null; } catch (e) { return null; } }
 function zzz_media_src_comm() { try { return localStorage.getItem(zzz_ukey('zzz_media_src_on')) === 'comm' && !!zzz_media_src_el(); } catch (e) { return false; } }
 function zzz_media_src_set(comm, el) {
-  try { if (el) localStorage.setItem(zzz_ukey('zzz_media_src_el'), JSON.stringify({ id: String(el.id), label: el.label || ('#' + el.id) })); localStorage.setItem(zzz_ukey('zzz_media_src_on'), comm ? 'comm' : 'my'); } catch (e) {}
+  try { if (el) localStorage.setItem(zzz_ukey('zzz_media_src_el'), JSON.stringify({ id: String(el.id), label: el.label || ('#' + el.id), owner: el.owner || '' })); localStorage.setItem(zzz_ukey('zzz_media_src_on'), comm ? 'comm' : 'my'); } catch (e) {}
   zzzMedia.commAt = 0; if (comm) { zzzMedia.tab = 'ACTUAL'; zzzMedia.pls = ''; zzzMedia.view = 'rows'; }
   try { zzz_media_chip_paint(); zzz_media_redraw(); } catch (e) {}
 }
+function zzz_media_comm_allowed(el) {
+  try {
+    const me = zzz10v1_normalize(zzz0r1_get_current_username() || ''), id = String(el.id);
+    let owner = el.owner || ''; if (!owner) { try { const r = zzz6f29_entry_row_of(id); owner = (r && (r.username || (r.fields && r.fields.r4))) || ''; } catch (x) {} }
+    if (owner && zzz10v1_normalize(owner) === me) return true;
+    const lvl = (zzz1cn_setup_get(id) || {}).media || 'owner';
+    if (lvl === 'all') return true;
+    if (lvl === 'delegate') return !!zzz1cn_is_delegate(id);
+    return false;
+  } catch (e) { return false; }
+}
 async function zzz_media_comm_load(force) {
   const el = zzz_media_src_el(); if (!el) { zzzMedia.comm = []; return []; }
+
+  try { await zzz1cn_openadd_load(String(el.id)); } catch (x) {}
+  if (!zzz_media_comm_allowed(el)) { zzzMedia.comm = []; zzzMedia.commDenied = true; zzzMedia.commAt = Date.now(); zzzMedia.commId = el.id; return []; }
+  zzzMedia.commDenied = false;
   if (!force && zzzMedia.commAt && zzzMedia.commId === el.id && Date.now() - zzzMedia.commAt < 60000) return zzzMedia.comm || [];
   zzzMedia.commAt = Date.now(); zzzMedia.commId = el.id;
   try {
@@ -58079,6 +58110,7 @@ async function zzz_media_comm_load(force) {
 function zzz_media_comm_rows(list, draw) {
   const el = zzz_media_src_el();
   const h = document.createElement('div'); h.className = 'zzz-media-row is-lab zzz-feed-head'; h.textContent = '💬 COMM MEDIA · ' + (el ? el.label : '') + ' · hold ⏯ = another EL / CL'; list.appendChild(h);
+  if (zzzMedia.commDenied && zzzMedia.commId === (el && el.id)) { const e = document.createElement('div'); e.className = 'zzz-media-empty'; e.textContent = 'The owner of this record has not allowed its media in MEDIA CENTER (COMM SETUP \u203a MEDIA). Ask him, or hold \u23EF = another record.'; list.appendChild(e); return; }
   if (!zzzMedia.commAt || zzzMedia.commId !== (el && el.id)) { zzz_media_comm_load().then(() => { try { draw(); } catch (e) {} }); const w = document.createElement('div'); w.className = 'zzz-media-empty'; w.textContent = 'loading the media of this record…'; list.appendChild(w); return; }
   const f = (zzzMedia.comm || []).filter(x => zzz_media_mode_fits(x));
   if (!f.length) { const e = document.createElement('div'); e.className = 'zzz-media-empty'; e.textContent = 'No media link in this record yet (in this 📡 mode).'; list.appendChild(e); return; }
@@ -60311,6 +60343,11 @@ async function zzz_media_open() {
         list.appendChild(r);
       });
     }
+
+    { const wv = document.getElementById('zzzMediaWin'); if (wv) { const cm = zzz_media_src_comm(); wv.classList.toggle('is-commsrc', cm); let sl = wv.querySelector('.zzz-media-srcline');
+        if (cm) { if (!sl) { sl = document.createElement('div'); sl.className = 'zzz-media-srcline'; const hd = wv.querySelector('.zzz-media-head'); if (hd) hd.after(sl); } const el0 = zzz_media_src_el(); sl.textContent = '\uD83D\uDCAC COMM MEDIA \u00b7 ' + (el0 ? el0.label : '') + ' \u00b7 \u23EF = back to MY MEDIA'; }
+        else if (sl) sl.remove(); } }
+    if (zzz_media_src_comm() && !actual) { zzzMedia.tab = 'ACTUAL'; zzzMedia.pls = ''; setTimeout(draw, 0); return; }
     if (actual && zzz_media_src_comm()) { try { zzz_media_comm_rows(list, draw); } catch (e) {} zzz_media_paint(); return; }
     if (actual) { try { zzz_feeder_rows(list, draw); } catch (e) {} }
 
