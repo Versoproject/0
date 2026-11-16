@@ -7496,6 +7496,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-grip.is-swipe > i { width: 120px; opacity: 1; }
   
   .zzz-media-win.is-feeding .zzz-media-tab:not(.is-actual), .zzz-media-win.is-feeding .zzz-media-row.is-folder { outline: 2px dashed #D4AF37; outline-offset: 1px; }
+  .zzz-pls-card { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; border: 1.5px solid #D4AF37; border-radius: 10px; padding: 5px 8px; background: #1a1607; }   
+  .zzz-pls-card > b { color: #D4AF37; } .zzz-pls-links { flex-basis: 100%; white-space: pre-wrap; word-break: break-all; font-size: 11px; color: #bbb; }
+  .zzz-pls-mini { padding: 0 4px; margin: 0 1px; }
   .zzz-media-cs { margin: 0 4px; padding: 1px 7px; font-size: 11px; font-weight: 800; border: 1px solid #D4AF37; border-radius: 10px; background: #1a1a1a; color: #D4AF37; vertical-align: middle; }   
   .zzz-media-chipb.is-comm { background: #0e3b2e !important; color: #fff !important; }   
   .zzz-media-paste.is-feed-on { outline: 3px solid #22c55e !important; border-radius: 12px; }   
@@ -41391,9 +41394,46 @@ async function zzz6f58_pair_entry(name) {
 
 const ZZZ6F58_RE_ANY = /(^|[\s(\[{.,;:!?"'])([@&])([\p{L}\p{M}\p{N}_.\-]{2,40})/gu;
 
+const ZZZ_PLS_SHARE_RE = /^\s*🗂️?\s*PL\s+([^\n·]+?)\s*(?:·[^\n]*)?\n/;
+async function zzz_media_pls_share(name, items) {
+  const links = (items || []).map(x => x && x.link).filter(l => /^https?:\/\//i.test(l || '')).slice(0, 60);
+  if (!links.length) { zzz6f2_show_toast('This playlist has no web link to share (phone files stay on your phone).', 'info'); return; }
+  const text = '🗂️ PL ' + name + ' · ' + links.length + ' media\n' + links.join('\n');
+  try { await zzz_copy_text_to_clipboard_silent(text); } catch (e) {}
+  try { if (navigator.share) { await navigator.share({ title: '🗂️ PL ' + name, text }); return; } } catch (e) {}
+  zzz6f2_show_toast('🗂️ PL ' + name + ' copied - paste it into a Verso chat (or any app).', 'ok', 2600);
+}
+async function zzz_media_pls_receive(name, links, fromEntry) {
+  const nm = String(name || '').trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9áčďéíľĺňóôŕšťúýžä_-]+/g, '').slice(0, 40) || 'shared';
+  if (zzzMedia.loadedOf !== zzz_media_me()) await zzz_media_load();
+  const from = fromEntry ? 'from-' + String(fromEntry).replace(/[^0-9a-z_-]/gi, '') : '';
+  let n = 0;
+  for (const l0 of links.slice(0, 60)) {
+    let l = l0; try { l = zzz_media_norm(l0); } catch (e) {}
+    if (!zzz_media_is_mediaish(l)) continue;
+    const had = zzz_media_line({ link: l });
+    try { if (had) { const w = zzz_media_tagw(had.tags); const add = ['pls:' + nm].concat(from ? [from] : []).filter(t => w.indexOf(t) < 0); if (add.length) await zzz_media_set_tags(had, w.concat(add)); }
+      else await zzz_media_add(l, '', ['pls:' + nm].concat(from ? [from] : []).join(' ')); n++; } catch (e) {}
+  }
+  await zzz_media_load();
+  if (!n) { zzz6f2_show_toast('No medium in this playlist could be saved.', 'warn'); return false; }
+  await zzz_media_pls_to_actual(nm);
+  return true;
+}
 function zzz_media_chat_linkify(el, n) {
   if (!el || typeof zzz_media_is_mediaish !== 'function') return;
   const RE = /https?:\/\/[^\s<>"']+/g;
+  { const t0 = String(el.textContent || ''), pm = t0.match(ZZZ_PLS_SHARE_RE);
+    if (pm) { const links = (t0.match(RE) || []).map(x => x.replace(/[).,;!?]+$/, ''));
+      const card = document.createElement('div'); card.className = 'zzz-pls-card';
+      const tl = document.createElement('b'); tl.textContent = '\uD83D\uDDC2\uFE0F PL ' + pm[1].trim() + ' \u00b7 ' + links.length; card.appendChild(tl);
+      const go = document.createElement('button'); go.type = 'button'; go.className = 'zzz-media-cs'; go.textContent = '\u2934 ACTUAL'; go.title = 'The playlist into YOUR ACTUAL as one 🗂️ row';
+      go.addEventListener('click', async (e) => { e.stopPropagation(); e.preventDefault(); go.disabled = true; if (await zzz_media_pls_receive(pm[1], links, n && (n.entry_key || n.entry_id))) go.textContent = '\u2713 ACTUAL'; go.disabled = false; });
+      card.appendChild(go);
+      const more = document.createElement('button'); more.type = 'button'; more.className = 'zzz-media-cs'; more.textContent = '\u25BE'; more.title = 'Show / hide its links';
+      const lst = document.createElement('div'); lst.className = 'zzz-pls-links'; lst.hidden = true; lst.textContent = links.join('\n');
+      more.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); lst.hidden = !lst.hidden; }); card.appendChild(more); card.appendChild(lst);
+      el.textContent = ''; el.appendChild(card); return; } }
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null); const todo = []; let node;
   while ((node = walker.nextNode())) { if (node.parentElement && node.parentElement.closest('.zzz-media-cs')) continue; RE.lastIndex = 0; if (RE.test(node.nodeValue)) todo.push(node); }
   todo.forEach(tn => {
@@ -53808,7 +53848,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-16 02:27';
+const VERSO_BUILD = '2026-11-16 02:36';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -60201,8 +60241,12 @@ async function zzz_media_open() {
         const allPub = members.length && members.every(x => x.pub);
         const pp = cell(r, allPub ? '\uD83C\uDF10' : '\uD83D\uDD12'); pp.className = 'zzz-media-fb'; pp.title = 'Tap = the whole playlist ' + (allPub ? 'PRIVATE' : 'PUBLIC');
         pp.addEventListener('click', async (e) => { e.stopPropagation(); if (!members.length) return; let n = 0; for (const x of members) if (await zzz_media_set_public(x, !allPub)) n++; zzz6f2_show_toast('Playlist ' + pl.name + ': ' + n + (allPub ? ' private' : ' public'), 'info'); draw(); });
-        { const ac = cell(r, '\u2934A'); ac.className = 'zzz-media-starcell zzz-media-fb'; ac.title = 'Into ACTUAL (one row there, tap = open)';
-          ac.addEventListener('click', async (ev) => { ev.stopPropagation(); if (await zzz_media_pls_to_actual(pl.name)) draw(); }); }
+        { const ac = cell(r, ''); ac.className = 'zzz-media-starcell';
+          const a1 = document.createElement('button'); a1.type = 'button'; a1.className = 'zzz-media-fb zzz-pls-mini'; a1.textContent = '\u2934A'; a1.title = 'Into ACTUAL (one row there, tap = open)';
+          a1.addEventListener('click', async (ev) => { ev.stopPropagation(); if (await zzz_media_pls_to_actual(pl.name)) draw(); });
+          const a2 = document.createElement('button'); a2.type = 'button'; a2.className = 'zzz-media-fb zzz-pls-mini'; a2.textContent = '\u21EA'; a2.title = 'SHARE the playlist (a Verso chat or any app)';
+          a2.addEventListener('click', (ev) => { ev.stopPropagation(); zzz_media_pls_share(pl.name, pl.items); });
+          ac.append(a1, a2); }
         { const cc = cell(r, ''); cc.className = 'zzz-media-elcell'; cc.appendChild(zzz_media_el_chip('pls', pl.name)); }
         if (zzzMedia.selPls && zzzMedia.selPls.has(pl.name)) r.classList.add('is-sel');
         r.addEventListener('click', () => {
@@ -60238,7 +60282,8 @@ async function zzz_media_open() {
         const r = document.createElement('div'); r.className = 'zzz-media-row is-folder is-gold'; r.dataset.orgPls = pl.name;
         cell(r, '\uD83D\uDDC2\uFE0F'); cell(r, pl.name); cell(r, pl.items.length + (pl.items.length === 1 ? ' row' : ' rows') + (pl.off ? ' \u00b7 +' + pl.off + ' \uD83D\uDCC1 ' + (zzz_media_offline() ? 'online' : 'offline') : ''));
         const pb = cell(r, '\u25B6\uFE0E'); pb.className = 'zzz-media-pl'; cell(r, '\u203A');
-        cell(r, '').className = 'zzz-media-starcell';
+        { const sh = cell(r, '\u21EA'); sh.className = 'zzz-media-starcell zzz-media-fb'; sh.title = 'SHARE the playlist (a Verso chat or any app)';
+          sh.addEventListener('click', (ev) => { ev.stopPropagation(); zzz_media_pls_share(pl.name, pl.items); }); }
         { const cc = cell(r, ''); cc.className = 'zzz-media-elcell'; cc.appendChild(zzz_media_el_chip('pls', pl.name)); }
 
         { const def = (zzzMedia.plsDefs || []).find(d => d.plsDef.toLowerCase() === pl.name.toLowerCase()); const target = def || pl.items[0];
