@@ -8975,6 +8975,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-wl-btn.is-on { background: #D4AF37; color: #111; border-color: #D4AF37; }
   .zzz-wl-x[hidden], .zzz-wl-priv[hidden] { display: none; }
   .zzz-wl-btn.is-red { background: #b91c1c; color: #fff; border-color: #ef4444; }
+  /* [Zzz10-M8:LIVE] */
+  .zzz-live-bar { position: fixed; top: 4px; left: 50%; transform: translateX(-50%); z-index: 99990; display: flex; gap: 6px; align-items: center; background: #b91c1c; color: #fff; border-radius: 10px; padding: 3px 8px; font-size: 11px; box-shadow: 0 2px 10px rgba(0,0,0,.5); }
+  .zzz-live-bar button { background: #111; color: #D4AF37; border: 1px solid #D4AF37; border-radius: 6px; font-size: 10px; padding: 1px 6px; }
 </style>
 
 <style>
@@ -22320,6 +22323,7 @@ function zzz6f7_set_login_state(isLoggedIn) {
 
   if (isLoggedIn) { try { zzz6f40_load_fixes(); } catch (e) {} try { zzz5t0_tabs_load(); } catch (e) {} }
   if (isLoggedIn) setTimeout(() => { try { if (typeof zzz_rs_restore === 'function') zzz_rs_restore(); } catch (e) {} }, 1200);
+  if (isLoggedIn) setTimeout(() => { try { if (typeof zzz_live_open_pull === 'function') zzz_live_open_pull(); } catch (e) {} }, 2500);
   if (typeof zzz_recompute_logo_status === 'function') zzz_recompute_logo_status();
   try { if (typeof window.zzz_ring_sync === 'function') window.zzz_ring_sync(); } catch (e) {}
 }
@@ -30175,10 +30179,11 @@ function zzz_wl_paint_now() {
   const pv = document.getElementById('zzzWlPriv'), inp = document.getElementById('zzzWlInput'), x = document.getElementById('zzzWlX');
   if (pv) {
     // [Zzz10-M7:MODES] the lock is shown only while a mode is on (red); off = nothing to see
-    const rm = zzz_mode_remote(), on = !rm && zzz_ext_private();
-    pv.hidden = !(rm || on); pv.classList.remove('is-on'); pv.classList.toggle('is-red', rm || on);
-    pv.textContent = rm ? '📡' : '🔒';
-    pv.title = rm ? 'REMOTE ACCESS as ' + ((zzz_remote_state() || {}).users || '') + ' - tap / Ctrl + R + command = end' : 'PRIVATE on - tap = off';
+    const rs = zzz_remote_state(), on = !rs && zzz_ext_private(), op = zzz_live_open_cached(), lv = !!(typeof zzzLive !== 'undefined' && zzzLive.ch);
+    const parts = []; if (rs) parts.push(rs.kind === 'access' ? '🔗' : '👁'); if (on) parts.push('🔒'); if (op) parts.push('📡'); if (lv) parts.push('●');
+    pv.hidden = !parts.length; pv.classList.remove('is-on'); pv.classList.toggle('is-red', !!parts.length);
+    pv.textContent = parts.join('');
+    pv.title = [rs ? (rs.kind === 'access' ? 'ACCESS active (from ' + rs.users + ') - tap / Ctrl + A = end' : 'PREVIEW AS ' + rs.users + ' - tap = end') : '', on ? 'PRIVATE on - tap = off' : '', op ? 'REMOTE ACCESS open - Ctrl + R = close' : '', lv ? 'LIVE session - Ctrl + L' : ''].filter(Boolean).join(' · ');
   }
   if (x && inp) x.hidden = !inp.value;
 }
@@ -30202,7 +30207,7 @@ async function zzz_wl_go(watch) {
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); zzz_wl_go(false); } if (e.key === 'Escape') { inp.value = ''; zzz_wl_paint(); inp.blur(); } });
     const x = document.getElementById('zzzWlX'); if (x) x.addEventListener('click', (e) => { e.stopPropagation(); inp.value = ''; zzz_wl_paint(); inp.focus(); });
     const eye = document.getElementById('zzzWlEye'); if (eye) eye.addEventListener('click', (e) => { e.stopPropagation(); zzz_wl_go(true); });
-    const pv = document.getElementById('zzzWlPriv'); if (pv) pv.addEventListener('click', (e) => { e.stopPropagation(); zzz_modes_hotkey(zzz_mode_remote() ? 'remote' : 'private'); });
+    const pv = document.getElementById('zzzWlPriv'); if (pv) pv.addEventListener('click', (e) => { e.stopPropagation(); const rs = zzz_remote_state(); if (rs) zzz_modes_hotkey(rs.kind === 'access' ? 'access' : 'remote'); else if (zzz_ext_private()) zzz_modes_hotkey('private'); else if (typeof zzzLive !== 'undefined' && zzzLive.ch) zzz_live_pick(); else if (zzz_live_open_cached()) zzz_modes_hotkey('remote'); });
     setTimeout(() => { try { zzz_wl_paint(); } catch (e) {} }, 0);
     return true;
   };
@@ -30263,23 +30268,31 @@ function zzz_remote_wrap(client) {
     };
   } });
 }
-async function zzz_remote_start(users) {
+async function zzz_remote_start(users, kind, list) {
   const L = String(users || '').split(',').map(x => x.trim()).filter(Boolean);
-  if (!L.length) { zzz6f2_show_toast('Write who REMOTE ACCESS shows Verso as - SETTINGS › Advanced setup › MODES.', 'warn', 3200); return false; }
+  if (!L.length) { zzz6f2_show_toast('Write who PREVIEW AS shows Verso as - SETTINGS › Advanced setup › MODES.', 'warn', 3200); return false; }
   const all = new Set();
+  if (kind === 'access') {   // [Zzz10-M8:LIVE] the guest's own access: the records shared with him (server already checked rights + open)
+    (list || []).forEach(x => all.add(Number(x.entry_id)));
+    try { localStorage.setItem(zzz_ukey('zzz_mode_remote'), JSON.stringify({ kind: 'access', users: L.join(','), ids: Array.from(all), list: list || [], at: Date.now() })); } catch (e) { return false; }
+    zzz6f2_show_toast('🔗 ACCESS active - ' + all.size + ' shared record(s) from ' + L.join(', ') + '. Ctrl + L = LIVE. Verso opens again…', 'info', 2800);
+    setTimeout(() => { try { location.reload(); } catch (e) {} }, 1300);
+    return true;
+  }
   for (const u of L) {
     const { data, error } = await sb.rpc('verso_remote_visible_ids', { p_guest: u });
     if (error) { zzz_user_error('REMOTE ACCESS could not start - check the connection.', error, '[Zzz10-M7:REMOTE-VIEW-AS]'); return false; }
     (data || []).forEach(i => all.add(Number(i)));
   }
-  try { localStorage.setItem(zzz_ukey('zzz_mode_remote'), JSON.stringify({ users: L.join(','), ids: Array.from(all), at: Date.now() })); } catch (e) { return false; }
-  zzz6f2_show_toast('📡 REMOTE ACCESS as ' + L.join(', ') + ' - ' + all.size + ' record(s). Verso opens again…', 'info', 2600);
+  try { localStorage.setItem(zzz_ukey('zzz_mode_remote'), JSON.stringify({ kind: 'preview', users: L.join(','), ids: Array.from(all), at: Date.now() })); } catch (e) { return false; }
+  try { zzz_live_log('preview', null, null, { as: L.join(',') }); } catch (e) {}
+  zzz6f2_show_toast('👁 PREVIEW AS ' + L.join(', ') + ' - ' + all.size + ' record(s). Verso opens again…', 'info', 2600);
   setTimeout(() => { try { location.reload(); } catch (e) {} }, 1200);
   return true;
 }
 function zzz_remote_end() {
   try { localStorage.removeItem(zzz_ukey('zzz_mode_remote')); } catch (e) {}
-  zzz6f2_show_toast('REMOTE ACCESS off - Verso opens again…', 'info', 2000);
+  zzz6f2_show_toast('Back to your full Verso - opens again…', 'info', 2000);
   setTimeout(() => { try { location.reload(); } catch (e) {} }, 900);
 }
 function zzz_mode_pass(tags) {
@@ -30300,42 +30313,71 @@ async function zzz_modes_call(payload) {
 }
 function zzz_modes_why(r) {
   const x = (r && r.reason) || '';
-  return ({ no_session: 'Log in to Verso first.', not_set: 'No command yet - SETTINGS › Advanced setup › MODES.', wrong_command: 'Wrong command' + (r.attemptsLeft != null ? ' (' + r.attemptsLeft + ' left)' : '') + '.',
-    locked: 'Locked for ' + ((r && r.minutes) || 15) + ' min (too many wrong tries).', wrong_mv_phrase: 'Wrong MV PHRASE' + (r.attemptsLeft != null ? ' (' + r.attemptsLeft + ' left)' : '') + '.',
-    no_remote_users: 'Write first who REMOTE ACCESS shows Verso as (SETTINGS › Advanced setup › MODES).', self_user: 'REMOTE ACCESS user must be somebody else than you.',
+  return ({ no_session: 'Log in to Verso first.', not_set: 'No command yet - SETTINGS › Advanced setup › MODES.', wrong_command: 'Wrong command' + (r && r.attemptsLeft != null ? ' (' + r.attemptsLeft + ' left)' : '') + '.',
+    locked: 'Locked for ' + ((r && r.minutes) || 15) + ' min (too many wrong tries).', wrong_mv_phrase: 'Wrong MV PHRASE' + (r && r.attemptsLeft != null ? ' (' + r.attemptsLeft + ' left)' : '') + '.',
+    no_remote_users: 'Write first who PREVIEW AS shows Verso as (SETTINGS › Advanced setup › MODES).', self_user: 'That user must be somebody else than you.',
     mv_phrase_not_set: 'Set your MV PHRASE first (Login setup › CHANGE PASSWORD).', command_length: 'A command has 3 - 40 characters.', same_commands: 'PRIVATE and REMOTE need different commands.',
+    no_record: 'No such record (or you do not see it).', guest_no_rights: 'That user has no right to this record (USER / consent / COMM SETUP) - share only what he may see.', bad_user: 'Write a username (not yours).',
     network: 'No connection - try again.' })[x] || ('Not done (' + (x || 'error') + ').');
 }
-async function zzz_modes_set(mode, on) {
-  if (mode === 'private') { const cur = Object.assign({}, zzz_ext()); cur.private = on ? 'on' : 'off'; await zzz_ext_save(cur); }
-  else { zzz_haptic_pulse(on ? 60 : 30); if (on) await zzz_remote_start(arguments[2]); else zzz_remote_end(); return; }
+
+// ---- [Zzz10-M8:LIVE] state of this device
+// remote state kinds: 'access' = I (guest) activated what owners shared with me · 'preview' = PREVIEW AS on my own device. Both read only (zzz_remote_wrap).
+function zzz_live_open_cached() { try { return localStorage.getItem(zzz_ukey('zzz_live_open')) === '1'; } catch (e) { return false; } }
+async function zzz_live_open_pull() {
+  try { const { data, error } = await sb.rpc('verso_live_my_shares'); if (error) throw error; const on = !!(data && data.open); try { localStorage.setItem(zzz_ukey('zzz_live_open'), on ? '1' : '0'); } catch (e) {} zzz_wl_paint(); return data; } catch (e) { return null; }
+}
+async function zzz_live_log(kind, owner, entry, details) { try { await sb.rpc('verso_live_log_add', { p_kind: kind, p_owner: owner || null, p_entry: entry || null, p_details: details || {} }); } catch (e) {} }
+
+async function zzz_modes_set(mode, on, extra) {
   zzz_haptic_pulse(on ? 60 : 30);
-  zzz6f2_show_toast(mode === 'private' ? (on ? '🔒 PRIVATE on - private pages open, everything via IP SHIELD. Tap the red 🔒 to end.' : 'PRIVATE off.') : (on ? '📡 REMOTE ACCESS on - only pages marked 📡 are seen, settings closed.' : 'REMOTE ACCESS off.'), 'info', 3200);
-  if (on && mode === 'remote') { try { const ws = document.querySelector('#versoWorkspaceSection .settings-workspace'); if (ws) { const x = document.querySelector('#versoWorkspaceSection .zzz5w5cm-close, #versoWorkspaceSection .entry-modal-close'); if (x) x.click(); } } catch (e) {} }
-  zzz_modes_after();
+  if (mode === 'private') {
+    const cur = Object.assign({}, zzz_ext()); cur.private = on ? 'on' : 'off'; await zzz_ext_save(cur);
+    zzz6f2_show_toast(on ? '🔒 PRIVATE on - private pages open, everything via IP SHIELD. Red 🔒 / Ctrl + S = end.' : 'PRIVATE off.', 'info', 3200);
+    zzz_modes_after(); return;
+  }
+  if (mode === 'remote') {   // owner: open / close REMOTE ACCESS for the shares in SETTINGS
+    const { error } = await sb.rpc('verso_live_set_open', { p_open: !!on });
+    if (error) { zzz_user_error('REMOTE ACCESS was not changed - check the connection.', error, '[Zzz10-M8:LIVE]'); return; }
+    try { localStorage.setItem(zzz_ukey('zzz_live_open'), on ? '1' : '0'); } catch (e) {}
+    if (!on) zzz_live_leave(true);
+    zzz6f2_show_toast(on ? '📡 REMOTE ACCESS OPEN - the users in SETTINGS › MODES can activate what you shared (Ctrl + A on their device).' : 'REMOTE ACCESS CLOSED - nobody can activate your shares.', 'info', 3600);
+    zzz_wl_paint(); return;
+  }
+  if (mode === 'access') {   // guest: activate / deactivate what is shared with me (read only)
+    if (!on) { zzz_live_leave(true); zzz_live_log('deactivate'); zzz_remote_end(); return; }
+    let list = []; try { const { data, error } = await sb.rpc('verso_live_my_access'); if (error) throw error; list = data || []; } catch (e) { zzz_user_error('ACCESS could not start - check the connection.', e, '[Zzz10-M8:LIVE]'); return; }
+    if (!list.length) { zzz6f2_show_toast('Nothing to activate - nobody shared a record with you, or REMOTE ACCESS of the owner is closed.', 'info', 3600); return; }
+    zzz_live_log('activate', null, null, { n: list.length });
+    zzz_remote_start(Array.from(new Set(list.map(x => x.owner))).join(','), 'access', list);
+    return;
+  }
+  if (mode === 'preview') { if (on) zzz_remote_start(extra, 'preview'); else zzz_remote_end(); }
 }
 // the command window: secret input (Verso keyboard), closes by itself after 10 s
-function zzz_modes_prompt(mode, ending) {
+function zzz_modes_prompt(mode, ending, opts) {
+  opts = opts || {};
   if (document.querySelector('.zzz-modes-ask')) return;
   const o = document.createElement('div'); o.className = 'zzz-media-confirm zzz-modes-ask'; o.setAttribute('data-zzz-nodraft', '1');
   const b = document.createElement('div'); b.className = 'zzz-media-confirm-box';
-  const t = document.createElement('div'); t.className = 'zzz-media-confirm-text'; t.textContent = mode === 'private' ? '🔒 PRIVATE' : (ending ? '📡 END REMOTE ACCESS' : '📡 REMOTE ACCESS'); b.appendChild(t);
+  const titles = { private: '🔒 PRIVATE', remote: ending ? '📡 CLOSE REMOTE ACCESS' : '📡 OPEN REMOTE ACCESS', access: ending ? '🔗 DEACTIVATE ACCESS' : '🔗 ACTIVATE ACCESS', preview: ending ? '👁 END PREVIEW AS' : '👁 PREVIEW AS' };
+  const t = document.createElement('div'); t.className = 'zzz-media-confirm-text'; t.textContent = titles[mode] || mode; b.appendChild(t);
   let inp; try { inp = zzz_vkb_make_secret('zzzModesCmd', 'entry-cell zzz6f36-login-local-input', 'COMMAND', 'command'); } catch (e) { inp = document.createElement('input'); inp.type = 'password'; inp.className = 'entry-cell'; }
   inp.style.margin = '6px 0'; b.appendChild(inp);
   const st = document.createElement('div'); st.className = 'zzz-media-diss-s'; st.style.minHeight = '16px'; b.appendChild(st);
   const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
   const y = document.createElement('button'); y.type = 'button'; y.className = 'zzz-media-btn is-on'; y.textContent = 'OK';
   const n = document.createElement('button'); n.type = 'button'; n.className = 'zzz-media-btn'; n.textContent = 'CANCEL';
-  let left = 10; const tick = setInterval(() => { left--; n.textContent = 'CANCEL · ' + left; if (left <= 0) end(); }, 1000);
+  let left = 10; let tick = setInterval(() => { left--; n.textContent = 'CANCEL · ' + left; if (left <= 0) end(); }, 1000);
   function end() { clearInterval(tick); try { inp.value = ''; } catch (e) {} o.remove(); }
   n.addEventListener('click', end);
   const go = async () => {
     const cmd = String(inp.value || '').trim(); if (!cmd) { st.textContent = 'Write the command.'; return; }
     y.disabled = true; st.textContent = 'Checking…'; clearInterval(tick);
-    const r = await zzz_modes_call({ action: 'check', mode, cmd, ending: !!ending });
+    const r = await zzz_modes_call({ action: 'check', mode: mode === 'preview' ? 'remote' : mode, cmd, ending: !!ending, preview: mode === 'preview' });
     if (r && r.success) { end(); await zzz_modes_set(mode, !ending, r.remote_users); return; }
     y.disabled = false; st.textContent = zzz_modes_why(r); try { inp.value = ''; } catch (e) {}
-    left = 10; clearInterval(tick); setTimeout(() => { if (o.isConnected) end(); }, 10000);
+    left = 10; tick = setInterval(() => { left--; n.textContent = 'CANCEL · ' + left; if (left <= 0) end(); }, 1000);
   };
   y.addEventListener('click', go);
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
@@ -30344,47 +30386,170 @@ function zzz_modes_prompt(mode, ending) {
   document.body.appendChild(o);
   setTimeout(() => { try { inp.click(); inp.focus(); } catch (e) {} }, 80);
 }
+// S = PRIVATE · R = REMOTE ACCESS open / close (owner) · A = ACCESS activate / deactivate (guest) · L = LIVE session
 function zzz_modes_hotkey(mode) {
   try { if (!zzz_rs_me()) { zzz6f2_show_toast('Log in to Verso first.', 'info'); return; } } catch (e) { return; }
+  const rs = zzz_remote_state();
+  if (mode === 'live') { zzz_live_pick(); return; }
   if (mode === 'private') {
-    if (zzz_mode_remote()) { zzz6f2_show_toast('Not during REMOTE ACCESS.', 'warn'); return; }
+    if (rs) { zzz6f2_show_toast('Not during ' + (rs.kind === 'access' ? 'ACCESS' : 'PREVIEW AS') + '.', 'warn'); return; }
     if (zzz_ext_private()) { zzz_modes_set('private', false); return; }
     zzz_modes_prompt('private', false); return;
   }
-  zzz_modes_prompt('remote', zzz_mode_remote());
+  if (mode === 'access') {
+    if (rs && rs.kind !== 'access') { zzz_modes_prompt('preview', true); return; }
+    zzz_modes_prompt('access', !!rs); return;
+  }
+  // remote (owner)
+  if (rs) { zzz_modes_prompt(rs.kind === 'access' ? 'access' : 'preview', true); return; }
+  zzz_modes_prompt('remote', zzz_live_open_cached());
 }
-// computer keyboard: hold Ctrl + S / Ctrl + R about 1 s (a short press does nothing - also no browser save / reload)
+// hold 3 s: computer keyboard Ctrl + S / R / A / L (a short press does nothing; Ctrl + A in a text field still selects all)
 (function zzz_modes_keys() {
+  const MAP = { s: 'private', r: 'remote', a: 'access', l: 'live' };
   let t = null, k0 = '';
   document.addEventListener('keydown', (e) => {
     if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
-    const k = String(e.key || '').toLowerCase(); if (k !== 's' && k !== 'r') return;
-    e.preventDefault(); if (e.repeat || t) return;
-    k0 = k; t = setTimeout(() => { t = null; zzz_modes_hotkey(k0 === 's' ? 'private' : 'remote'); }, 900);
+    const k = String(e.key || '').toLowerCase(); if (!MAP[k]) return;
+    const inText = !!(e.target && e.target.closest && e.target.closest('input, textarea, [contenteditable="true"]'));
+    if (!(k === 'a' && inText)) e.preventDefault();
+    if (e.repeat || t) return;
+    k0 = k; t = setTimeout(() => { t = null; zzz_haptic_pulse(40); zzz_modes_hotkey(MAP[k0]); }, 3000);
   }, true);
   document.addEventListener('keyup', (e) => { const k = String(e.key || '').toLowerCase(); if (t && (k === k0 || k === 'control' || k === 'meta')) { clearTimeout(t); t = null; } }, true);
 })();
+// Verso keyboard: Ctrl + hold the letter 3 s
+function zzz_modes_vkb_hold(keyEl, ch) {
+  const MAP = { s: 'private', r: 'remote', a: 'access', l: 'live' };
+  const m = MAP[String(ch || '').toLowerCase()]; if (!m) return false;
+  clearTimeout(keyEl._zzzModeT);
+  keyEl._zzzModeT = setTimeout(() => { keyEl._zzzModeT = null; zzz_haptic_pulse(60); zzz_modes_hotkey(m); }, 3000);
+  const stop = () => { clearTimeout(keyEl._zzzModeT); keyEl._zzzModeT = null; ['pointerup', 'pointercancel', 'pointerleave'].forEach(x => keyEl.removeEventListener(x, stop)); };
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(x => keyEl.addEventListener(x, stop));
+  return true;
+}
+
+// ---- [Zzz10-M8:LIVE] one LIVE session at a time (Realtime presence + broadcast). The moderator decides which record is open; the others follow.
+// Shared are only record numbers (never the screen). Writes stay as they are (ACCESS = read only). Every join / leave / moderator change is logged.
+const zzzLive = { ch: null, owner: '', entry: 0, mod: '', people: [], allowed: [] };
+async function zzz_live_pick() {
+  const me = zzz_rs_me(); const rs = zzz_remote_state();
+  const items = [];
+  if (rs && rs.kind === 'access') (rs.list || []).forEach(x => items.push({ owner: x.owner, entry: Number(x.entry_id), title: x.title, who: 'from ' + x.owner }));
+  else {
+    const d = await zzz_live_open_pull();
+    if (d && d.open) { const by = {}; (d.shares || []).forEach(s => { const k = s.entry_id; (by[k] = by[k] || { owner: me, entry: Number(k), title: s.title, g: [] }).g.push(s.guest); }); Object.values(by).forEach(x => items.push({ owner: me, entry: x.entry, title: x.title, who: 'with ' + x.g.join(', ') })); }
+  }
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm'; o.setAttribute('data-zzz-nodraft', '1');
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzz-rs-setup'; o.appendChild(b);
+  const t = document.createElement('div'); t.className = 'zzz-media-confirm-text'; t.textContent = '● LIVE - choose the session'; b.appendChild(t);
+  if (!items.length) { const h = document.createElement('div'); h.className = 'zzz-rs-set-h'; h.textContent = rs ? 'Nothing activated.' : 'Nothing to go LIVE with: open REMOTE ACCESS (Ctrl + R) and share records in SETTINGS › Advanced setup › MODES, or activate what is shared with you (Ctrl + A).'; b.appendChild(h); }
+  items.forEach(x => {
+    const r = document.createElement('button'); r.type = 'button'; r.className = 'zzz14cs-feed-mode' + (zzzLive.ch && zzzLive.entry === x.entry && zzzLive.owner === x.owner ? ' is-on' : ''); r.style.display = 'block'; r.style.width = '100%'; r.style.textAlign = 'left'; r.style.margin = '3px 0';
+    r.textContent = '#' + x.entry + ' · ' + (x.title || '') + ' · ' + x.who;
+    r.addEventListener('click', () => { o.remove(); zzz_live_join(x.owner, x.entry); });
+    b.appendChild(r);
+  });
+  const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
+  if (zzzLive.ch) { const lv = document.createElement('button'); lv.type = 'button'; lv.className = 'zzz-media-btn'; lv.textContent = 'LEAVE LIVE'; lv.addEventListener('click', () => { o.remove(); zzz_live_leave(); }); row.appendChild(lv); }
+  const no = document.createElement('button'); no.type = 'button'; no.className = 'zzz-media-btn'; no.textContent = 'CLOSE'; no.addEventListener('click', () => o.remove()); row.appendChild(no);
+  b.appendChild(row); o.addEventListener('click', (e) => { if (e.target === o) o.remove(); }); document.body.appendChild(o);
+}
+function zzz_live_allowed(entry) {
+  const rs = zzz_remote_state();
+  if (rs && rs.kind === 'access') return (rs.ids || []).indexOf(Number(entry)) >= 0;
+  return true;   // the owner sees his own records
+}
+async function zzz_live_join(owner, entry) {
+  zzz_live_leave(true);
+  const me = zzz_rs_me();
+  const ch = sb.channel('verso-live-' + owner + '-' + entry, { config: { presence: { key: me }, broadcast: { self: false } } });
+  Object.assign(zzzLive, { ch, owner, entry: Number(entry), mod: owner, people: [], cur: Number(entry) });
+  ch.on('presence', { event: 'sync' }, () => { try { zzzLive.people = Object.keys(ch.presenceState() || {}); } catch (e) {} zzz_live_bar(); });
+  ch.on('broadcast', { event: 'open' }, ({ payload }) => { if (!payload || payload.by !== zzzLive.mod) return; zzzLive.cur = Number(payload.entry); if (zzz_live_allowed(payload.entry)) { try { zzz_rdr_open_raw(Number(payload.entry), { from: 'LIVE' }); } catch (e) {} } zzz_live_bar(); });
+  ch.on('broadcast', { event: 'mod' }, ({ payload }) => { if (!payload || payload.by !== zzzLive.mod) return; zzzLive.mod = payload.to; zzz_live_bar(); if (payload.to === me) zzz6f2_show_toast('● LIVE - you are the MODERATOR now.', 'info', 2400); });
+  ch.on('broadcast', { event: 'hello' }, () => { if (zzzLive.mod === me) ch.send({ type: 'broadcast', event: 'state', payload: { mod: zzzLive.mod, entry: zzzLive.cur, by: me } }); });
+  ch.on('broadcast', { event: 'state' }, ({ payload }) => { if (!payload) return; zzzLive.mod = payload.mod || zzzLive.mod; if (payload.entry && payload.entry !== zzzLive.cur) { zzzLive.cur = Number(payload.entry); if (zzz_live_allowed(payload.entry)) { try { zzz_rdr_open_raw(Number(payload.entry), { from: 'LIVE' }); } catch (e) {} } } zzz_live_bar(); });
+  ch.subscribe(async (status) => {
+    if (status !== 'SUBSCRIBED') return;
+    try { await ch.track({ u: me, at: Date.now() }); } catch (e) {}
+    try { ch.send({ type: 'broadcast', event: 'hello', payload: { by: me } }); } catch (e) {}
+  });
+  zzz_live_log('join', owner, Number(entry));
+  try { zzz_rdr_open_raw(Number(entry), { from: 'LIVE' }); } catch (e) {}
+  zzz6f2_show_toast('● LIVE #' + entry + ' - the moderator (' + owner + ') leads, you follow. Ctrl + L = sessions.', 'info', 3200);
+  zzz_live_bar();
+}
+function zzz_live_leave(quiet) {
+  if (!zzzLive.ch) return;
+  try { zzzLive.ch.untrack(); } catch (e) {}
+  try { sb.removeChannel(zzzLive.ch); } catch (e) {}
+  zzz_live_log('leave', zzzLive.owner, zzzLive.entry);
+  zzzLive.ch = null; zzzLive.people = [];
+  const bar = document.getElementById('zzzLiveBar'); if (bar) bar.remove();
+  if (!quiet) zzz6f2_show_toast('LIVE left.', 'info', 1400);
+  zzz_wl_paint();
+}
+function zzz_live_bar() {
+  if (!zzzLive.ch) return;
+  const me = zzz_rs_me();
+  let bar = document.getElementById('zzzLiveBar');
+  if (!bar) { bar = document.createElement('div'); bar.id = 'zzzLiveBar'; bar.className = 'zzz-live-bar'; document.body.appendChild(bar); }
+  bar.innerHTML = '';
+  const t = document.createElement('span'); t.textContent = '● LIVE #' + (zzzLive.cur || zzzLive.entry) + ' · MOD ' + zzzLive.mod + ' · ' + (zzzLive.people.length || 1) + ' 👤'; bar.appendChild(t);
+  if (zzzLive.mod === me) {
+    const m = document.createElement('button'); m.type = 'button'; m.textContent = 'MOD →';
+    m.addEventListener('click', () => {
+      const others = zzzLive.people.filter(x => x !== me);
+      if (!others.length) { zzz6f2_show_toast('Nobody else is in the session yet.', 'info'); return; }
+      const to = others.length === 1 ? others[0] : (prompt('MODERATOR to (' + others.join(', ') + '):', others[0]) || '').trim().toLowerCase();
+      if (!to || others.indexOf(to) < 0) return;
+      zzzLive.ch.send({ type: 'broadcast', event: 'mod', payload: { to, by: me } }); zzzLive.mod = to; zzz_live_log('moderator', zzzLive.owner, zzzLive.entry, { to }); zzz_live_bar();
+    });
+    bar.appendChild(m);
+  }
+  const l = document.createElement('button'); l.type = 'button'; l.textContent = 'LEAVE'; l.addEventListener('click', () => zzz_live_leave()); bar.appendChild(l);
+  zzz_wl_paint();
+}
+// the moderator's record reader opens = the session follows (only inside LIVE, only records of this session's owner the others may see)
+function zzz_rdr_open_raw(n, opts) { return zzz_rdr_open_orig ? zzz_rdr_open_orig(n, opts) : null; }
+let zzz_rdr_open_orig = null;
+setTimeout(() => {
+  try {
+    if (typeof zzz_rdr_open !== 'function' || zzz_rdr_open_orig) return;
+    zzz_rdr_open_orig = zzz_rdr_open;
+    zzz_rdr_open = function (n, opts) {
+      const r = zzz_rdr_open_orig(n, opts);
+      try { if (zzzLive.ch && zzzLive.mod === zzz_rs_me() && !(opts && opts.from === 'LIVE') && Number(n) > 0) { zzzLive.cur = Number(n); zzzLive.ch.send({ type: 'broadcast', event: 'open', payload: { entry: Number(n), by: zzz_rs_me() } }); zzz_live_bar(); } } catch (e) {}
+      return r;
+    };
+  } catch (e) {}
+}, 0);
+
 // SETTINGS › Advanced setup › MODES
 function zzz_modes_render(host) {
   const box = document.createElement('div'); box.className = 'zzz10m5-box';
-  const h = document.createElement('h3'); h.textContent = 'MODES · PRIVATE · REMOTE ACCESS'; box.appendChild(h);
-  const p = (txt) => { const d = document.createElement('div'); d.className = 'zzz10m5-txt'; d.textContent = txt; box.appendChild(d); };
-  p('🔒 PRIVATE - Verso keyboard: hold Ctrl and tap S (computer: hold Ctrl + S 1 s), then your secret command. Pages saved now are PRIVATE: in the normal mode they are not shown anywhere; in PRIVATE they open like the others. Everything Verso reads goes via IP SHIELD. Stays on until you end it (red 🔒 in the web line, or Ctrl + S again).');
-  p('📡 REMOTE ACCESS - Ctrl + R + its own command: Verso is shown AS the user(s) you write below - only records they may see by the usual rules (owner, project owner, public, consent, COMM SETUP, delegate; blocked / private / locked never), and only those you see too. Read only: nothing can be changed, SETTINGS are closed. Ending needs the command again. Next step: the other person logs in with his own account (also from his own device); real screen sharing later.');
-  p('😶 QUIET / SAFETY REGIME - command: hold +AI+ (as before): MULTIREADER silent, PRIVATE media locked, notifications still come.');
-  const st = document.createElement('div'); st.className = 'zzz10m5-msg'; st.textContent = 'Commands: checking…'; box.appendChild(st);
+  const h = document.createElement('h3'); h.textContent = 'MODES · PRIVATE · REMOTE ACCESS · LIVE'; box.appendChild(h);
+  const p = (txt, el) => { const d = document.createElement('div'); d.className = 'zzz10m5-txt'; d.textContent = txt; (el || box).appendChild(d); return d; };
+  p('Commands: hold 3 s. Computer: Ctrl + letter. Verso keyboard: hold Ctrl and hold the letter. Each command again = switch it off.');
+  p('🔒 Ctrl + S · PRIVATE (+ your secret command) - pages saved now are PRIVATE: in the normal mode they are not shown anywhere, in PRIVATE they open like the others; everything Verso reads goes via IP SHIELD. Until you end it (red 🔒 in the web line, or Ctrl + S again).');
+  p('📡 Ctrl + R · REMOTE ACCESS open / close (+ REMOTE command) - only then can the users below activate what you shared with them. Closed = nobody, whatever is set here.');
+  p('🔗 Ctrl + A · ACCESS activate / deactivate (+ your REMOTE command) - on YOUR device: load what others shared with you (their REMOTE ACCESS must be open). Read only, under your own login.');
+  p('● Ctrl + L · LIVE - choose ONE session (a shared record); the MODERATOR leads (the owner first, he can hand it over: MOD →), the others follow what he opens. Only record numbers travel - never your screen. Everything is logged.');
+  p('😶 hold +AI+ · QUIET / SAFETY REGIME (as before): MULTIREADER silent, PRIVATE media locked, notifications still come.');
+  const st = p('Commands: checking…'); st.className = 'zzz10m5-msg';
   zzz_modes_call({ action: 'status' }).then(r => { st.textContent = r && r.success ? 'Commands: PRIVATE ' + (r.private_set ? '✓ set' : '- not set') + ' · REMOTE ' + (r.remote_set ? '✓ set' : '- not set') : 'Commands: ' + zzz_modes_why(r); });
   const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'zzz10m5-big'; btn.textContent = 'VIEW / CHANGE COMMANDS · MV PHRASE'; box.appendChild(btn);
   const pan = document.createElement('div'); box.appendChild(pan);
   btn.addEventListener('click', async () => {
-    const got = await zzz_final_mv('MODES · MULTIVERIFICATION', 'Your MV PHRASE opens the commands for 10 s - you can read them or write new ones.', 'OPEN');
+    const got = await zzz_final_mv('MODES · MULTIVERIFICATION', 'Your MV PHRASE opens the commands for 15 s - you can read them or write new ones.', 'OPEN');
     if (!got) return;
     const phrase = got.phrase; got.phrase = '';
     const r = await zzz_modes_call({ action: 'get', mvPhrase: phrase });
     if (!r || !r.success) { st.textContent = zzz_modes_why(r); return; }
     pan.innerHTML = '';
     const mk = (lab, val) => { const l = document.createElement('div'); l.className = 'zzz10m5-txt'; l.textContent = lab; pan.appendChild(l); const i = document.createElement('input'); i.type = 'text'; i.className = 'entry-cell'; i.value = val || ''; i.setAttribute('data-zzz-nodraft', '1'); i.autocomplete = 'off'; i.style.width = '100%'; pan.appendChild(i); return i; };
-    const ip = mk('PRIVATE command (Ctrl + S)', r.private_cmd), ir = mk('REMOTE ACCESS command (Ctrl + R)', r.remote_cmd), iu = mk('REMOTE ACCESS shows Verso as (usernames, comma)', r.remote_users);
+    const ip = mk('PRIVATE command (Ctrl + S)', r.private_cmd), ir = mk('REMOTE command (Ctrl + R open / close · Ctrl + A activate / deactivate)', r.remote_cmd), iu = mk('PREVIEW AS (usernames, comma) - see Verso as they would, on this device', r.remote_users);
     const sv = document.createElement('button'); sv.type = 'button'; sv.className = 'zzz10m5-btn is-gold'; pan.appendChild(sv);
     let left = 15; let pp = phrase;
     const close = () => { clearInterval(tk); pp = ''; pan.innerHTML = ''; };
@@ -30394,11 +30559,53 @@ function zzz_modes_render(host) {
       clearInterval(tk); sv.disabled = true; sv.textContent = 'Saving…';
       const r2 = await zzz_modes_call({ action: 'set', mvPhrase: pp, private_cmd: ip.value, remote_cmd: ir.value, remote_users: iu.value });
       close();
-      st.textContent = r2 && r2.success ? '✓ Saved - PRIVATE ' + (r2.private_set ? 'set' : 'not set') + ' · REMOTE ' + (r2.remote_set ? 'set' : 'not set') + (r2.remote_users ? ' as ' + r2.remote_users : '') : zzz_modes_why(r2);
+      st.textContent = r2 && r2.success ? '✓ Saved - PRIVATE ' + (r2.private_set ? 'set' : 'not set') + ' · REMOTE ' + (r2.remote_set ? 'set' : 'not set') + (r2.remote_users ? ' · PREVIEW AS ' + r2.remote_users : '') : zzz_modes_why(r2);
     });
   });
+  // REMOTE ACCESS - my shares (owner)
+  const sh = document.createElement('div'); sh.className = 'zzz10m5-box'; box.appendChild(sh);
+  const sh3 = document.createElement('h3'); sh3.textContent = '📡 REMOTE ACCESS · MY SHARES'; sh.appendChild(sh3);
+  const shSt = p('…', sh); const shList = document.createElement('div'); sh.appendChild(shList);
+  const add = document.createElement('div'); add.className = 'zzz10m5-row';
+  const gu = document.createElement('input'); gu.type = 'text'; gu.className = 'entry-cell'; gu.placeholder = 'username'; gu.setAttribute('data-zzz-nodraft', '1'); gu.style.flex = '1 1 40%';
+  const en = document.createElement('input'); en.type = 'text'; en.className = 'entry-cell'; en.placeholder = 'record # (EN)'; en.setAttribute('data-zzz-nodraft', '1'); en.inputMode = 'numeric'; en.style.flex = '1 1 30%';
+  const ab = document.createElement('button'); ab.type = 'button'; ab.className = 'zzz10m5-btn is-gold'; ab.textContent = '+ SHARE';
+  add.append(gu, en, ab); sh.appendChild(add);
+  p('A share never gives more than the user may already see (USER / consent / COMM SETUP) - Verso checks it. READ only for now; READ + WRITE comes as a choice per share.', sh);
+  const draw = async () => {
+    const d = await zzz_live_open_pull();
+    shSt.textContent = d ? ('REMOTE ACCESS is ' + (d.open ? 'OPEN 📡 (Ctrl + R = close)' : 'CLOSED (Ctrl + R = open)') + ' · ' + (d.shares || []).length + ' share(s)') : 'Could not read - check the connection.';
+    shList.innerHTML = '';
+    (d && d.shares || []).forEach(s => {
+      const r = document.createElement('div'); r.className = 'zzz10m5-row';
+      const l = document.createElement('div'); l.textContent = s.guest + ' · #' + s.entry_id + ' · ' + (s.title || '') + ' · ' + String(s.rights || 'read').toUpperCase(); r.appendChild(l);
+      const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz10m5-btn'; x.textContent = '× STOP';
+      x.addEventListener('click', async () => { x.disabled = true; try { await sb.rpc('verso_live_share_revoke', { p_id: s.id }); } catch (e) {} draw(); });
+      r.appendChild(x); shList.appendChild(r);
+    });
+  };
+  ab.addEventListener('click', async () => {
+    const g = String(gu.value || '').trim().toLowerCase(), e = Number(String(en.value || '').replace(/\D/g, ''));
+    if (!g || !e) { shSt.textContent = 'Write the username and the record number.'; return; }
+    ab.disabled = true;
+    try { const { data, error } = await sb.rpc('verso_live_share_add', { p_guest: g, p_entry: e }); if (error) throw error; shSt.textContent = data && data.ok ? '✓ Shared #' + e + ' with ' + g + (data.reason === 'already' ? ' (already)' : '') : zzz_modes_why(data); if (data && data.ok) { gu.value = ''; en.value = ''; } }
+    catch (x) { shSt.textContent = zzz_modes_why({ reason: 'network' }); }
+    ab.disabled = false; draw();
+  });
+  draw();
+  // ACCESS - shared with me
+  const ac = document.createElement('div'); ac.className = 'zzz10m5-box'; box.appendChild(ac);
+  const ac3 = document.createElement('h3'); ac3.textContent = '🔗 ACCESS · SHARED WITH ME'; ac.appendChild(ac3);
+  const acL = p('…', ac);
+  sb.rpc('verso_live_my_access').then(({ data }) => { const L = data || []; acL.textContent = L.length ? L.map(x => x.owner + ' · #' + x.entry_id + ' · ' + (x.title || '')).join('\n') + '\n\nCtrl + A = activate (' + (zzz_remote_state() && zzz_remote_state().kind === 'access' ? 'ACTIVE now' : 'not active') + ')' : 'Nothing open for you now (shares appear when the owner opens REMOTE ACCESS).'; acL.style.whiteSpace = 'pre-line'; }).catch(() => { acL.textContent = 'Could not read.'; });
+  // PREVIEW AS + LOG
+  const pv = document.createElement('button'); pv.type = 'button'; pv.className = 'zzz10m5-btn'; pv.textContent = '👁 PREVIEW AS (REMOTE command)'; pv.style.marginTop = '6px';
+  pv.addEventListener('click', () => zzz_modes_prompt('preview', !!zzz_remote_state())); box.appendChild(pv);
+  const lg = document.createElement('div'); lg.className = 'zzz10m5-msg'; lg.style.whiteSpace = 'pre-line'; lg.textContent = 'LOG …'; box.appendChild(lg);
+  sb.rpc('verso_live_my_log', { p_limit: 12 }).then(({ data }) => { const L = data || []; lg.textContent = 'LOG (newest first)\n' + (L.length ? L.map(x => String(x.at || '').slice(5, 16).replace('T', ' ') + ' · ' + x.actor + ' · ' + x.kind + (x.entry_id ? ' #' + x.entry_id : '') + (x.details && x.details.guest ? ' → ' + x.details.guest : '') + (x.details && x.details.to ? ' → ' + x.details.to : '')).join('\n') : '-'); }).catch(() => {});
   host.appendChild(box);
 }
+
 // ===================== [/Zzz10-M7:MODES] =====================
 
 // ===================== [Zzz14-IC:INTEREST-CARD] VERSO INTEREST CARD - phase 1 =====================
@@ -55148,7 +55355,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-17 20:40';
+const VERSO_BUILD = '2026-11-17 21:30';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -62728,10 +62935,10 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
 
         if (isText && !isSecret) { k._swX = e.clientX; k._swAt = Date.now(); try { k.setPointerCapture(e.pointerId); } catch (e2) {} clearTimeout(k._swBuzz); k._swBuzz = setTimeout(() => { zzz_haptic_pulse(40); k._swBuzz = setTimeout(() => zzz_haptic_pulse(60), 1050); }, 450); }
         else typeSpace();
-      } else if ((window.zzzVkbCtrlLock || window.zzzVkbCtrlHeld) && isText && !isSecret && (ch.toLowerCase() === 's' || ch.toLowerCase() === 'r')) {
-        // [Zzz10-M7:MODES] Ctrl + S = PRIVATE · Ctrl + R = REMOTE ACCESS (the command window opens; nothing is typed)
+      } else if ((window.zzzVkbCtrlLock || window.zzzVkbCtrlHeld) && isText && !isSecret && /^[sral]$/i.test(ch)) {
+        // [Zzz10-M7:MODES] [Zzz10-M8:LIVE] Ctrl + hold S / R / A / L 3 s = PRIVATE / REMOTE ACCESS / ACCESS / LIVE (nothing is typed)
         window.zzzVkbCtrlUsed = true;
-        try { zzz_modes_hotkey(ch.toLowerCase() === 's' ? 'private' : 'remote'); } catch (e2) {}
+        try { zzz_modes_vkb_hold(k, ch); } catch (e2) {}
       } else if ((window.zzzVkbCtrlLock || window.zzzVkbCtrlHeld) && isText && !isSecret && ch.toLowerCase() === 't') {
 
         window.zzzVkbCtrlUsed = true;
