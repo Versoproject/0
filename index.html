@@ -30243,7 +30243,6 @@ const ZZZ_REMOTE_T = {
   chatWrite: ['verso_chat_notes', 'verso_chat_seen']   // [Zzz10-M8:LIVE-WRITE] READ + WRITE shares: the guest writes here under his own name
 };
 // [Zzz10-M8:LIVE-WRITE] guest write check: only rows of records shared READ + WRITE; the first write per record and session is logged
-const zzzLiveWrote = {};
 function zzz_remote_write_ok(st, table, m, a) {
   if (!st || st.kind !== 'access' || ZZZ_REMOTE_T.chatWrite.indexOf(table) < 0) return false;
   const W = (st.list || []).filter(x => x.rights === 'write'); if (!W.length) return false;
@@ -30252,7 +30251,7 @@ function zzz_remote_write_ok(st, table, m, a) {
   if (m === 'update') return true;   // RLS: only own rows can be changed
   const rows = Array.isArray(a[0]) ? a[0] : [a[0]];
   if (!rows.length || !rows.every(r => r && keys.indexOf(String(r.entry_key)) >= 0)) return false;
-  if (table === 'verso_chat_notes') rows.forEach(r => { const k = String(r.entry_key); if (zzzLiveWrote[k]) return; zzzLiveWrote[k] = 1; const x = W.find(y => String(y.entry_id) === k); zzz_live_log('write', x ? x.owner : null, Number(k)); });
+  // the write log is made by the SERVER (trigger verso_chat_notes_share_write_log) - a client cannot skip it
   return true;
 }
 function zzz_remote_ro() {
@@ -30595,7 +30594,7 @@ function zzz_modes_render(host) {
   p('😶 hold +AI+ · QUIET / SAFETY REGIME (as before): MULTIREADER silent, PRIVATE media locked, notifications still come.');
   const st = p('Commands: checking…'); st.className = 'zzz10m5-msg';
   zzz_modes_call({ action: 'status' }).then(r => { st.textContent = r && r.success ? 'Commands: PRIVATE ' + (r.private_set ? '✓ set' : '- not set') + ' · REMOTE ' + (r.remote_set ? '✓ set' : '- not set') : 'Commands: ' + zzz_modes_why(r); });
-  const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'zzz10m5-big'; btn.textContent = 'VIEW / CHANGE COMMANDS · MV PHRASE'; btn.title = 'Opens your commands after the MV PHRASE: 1) tap 2) write the MV PHRASE → OPEN 3) read or rewrite PRIVATE / REMOTE command and PREVIEW AS 4) SAVE within 15 s. Logged in AUDIT LOG (never the commands).'; box.appendChild(btn);
+  const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'zzz10m5-big'; btn.textContent = 'VIEW / CHANGE COMMANDS · MV PHRASE'; btn.title = 'Opens your commands after the MV PHRASE: 1) tap 2) write the MV PHRASE → OPEN 3) write a new PRIVATE / REMOTE command (the old ones are never shown - only replaced) and PREVIEW AS 4) SAVE within 15 s. Logged in AUDIT LOG (never the commands).'; box.appendChild(btn);
   const pan = document.createElement('div'); box.appendChild(pan);
   btn.addEventListener('click', async () => {
     const got = await zzz_final_mv('MODES · MULTIVERIFICATION', 'Your MV PHRASE opens the commands for 15 s - you can read them or write new ones.', 'OPEN');
@@ -30605,16 +30604,19 @@ function zzz_modes_render(host) {
     if (!r || !r.success) { st.textContent = zzz_modes_why(r); return; }
     pan.innerHTML = '';
     const mk = (lab, val) => { const l = document.createElement('div'); l.className = 'zzz10m5-txt'; l.textContent = lab; pan.appendChild(l); const i = document.createElement('input'); i.type = 'text'; i.className = 'entry-cell'; i.value = val || ''; i.setAttribute('data-zzz-nodraft', '1'); i.autocomplete = 'off'; i.style.width = '100%'; pan.appendChild(i); return i; };
-    const ip = mk('PRIVATE command (Ctrl + S)', r.private_cmd), ir = mk('REMOTE command (Ctrl + R open / close · Ctrl + A activate / deactivate)', r.remote_cmd), iu = mk('PREVIEW AS (usernames, comma) - see Verso as they would, on this device', r.remote_users);
+    // [Zzz10-M7:CMD-HASH] the server keeps only a hash of each command - it can never be shown again, only replaced. Empty = keep · '-' = remove.
+    const ip = mk('PRIVATE command (Ctrl + S) - ' + (r.private_set ? 'SET ✓ (hidden for good)' : 'not set'), ''), ir = mk('REMOTE command (Ctrl + R open / close · Ctrl + A activate / deactivate) - ' + (r.remote_set ? 'SET ✓ (hidden for good)' : 'not set'), ''), iu = mk('PREVIEW AS (usernames, comma) - see Verso as they would, on this device', r.remote_users);
+    ip.placeholder = r.private_set ? 'empty = keep · new = replace · - = remove' : 'write a new command (3-40 letters)'; ir.placeholder = r.remote_set ? 'empty = keep · new = replace · - = remove' : 'write a new command (3-40 letters)';
     const sv = document.createElement('button'); sv.type = 'button'; sv.className = 'zzz10m5-btn is-gold'; pan.appendChild(sv);
-    sv.title = 'Saves the commands and PREVIEW AS (needs nothing more - the MV PHRASE was checked). Empty field = that command is removed. 15 s, then the fields close.';
+    sv.title = 'Saves the commands and PREVIEW AS (needs nothing more - the MV PHRASE was checked). Empty field = the command stays as it is · - = remove it. Verso keeps only a fingerprint (hash) of a command - nobody can read it back, not even you: remember it. 15 s, then the fields close.';
     let left = 15; let pp = phrase;
     const close = () => { clearInterval(tk); pp = ''; pan.innerHTML = ''; };
     const paint = () => { sv.textContent = 'SAVE · ' + left + ' s'; };
     const tk = setInterval(() => { left--; paint(); if (left <= 0) close(); }, 1000); paint();
     sv.addEventListener('click', async () => {
       clearInterval(tk); sv.disabled = true; sv.textContent = 'Saving…';
-      const r2 = await zzz_modes_call({ action: 'set', mvPhrase: pp, private_cmd: ip.value, remote_cmd: ir.value, remote_users: iu.value });
+      const cv = (v) => { v = String(v || '').trim(); return v === '' ? undefined : (v === '-' ? '' : v); };
+      const r2 = await zzz_modes_call({ action: 'set', mvPhrase: pp, private_cmd: cv(ip.value), remote_cmd: cv(ir.value), remote_users: iu.value });
       close();
       st.textContent = r2 && r2.success ? '✓ Saved - PRIVATE ' + (r2.private_set ? 'set' : 'not set') + ' · REMOTE ' + (r2.remote_set ? 'set' : 'not set') + (r2.remote_users ? ' · PREVIEW AS ' + r2.remote_users : '') : zzz_modes_why(r2);
     });
@@ -45795,7 +45797,7 @@ try { if (document.readyState === 'loading') document.addEventListener('DOMConte
 const ZZZ_5S_WS = [
   // [Zzz14-SUPPORT:5S] MODES / REMOTE ACCESS / ACCESS / LIVE / EXTERNAL CONNECTION / INTEREST CARD - Vrso 2026-11-17 „do remote settings dobre zapracuj ako 5s support celý postup k jednotlivým buttons aj v rámci celého nastavenia“
   { k: /^MODES/, t: 'MODES · PRIVATE · REMOTE ACCESS · LIVE', i: [
-    'SET UP ONCE: 1) VIEW / CHANGE COMMANDS · MV PHRASE → write your MV PHRASE → OPEN. 2) Write the PRIVATE command and the REMOTE command (3-40 characters, not the same). 3) PREVIEW AS (optional): usernames whose view you want to try. 4) SAVE within 15 s - after 15 s the fields close and nothing is kept on screen.',
+    'SET UP ONCE: 1) VIEW / CHANGE COMMANDS · MV PHRASE → write your MV PHRASE → OPEN. 2) Write the PRIVATE command and the REMOTE command (3-40 characters, not the same). Verso keeps only their fingerprint (hash): they are never shown again, only replaced - remember them. Empty field = keep, - = remove. 3) PREVIEW AS (optional): usernames whose view you want to try. 4) SAVE within 15 s - after 15 s the fields close and nothing is kept on screen.',
     'HOW TO HOLD: computer = hold Ctrl + the letter 3 s · Verso keyboard = hold Ctrl and hold the letter 3 s. Then a 10 s window asks for the command. The same command again = switch off.',
     '🔒 PRIVATE · Ctrl + S + PRIVATE command: what you write now is PRIVATE - records (ENTER), their chats, VI chats, notes, notifications, media and READ SPACE pages; hidden in the normal mode, shown in PRIVATE. Everything Verso reads goes via IP SHIELD. Red 🔒 in the web line while on. End: Ctrl + S again or tap the red 🔒. Verso opens again on every switch.',
     '📡 REMOTE ACCESS (you are the OWNER): 1) share records below (REMOTE ACCESS · MY SHARES). 2) Ctrl + R + REMOTE command = OPEN (📡 in the web line). 3) Ctrl + R again = CLOSED for everybody, shares stay for next time.',
@@ -55647,7 +55649,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 00:30';
+const VERSO_BUILD = '2026-11-18 00:55';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
