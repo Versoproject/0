@@ -11895,6 +11895,7 @@ let sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
+try { sb = zzz_remote_wrap(sb); } catch (e) {}   // [Zzz10-M7:REMOTE-VIEW-AS]
 let zzz0auth_sessionToken = null;
 
 function zzz_session_apply_headers_to_client(username, sessionId) {
@@ -11911,6 +11912,7 @@ function zzz_session_apply_headers_to_client(username, sessionId) {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     global: { headers }
   });
+  try { sb = zzz_remote_wrap(sb); } catch (e) {}   // [Zzz10-M7:REMOTE-VIEW-AS]
   try { setTimeout(() => { if (typeof zzz1cn_rt_start === 'function') zzz1cn_rt_start(); }, 0); } catch (e) {}
   try { setTimeout(() => { if (typeof zzz14b17_release_listen === 'function') zzz14b17_release_listen(); }, 0); } catch (e) {}
 }
@@ -30169,7 +30171,7 @@ function zzz_wl_paint_now() {
     const rm = zzz_mode_remote(), on = !rm && zzz_ext_private();
     pv.hidden = !(rm || on); pv.classList.remove('is-on'); pv.classList.toggle('is-red', rm || on);
     pv.textContent = rm ? '📡' : '🔒';
-    pv.title = rm ? 'REMOTE ACCESS on - tap / Ctrl + R + command = end' : 'PRIVATE on - tap = off';
+    pv.title = rm ? 'REMOTE ACCESS as ' + ((zzz_remote_state() || {}).users || '') + ' - tap / Ctrl + R + command = end' : 'PRIVATE on - tap = off';
   }
   if (x && inp) x.hidden = !inp.value;
 }
@@ -30209,11 +30211,73 @@ async function zzz_wl_go(watch) {
 // Commands live only on the server (verso-modes, table verso_mode_secrets); view / change = MV PHRASE (SETTINGS › Advanced setup › MODES).
 // Real screen sharing comes later (not possible now). Other modules (DATABASE, MEDIA, NOTES…) get the same filter step by step via zzz_mode_pass().
 const ZZZ_MODES_FN = (typeof SUPABASE_URL !== 'undefined' ? SUPABASE_URL : '') + '/functions/v1/verso-modes';
-function zzz_mode_remote() { try { return localStorage.getItem(zzz_ukey('zzz_mode_remote')) === '1'; } catch (e) { return false; } }
+function zzz_mode_remote() { return !!zzz_remote_state(); }
+// [Zzz10-M7:REMOTE-VIEW-AS] Vrso -> Claude AI 2026-11-17 18:47 / 18:58 („nestačilo by v remote access settings len doplniť usera a entries, ktoré sa mu načítajú podľa comm setup
+// pravidiel … nemá prístup k uzamknutým záznamom … netreba potom špeciálne filtre“ · „áno“): REMOTE ACCESS = Verso shown AS the chosen user(s).
+// The server (verso_remote_visible_ids) returns the records the owner sees AND the guest would see by the same rules as everywhere (verso_entry_visible_for:
+// owner, project owner, public, consent, scope consent, delegate, blocked). Every read of the records, their notes and linked rows goes through that list;
+// personal lists (contacts, groups, tabs, devices…) read empty; every write is refused (read only). Next step: the guest's own login (RLS for real).
+function zzz_remote_state() { try { const v = JSON.parse(localStorage.getItem(zzz_ukey('zzz_mode_remote')) || 'null'); return v && Array.isArray(v.ids) ? v : null; } catch (e) { return null; } }
+const ZZZ_REMOTE_T = {
+  entry_id: ['verso_entries', 'verso_placements', 'verso_notif_items', 'verso_consents', 'verso_pair_invites', 'verso_task_values', 'verso_task_grants', 'verso_project_tasks', 'verso_task_closings', 'verso_place_names', 'verso_final_disputes', 'verso_blocked_users', 'verso_tasksents', 'verso_entry_chain'],
+  entry_key: ['verso_chat_notes', 'verso_chat_seen', 'verso_comm_users'],
+  none: ['verso_user_contacts', 'verso_user_groups', 'verso_note_tabs', 'verso_devices', 'verso_pack_tasks', 'verso_pack_votes', 'verso_notif_shifts', 'verso_notif_targets', 'verso_chat_reactions', 'verso_note_stars', 'verso_trash', 'verso_history', 'verso_audit_log', 'verso_request_numbers'],
+  writeOk: ['verso_client_issues']
+};
+function zzz_remote_ro() {
+  const res = { data: null, error: { message: 'REMOTE ACCESS - read only', code: 'remote_read_only' }, count: null, status: 403 };
+  const p = Promise.resolve(res);
+  const h = { get(t, k) { if (k === 'then') return p.then.bind(p); if (k === 'catch') return p.catch.bind(p); if (k === 'finally') return p.finally.bind(p); return () => new Proxy(function () {}, h); }, apply() { return new Proxy(function () {}, h); } };
+  try { if (!zzz_remote_ro._t || Date.now() - zzz_remote_ro._t > 4000) { zzz_remote_ro._t = Date.now(); zzz6f2_show_toast('REMOTE ACCESS - read only, nothing is changed.', 'warn', 1800); } } catch (e) {}
+  return new Proxy(function () {}, h);
+}
+function zzz_remote_wrap(client) {
+  if (!client || client.__zzzRemote) return client;
+  const from0 = client.from.bind(client);
+  return new Proxy(client, { get(t, k) {
+    if (k === '__zzzRemote') return true;
+    if (k !== 'from') { const v = t[k]; return typeof v === 'function' ? v.bind(t) : v; }
+    return (table) => {
+      let st = null; try { st = zzz_remote_state(); } catch (e) { st = null; }
+      const qb = from0(table);
+      if (!st) return qb;
+      const ids = st.ids.length ? st.ids.map(Number) : [-1], keys = ids.map(String), users = String(st.users || '').split(',').filter(Boolean);
+      return new Proxy(qb, { get(q, m) {
+        if (m === 'insert' || m === 'update' || m === 'upsert' || m === 'delete') { if (ZZZ_REMOTE_T.writeOk.indexOf(table) >= 0) return q[m].bind(q); return () => zzz_remote_ro(); }
+        if (m === 'select') return (...a) => {
+          let b = q.select(...a);
+          if (ZZZ_REMOTE_T.entry_id.indexOf(table) >= 0) b = b.in('entry_id', ids);
+          else if (ZZZ_REMOTE_T.entry_key.indexOf(table) >= 0) { b = b.in('entry_key', keys); if (table === 'verso_chat_notes') b = b.or('is_private.eq.false' + (users.length ? ',username.in.(' + users.join(',') + ')' : '')); }
+          else if (ZZZ_REMOTE_T.none.indexOf(table) >= 0) b = b.limit(0);
+          return b;
+        };
+        const v = q[m]; return typeof v === 'function' ? v.bind(q) : v;
+      } });
+    };
+  } });
+}
+async function zzz_remote_start(users) {
+  const L = String(users || '').split(',').map(x => x.trim()).filter(Boolean);
+  if (!L.length) { zzz6f2_show_toast('Write who REMOTE ACCESS shows Verso as - SETTINGS › Advanced setup › MODES.', 'warn', 3200); return false; }
+  const all = new Set();
+  for (const u of L) {
+    const { data, error } = await sb.rpc('verso_remote_visible_ids', { p_guest: u });
+    if (error) { zzz_user_error('REMOTE ACCESS could not start - check the connection.', error, '[Zzz10-M7:REMOTE-VIEW-AS]'); return false; }
+    (data || []).forEach(i => all.add(Number(i)));
+  }
+  try { localStorage.setItem(zzz_ukey('zzz_mode_remote'), JSON.stringify({ users: L.join(','), ids: Array.from(all), at: Date.now() })); } catch (e) { return false; }
+  zzz6f2_show_toast('📡 REMOTE ACCESS as ' + L.join(', ') + ' - ' + all.size + ' record(s). Verso opens again…', 'info', 2600);
+  setTimeout(() => { try { location.reload(); } catch (e) {} }, 1200);
+  return true;
+}
+function zzz_remote_end() {
+  try { localStorage.removeItem(zzz_ukey('zzz_mode_remote')); } catch (e) {}
+  zzz6f2_show_toast('REMOTE ACCESS off - Verso opens again…', 'info', 2000);
+  setTimeout(() => { try { location.reload(); } catch (e) {} }, 900);
+}
 function zzz_mode_pass(tags) {
   const t = ' ' + String(tags || '').toLowerCase() + ' ';
-  if (zzz_mode_remote()) return t.indexOf(' remote ') >= 0 && t.indexOf(' private ') < 0;
-  if (t.indexOf(' private ') >= 0) return zzz_ext_private();
+  if (t.indexOf(' private ') >= 0) return !zzz_mode_remote() && zzz_ext_private();
   return true;
 }
 function zzz_modes_after() {
@@ -30231,12 +30295,13 @@ function zzz_modes_why(r) {
   const x = (r && r.reason) || '';
   return ({ no_session: 'Log in to Verso first.', not_set: 'No command yet - SETTINGS › Advanced setup › MODES.', wrong_command: 'Wrong command' + (r.attemptsLeft != null ? ' (' + r.attemptsLeft + ' left)' : '') + '.',
     locked: 'Locked for ' + ((r && r.minutes) || 15) + ' min (too many wrong tries).', wrong_mv_phrase: 'Wrong MV PHRASE' + (r.attemptsLeft != null ? ' (' + r.attemptsLeft + ' left)' : '') + '.',
+    no_remote_users: 'Write first who REMOTE ACCESS shows Verso as (SETTINGS › Advanced setup › MODES).', self_user: 'REMOTE ACCESS user must be somebody else than you.',
     mv_phrase_not_set: 'Set your MV PHRASE first (Login setup › CHANGE PASSWORD).', command_length: 'A command has 3 - 40 characters.', same_commands: 'PRIVATE and REMOTE need different commands.',
     network: 'No connection - try again.' })[x] || ('Not done (' + (x || 'error') + ').');
 }
 async function zzz_modes_set(mode, on) {
   if (mode === 'private') { const cur = Object.assign({}, zzz_ext()); cur.private = on ? 'on' : 'off'; await zzz_ext_save(cur); }
-  else { try { if (on) localStorage.setItem(zzz_ukey('zzz_mode_remote'), '1'); else localStorage.removeItem(zzz_ukey('zzz_mode_remote')); } catch (e) {} }
+  else { zzz_haptic_pulse(on ? 60 : 30); if (on) await zzz_remote_start(arguments[2]); else zzz_remote_end(); return; }
   zzz_haptic_pulse(on ? 60 : 30);
   zzz6f2_show_toast(mode === 'private' ? (on ? '🔒 PRIVATE on - private pages open, everything via IP SHIELD. Tap the red 🔒 to end.' : 'PRIVATE off.') : (on ? '📡 REMOTE ACCESS on - only pages marked 📡 are seen, settings closed.' : 'REMOTE ACCESS off.'), 'info', 3200);
   if (on && mode === 'remote') { try { const ws = document.querySelector('#versoWorkspaceSection .settings-workspace'); if (ws) { const x = document.querySelector('#versoWorkspaceSection .zzz5w5cm-close, #versoWorkspaceSection .entry-modal-close'); if (x) x.click(); } } catch (e) {} }
@@ -30260,8 +30325,8 @@ function zzz_modes_prompt(mode, ending) {
   const go = async () => {
     const cmd = String(inp.value || '').trim(); if (!cmd) { st.textContent = 'Write the command.'; return; }
     y.disabled = true; st.textContent = 'Checking…'; clearInterval(tick);
-    const r = await zzz_modes_call({ action: 'check', mode, cmd });
-    if (r && r.success) { end(); await zzz_modes_set(mode, !ending); return; }
+    const r = await zzz_modes_call({ action: 'check', mode, cmd, ending: !!ending });
+    if (r && r.success) { end(); await zzz_modes_set(mode, !ending, r.remote_users); return; }
     y.disabled = false; st.textContent = zzz_modes_why(r); try { inp.value = ''; } catch (e) {}
     left = 10; clearInterval(tick); setTimeout(() => { if (o.isConnected) end(); }, 10000);
   };
@@ -30298,8 +30363,8 @@ function zzz_modes_render(host) {
   const h = document.createElement('h3'); h.textContent = 'MODES · PRIVATE · REMOTE ACCESS'; box.appendChild(h);
   const p = (txt) => { const d = document.createElement('div'); d.className = 'zzz10m5-txt'; d.textContent = txt; box.appendChild(d); };
   p('🔒 PRIVATE - Verso keyboard: hold Ctrl and tap S (computer: hold Ctrl + S 1 s), then your secret command. Pages saved now are PRIVATE: in the normal mode they are not shown anywhere; in PRIVATE they open like the others. Everything Verso reads goes via IP SHIELD. Stays on until you end it (red 🔒 in the web line, or Ctrl + S again).');
-  p('📡 REMOTE ACCESS - Ctrl + R + its own command, for another person using this device: only pages you marked 📡 REMOTE OK (↳ at the page) are shown and searchable (SHOW), SETTINGS and editing are closed. Ending needs the command again. Real screen sharing comes later.');
-  p('QUIET / SAFETY REGIME - for now hold +AI+ (as before); it moves here as the next step.');
+  p('📡 REMOTE ACCESS - Ctrl + R + its own command: Verso is shown AS the user(s) you write below - only records they may see by the usual rules (owner, project owner, public, consent, COMM SETUP, delegate; blocked / private / locked never), and only those you see too. Read only: nothing can be changed, SETTINGS are closed. Ending needs the command again. Next step: the other person logs in with his own account (also from his own device); real screen sharing later.');
+  p('😶 QUIET / SAFETY REGIME - command: hold +AI+ (as before): MULTIREADER silent, PRIVATE media locked, notifications still come.');
   const st = document.createElement('div'); st.className = 'zzz10m5-msg'; st.textContent = 'Commands: checking…'; box.appendChild(st);
   zzz_modes_call({ action: 'status' }).then(r => { st.textContent = r && r.success ? 'Commands: PRIVATE ' + (r.private_set ? '✓ set' : '- not set') + ' · REMOTE ' + (r.remote_set ? '✓ set' : '- not set') : 'Commands: ' + zzz_modes_why(r); });
   const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'zzz10m5-big'; btn.textContent = 'VIEW / CHANGE COMMANDS · MV PHRASE'; box.appendChild(btn);
@@ -30312,17 +30377,17 @@ function zzz_modes_render(host) {
     if (!r || !r.success) { st.textContent = zzz_modes_why(r); return; }
     pan.innerHTML = '';
     const mk = (lab, val) => { const l = document.createElement('div'); l.className = 'zzz10m5-txt'; l.textContent = lab; pan.appendChild(l); const i = document.createElement('input'); i.type = 'text'; i.className = 'entry-cell'; i.value = val || ''; i.setAttribute('data-zzz-nodraft', '1'); i.autocomplete = 'off'; i.style.width = '100%'; pan.appendChild(i); return i; };
-    const ip = mk('PRIVATE command (Ctrl + S)', r.private_cmd), ir = mk('REMOTE ACCESS command (Ctrl + R)', r.remote_cmd);
+    const ip = mk('PRIVATE command (Ctrl + S)', r.private_cmd), ir = mk('REMOTE ACCESS command (Ctrl + R)', r.remote_cmd), iu = mk('REMOTE ACCESS shows Verso as (usernames, comma)', r.remote_users);
     const sv = document.createElement('button'); sv.type = 'button'; sv.className = 'zzz10m5-btn is-gold'; pan.appendChild(sv);
-    let left = 10; let pp = phrase;
+    let left = 15; let pp = phrase;
     const close = () => { clearInterval(tk); pp = ''; pan.innerHTML = ''; };
     const paint = () => { sv.textContent = 'SAVE · ' + left + ' s'; };
     const tk = setInterval(() => { left--; paint(); if (left <= 0) close(); }, 1000); paint();
     sv.addEventListener('click', async () => {
       clearInterval(tk); sv.disabled = true; sv.textContent = 'Saving…';
-      const r2 = await zzz_modes_call({ action: 'set', mvPhrase: pp, private_cmd: ip.value, remote_cmd: ir.value });
+      const r2 = await zzz_modes_call({ action: 'set', mvPhrase: pp, private_cmd: ip.value, remote_cmd: ir.value, remote_users: iu.value });
       close();
-      st.textContent = r2 && r2.success ? '✓ Saved - PRIVATE ' + (r2.private_set ? 'set' : 'not set') + ' · REMOTE ' + (r2.remote_set ? 'set' : 'not set') : zzz_modes_why(r2);
+      st.textContent = r2 && r2.success ? '✓ Saved - PRIVATE ' + (r2.private_set ? 'set' : 'not set') + ' · REMOTE ' + (r2.remote_set ? 'set' : 'not set') + (r2.remote_users ? ' as ' + r2.remote_users : '') : zzz_modes_why(r2);
     });
   });
   host.appendChild(box);
@@ -30765,7 +30830,7 @@ function zzz_rs_move(it) {
   const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
   // [Zzz10-M7:MODES] mark the page: 🔒 PRIVATE (seen only in PRIVATE mode) · 📡 REMOTE (the only pages a guest sees in REMOTE ACCESS)
   { const mr = document.createElement('div'); mr.className = 'zzz-b26-row';
-    [['private', '🔒 PRIVATE'], ['remote', '📡 REMOTE OK']].forEach(([tg, lab]) => {
+    [['private', '🔒 PRIVATE']].forEach(([tg, lab]) => {
       const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz14cs-feed-mode' + (zzz_rs_has_tag(it, tg) ? ' is-on' : ''); x.textContent = lab;
       x.title = tg === 'private' ? 'Only in PRIVATE mode (Ctrl + S)' : 'A guest in REMOTE ACCESS (Ctrl + R) sees this page';
       x.addEventListener('click', async () => { if (await zzz_rs_tag_toggle(it, tg)) x.classList.toggle('is-on', zzz_rs_has_tag(it, tg)); });
@@ -55076,7 +55141,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-17 19:45';
+const VERSO_BUILD = '2026-11-17 20:20';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
