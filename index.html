@@ -52238,23 +52238,8 @@ function zzz10m5_render_advanced_setup(host) {
   rec.appendChild(rb);
   host.appendChild(rec);
 
-  const apps = zzz10m5_el('div', 'zzz10m5-box');
-  apps.appendChild(zzz10m5_el('h3', '', 'VERSO GATE - CONNECTED APPS'));
-
-  apps.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'Other apps and websites can let you log in with your Verso account - like "Log in with Google". Here you see which apps you allowed. DISCONNECT cuts an app off at once. An app never gets your password - only a private number made just for it, and your username only if you allow it.'));
-  const list = zzz10m5_el('div');
-  const amsg = zzz10m5_el('div', 'zzz10m5-msg', 'Loading...');
-  apps.appendChild(list); apps.appendChild(amsg);
-
-  const gp = zzz10m5_el('div', 'zzz10m5-gate-panel');
-  apps.appendChild(gp);
-
-  const tb = zzz10m5_el('button', 'zzz10m5-big', 'TRY IT WITH A TEST APP'); tb.type = 'button';
-  tb.addEventListener('click', () => { location.href = './verso-gate-test.html'; });
-  apps.appendChild(tb);
-  host.appendChild(apps);
-  zzz10m5_load_connected_apps(list, amsg);
-  zzz10m5_render_gate_panel(gp);
+  // [Zzz10-M5:GATE-MODULE] VERSO GATE: 3 casti v style NOTIFICATIONS (predtym box CONNECTED APPS) | Vrso -> Claude AI | 2026-11-17
+  zzz10m5_render_gate_module(host);
 
   const sec = zzz10m5_el('div', 'zzz10m5-box');
   sec.appendChild(zzz10m5_el('h3', '', 'HOW YOUR ACCOUNT IS PROTECTED'));
@@ -52293,6 +52278,234 @@ function zzz10m5_render_advanced_setup(host) {
   bot.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'Your own Verso bot will quietly watch over its owner - for example whether the person using the logged-in device is really you. Prepared place only: no tasks or settings yet.'));
   host.appendChild(bot);
 }
+
+// === [Zzz10-M5:GATE-MODULE] VERSO GATE v Advanced setup postaveny ako NOTIFICATIONS workspace (CL mechanizmus).
+// Vrso 2026-11-17, doslovne: "ano suhlasim ako pises... MY DEVICES & VERSO MODULES, APPS THAT LOG IN WITH VERSO, MY ACCOUNTS
+// ELSEWHERE by bolo myslim uz rovno lepsie riesit stylom ako si urobila notification workspace ktory je velmi prehladny,
+// postaveny na cl mechanizme, vizualne vyborny a celkovo vyborny zdroj kedze aj v settings bude par prelinajucich nastaveni
+// a druhov funkcii...skus to co najlepsie takto zapracovat." | Vrso -> Claude AI | 2026-11-17
+// Tri casti brany (dohodnute 2026-11-17):
+//   [Zzz10-M5:GATE-INTERNAL]     MY DEVICES & VERSO MODULES - toto zariadenie, USB kluce, multiboard, klavesnica, hybrid, hodinky
+//   [Zzz10-M5:GATE-EXTERNAL-IN]  APPS THAT LOG IN WITH VERSO - cudzie appky prihlasene Verso uctom (ALLOW / DISCONNECT)
+//   [Zzz10-M5:GATE-EXTERNAL-OUT] MY ACCOUNTS ELSEWHERE - Verso pripojene na tvoje ucty inde (YouTube, weby) - zatial PREPARED
+// Rezimy ako v NOTIFICATIONS: ACTIVE / WAITING / PREPARED / HISTORY. Riadok PRESET + MINI = trvale hladanie v stlpcoch.
+// Vsetko je v SETTINGS (pravidlo [Zzz10-M5:GATE-IN-SETTINGS]); kod sa nezdvojuje - pouziva tie iste akcie verso-gate. ===
+const ZZZ10M5_GATE_TABS = [
+  { key: 'internal', label: 'MY DEVICES & VERSO MODULES', short: 'MY DEVICES', tag: '[Zzz10-M5:GATE-INTERNAL]' },
+  { key: 'in', label: 'APPS THAT LOG IN WITH VERSO', short: 'APPS IN', tag: '[Zzz10-M5:GATE-EXTERNAL-IN]' },
+  { key: 'out', label: 'MY ACCOUNTS ELSEWHERE', short: 'ACCOUNTS', tag: '[Zzz10-M5:GATE-EXTERNAL-OUT]' }
+];
+const ZZZ10M5_GATE_MODES = [
+  { key: 'active', label: 'ACTIVE', title: 'What is connected and working now' },
+  { key: 'waiting', label: 'WAITING', title: 'Waiting for your answer' },
+  { key: 'prepared', label: 'PREPARED', title: 'Ready places for what comes next - not working yet' },
+  { key: 'history', label: 'HISTORY', title: 'What happened - on this device, newest first' }
+];
+const ZZZ10M5_GATE_COLS = [
+  { k: 'kind', label: 'KIND' }, { k: 'name', label: 'NAME' }, { k: 'owner', label: 'OWNER' },
+  { k: 'scope', label: 'ACCESS' }, { k: 'status', label: 'STATUS' }, { k: 'since', label: 'SINCE' }, { k: 'text', label: 'TEXT' }
+];
+var zzz10m5GateTab = 'in';
+var zzz10m5GateMode = 'active';
+var zzz10m5GateQ = {};
+var zzz10m5GateData = { grants: null, keys: null, err: '' };
+
+function zzz10m5_gate_css() {
+  if (document.getElementById('zzz10m5GateCss')) return;
+  const st = document.createElement('style');
+  st.id = 'zzz10m5GateCss';
+  st.textContent = `
+    .zzz10m5-gate{width:100%;max-width:900px;box-sizing:border-box;margin:8px auto;max-height:none;overflow:visible}
+    .zzz10m5-gate .zzz5w5cm-module-label{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .zzz10m5-gate .zzz5t0-tabs-row-inner{display:flex;gap:4px}
+    .zzz10m5-gate .zzz5t0-tab.zzz5w5cm-tab-big{flex:1 1 0;min-width:0;justify-content:center;text-align:center;white-space:normal;line-height:1.15}
+    .zzz10m5-gate .zzz5w5cm-ccl-row{grid-template-columns:34px minmax(0,.55fr) minmax(0,.95fr) minmax(0,.5fr) minmax(0,.75fr) minmax(0,.6fr) minmax(0,.55fr) minmax(0,1.7fr)}
+    .zzz10m5-g-item .zzz5w5cm-ccl-val{white-space:normal;word-break:break-word;line-height:1.2;align-self:center}
+    .zzz10m5-g-item .zzz10m5-g-c-name{color:#fff;font-weight:700}
+    .zzz10m5-g-item .zzz10m5-g-c-status{text-align:center;font-weight:800}
+    .zzz10m5-g-item.is-active .zzz10m5-g-c-status{color:#7fcf83}
+    .zzz10m5-g-item.is-waiting .zzz10m5-g-c-status{color:#f0a640}
+    .zzz10m5-g-item.is-prepared .zzz10m5-g-c-status{color:#D4AF37}
+    .zzz10m5-g-item.is-history .zzz10m5-g-c-status{color:#9aa0a6}
+    .zzz10m5-g-item{border-top:1px solid #262626}
+    .zzz10m5-g-acts{display:flex;justify-content:flex-end;gap:6px;padding:0 4px 6px 38px;flex-wrap:wrap}
+    .zzz10m5-g-acts .zzz5w5cm-chip{font-size:9px;padding:4px 10px}
+    .zzz10m5-g-acts .is-red{border-color:#dc2626 !important;color:#fca5a5 !important}
+    .zzz10m5-g-empty{padding:12px 8px;color:#a9a9a9;font-size:12px}
+    .zzz10m5-g-intro{padding:6px 8px 8px;color:#cfcfcf;font-size:12px;line-height:1.35}
+  `;
+  document.head.appendChild(st);
+}
+
+function zzz10m5_gate_items() {
+  const items = [];
+  const me = (typeof zzz_sessionUsername === 'string' && zzz_sessionUsername) || '';
+  // --- INTERNAL ---
+  let rt = ''; try { rt = zzz16_runtime_label(zzz16_who().rt); } catch (e) {}
+  items.push({ tab: 'internal', mode: 'active', kind: 'DEVICE', name: 'This device', owner: me, scope: 'full Verso', status: 'ACTIVE', since: '', text: 'Logged in here' + (rt ? ' as ' + rt : '') + '. One device at a time - a second login elsewhere is refused while you are logged in.' });
+  if (zzz10m5GateData.keys) zzz10m5GateData.keys.forEach((k) => items.push({ tab: 'internal', mode: 'active', kind: 'USB KEY', name: k.label, owner: me, scope: 'recovery', status: 'ACTIVE', since: zzz10m5_date(k.created_at), text: 'Security key (FIDO2). Recovery with it - also offline - comes with the Verso hybrid app.',
+    acts: [{ label: 'REMOVE', red: true, fn: async () => { if (!confirm('Remove the key "' + k.label + '"?')) return; await zzz10m5_call('key_revoke', { id: k.id }); zzz10m5_gate_log('usb-key', k.label, 'USB key removed'); zzz10m5_gate_reload(); } }] }));
+  items.push({ tab: 'internal', mode: 'prepared', kind: 'USB KEY', name: 'Add a USB / NFC key', owner: me, scope: 'recovery', status: 'PREPARED', since: '', text: 'Add it now in RECOVERY (way 2). Used for recovery and for enrolling a new phone later.', acts: [{ label: 'RECOVERY', fn: () => zzz10m5_open_recovery_window() }] });
+  [['MODULE', 'VI Multiboard', 'its own narrow access - only what the multiboard needs, never your full rights'],
+   ['MODULE', 'Verso keyboard', 'paired from this app - you never type your Verso password into the keyboard; nothing from password fields is kept'],
+   ['MODULE', 'Verso hybrid module', 'the Verso app on this phone that also works offline with its own device certificate'],
+   ['DEVICE', 'Watch', 'a trusted device on your wrist - with the MV PHRASE it can confirm a new phone when this one is lost']
+  ].forEach(([kind, name, text]) => items.push({ tab: 'internal', mode: 'prepared', kind, name, owner: me, scope: 'paired', status: 'PREPARED', since: '', text }));
+  // --- EXTERNAL-IN ---
+  if (zzz10m5GateData.grants) zzz10m5GateData.grants.forEach((g) => items.push({ tab: 'in', mode: 'active', kind: 'APP', name: g.name, owner: me, scope: (g.scopes || []).join(', '), status: 'ACTIVE', since: zzz10m5_date(g.granted_at), text: 'Logs in with your Verso account. It got a private number made only for it' + ((g.scopes || []).includes('username') ? ' and your username.' : '.'),
+    acts: [{ label: 'DISCONNECT', red: true, fn: async () => { if (!confirm('Disconnect ' + g.name + '? It loses access to your Verso identity at once.')) return; await zzz10m5_call('revoke', { grant_id: g.id }); zzz10m5_gate_log(g.app_id, g.name, 'disconnected'); zzz10m5_gate_reload(); } }] }));
+  if (zzz10m5Pending) {
+    const req = zzz10m5Pending;
+    items.push({ tab: 'in', mode: 'waiting', kind: 'APP', name: req.name || req.app_id, owner: me, scope: req.scopes.join(', '), status: 'WAITING', since: new Date(req.t || Date.now()).toLocaleTimeString(), text: 'Wants you to log in with Verso. OPEN = see what it asks and ALLOW or DENY.',
+      acts: [{ label: 'OPEN', fn: () => zzz10m5_open_consent(req) }, { label: 'DENY', red: true, fn: () => { zzz10m5_gate_log(req.app_id, req.name, 'denied (in SETTINGS)'); zzz10m5_pending_clear(); } }] });
+  }
+  items.push({ tab: 'in', mode: 'prepared', kind: 'TEST', name: 'Verso gate test app', owner: me, scope: 'identity', status: 'PREPARED', since: '', text: 'A pretend app to try "Log in with Verso" safely.', acts: [{ label: 'TRY IT', fn: () => { location.href = './verso-gate-test.html'; } }] });
+  // --- EXTERNAL-OUT ---
+  [['APP ACCOUNT', 'YouTube (Google)', 'official Google sign-in - Verso never sees your password; 2-3 accounts = 2-3 separate connections, each with its own name'],
+   ['WEB ACCOUNT', 'Websites without an app link (e.g. sme.sk discussions)', 'only with saved login data - encrypted and kept only on your device, never readable on the server; the most sensitive part, comes last']
+  ].forEach(([kind, name, text]) => items.push({ tab: 'out', mode: 'prepared', kind, name, owner: me, scope: 'your account there', status: 'PREPARED', since: '', text }));
+  // --- HISTORY (lokalne, podla username) ---
+  const k = zzz10m5_log_key();
+  let log = []; try { log = k ? JSON.parse(localStorage.getItem(k) || '[]') : []; } catch (e) {}
+  log.forEach((x) => items.push({ tab: x.app === 'usb-key' ? 'internal' : 'in', mode: 'history', kind: x.app === 'usb-key' ? 'USB KEY' : 'APP', name: x.name || x.app, owner: me, scope: '', status: 'DONE', since: new Date(x.t).toLocaleString(), text: x.r, t: x.t }));
+  return items;
+}
+
+function zzz10m5_gate_match(it) {
+  const q = zzz10m5GateQ[zzz10m5GateTab + ':' + zzz10m5GateMode] || {};
+  return ZZZ10M5_GATE_COLS.every((c) => {
+    const want = String(q[c.k] || '').trim();
+    if (!want) return true;
+    const have = zzz10v1_normalize(String(it[c.k] || ''));
+    return want.split(',').map((t) => zzz10v1_normalize(t.trim())).filter(Boolean).some((t) => have.includes(t));
+  });
+}
+
+async function zzz10m5_gate_reload() {
+  try {
+    const [g, k] = await Promise.all([zzz10m5_call('grants'), zzz10m5_call('keys')]);
+    zzz10m5GateData = { grants: g.grants || [], keys: k.keys || [], err: '' };
+  } catch (e) { zzz10m5GateData.err = zzz10m5_err_text(e); }
+  zzz10m5_gate_paint_all();
+}
+function zzz10m5_gate_paint_all() { document.querySelectorAll('.zzz10m5-gate').forEach((m) => zzz10m5_gate_paint(m)); }
+
+function zzz10m5_render_gate_module(host) {
+  zzz10m5_gate_css();
+  const mod = document.createElement('div');
+  mod.className = 'zzz5w5cm-module zzz5w8-module zzz10m5-gate';
+  host.appendChild(mod);
+  zzz10m5_gate_paint(mod);
+  zzz10m5_gate_reload();
+}
+
+function zzz10m5_gate_paint(mod) {
+  const all = zzz10m5_gate_items();
+  mod.innerHTML = '';
+  const label = document.createElement('div');
+  label.className = 'zzz5w5cm-module-label';
+  const lt = document.createElement('span'); lt.className = 'zzz5w8-title'; lt.textContent = 'VERSO GATE';
+  label.appendChild(lt);
+  const acts = document.createElement('span'); acts.className = 'zzz5w8-acts';
+  const rb = document.createElement('button'); rb.type = 'button'; rb.className = 'zzz5w5cm-chip zzz5w8-alarm-head'; rb.textContent = '↻ RELOAD';
+  rb.addEventListener('click', () => zzz10m5_gate_reload());
+  acts.appendChild(rb); label.appendChild(acts); mod.appendChild(label);
+
+  const row = document.createElement('div'); row.className = 'zzz5t0-tabs-row';
+  const inner = document.createElement('div'); inner.className = 'zzz5t0-tabs-row-inner';
+  ZZZ10M5_GATE_TABS.forEach((t) => {
+    const n = all.filter((i) => i.tab === t.key && (i.mode === 'active' || i.mode === 'waiting')).length;
+    const b = document.createElement('button'); b.type = 'button';
+    b.className = 'zzz5t0-tab zzz5w5cm-tab-big' + (zzz10m5GateTab === t.key ? ' zzz5t0-tab-active zzz5t0-tab-current' : '');
+    b.textContent = t.label + ' (' + n + ')';
+    if (all.some((i) => i.tab === t.key && i.mode === 'waiting')) { const dot = document.createElement('span'); dot.className = 'zzz5w8-tab-dot zzz5w8-p-attention'; b.appendChild(dot); }
+    b.addEventListener('click', () => { zzz10m5GateTab = t.key; zzz10m5_gate_paint_all(); });
+    inner.appendChild(b);
+  });
+  row.appendChild(inner); mod.appendChild(row);
+
+  const intro = document.createElement('div'); intro.className = 'zzz10m5-g-intro';
+  intro.textContent = ({
+    internal: 'Your own devices and Verso modules. They join by pairing from a device where you are already logged in - never with an ALLOW window. Each gets only the access it needs. Only this part can work offline.',
+    in: 'Other apps and websites that let you log in with your Verso account - like "Log in with Google". They always ask ALLOW / DENY first, only online. An app never gets your password - only a private number made just for it, and your username only if you allow it.',
+    out: 'Verso connected to your accounts on other services - YouTube, websites. Where the service has an official sign-in, Verso never sees your password. Prepared only - nothing connects yet.'
+  })[zzz10m5GateTab];
+  mod.appendChild(intro);
+
+  const modes = document.createElement('div'); modes.className = 'zzz5w8-modes'; modes.setAttribute('role', 'tablist');
+  ZZZ10M5_GATE_MODES.forEach((m) => {
+    const n = all.filter((i) => i.tab === zzz10m5GateTab && i.mode === m.key).length;
+    const b = document.createElement('button'); b.type = 'button'; b.className = zzz10m5GateMode === m.key ? 'is-on' : '';
+    b.textContent = m.label + ' (' + n + ')'; b.title = m.title;
+    b.addEventListener('click', () => { zzz10m5GateMode = m.key; zzz10m5_gate_paint_all(); });
+    modes.appendChild(b);
+  });
+  mod.appendChild(modes);
+
+  const qk = zzz10m5GateTab + ':' + zzz10m5GateMode;
+  const q = zzz10m5GateQ[qk] || (zzz10m5GateQ[qk] = {});
+  const crm = document.createElement('div'); crm.className = 'zzz5w5cm-ccl zzz5w8-crm';
+  const rl = document.createElement('div'); rl.className = 'zzz5w5cm-ccl-row zzz5w5cm-ccl-rl';
+  const pre = document.createElement('span'); pre.className = 'zzz5w5cm-ccl-mini'; pre.textContent = 'PRESET'; rl.appendChild(pre);
+  ZZZ10M5_GATE_COLS.forEach((c) => { const l = document.createElement('span'); l.className = 'zzz5w5cm-ccl-lab'; l.textContent = c.label; rl.appendChild(l); });
+  crm.appendChild(rl);
+  const cl = document.createElement('div'); cl.className = 'zzz5w5cm-ccl-row zzz5w5cm-ccl-cl';
+  const mini = document.createElement('span'); mini.className = 'zzz5w5cm-ccl-mini is-search'; mini.textContent = 'MINI';
+  mini.title = 'The cells in this row search this list - tap MINI to clear them';
+  cl.appendChild(mini);
+  const inputs = [];
+  ZZZ10M5_GATE_COLS.forEach((c) => {
+    const inp = document.createElement('input'); inp.type = 'text';
+    inp.className = 'zzz5w5cm-ccl-cell' + (String(q[c.k] || '').trim() ? ' is-on' : '');
+    inp.value = q[c.k] || ''; inp.title = c.label + ' - contains; a, b = or; several cells = all must match';
+    inp.addEventListener('input', () => { q[c.k] = inp.value; inp.classList.toggle('is-on', !!inp.value.trim()); paintBody(); });
+    inputs.push(inp); cl.appendChild(inp);
+  });
+  mini.addEventListener('click', () => { ZZZ10M5_GATE_COLS.forEach((c, i) => { q[c.k] = ''; inputs[i].value = ''; inputs[i].classList.remove('is-on'); }); paintBody(); });
+  crm.appendChild(cl);
+  mod.appendChild(crm);
+
+  const body = document.createElement('div'); body.className = 'zzz5w5cm-ccl-body zzz5w8-list';
+  mod.appendChild(body);
+  function paintBody() {
+    body.innerHTML = '';
+    const inTab = all.filter((i) => i.tab === zzz10m5GateTab && i.mode === zzz10m5GateMode);
+    const vis = inTab.filter(zzz10m5_gate_match);
+    if (zzz10m5GateMode === 'history') vis.sort((a, b) => (b.t || 0) - (a.t || 0));
+    if (!vis.length) {
+      const e = document.createElement('div'); e.className = 'zzz10m5-g-empty';
+      e.textContent = zzz10m5GateData.err && zzz10m5GateMode === 'active' ? 'Could not load from the Verso server: ' + zzz10m5GateData.err + ' - tap RELOAD.'
+        : (inTab.length ? 'Nothing matches the search above.'
+        : ({ active: (zzz10m5GateData.grants === null ? 'Loading...' : 'Nothing connected here yet.'),
+             waiting: 'Nothing waits for your answer. When an app wants you to log in with Verso, it waits here until you answer.',
+             prepared: 'Nothing prepared here.', history: 'Nothing happened here yet on this device.' })[zzz10m5GateMode]);
+      body.appendChild(e); return;
+    }
+    vis.forEach((it) => {
+      const r = document.createElement('div');
+      r.className = 'zzz5w5cm-ccl-row zzz10m5-g-item is-' + it.mode;
+      const m = document.createElement('span'); m.className = 'zzz5w5cm-ccl-mini is-item'; m.textContent = it.mode === 'waiting' ? '!' : (it.mode === 'active' ? '✓' : (it.mode === 'prepared' ? '…' : '•'));
+      r.appendChild(m);
+      ZZZ10M5_GATE_COLS.forEach((c) => { const v = document.createElement('span'); v.className = 'zzz5w5cm-ccl-val zzz10m5-g-c-' + c.k; v.textContent = it[c.k] || ''; r.appendChild(v); });
+      body.appendChild(r);
+      if (it.acts && it.acts.length) {
+        const a = document.createElement('div'); a.className = 'zzz10m5-g-acts';
+        it.acts.forEach((x) => {
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz5w5cm-chip' + (x.red ? ' is-red' : ''); b.textContent = x.label;
+          b.addEventListener('click', async () => {
+            b.disabled = true;
+            try { await x.fn(); } catch (e) { zzz_user_error('That did not work - try again.', zzz10m5_err_text(e), '[Zzz10-M5:GATE-MODULE]'); }
+            b.disabled = false;
+          });
+          a.appendChild(b);
+        });
+        body.appendChild(a);
+      }
+    });
+  }
+  paintBody();
+}
+// === [/Zzz10-M5:GATE-MODULE] ===
 
 // === [Zzz10-M6:AUDIT-LOG] okno AUDIT LOG v SETTINGS > Advanced setup.
 // Vrso 2026-11-09, doslovne: "zzz10-M6 Audit log trace log....ip...zaprscuj... [GR:MULTISIG-DISCLOSURE] a dennik
@@ -52698,6 +52911,7 @@ function zzz10m5_pending_clear() {
   zzz10m5_render_gate_panel();
 }
 function zzz10m5_render_gate_panel(only) {
+  try { if (!only && typeof zzz10m5_gate_paint_all === 'function') zzz10m5_gate_paint_all(); } catch (e) {}
 
   (only ? [only] : Array.from(document.querySelectorAll('.zzz10m5-gate-panel'))).forEach(zzz10m5_fill_gate_panel);
 }
@@ -54356,7 +54570,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-16 16:19';
+const VERSO_BUILD = '2026-11-17 01:40';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
