@@ -30161,6 +30161,7 @@ function zzz_ext_render_settings(host) {
   };
   line('MAIN SWITCH', 'mode', [['proxy', 'IP SHIELD ✓ default'], ['auto', 'AUTO'], ['direct', 'PHONE (DIRECT)']]);
   note('IP SHIELD (service: VERSO PROXY - the Verso server reads for you) = pages that Verso reads for you (READ SPACE, 👁 WATCH, web line, later the Verso browser and search) are read by the Verso server: the site sees the Verso server, not your IP or location, and nothing blinks. AUTO / PHONE = the Verso app on your phone reads them itself (the site sees your IP; Verso does not see what you read). Pages where you are logged in (your shop account…) can be read only by the phone.');
+  note('WHAT IP SHIELD COVERS: READ SPACE pages, web line, 👁 WATCH, page pictures, media names / authors (Verso server). NOT covered: playing a stream (YouTube, radio…) and opening the original page (↗ / hold ▶) - those go straight from your phone. Each READ SPACE page shows 🛡 (via IP SHIELD) or 📱 (your phone).');
   note('PRIVATE mode (IP SHIELD everywhere + private pages) and REMOTE ACCESS: SETTINGS › Advanced setup › MODES (secret command, MV PHRASE).');
   note('BY PROCESS: READ SPACE › ⚙ READ SETUP › PAGES can keep its own choice (BY SETTINGS = this switch).');
   host.appendChild(box);
@@ -30878,7 +30879,7 @@ function zzz_rs_extract(html, base) {
 async function zzz_rs_fetch(link) {
   if (zzz_rs_direct_on()) {
     const d = await zzz_rs_direct(link);
-    if (d && d.blocks) { zzz_rs_cache_put(link, d); return d; }
+    if (d && d.blocks) { d.via = 'phone'; zzz_rs_cache_put(link, d); return d; }
     if (d && d.error && d.error !== 'no channel') zzz6f2_show_toast('Phone: ' + d.error + ' - reading VIA VERSO.', 'info', 2200);
   }
   const h = (typeof zzz_verso_fn_headers === 'function') ? zzz_verso_fn_headers() : null;
@@ -30889,7 +30890,7 @@ async function zzz_rs_fetch(link) {
     let j = null; try { j = await r.json(); } catch (e) {}
     if (r.status === 404) return { error: 'VERSO READER is not reachable on the Verso server yet. Hold the ▶ button = the original page.', down: true };
     if (!r.ok) return { error: (j && j.error) ? String(j.error) : 'The page could not be read (' + r.status + ').' };
-    if (j && j.blocks) zzz_rs_cache_put(link, j);
+    if (j && j.blocks) { j.via = 'shield'; zzz_rs_cache_put(link, j); }
     return j || { error: 'The page gave nothing to read.' };
   } catch (e) { return { error: 'VERSO READER is not reachable - check the connection. Hold the ▶ button = the original page.', down: true }; }
 }
@@ -31783,10 +31784,17 @@ function zzz_rs_reader(it) {
 
 let zzzRsImgObs = null;
 function zzz_rs_image_direct(b) { const im = document.createElement('img'); im.src = b.v; im.alt = b.a || ''; im.loading = 'lazy'; im.decoding = 'async'; im.referrerPolicy = 'no-referrer'; im.className = 'zzz-rs-im'; return im; }
-function zzz_rs_image_tap(b, note) {
+// [Zzz14-EXT:SHIELD-MARK] with IP SHIELD on (or PRIVATE) a tapped image is loaded by the Verso server too, never straight from the site
+function zzz_rs_img_shielded() { try { return zzz_ext_private() || zzz_ext().mode === 'proxy'; } catch (e) { return true; } }
+function zzz_rs_image_tap(b, note, failed) {
   const el = document.createElement('button'); el.type = 'button'; el.className = 'zzz-rs-img';
-  el.textContent = '🖼 ' + (b.a || 'image') + ' - ' + (note || 'tap = show (comes from the site)');
-  el.addEventListener('click', () => el.replaceWith(zzz_rs_image_direct(b)));
+  const sh = zzz_rs_img_shielded();
+  if (failed && zzz_ext_private()) { el.textContent = '🖼 ' + (b.a || 'image') + ' - 🔒 PRIVATE: Verso could not load it, it is not taken straight from the site.'; el.disabled = true; return el; }
+  el.textContent = '🖼 ' + (b.a || 'image') + ' - ' + (note || (sh ? 'tap = show (via IP SHIELD)' : 'tap = show (comes from the site)'));
+  el.addEventListener('click', () => {
+    if (sh && !failed) { const hold = document.createElement('div'); hold.className = 'zzz-rs-img is-wait'; hold.textContent = '🖼 ' + (b.a || 'image') + ' …'; hold._rsImg = b; el.replaceWith(hold); zzz_rs_image_fetch(hold); }
+    else el.replaceWith(zzz_rs_image_direct(b));
+  });
   return el;
 }
 async function zzz_rs_image_fetch(holder) {
@@ -31803,7 +31811,7 @@ async function zzz_rs_image_fetch(holder) {
     im.addEventListener('load', () => { setTimeout(() => { try { URL.revokeObjectURL(im.src); } catch (e) {} }, 1000); }, { once: true });
     if (holder.isConnected) holder.replaceWith(im);
   } catch (e) {
-    if (holder.isConnected) holder.replaceWith(zzz_rs_image_tap(b, 'Verso could not load it - tap = straight from the site'));
+    if (holder.isConnected) holder.replaceWith(zzz_rs_image_tap(b, 'Verso could not load it - tap = straight from the site (the site sees your IP)', true));
   }
 }
 function zzz_rs_image(b) {
@@ -31824,6 +31832,11 @@ function zzz_rs_paint(content, d, box) {
   const head = document.createElement('div'); head.className = 'zzz-rs-head';
   const h1 = document.createElement('div'); h1.className = 'zzz-rs-h1'; h1.textContent = d.title || ''; head.appendChild(h1);
   const meta = document.createElement('div'); meta.className = 'zzz-rs-meta'; meta.textContent = [d.site, d.byline].filter(Boolean).join(' · ') + (d.kept ? ' · KEPT copy' : ''); head.appendChild(meta);
+  // [Zzz14-EXT:SHIELD-MARK] how this page was read - Vrso -> Claude AI 2026-11-17 (IP SHIELD z fronty: „jasný ukazovateľ cez IP SHIELD / priamo pri každom čítaní“)
+  { const via = d.kept ? 'kept' : (d.via || 'shield'); const vm = document.createElement('div'); vm.className = 'zzz-rs-meta zzz-rs-via';
+    vm.textContent = via === 'phone' ? '📱 read by your phone (DIRECT) - the site saw your IP' : via === 'kept' ? '💾 your KEPT copy - nothing was read now' : '🛡 read via IP SHIELD - the site saw only the Verso server';
+    vm.title = 'EXTERNAL CONNECTION: SETTINGS › Setup › EXTERNAL CONNECTION (IP SHIELD / AUTO / PHONE). PRIVATE mode = always IP SHIELD.';
+    vm.style.color = via === 'phone' ? '#f59e0b' : '#4ade80'; head.appendChild(vm); }
   content.appendChild(head);
   (d.blocks || []).forEach(b => {
     let el;
@@ -55591,7 +55604,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-17 23:10';
+const VERSO_BUILD = '2026-11-17 23:35';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -61251,6 +61264,8 @@ function zzz_media_vi_yield() {
     vl.style.display = 'none'; setTimeout(zzz_media_place, 60); } catch (e) {}
 }
 function zzz_media_play(it, queue) {
+  // [Zzz14-EXT:SHIELD-MARK] a stream always plays straight from its provider - say it once per session in PRIVATE / IP SHIELD
+  try { if (!zzzMedia.shieldSaid && it && /^https?:/i.test(it.link || '') && (zzz_ext_private() || zzz_ext().mode === 'proxy')) { zzzMedia.shieldSaid = true; zzz6f2_show_toast('▶ The stream plays straight from ' + (zzz_rs_host ? zzz_rs_host(it.link) : 'its provider') + ' - it sees your IP. IP SHIELD covers reading, names and pictures, not playing.', 'info', 4200); } } catch (e) {}
   try { zzz_media_vi_yield(); } catch (e) {}
   if (!it) return;
   if (it.link && /^https?:\/\//i.test(it.link)) { const n = zzz_media_norm(it.link); if (n !== it.link) it = Object.assign({}, it, { link: n }); }
