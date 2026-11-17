@@ -30444,6 +30444,7 @@ async function zzz_rs_load(force) {
       notes.filter(n => n.note_part && !/^verso:(keep|watch|seen)\b/.test(String(n.note_text || ''))).forEach(n => { const k = n.entry_key + '#' + n.note_number; (zzzRs.diss[k] = zzzRs.diss[k] || []).push(n); });
       zzzRs.watch = {};
       notes.filter(n => n.note_part && /^verso:watch\b/.test(String(n.note_text || ''))).sort((a, c) => String(a.created_at || '').localeCompare(String(c.created_at || ''))).forEach(n => { const k = n.entry_key + '#' + n.note_number; let d = null; try { d = JSON.parse(String(n.note_text).replace(/^verso:watch\s*/, '')); } catch (e) {} if (d) { d.at = n.created_at; (zzzRs.watch[k] = zzzRs.watch[k] || []).push(d); } });
+      zzzRs.trashed = notes.filter(n => !n.note_part && /(^|\s)(rpage|bundles|reads)(\s|$)/.test(String(n.note_tags || '')) && /(^|\s)trash(\s|$)/.test(String(n.note_tags || ''))).map(n => zzz_rs_item(n, byId[String(n.entry_key)], null));
       zzzRs.lines = notes.filter(n => !n.note_part && /(^|\s)(rpage|bundles|reads)(\s|$)/.test(String(n.note_tags || '')) && !/(^|\s)trash(\s|$)/.test(String(n.note_tags || '')))
         .map(n => zzz_rs_item(n, byId[String(n.entry_key)], keeps[n.entry_key + '#' + n.note_number]));
 
@@ -30507,6 +30508,27 @@ async function zzz_rs_tree_add(el, kind, parent) {
   zzz_rs_render();
 }
 
+// [Zzz5-W10:PAGE-TRASH] Vrso -> Claude AI 2026-11-17 („ako vymažem page zo zoznamu?“): a page goes to TRASH = tag trash on its line (GR no physical deletion - nothing is removed, RESTORE in ⚙ READ SETUP › TRASH)
+async function zzz_rs_trash(it, back) {
+  if (!it || !it.id) return false;
+  let w = String((it.note && it.note.note_tags) || '').split(/\s+/).filter(Boolean).filter(t => t !== 'trash');
+  if (!back) w.push('trash');
+  const tags = w.join(' ');
+  const { error } = await sb.from('verso_chat_notes').update({ note_tags: tags }).eq('id', it.id);
+  if (error) { zzz_user_error('The page was not moved - check the connection.', error, '[Zzz5-W10:PAGE-TRASH]'); return false; }
+  if (it.note) it.note.note_tags = tags;
+  if (!back) {
+    zzzRs.lines = (zzzRs.lines || []).filter(x => x !== it && x.id !== it.id);
+    (zzzRs.trashed = zzzRs.trashed || []).push(it);
+    if (zzzRs.page && zzzRs.page.id === it.id) zzzRs.page = null;
+  } else {
+    zzzRs.trashed = (zzzRs.trashed || []).filter(x => x.id !== it.id);
+    if (!(zzzRs.lines || []).some(x => x.id === it.id)) zzzRs.lines.push(it);
+  }
+  zzz6f2_show_toast((back ? 'RESTORED: ' : '🗑 In TRASH: ') + (it.name || zzz_rs_host(it.link)) + (back ? '' : ' - back any time in ⚙ READ SETUP › TRASH.'), 'info', 2600);
+  zzz_rs_render();
+  return true;
+}
 function zzz_rs_move(it) {
   const t = zzz_rs_tree_of(it.elId);
   const o = document.createElement('div'); o.className = 'zzz-media-confirm'; o.setAttribute('data-zzz-nodraft', '1');
@@ -30535,9 +30557,11 @@ function zzz_rs_move(it) {
     list.appendChild(r);
   });
   const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
+  const tr = document.createElement('button'); tr.type = 'button'; tr.className = 'zzz-media-btn'; tr.textContent = '🗑 TRASH'; tr.title = 'Out of the list (kept - RESTORE in ⚙ READ SETUP › TRASH)';
+  tr.addEventListener('click', async () => { if (!(await zzz_verso_confirm('Move to TRASH?\n' + (it.name || zzz_rs_host(it.link)) + '\n\nNothing is deleted - RESTORE in ⚙ READ SETUP › TRASH.', 'TRASH'))) return; if (await zzz_rs_trash(it)) o.remove(); });
   const un = document.createElement('button'); un.type = 'button'; un.className = 'zzz-media-btn'; un.textContent = 'UNSORTED'; un.addEventListener('click', () => go(null));
   const no = document.createElement('button'); no.type = 'button'; no.className = 'zzz-media-btn'; no.textContent = 'CLOSE'; no.addEventListener('click', () => o.remove());
-  row.appendChild(un); row.appendChild(no); b.appendChild(row);
+  row.appendChild(tr); row.appendChild(un); row.appendChild(no); b.appendChild(row);
   o.appendChild(b); o.addEventListener('click', (e) => { if (e.target === o) o.remove(); });
   document.body.appendChild(o);
 }
@@ -32042,6 +32066,19 @@ function zzz_rs_setup_window() {
   group('IMAGES', 'img', [['verso', 'AUTO VIA VERSO'], ['tap', 'ON TAP'], ['direct', 'DIRECT']], 'AUTO VIA VERSO = shown at once, fetched by the Verso server (the site never sees your phone). DIRECT = like a normal browser (the site sees your IP). ON TAP = nothing until you tap.');
   { const g = document.createElement('div'); g.className = 'zzz-rs-set-g'; const l = document.createElement('div'); l.className = 'zzz-rs-set-l'; l.textContent = 'SEARCH'; g.appendChild(l); const h = document.createElement('div'); h.className = 'zzz-rs-set-h'; h.textContent = 'Now: VERSO READER + SHOW (search inside a page). Later: SearXNG (free), Claude (catalogue).'; g.appendChild(h); b.appendChild(g); }
   group('THIS DEVICE KEEPS', 'cache', [[0, 'NONE'], [20, '20 PAGES'], [50, '50 PAGES']], 'Read pages kept on this device for reading without connection.');
+  // [Zzz5-W10:PAGE-TRASH] TRASH of READ SPACE: pages moved out of the list, RESTORE = back where they were
+  { const tl = (zzzRs.trashed || []).slice().reverse();
+    const g = document.createElement('div'); g.className = 'zzz-rs-set-g';
+    const l = document.createElement('div'); l.className = 'zzz-rs-set-l'; l.textContent = 'TRASH (' + tl.length + ')'; g.appendChild(l);
+    if (!tl.length) { const h = document.createElement('div'); h.className = 'zzz-rs-set-h'; h.textContent = 'Empty. A page goes here by ↳ › 🗑 TRASH; nothing is ever deleted.'; g.appendChild(h); }
+    tl.slice(0, 50).forEach(it => {
+      const r = document.createElement('div'); r.className = 'zzz-rs-set-r';
+      const t = document.createElement('span'); t.className = 'zzz-rs-set-h'; t.style.flex = '1 1 auto'; t.textContent = (it.name || zzz_rs_host(it.link)) + ' · ' + zzz_rs_host(it.link); r.appendChild(t);
+      const rb = document.createElement('button'); rb.type = 'button'; rb.className = 'zzz14cs-feed-mode'; rb.textContent = 'RESTORE';
+      rb.addEventListener('click', async () => { rb.disabled = true; if (await zzz_rs_trash(it, true)) r.remove(); else rb.disabled = false; });
+      r.appendChild(rb); g.appendChild(r);
+    });
+    b.appendChild(g); }
   const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
   const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'zzz-media-btn is-on'; ok.textContent = 'SAVE';
   const no = document.createElement('button'); no.type = 'button'; no.className = 'zzz-media-btn'; no.textContent = 'CANCEL';
@@ -54816,7 +54853,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-17 18:40';
+const VERSO_BUILD = '2026-11-17 19:10';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
