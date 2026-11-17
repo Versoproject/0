@@ -52307,7 +52307,9 @@ const ZZZ10M5_GATE_COLS = [
 ];
 var zzz10m5GateTab = 'in';
 var zzz10m5GateMode = 'active';
-var zzz10m5GateQ = {};
+var zzz10m5GateQ = {};          // SHOW bar: hladany text podla casti + rezimu
+var zzz10m5GateShowOpen = false;
+var zzz10m5GateCl = {};         // CRM riadok brany (CL) - koncept hodnot podla casti; zatial len drzi hodnoty (ATTACH pride s Zzz6-F49)
 var zzz10m5GateData = { grants: null, keys: null, err: '' };
 
 function zzz10m5_gate_css() {
@@ -52332,6 +52334,12 @@ function zzz10m5_gate_css() {
     .zzz10m5-g-acts .zzz5w5cm-chip{font-size:9px;padding:4px 10px}
     .zzz10m5-g-acts .is-red{border-color:#dc2626 !important;color:#fca5a5 !important}
     .zzz10m5-g-empty{padding:12px 8px;color:#a9a9a9;font-size:12px}
+    .zzz10m5-g-show{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:4px 2px 6px;border-bottom:1px solid #D4AF37;margin-bottom:2px}
+    .zzz10m5-g-show .zzz5w7-filterbtn.is-on{background:#ea8c00 !important;color:#111 !important}
+    .zzz10m5-g-find{display:flex;align-items:center;gap:6px;flex:1 1 220px;min-width:0}
+    .zzz10m5-g-find[hidden]{display:none}
+    .zzz10m5-g-find input{flex:1 1 auto;min-width:0;padding:6px 8px;border-radius:6px;border:1px solid #ea8c00;background:#111;color:#fff;font-size:12px}
+    .zzz10m5-g-find-n{font-size:11px;color:#ea8c00;white-space:nowrap}
     .zzz10m5-g-intro{padding:6px 8px 8px;color:#cfcfcf;font-size:12px;line-height:1.35}
   `;
   document.head.appendChild(st);
@@ -52371,14 +52379,16 @@ function zzz10m5_gate_items() {
   return items;
 }
 
+// [Zzz10-M5:GATE-SHOW-BAR] Vrso 2026-11-17, doslovne: "nie crm ma mat svoje funkcie najma attachovania...staci ked bude
+// len fungovat len na crm mechanizme....ide o kompatibilitu ak by som pridaval dalsiu funkciu a pod... uz pouzivame show
+// bar/line cize celu list na tieto ucely...zapracuj namiesto toho povodneho mechanizmu vyuzitia cl ako search".
+// Preto: hladanie = SHOW bar nad zoznamom (cely riadok, ako v NOTES / READ); CRM riadok (PRESET + MINI + bunky) uz NEhlada -
+// je to CRM brany pre jej vlastne funkcie (hlavne ATTACH, Zzz6-F49:FUNCTION-BIND). | Vrso -> Claude AI | 2026-11-17
 function zzz10m5_gate_match(it) {
-  const q = zzz10m5GateQ[zzz10m5GateTab + ':' + zzz10m5GateMode] || {};
-  return ZZZ10M5_GATE_COLS.every((c) => {
-    const want = String(q[c.k] || '').trim();
-    if (!want) return true;
-    const have = zzz10v1_normalize(String(it[c.k] || ''));
-    return want.split(',').map((t) => zzz10v1_normalize(t.trim())).filter(Boolean).some((t) => have.includes(t));
-  });
+  const want = String(zzz10m5GateQ[zzz10m5GateTab + ':' + zzz10m5GateMode] || '').trim();
+  if (!want) return true;
+  const have = zzz10v1_normalize(ZZZ10M5_GATE_COLS.map((c) => it[c.k] || '').join(' '));
+  return want.split(',').map((t) => zzz10v1_normalize(t.trim())).filter(Boolean).some((t) => have.includes(t));
 }
 
 async function zzz10m5_gate_reload() {
@@ -52442,28 +52452,47 @@ function zzz10m5_gate_paint(mod) {
   });
   mod.appendChild(modes);
 
-  const qk = zzz10m5GateTab + ':' + zzz10m5GateMode;
-  const q = zzz10m5GateQ[qk] || (zzz10m5GateQ[qk] = {});
-  const crm = document.createElement('div'); crm.className = 'zzz5w5cm-ccl zzz5w8-crm';
+  // --- CRM brany: PRESET + popisy, MINI + bunky (CL). Nehlada - drzi hodnoty pre funkcie brany (ATTACH pride s Zzz6-F49) ---
+  const cv = zzz10m5GateCl[zzz10m5GateTab] || (zzz10m5GateCl[zzz10m5GateTab] = {});
+  const crm = document.createElement('div'); crm.className = 'zzz5w5cm-ccl zzz5w8-crm zzz10m5-g-crm';
   const rl = document.createElement('div'); rl.className = 'zzz5w5cm-ccl-row zzz5w5cm-ccl-rl';
-  const pre = document.createElement('span'); pre.className = 'zzz5w5cm-ccl-mini'; pre.textContent = 'PRESET'; rl.appendChild(pre);
+  const pre = document.createElement('span'); pre.className = 'zzz5w5cm-ccl-mini'; pre.textContent = 'PRESET';
+  pre.title = 'VERSO GATE command line - works like the main CRM; its own functions (ATTACH ...) come here';
+  rl.appendChild(pre);
   ZZZ10M5_GATE_COLS.forEach((c) => { const l = document.createElement('span'); l.className = 'zzz5w5cm-ccl-lab'; l.textContent = c.label; rl.appendChild(l); });
   crm.appendChild(rl);
   const cl = document.createElement('div'); cl.className = 'zzz5w5cm-ccl-row zzz5w5cm-ccl-cl';
-  const mini = document.createElement('span'); mini.className = 'zzz5w5cm-ccl-mini is-search'; mini.textContent = 'MINI';
-  mini.title = 'The cells in this row search this list - tap MINI to clear them';
+  const mini = document.createElement('span'); mini.className = 'zzz5w5cm-ccl-mini'; mini.textContent = 'MINI';
+  mini.title = 'Tap = clear this command line';
   cl.appendChild(mini);
-  const inputs = [];
+  const cells = [];
   ZZZ10M5_GATE_COLS.forEach((c) => {
     const inp = document.createElement('input'); inp.type = 'text';
-    inp.className = 'zzz5w5cm-ccl-cell' + (String(q[c.k] || '').trim() ? ' is-on' : '');
-    inp.value = q[c.k] || ''; inp.title = c.label + ' - contains; a, b = or; several cells = all must match';
-    inp.addEventListener('input', () => { q[c.k] = inp.value; inp.classList.toggle('is-on', !!inp.value.trim()); paintBody(); });
-    inputs.push(inp); cl.appendChild(inp);
+    inp.className = 'zzz5w5cm-ccl-cell'; inp.value = cv[c.k] || '';
+    inp.title = c.label + ' - command line of VERSO GATE (attaching to records comes with FUNCTION BIND)';
+    inp.addEventListener('input', () => { cv[c.k] = inp.value; });
+    cells.push(inp); cl.appendChild(inp);
   });
-  mini.addEventListener('click', () => { ZZZ10M5_GATE_COLS.forEach((c, i) => { q[c.k] = ''; inputs[i].value = ''; inputs[i].classList.remove('is-on'); }); paintBody(); });
+  mini.style.cursor = 'pointer';
+  mini.addEventListener('click', () => { ZZZ10M5_GATE_COLS.forEach((c, i) => { cv[c.k] = ''; cells[i].value = ''; }); });
   crm.appendChild(cl);
   mod.appendChild(crm);
+
+  // --- SHOW bar: hladanie v celom zozname (ako NOTES / READ) ---
+  const qk = zzz10m5GateTab + ':' + zzz10m5GateMode;
+  const show = document.createElement('div'); show.className = 'zzz10m5-g-show';
+  const sb = document.createElement('button'); sb.type = 'button'; sb.className = 'zzz1cn-note-btn zzz5w7-filterbtn' + (String(zzz10m5GateQ[qk] || '').trim() ? ' is-on' : '');
+  sb.textContent = 'SHOW'; sb.title = 'Show only lines with ... (a, b = or) - the list is not changed';
+  const find = document.createElement('div'); find.className = 'zzz10m5-g-find'; find.hidden = !(zzz10m5GateShowOpen || String(zzz10m5GateQ[qk] || '').trim());
+  const fin = document.createElement('input'); fin.type = 'text'; fin.placeholder = 'SHOW only lines with... (a, b = or)'; fin.value = zzz10m5GateQ[qk] || '';
+  const fn = document.createElement('span'); fn.className = 'zzz10m5-g-find-n';
+  const fr = document.createElement('button'); fr.type = 'button'; fr.className = 'zzz1cn-note-btn'; fr.textContent = 'RESET';
+  find.appendChild(fin); find.appendChild(fn); find.appendChild(fr);
+  sb.addEventListener('click', () => { zzz10m5GateShowOpen = find.hidden; find.hidden = !find.hidden; if (!find.hidden) fin.focus(); });
+  fin.addEventListener('input', () => { zzz10m5GateQ[qk] = fin.value; sb.classList.toggle('is-on', !!fin.value.trim()); paintBody(); });
+  fr.addEventListener('click', () => { zzz10m5GateQ[qk] = ''; fin.value = ''; sb.classList.remove('is-on'); paintBody(); });
+  show.appendChild(sb); show.appendChild(find);
+  mod.appendChild(show);
 
   const body = document.createElement('div'); body.className = 'zzz5w5cm-ccl-body zzz5w8-list';
   mod.appendChild(body);
@@ -52471,11 +52500,12 @@ function zzz10m5_gate_paint(mod) {
     body.innerHTML = '';
     const inTab = all.filter((i) => i.tab === zzz10m5GateTab && i.mode === zzz10m5GateMode);
     const vis = inTab.filter(zzz10m5_gate_match);
+    fn.textContent = String(zzz10m5GateQ[qk] || '').trim() ? vis.length + ' of ' + inTab.length : '';
     if (zzz10m5GateMode === 'history') vis.sort((a, b) => (b.t || 0) - (a.t || 0));
     if (!vis.length) {
       const e = document.createElement('div'); e.className = 'zzz10m5-g-empty';
       e.textContent = zzz10m5GateData.err && zzz10m5GateMode === 'active' ? 'Could not load from the Verso server: ' + zzz10m5GateData.err + ' - tap RELOAD.'
-        : (inTab.length ? 'Nothing matches the search above.'
+        : (inTab.length ? 'Nothing matches SHOW above.'
         : ({ active: (zzz10m5GateData.grants === null ? 'Loading...' : 'Nothing connected here yet.'),
              waiting: 'Nothing waits for your answer. When an app wants you to log in with Verso, it waits here until you answer.',
              prepared: 'Nothing prepared here.', history: 'Nothing happened here yet on this device.' })[zzz10m5GateMode]);
@@ -54570,7 +54600,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-17 01:40';
+const VERSO_BUILD = '2026-11-17 02:20';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
