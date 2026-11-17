@@ -30363,14 +30363,55 @@ async function zzz_modes_call(payload) {
     return await r.json().catch(() => ({ success: false, reason: 'bad_response' }));
   } catch (e) { return { success: false, reason: 'network' }; }
 }
+// [Zzz10-M7:MV-ADVANCED] RULE (Vrso 2026-11-17 23:55): everybody enters the MV PHRASE to open Advanced setup - except the Verso accounts
+// (verso, verso1, verso2 …). The MV PHRASE is LAYER 1 of MULTIVERIFICATION. One correct phrase = 10 min (also checked on the server for
+// shares / WRITE / commands); the hold-commands Ctrl+S / R / A / L stay without the phrase (quick + a backup on a foreign device).
+var zzzAdvUntil = 0;
+function zzz_adv_exempt() { try { return /^verso\d*$/.test(zzz10v1_normalize(zzz_sessionUsername || '')); } catch (e) { return false; } }
+function zzz_adv_open_ok() { return zzz_adv_exempt() || Date.now() < zzzAdvUntil; }
+async function zzz_adv_unlock_then(go) { if (await zzz_modes_unlock()) { zzzAdvUntil = Date.now() + 10 * 60 * 1000; go(); } }
+function zzz_adv_locked_render(host, go) {
+  const b = document.createElement('div'); b.className = 'zzz10m5-box';
+  const h = document.createElement('h3'); h.textContent = '🔒 ADVANCED SETUP · MV PHRASE'; b.appendChild(h);
+  const t = document.createElement('div'); t.className = 'zzz10m5-txt'; t.textContent = 'Advanced setup (recovery, MODES, REMOTE ACCESS, VERSO GATE, audit) opens only with your MV PHRASE - layer 1 of multiverification. One phrase = 10 minutes. Every try is in your MV LOG and AUDIT LOG.'; b.appendChild(t);
+  const k = document.createElement('button'); k.type = 'button'; k.className = 'zzz10m5-big'; k.textContent = 'OPEN · MV PHRASE';
+  k.title = 'Write your MV PHRASE - Advanced setup opens for 10 min. 5 wrong = 15 min lock (shared with LOG OUT / FINAL).';
+  k.addEventListener('click', () => zzz_adv_unlock_then(go)); b.appendChild(k);
+  host.appendChild(b);
+}
+// MULTI VERIFICATION tab: what layer 1 (MV PHRASE) guards + every verification and login of this account (server log)
+const ZZZ_MV_ACTIONS = ['login', 'logout', 'logout_phrase', 'unlock', 'set_mv_phrase', 'change_password', 'request_override', 'use_override_token', 'empty_trash_with_token', 'modes_unlock', 'modes_view', 'modes_change', 'modes_get', 'modes_set', 'mode_private_on', 'mode_private_off', 'mode_remote_on', 'mode_remote_off', 'mode_access_on', 'mode_access_off'];
+function zzz_mv_layer_render(host) {
+  const b = document.createElement('div'); b.className = 'zzz10m5-box'; b.style.marginTop = '10px'; b.setAttribute('data-5s', 'MV LOG');
+  const h = document.createElement('h3'); h.textContent = 'LAYER 1 · MV PHRASE'; b.appendChild(h);
+  const p = (x) => { const d = document.createElement('div'); d.className = 'zzz10m5-txt'; d.textContent = x; b.appendChild(d); return d; };
+  p('The MV PHRASE is the first layer of multiverification. Only you know it - it is never sent anywhere and Verso keeps only its fingerprint (hash).');
+  p('It guards: opening Advanced setup (10 min) · changes in MODES (shares, WRITE, commands) · LOG OUT on MY DEVICE · account recovery (+ recovery token from e-mail) · emptying the trash (+ token + password). Changing it needs your password and sends you an e-mail.');
+  p('5 wrong = 15 min lock and an e-mail. A changed PASSWORD or MV PHRASE always sends you an e-mail.');
+  const h2 = document.createElement('h3'); h2.textContent = 'MV LOG · logins and verifications'; h2.style.marginTop = '8px'; b.appendChild(h2);
+  const L = document.createElement('div'); L.textContent = 'Loading…'; b.appendChild(L);
+  host.appendChild(b);
+  (async () => {
+    let rows = [];
+    try { rows = await zzz10m6_rpc('verso_my_trace', { p_limit: 200 }); } catch (e) { L.textContent = 'MV LOG could not be read now - check the connection.'; return; }
+    rows = (rows || []).filter(r => ZZZ_MV_ACTIONS.indexOf(r.action) >= 0).slice(0, 40);
+    L.innerHTML = '';
+    if (!rows.length) { L.textContent = 'Nothing yet.'; return; }
+    rows.forEach(r => {
+      const d = document.createElement('div'); d.className = 'zzz10m5-txt'; d.style.borderLeft = '3px solid ' + (r.result === 'ok' ? '#16a34a' : r.result === 'refused' ? '#dc2626' : '#f59e0b'); d.style.paddingLeft = '6px';
+      d.textContent = zzz10m6_time(r.created_at) + ' · ' + (ZZZ10M6_ACTION_TEXT[r.action] || r.action) + (r.result !== 'ok' ? ' · ' + (r.result === 'refused' ? 'REFUSED' : 'FAILED') + (r.reason ? ' (' + r.reason + ')' : '') : '') + (r.ip_masked ? ' · ' + r.ip_masked : '') + (r.device_tag ? ' · device ' + String(r.device_tag).slice(0, 6) : '');
+      L.appendChild(d);
+    });
+  })();
+}
 // [Zzz10-M7:MV-UNLOCK] one MV PHRASE unlocks MODES changes for 10 min on the server (shares, WRITE, commands) - Vrso 2026-11-17
 async function zzz_modes_unlock() {
-  const got = await zzz_final_mv('MODES · MULTIVERIFICATION', 'Your MV PHRASE unlocks changes in MODES (shares, WRITE, commands) for 10 minutes.', 'UNLOCK');
+  const got = await zzz_final_mv('ADVANCED SETUP · MULTIVERIFICATION', 'Your MV PHRASE opens Advanced setup and unlocks changes in MODES (shares, WRITE, commands) for 10 minutes.', 'OPEN');
   if (!got) return false;
   const ph = got.phrase; got.phrase = '';
   const r = await zzz_modes_call({ action: 'unlock', mvPhrase: ph });
   if (!r || !r.success) { zzz6f2_show_toast(zzz_modes_why(r), 'warn', 3000); return false; }
-  zzz6f2_show_toast('🔓 MODES unlocked for 10 min.', 'info', 2000); return true;
+  zzzAdvUntil = Date.now() + 10 * 60 * 1000; zzz6f2_show_toast('🔓 Advanced setup / MODES open for 10 min.', 'info', 2000); return true;
 }
 async function zzz_modes_rpc_mv(fn, args) {   // call; if the server wants the MV PHRASE, ask once and call again
   let { data, error } = await sb.rpc(fn, args); if (error) throw error;
@@ -53649,6 +53690,15 @@ const ZZZ10M6_ACTION_TEXT = {
   gate_authorize: 'Allowed an app (Verso gate)', gate_token: 'App picked up its access', gate_revoke: 'Disconnected an app',
   gate_key_register: 'USB key added', gate_key_revoke: 'USB key removed',
   disclosure_executed: 'Your trace was OPENED by signatories', disclosure_execute: 'You opened a disclosure',
+  // [Zzz10-M7:MV-LOG] MODES / REMOTE / LIVE / INTEREST CARD - Vrso -> Claude AI 2026-11-17
+  modes_unlock: 'MV phrase · Advanced setup / MODES unlocked (10 min)', modes_view: 'MV phrase · MODES commands opened', modes_change: 'MV phrase · MODES commands changed',
+  modes_get: 'MV phrase · MODES (wrong)', modes_set: 'MV phrase · MODES change (wrong)',
+  mode_private_on: 'PRIVATE on (command)', mode_private_off: 'PRIVATE off (command)', mode_remote_on: 'REMOTE ACCESS opened (command)', mode_remote_off: 'REMOTE ACCESS closed (command)',
+  mode_access_on: 'ACCESS activated (command)', mode_access_off: 'ACCESS deactivated (command)',
+  live_share: 'Record shared (REMOTE ACCESS)', live_revoke: 'Share stopped', live_rights: 'Share rights changed', live_write: 'Guest wrote into a shared record',
+  live_open: 'REMOTE ACCESS opened', live_close: 'REMOTE ACCESS closed', live_activate: 'ACCESS activated', live_deactivate: 'ACCESS deactivated',
+  live_join: 'Joined LIVE', live_leave: 'Left LIVE', live_moderator: 'LIVE moderator handed over', live_preview: 'PREVIEW AS', live_private_on: 'PRIVATE on', live_private_off: 'PRIVATE off',
+  gate_interests_read: 'An app read your INTEREST CARD',
 };
 
 function zzz10m6_css() {
@@ -54326,6 +54376,7 @@ function open_settings_workspace() {
           return;
         }
       }
+      if (tab.key === 'advanced-settings' && !zzz_adv_open_ok()) { zzz_adv_unlock_then(() => { zzz10_0ActiveTab = tab.key; open_settings_workspace(); }); return; }
       zzz10_0ActiveTab = tab.key;
       open_settings_workspace();
     });
@@ -54351,6 +54402,7 @@ function open_settings_workspace() {
     slot.id = 'versoZzz10T2M4aSlot';
     slot.style.width = '100%';
     tabContent.appendChild(slot);
+    try { zzz_mv_layer_render(tabContent); } catch (e) {}
   } else if (zzz10_0ActiveTab === 'settings' && typeof zzz16_render_settings === 'function') {
     zzz16_render_settings(tabContent);
     try {
@@ -54417,8 +54469,8 @@ function open_settings_workspace() {
   } else if (zzz10_0ActiveTab === 'admin') {
     zzz_b26_render_admin(tabContent);
   } else if (zzz10_0ActiveTab === 'advanced-settings') {
-
-    zzz10m5_render_advanced_setup(tabContent);
+    if (!zzz_adv_open_ok()) zzz_adv_locked_render(tabContent, () => open_settings_workspace());
+    else zzz10m5_render_advanced_setup(tabContent);
   } else {
 
     const placeholder = document.createElement('div');
@@ -55664,7 +55716,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 01:20';
+const VERSO_BUILD = '2026-11-18 01:50';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -65746,6 +65798,12 @@ async function zzz6f36_submit_login(options = {}) {
         too_many_attempts: 'too many wrong passwords in a row - wait 15 minutes and try again (the account owner was notified by email)'
       }[verifyResult.reason] || 'unknown reason';
 
+      // [Zzz-SESSION:LOGIN-RED-CHAIN] Vrso 2026-11-17: the chain turns red when the account is already logged in somewhere else
+      if (verifyResult.reason === 'session_active_elsewhere') {
+        try { const c = document.getElementById('versoEntryButton'); if (c) { c.classList.add('zzz-logo-red'); setTimeout(() => { try { zzz_recompute_logo_status(); } catch (e) {} }, 60000); } } catch (e) {}
+        zzz6f2_show_toast('🔴 Login refused - this account is LOGGED IN on another device right now. If that is not you: EMERGENCY ACCOUNT RECOVERY (token from e-mail + MV PHRASE) ends it and changes the password. The attempt is in the AUDIT LOG.', 'warn', 9000);
+        return;
+      }
       zzz6f2_show_toast(`Login refused - ${reasonText}.`, 'warn');
       return;
     }
