@@ -52309,6 +52309,7 @@ var zzz10m5GateTab = 'in';
 var zzz10m5GateMode = 'active';
 var zzz10m5GateQ = {};          // SHOW bar: hladany text podla casti + rezimu
 var zzz10m5GateShowOpen = false;
+var zzz10m5GateLayer = 'online';  // [Zzz10-M5:GATE-HYBRID] ONLINE | HYBRID vrstva kazdej z 3 casti
 var zzz10m5GateCl = {};         // CRM riadok brany (CL) - koncept hodnot podla casti; zatial len drzi hodnoty (ATTACH pride s Zzz6-F49)
 var zzz10m5GateData = { grants: null, keys: null, err: '' };
 
@@ -52340,6 +52341,8 @@ function zzz10m5_gate_css() {
     .zzz10m5-g-find[hidden]{display:none}
     .zzz10m5-g-find input{flex:1 1 auto;min-width:0;padding:6px 8px;border-radius:6px;border:1px solid #ea8c00;background:#111;color:#fff;font-size:12px}
     .zzz10m5-g-find-n{font-size:11px;color:#ea8c00;white-space:nowrap}
+    .zzz10m5-g-layer{margin:4px 0 2px}
+    .zzz10m5-g-layer button.is-on{background:#D4AF37 !important;color:#111 !important}
     .zzz10m5-g-intro{padding:6px 8px 8px;color:#cfcfcf;font-size:12px;line-height:1.35}
   `;
   document.head.appendChild(st);
@@ -52372,6 +52375,24 @@ function zzz10m5_gate_items() {
   [['APP ACCOUNT', 'YouTube (Google)', 'official Google sign-in - Verso never sees your password; 2-3 accounts = 2-3 separate connections, each with its own name'],
    ['WEB ACCOUNT', 'Websites without an app link (e.g. sme.sk discussions)', 'only with saved login data - encrypted and kept only on your device, never readable on the server; the most sensitive part, comes last']
   ].forEach(([kind, name, text]) => items.push({ tab: 'out', mode: 'prepared', kind, name, owner: me, scope: 'your account there', status: 'PREPARED', since: '', text }));
+  // --- [Zzz10-M5:GATE-HYBRID] Vrso 2026-11-17, doslovne: "ok ale hybrid riesenie zapracujes aj do nastaveni k tym sucasnym
+  // 3 typom gateways...? pre hybrid by malo zrejme vyznam predpripravit nejake alternativne hesla k zdrojom ktore sa maju
+  // pripajat a zrejme aj tie rozdelene na interne a externe in a out...cize v podstate by uz minimalne bola jej hybrid server
+  // gate znacne hotova. nejaky mechanizmus stiahnutia modulu ale klidne neskor". Zatial len PREPARED miesta - nic nefunguje.
+  // Pravidla: alternativne hesla su VZDY ine nez online heslo, kazde len pre jeden zdroj, sifrovane klucom zariadenia,
+  // len v zariadeni (nikdy citatelne na serveri), da sa vymenit aj odvolat; nove ALLOW pre cudziu appku len online. | Vrso -> Claude AI | 2026-11-17
+  const H = (tab, kind, name, scope, text) => items.push({ tab, layer: 'hybrid', mode: 'prepared', kind, name, owner: me, scope, status: 'PREPARED', since: '', text });
+  H('internal', 'CERTIFICATE', 'Hybrid device certificate', 'this device', 'Signed by the Verso server at an online login. Lets this phone act for you offline - only within its limits, and it can be revoked.');
+  H('internal', 'UNLOCK', 'Offline unlock (fingerprint / PIN)', 'this device', 'Unlocks the device key without internet. It never checks your Verso password - after too many wrong tries the key destroys itself.');
+  H('internal', 'LIMITS', 'Offline validity', 'this device', 'How long offline works. When it runs out, Verso is READ-ONLY + drafts until the next online login - never a full lockout.');
+  H('internal', 'PROJECTS', 'Offline projects', 'chosen projects', 'Projects the hybrid opens without internet (or where there is none). Changes sync when you are back online.');
+  H('internal', 'ALT PASSWORD', 'Alternative passwords - Verso modules', 'per module', 'Own offline password for each Verso module (multiboard, keyboard ...). Never the same as your online password.');
+  H('internal', 'MODULE', 'Download the hybrid module', 'this device', 'Getting the hybrid module onto a device - comes later.');
+  H('in', 'APPS', 'Apps allowed offline', 'already allowed', 'Only apps you already allowed online can log in offline, with a shorter validity. A NEW app can be allowed only online.');
+  H('in', 'ALT PASSWORD', 'Alternative passwords - apps logging in', 'per app', 'Local codes for apps and devices that log in with Verso in your network without internet (e.g. a multiboard on the local Wi-Fi).');
+  H('out', 'ALT PASSWORD', 'Alternative passwords - your sources', 'per source', 'Router, lock, hybrid server, speakers ... credentials for a direct local connection when the internet or the Verso server is down. Linked to CONNECTORS.');
+  H('out', 'SYNC', 'Back online', 'all sources', 'What the hybrid did offline is checked and written to your records when the Verso server is reachable again.');
+
   // --- HISTORY (lokalne, podla username) ---
   const k = zzz10m5_log_key();
   let log = []; try { log = k ? JSON.parse(localStorage.getItem(k) || '[]') : []; } catch (e) {}
@@ -52404,13 +52425,14 @@ function zzz10m5_render_gate_module(host) {
   zzz10m5_gate_css();
   const mod = document.createElement('div');
   mod.className = 'zzz5w5cm-module zzz5w8-module zzz10m5-gate';
+  mod.setAttribute('data-zzz-nodraft', '1');   // bunky brany nie su neodoslany text - inak ich obnova konceptov vyplni vsetky rovnako
   host.appendChild(mod);
   zzz10m5_gate_paint(mod);
   zzz10m5_gate_reload();
 }
 
 function zzz10m5_gate_paint(mod) {
-  const all = zzz10m5_gate_items();
+  const all = zzz10m5_gate_items().filter((i) => (i.layer || 'online') === zzz10m5GateLayer);
   mod.innerHTML = '';
   const label = document.createElement('div');
   label.className = 'zzz5w5cm-module-label';
@@ -52424,7 +52446,7 @@ function zzz10m5_gate_paint(mod) {
   const row = document.createElement('div'); row.className = 'zzz5t0-tabs-row';
   const inner = document.createElement('div'); inner.className = 'zzz5t0-tabs-row-inner';
   ZZZ10M5_GATE_TABS.forEach((t) => {
-    const n = all.filter((i) => i.tab === t.key && (i.mode === 'active' || i.mode === 'waiting')).length;
+    const n = all.filter((i) => i.tab === t.key && (zzz10m5GateLayer === 'hybrid' || i.mode === 'active' || i.mode === 'waiting')).length;
     const b = document.createElement('button'); b.type = 'button';
     b.className = 'zzz5t0-tab zzz5w5cm-tab-big' + (zzz10m5GateTab === t.key ? ' zzz5t0-tab-active zzz5t0-tab-current' : '');
     b.textContent = t.label + ' (' + n + ')';
@@ -52434,8 +52456,21 @@ function zzz10m5_gate_paint(mod) {
   });
   row.appendChild(inner); mod.appendChild(row);
 
+  const lay = document.createElement('div'); lay.className = 'zzz5w8-modes zzz10m5-g-layer';
+  [['online', 'ONLINE GATE'], ['hybrid', 'HYBRID GATE · offline']].forEach(([k, t]) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = zzz10m5GateLayer === k ? 'is-on' : ''; b.textContent = t;
+    b.title = k === 'online' ? 'Works through the Verso server' : 'What this part does when there is no internet or no Verso server - the hybrid stands in';
+    b.addEventListener('click', () => { zzz10m5GateLayer = k; if (k === 'hybrid') zzz10m5GateMode = 'prepared'; zzz10m5_gate_paint_all(); });
+    lay.appendChild(b);
+  });
+  mod.appendChild(lay);
+
   const intro = document.createElement('div'); intro.className = 'zzz10m5-g-intro';
-  intro.textContent = ({
+  intro.textContent = zzz10m5GateLayer === 'hybrid' ? ({
+    internal: 'HYBRID - your devices and Verso modules without internet. The hybrid stands in for the Verso server with its own device certificate - only within its limits. Prepared only.',
+    in: 'HYBRID - apps logging in with Verso when there is no internet. Only apps you already allowed online. Prepared only.',
+    out: 'HYBRID - your sources (router, lock, hybrid server ...) reached directly when the internet or the Verso server is down, with their own alternative passwords. Prepared only.'
+  })[zzz10m5GateTab] : ({
     internal: 'Your own devices and Verso modules. They join by pairing from a device where you are already logged in - never with an ALLOW window. Each gets only the access it needs. Only this part can work offline.',
     in: 'Other apps and websites that let you log in with your Verso account - like "Log in with Google". They always ask ALLOW / DENY first, only online. An app never gets your password - only a private number made just for it, and your username only if you allow it.',
     out: 'Verso connected to your accounts on other services - YouTube, websites. Where the service has an official sign-in, Verso never sees your password. Prepared only - nothing connects yet.'
@@ -54600,7 +54635,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-17 02:20';
+const VERSO_BUILD = '2026-11-17 02:50';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
