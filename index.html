@@ -30363,9 +30363,23 @@ async function zzz_modes_call(payload) {
     return await r.json().catch(() => ({ success: false, reason: 'bad_response' }));
   } catch (e) { return { success: false, reason: 'network' }; }
 }
+// [Zzz10-M7:MV-UNLOCK] one MV PHRASE unlocks MODES changes for 10 min on the server (shares, WRITE, commands) - Vrso 2026-11-17
+async function zzz_modes_unlock() {
+  const got = await zzz_final_mv('MODES · MULTIVERIFICATION', 'Your MV PHRASE unlocks changes in MODES (shares, WRITE, commands) for 10 minutes.', 'UNLOCK');
+  if (!got) return false;
+  const ph = got.phrase; got.phrase = '';
+  const r = await zzz_modes_call({ action: 'unlock', mvPhrase: ph });
+  if (!r || !r.success) { zzz6f2_show_toast(zzz_modes_why(r), 'warn', 3000); return false; }
+  zzz6f2_show_toast('🔓 MODES unlocked for 10 min.', 'info', 2000); return true;
+}
+async function zzz_modes_rpc_mv(fn, args) {   // call; if the server wants the MV PHRASE, ask once and call again
+  let { data, error } = await sb.rpc(fn, args); if (error) throw error;
+  if (data && data.reason === 'mv_needed' && await zzz_modes_unlock()) { ({ data, error } = await sb.rpc(fn, args)); if (error) throw error; }
+  return data;
+}
 function zzz_modes_why(r) {
   const x = (r && r.reason) || '';
-  return ({ no_session: 'Log in to Verso first.', not_set: 'No command yet - SETTINGS › Advanced setup › MODES.', wrong_command: 'Wrong command' + (r && r.attemptsLeft != null ? ' (' + r.attemptsLeft + ' left)' : '') + '.',
+  return ({ mv_needed: 'MV PHRASE needed - it unlocks MODES changes for 10 min.', no_session: 'Log in to Verso first.', not_set: 'No command yet - SETTINGS › Advanced setup › MODES.', wrong_command: 'Wrong command' + (r && r.attemptsLeft != null ? ' (' + r.attemptsLeft + ' left)' : '') + '.',
     locked: 'Locked for ' + ((r && r.minutes) || 15) + ' min (too many wrong tries).', wrong_mv_phrase: 'Wrong MV PHRASE' + (r && r.attemptsLeft != null ? ' (' + r.attemptsLeft + ' left)' : '') + '.',
     no_remote_users: 'Write first who PREVIEW AS shows Verso as (SETTINGS › Advanced setup › MODES).', self_user: 'That user must be somebody else than you.',
     mv_phrase_not_set: 'Set your MV PHRASE first (Login setup › CHANGE PASSWORD).', command_length: 'A command has 3 - 40 characters.', same_commands: 'PRIVATE and REMOTE need different commands.',
@@ -30634,7 +30648,7 @@ function zzz_modes_render(host) {
   rw.title = 'READ = the guest only looks. READ + WRITE = he may also write in the chat / notes of this record under his own name. The record itself stays yours - only your EDIT changes it. Tap = switch.';
   rw.addEventListener('click', () => { rwOn = !rwOn; rwPaint(); }); rwPaint();
   add.append(gu, en, rw, ab); sh.appendChild(add);
-  p('A share never gives more than the user may already see (USER / consent / COMM SETUP) - Verso checks it. READ = only looking · READ + WRITE = also chat / notes on that record under his own name; the record itself is changed only by you (EDIT = new version). Every change of rights and the first write are logged.', sh);
+  p('A share never gives more than the user may already see (USER / consent / COMM SETUP) - Verso checks it. READ = only looking · READ + WRITE = also chat / notes on that record under his own name; the record itself is changed only by you (EDIT = new version). Every change of rights and every write of the guest is logged by the server. + SHARE and → + WRITE ask once for your MV PHRASE (valid 10 min); × STOP and → READ never need it.', sh);
   const draw = async () => {
     const d = await zzz_live_open_pull();
     shSt.textContent = d ? ('REMOTE ACCESS is ' + (d.open ? 'OPEN 📡 (Ctrl + R = close)' : 'CLOSED (Ctrl + R = open)') + ' · ' + (d.shares || []).length + ' share(s)') : 'Could not read - check the connection.';
@@ -30644,7 +30658,7 @@ function zzz_modes_render(host) {
       const l = document.createElement('div'); l.textContent = s.guest + ' · #' + s.entry_id + ' · ' + (s.title || '') + ' · ' + String(s.rights || 'read').toUpperCase(); r.appendChild(l);
       const w = document.createElement('button'); w.type = 'button'; w.className = 'zzz10m5-btn' + (s.rights === 'write' ? ' is-gold' : ''); w.textContent = s.rights === 'write' ? '→ READ' : '→ + WRITE';
       w.title = s.rights === 'write' ? 'Take WRITE back - the guest only looks again (logged).' : 'Allow WRITE - the guest may also write in the chat / notes of this record under his own name (logged).';
-      w.addEventListener('click', async () => { w.disabled = true; try { const { error } = await sb.rpc('verso_live_share_rights', { p_id: s.id, p_write: s.rights !== 'write' }); if (error) throw error; } catch (e) { zzz6f2_show_toast('Rights could not be changed - check the connection.', 'warn'); } draw(); });
+      w.addEventListener('click', async () => { w.disabled = true; try { const d2 = await zzz_modes_rpc_mv('verso_live_share_rights', { p_id: s.id, p_write: s.rights !== 'write' }); if (d2 && d2.ok === false) zzz6f2_show_toast(zzz_modes_why(d2), 'warn'); } catch (e) { zzz6f2_show_toast('Rights could not be changed - check the connection.', 'warn'); } draw(); });
       r.appendChild(w);
       const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz10m5-btn'; x.textContent = '× STOP'; x.title = 'Ends this share at once - the guest loses it even if he is in LIVE. Logged.';
       x.addEventListener('click', async () => { x.disabled = true; try { await sb.rpc('verso_live_share_revoke', { p_id: s.id }); } catch (e) {} draw(); });
@@ -30655,7 +30669,7 @@ function zzz_modes_render(host) {
     const g = String(gu.value || '').trim().toLowerCase(), e = Number(String(en.value || '').replace(/\D/g, ''));
     if (!g || !e) { shSt.textContent = 'Write the username and the record number.'; return; }
     ab.disabled = true;
-    try { const { data, error } = await sb.rpc('verso_live_share_add2', { p_guest: g, p_entry: e, p_write: rwOn }); if (error) throw error; shSt.textContent = data && data.ok ? '✓ Shared #' + e + ' with ' + g + ' · ' + (rwOn ? 'READ + WRITE' : 'READ') + (data.reason === 'already' ? ' (already)' : data.reason === 'rights_changed' ? ' (rights changed)' : '') : zzz_modes_why(data); if (data && data.ok) { gu.value = ''; en.value = ''; } }
+    try { const data = await zzz_modes_rpc_mv('verso_live_share_add2', { p_guest: g, p_entry: e, p_write: rwOn }); shSt.textContent = data && data.ok ? '✓ Shared #' + e + ' with ' + g + ' · ' + (rwOn ? 'READ + WRITE' : 'READ') + (data.reason === 'already' ? ' (already)' : data.reason === 'rights_changed' ? ' (rights changed)' : '') : zzz_modes_why(data); if (data && data.ok) { gu.value = ''; en.value = ''; } }
     catch (x) { shSt.textContent = zzz_modes_why({ reason: 'network' }); }
     ab.disabled = false; draw();
   });
@@ -45810,6 +45824,7 @@ const ZZZ_5S_WS = [
     'STEP BY STEP: 1) write the guest username. 2) write the record number (EN). 3) READ or READ + WRITE (tap to switch). 4) + SHARE - Verso checks the guest may already see this record (USER / consent / COMM SETUP); if not, it refuses and says why. 4) open access: hold Ctrl + R 3 s + REMOTE command.',
     'The status line says OPEN 📡 or CLOSED and how many shares. Each line = guest · # record · title · READ / WRITE. → + WRITE / → READ switches the rights · × STOP = the share ends at once (all logged).',
     'READ + WRITE = the guest may write in the chat / notes of that record under his own name; the record itself is changed only by the owner (EDIT = new version).',
+    'MV PHRASE: adding a share or giving WRITE asks once for it - then 10 min free. Taking access away (× STOP, → READ) never needs it.',
     'A share alone does nothing while REMOTE ACCESS is CLOSED. Closing never deletes the shares.'] },
   { k: /^ACCESS/, t: 'ACCESS · SHARED WITH ME', i: [
     'Records other owners shared with you - shown only while their REMOTE ACCESS is OPEN.',
@@ -55649,7 +55664,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 00:55';
+const VERSO_BUILD = '2026-11-18 01:20';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
