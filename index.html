@@ -30239,13 +30239,27 @@ const ZZZ_REMOTE_T = {
   entry_id: ['verso_entries', 'verso_placements', 'verso_notif_items', 'verso_consents', 'verso_pair_invites', 'verso_task_values', 'verso_task_grants', 'verso_project_tasks', 'verso_task_closings', 'verso_place_names', 'verso_final_disputes', 'verso_blocked_users', 'verso_tasksents', 'verso_entry_chain'],
   entry_key: ['verso_chat_notes', 'verso_chat_seen', 'verso_comm_users'],
   none: ['verso_user_contacts', 'verso_user_groups', 'verso_note_tabs', 'verso_devices', 'verso_pack_tasks', 'verso_pack_votes', 'verso_notif_shifts', 'verso_notif_targets', 'verso_chat_reactions', 'verso_note_stars', 'verso_trash', 'verso_history', 'verso_audit_log', 'verso_request_numbers'],
-  writeOk: ['verso_client_issues']
+  writeOk: ['verso_client_issues'],
+  chatWrite: ['verso_chat_notes', 'verso_chat_seen']   // [Zzz10-M8:LIVE-WRITE] READ + WRITE shares: the guest writes here under his own name
 };
+// [Zzz10-M8:LIVE-WRITE] guest write check: only rows of records shared READ + WRITE; the first write per record and session is logged
+const zzzLiveWrote = {};
+function zzz_remote_write_ok(st, table, m, a) {
+  if (!st || st.kind !== 'access' || ZZZ_REMOTE_T.chatWrite.indexOf(table) < 0) return false;
+  const W = (st.list || []).filter(x => x.rights === 'write'); if (!W.length) return false;
+  const keys = W.map(x => String(x.entry_id));
+  if (m === 'delete') return false;
+  if (m === 'update') return true;   // RLS: only own rows can be changed
+  const rows = Array.isArray(a[0]) ? a[0] : [a[0]];
+  if (!rows.length || !rows.every(r => r && keys.indexOf(String(r.entry_key)) >= 0)) return false;
+  if (table === 'verso_chat_notes') rows.forEach(r => { const k = String(r.entry_key); if (zzzLiveWrote[k]) return; zzzLiveWrote[k] = 1; const x = W.find(y => String(y.entry_id) === k); zzz_live_log('write', x ? x.owner : null, Number(k)); });
+  return true;
+}
 function zzz_remote_ro() {
   const res = { data: null, error: { message: 'REMOTE ACCESS - read only', code: 'remote_read_only' }, count: null, status: 403 };
   const p = Promise.resolve(res);
   const h = { get(t, k) { if (k === 'then') return p.then.bind(p); if (k === 'catch') return p.catch.bind(p); if (k === 'finally') return p.finally.bind(p); return () => new Proxy(function () {}, h); }, apply() { return new Proxy(function () {}, h); } };
-  try { if (!zzz_remote_ro._t || Date.now() - zzz_remote_ro._t > 4000) { zzz_remote_ro._t = Date.now(); zzz6f2_show_toast('REMOTE ACCESS - read only, nothing is changed.', 'warn', 1800); } } catch (e) {}
+  try { if (!zzz_remote_ro._t || Date.now() - zzz_remote_ro._t > 4000) { zzz_remote_ro._t = Date.now(); let k0 = ''; try { k0 = (zzz_remote_state() || {}).kind; } catch (e) {} zzz6f2_show_toast(k0 === 'access' ? 'ACCESS - this is READ only here. Writing works only in the chat / notes of records shared READ + WRITE.' : 'REMOTE ACCESS - read only, nothing is changed.', 'warn', 2400); } } catch (e) {}
   return new Proxy(function () {}, h);
 }
 // [Zzz10-M7:PRIVATE-ALL] PRIVATE everywhere - Vrso -> Claude AI 2026-11-17 („2. urob“ = PRIVATE aj v ostatných moduloch)
@@ -30294,11 +30308,11 @@ function zzz_remote_wrap(client) {
       if (!st) return zzz_pm_wrap(table, qb);
       const ids = st.ids.length ? st.ids.map(Number) : [-1], keys = ids.map(String), users = String(st.users || '').split(',').filter(Boolean);
       return new Proxy(qb, { get(q, m) {
-        if (m === 'insert' || m === 'update' || m === 'upsert' || m === 'delete') { if (ZZZ_REMOTE_T.writeOk.indexOf(table) >= 0) return q[m].bind(q); return () => zzz_remote_ro(); }
+        if (m === 'insert' || m === 'update' || m === 'upsert' || m === 'delete') { if (ZZZ_REMOTE_T.writeOk.indexOf(table) >= 0) return q[m].bind(q); return (...a) => (zzz_remote_write_ok(st, table, m, a) ? q[m](...a) : zzz_remote_ro()); }
         if (m === 'select') return (...a) => {
           let b = q.select(...a);
           if (ZZZ_REMOTE_T.entry_id.indexOf(table) >= 0) b = b.in('entry_id', ids);
-          else if (ZZZ_REMOTE_T.entry_key.indexOf(table) >= 0) { b = b.in('entry_key', keys); if (table === 'verso_chat_notes') b = b.or('is_private.eq.false' + (users.length ? ',username.in.(' + users.join(',') + ')' : '')); }
+          else if (ZZZ_REMOTE_T.entry_key.indexOf(table) >= 0) { b = b.in('entry_key', keys); if (table === 'verso_chat_notes') { const U = users.slice(); if (st.kind === 'access') { const me = (typeof zzz_rs_me === 'function') ? zzz_rs_me() : ''; if (me && U.indexOf(me) < 0) U.push(me); } b = b.or('is_private.eq.false' + (U.length ? ',username.in.(' + U.join(',') + ')' : '')); } }
           else if (ZZZ_REMOTE_T.none.indexOf(table) >= 0) b = b.limit(0);
           return b;
         };
@@ -30612,9 +30626,13 @@ function zzz_modes_render(host) {
   const add = document.createElement('div'); add.className = 'zzz10m5-row';
   const gu = document.createElement('input'); gu.type = 'text'; gu.className = 'entry-cell'; gu.placeholder = 'username'; gu.title = 'The guest username (who may look).'; gu.setAttribute('data-zzz-nodraft', '1'); gu.style.flex = '1 1 40%';
   const en = document.createElement('input'); en.type = 'text'; en.className = 'entry-cell'; en.placeholder = 'record # (EN)'; en.title = 'The record number (EN) you share.'; en.setAttribute('data-zzz-nodraft', '1'); en.inputMode = 'numeric'; en.style.flex = '1 1 30%';
-  const ab = document.createElement('button'); ab.type = 'button'; ab.className = 'zzz10m5-btn is-gold'; ab.textContent = '+ SHARE'; ab.title = 'Share the record (number) with the user (username) READ only. Verso refuses it if that user may not see the record. The guest can use it only while your REMOTE ACCESS is OPEN (Ctrl + R).';
-  add.append(gu, en, ab); sh.appendChild(add);
-  p('A share never gives more than the user may already see (USER / consent / COMM SETUP) - Verso checks it. READ only for now; READ + WRITE comes as a choice per share.', sh);
+  const ab = document.createElement('button'); ab.type = 'button'; ab.className = 'zzz10m5-btn is-gold'; ab.textContent = '+ SHARE'; ab.title = 'Share the record (number) with the user (username) as READ or READ + WRITE (button on the left). Verso refuses it if that user may not see the record. The guest can use it only while your REMOTE ACCESS is OPEN (Ctrl + R).';
+  const rw = document.createElement('button'); rw.type = 'button'; rw.className = 'zzz10m5-btn'; let rwOn = false;
+  const rwPaint = () => { rw.textContent = rwOn ? 'READ + WRITE' : 'READ'; rw.classList.toggle('is-gold', rwOn); };
+  rw.title = 'READ = the guest only looks. READ + WRITE = he may also write in the chat / notes of this record under his own name. The record itself stays yours - only your EDIT changes it. Tap = switch.';
+  rw.addEventListener('click', () => { rwOn = !rwOn; rwPaint(); }); rwPaint();
+  add.append(gu, en, rw, ab); sh.appendChild(add);
+  p('A share never gives more than the user may already see (USER / consent / COMM SETUP) - Verso checks it. READ = only looking · READ + WRITE = also chat / notes on that record under his own name; the record itself is changed only by you (EDIT = new version). Every change of rights and the first write are logged.', sh);
   const draw = async () => {
     const d = await zzz_live_open_pull();
     shSt.textContent = d ? ('REMOTE ACCESS is ' + (d.open ? 'OPEN 📡 (Ctrl + R = close)' : 'CLOSED (Ctrl + R = open)') + ' · ' + (d.shares || []).length + ' share(s)') : 'Could not read - check the connection.';
@@ -30622,6 +30640,10 @@ function zzz_modes_render(host) {
     (d && d.shares || []).forEach(s => {
       const r = document.createElement('div'); r.className = 'zzz10m5-row';
       const l = document.createElement('div'); l.textContent = s.guest + ' · #' + s.entry_id + ' · ' + (s.title || '') + ' · ' + String(s.rights || 'read').toUpperCase(); r.appendChild(l);
+      const w = document.createElement('button'); w.type = 'button'; w.className = 'zzz10m5-btn' + (s.rights === 'write' ? ' is-gold' : ''); w.textContent = s.rights === 'write' ? '→ READ' : '→ + WRITE';
+      w.title = s.rights === 'write' ? 'Take WRITE back - the guest only looks again (logged).' : 'Allow WRITE - the guest may also write in the chat / notes of this record under his own name (logged).';
+      w.addEventListener('click', async () => { w.disabled = true; try { const { error } = await sb.rpc('verso_live_share_rights', { p_id: s.id, p_write: s.rights !== 'write' }); if (error) throw error; } catch (e) { zzz6f2_show_toast('Rights could not be changed - check the connection.', 'warn'); } draw(); });
+      r.appendChild(w);
       const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz10m5-btn'; x.textContent = '× STOP'; x.title = 'Ends this share at once - the guest loses it even if he is in LIVE. Logged.';
       x.addEventListener('click', async () => { x.disabled = true; try { await sb.rpc('verso_live_share_revoke', { p_id: s.id }); } catch (e) {} draw(); });
       r.appendChild(x); shList.appendChild(r);
@@ -30631,7 +30653,7 @@ function zzz_modes_render(host) {
     const g = String(gu.value || '').trim().toLowerCase(), e = Number(String(en.value || '').replace(/\D/g, ''));
     if (!g || !e) { shSt.textContent = 'Write the username and the record number.'; return; }
     ab.disabled = true;
-    try { const { data, error } = await sb.rpc('verso_live_share_add', { p_guest: g, p_entry: e }); if (error) throw error; shSt.textContent = data && data.ok ? '✓ Shared #' + e + ' with ' + g + (data.reason === 'already' ? ' (already)' : '') : zzz_modes_why(data); if (data && data.ok) { gu.value = ''; en.value = ''; } }
+    try { const { data, error } = await sb.rpc('verso_live_share_add2', { p_guest: g, p_entry: e, p_write: rwOn }); if (error) throw error; shSt.textContent = data && data.ok ? '✓ Shared #' + e + ' with ' + g + ' · ' + (rwOn ? 'READ + WRITE' : 'READ') + (data.reason === 'already' ? ' (already)' : data.reason === 'rights_changed' ? ' (rights changed)' : '') : zzz_modes_why(data); if (data && data.ok) { gu.value = ''; en.value = ''; } }
     catch (x) { shSt.textContent = zzz_modes_why({ reason: 'network' }); }
     ab.disabled = false; draw();
   });
@@ -30640,7 +30662,7 @@ function zzz_modes_render(host) {
   const ac = document.createElement('div'); ac.className = 'zzz10m5-box'; ac.setAttribute('data-5s', 'ACCESS'); box.appendChild(ac);
   const ac3 = document.createElement('h3'); ac3.textContent = '🔗 ACCESS · SHARED WITH ME'; ac.appendChild(ac3);
   const acL = p('…', ac);
-  sb.rpc('verso_live_my_access').then(({ data }) => { const L = data || []; acL.textContent = L.length ? L.map(x => x.owner + ' · #' + x.entry_id + ' · ' + (x.title || '')).join('\n') + '\n\nCtrl + A = activate (' + (zzz_remote_state() && zzz_remote_state().kind === 'access' ? 'ACTIVE now' : 'not active') + ')' : 'Nothing open for you now (shares appear when the owner opens REMOTE ACCESS).'; acL.style.whiteSpace = 'pre-line'; }).catch(() => { acL.textContent = 'Could not read.'; });
+  sb.rpc('verso_live_my_access').then(({ data }) => { const L = data || []; acL.textContent = L.length ? L.map(x => x.owner + ' · #' + x.entry_id + ' · ' + (x.title || '') + ' · ' + (x.rights === 'write' ? 'READ + WRITE' : 'READ')).join('\n') + '\n\nCtrl + A = activate (' + (zzz_remote_state() && zzz_remote_state().kind === 'access' ? 'ACTIVE now' : 'not active') + ')' : 'Nothing open for you now (shares appear when the owner opens REMOTE ACCESS).'; acL.style.whiteSpace = 'pre-line'; }).catch(() => { acL.textContent = 'Could not read.'; });
   // PREVIEW AS + LOG
   const pv = document.createElement('button'); pv.type = 'button'; pv.className = 'zzz10m5-btn'; pv.textContent = '👁 PREVIEW AS (REMOTE command)'; pv.title = 'See Verso on this device as the PREVIEW AS users would (set them in VIEW / CHANGE COMMANDS). Tap → REMOTE command → read-only view; tap again = end.'; pv.style.marginTop = '6px';
   pv.addEventListener('click', () => zzz_modes_prompt('preview', !!zzz_remote_state())); box.appendChild(pv);
@@ -45777,18 +45799,19 @@ const ZZZ_5S_WS = [
     'HOW TO HOLD: computer = hold Ctrl + the letter 3 s · Verso keyboard = hold Ctrl and hold the letter 3 s. Then a 10 s window asks for the command. The same command again = switch off.',
     '🔒 PRIVATE · Ctrl + S + PRIVATE command: what you write now is PRIVATE - records (ENTER), their chats, VI chats, notes, notifications, media and READ SPACE pages; hidden in the normal mode, shown in PRIVATE. Everything Verso reads goes via IP SHIELD. Red 🔒 in the web line while on. End: Ctrl + S again or tap the red 🔒. Verso opens again on every switch.',
     '📡 REMOTE ACCESS (you are the OWNER): 1) share records below (REMOTE ACCESS · MY SHARES). 2) Ctrl + R + REMOTE command = OPEN (📡 in the web line). 3) Ctrl + R again = CLOSED for everybody, shares stay for next time.',
-    '🔗 ACCESS (you are the GUEST, on your own device): Ctrl + A + YOUR REMOTE command = the records shared with you load READ ONLY (🔗 in the web line). The owner must have REMOTE ACCESS open. Ctrl + A again = deactivate.',
+    '🔗 ACCESS (you are the GUEST, on your own device): Ctrl + A + YOUR REMOTE command = the records shared with you load READ ONLY - with READ + WRITE you may also write in their chat / notes under your own name (🔗 in the web line). The owner must have REMOTE ACCESS open. Ctrl + A again = deactivate.',
     '● LIVE: Ctrl + L = choose ONE session from what is open / activated. The MODERATOR (owner first) leads - what he opens, the others see. MOD → = hand over · LEAVE = out. Only record numbers travel, never the screen; everybody writes in chat under his own name.',
     '👁 PREVIEW AS: see Verso on THIS device as the PREVIEW AS users would (read only). Tap the button or the 👁 in the web line again = end.',
     'LOG + AUDIT LOG: every step (PRIVATE on / off, open, close, activate, join, leave, moderator, share, stop, wrong command, MV check) is in LOG here and in AUDIT LOG - for you, the owner and the guest. The commands and the phrase are never written anywhere.',
     'SAFETY: 5 wrong commands = 15 min lock. MV PHRASE is the same as for LOG OUT / FINAL (5 wrong = 15 min). READ only for now - nobody can change your records.'] },
   { k: /^REMOTE ACCESS/, t: 'REMOTE ACCESS · MY SHARES', i: [
-    'STEP BY STEP: 1) write the guest username. 2) write the record number (EN). 3) + SHARE - Verso checks the guest may already see this record (USER / consent / COMM SETUP); if not, it refuses and says why. 4) open access: hold Ctrl + R 3 s + REMOTE command.',
-    'The status line says OPEN 📡 or CLOSED and how many shares. Each line = guest · # record · title · rights (READ). × STOP = the share ends at once (logged).',
+    'STEP BY STEP: 1) write the guest username. 2) write the record number (EN). 3) READ or READ + WRITE (tap to switch). 4) + SHARE - Verso checks the guest may already see this record (USER / consent / COMM SETUP); if not, it refuses and says why. 4) open access: hold Ctrl + R 3 s + REMOTE command.',
+    'The status line says OPEN 📡 or CLOSED and how many shares. Each line = guest · # record · title · READ / WRITE. → + WRITE / → READ switches the rights · × STOP = the share ends at once (all logged).',
+    'READ + WRITE = the guest may write in the chat / notes of that record under his own name; the record itself is changed only by the owner (EDIT = new version).',
     'A share alone does nothing while REMOTE ACCESS is CLOSED. Closing never deletes the shares.'] },
   { k: /^ACCESS/, t: 'ACCESS · SHARED WITH ME', i: [
     'Records other owners shared with you - shown only while their REMOTE ACCESS is OPEN.',
-    'Activate: hold Ctrl + A 3 s + YOUR REMOTE command → 🔗 in the web line, the records open READ ONLY under your own login. Ctrl + A again = deactivate. Then Ctrl + L = LIVE with the owner.'] },
+    'Activate: hold Ctrl + A 3 s + YOUR REMOTE command → 🔗 in the web line, the records open READ ONLY under your own login (READ + WRITE shares: also chat / notes under your name). Ctrl + A again = deactivate. Then Ctrl + L = LIVE with the owner.'] },
   { k: /^LIVE/, t: '● LIVE', i: [
     'Choose one session = one shared record. The MODERATOR leads: the records he opens open for everybody (only those you may see).',
     'The LIVE bar: # record · MOD name · number of people. MOD → (moderator only) = hand over the moderation · LEAVE = leave the session. Ctrl + L = this list again.',
@@ -55624,7 +55647,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 00:10';
+const VERSO_BUILD = '2026-11-18 00:30';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
