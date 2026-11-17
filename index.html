@@ -22301,6 +22301,7 @@ function zzz6f7_set_login_state(isLoggedIn) {
   try { zzz5w5cmPreset = zzz5w5cm_preset_load(); } catch (e) {   }
 
   if (isLoggedIn) { try { zzz6f40_load_fixes(); } catch (e) {} try { zzz5t0_tabs_load(); } catch (e) {} }
+  if (isLoggedIn) setTimeout(() => { try { if (typeof zzz_rs_restore === 'function') zzz_rs_restore(); } catch (e) {} }, 1200);
   if (typeof zzz_recompute_logo_status === 'function') zzz_recompute_logo_status();
   try { if (typeof window.zzz_ring_sync === 'function') window.zzz_ring_sync(); } catch (e) {}
 }
@@ -30296,9 +30297,13 @@ async function zzz_rs_load(force) {
       }
       const byId = {}; Object.values(els).forEach(x => { byId[String(x.id)] = x; (x.twins || []).forEach(t => { byId[String(t)] = x; }); });
       const keeps = {};
-      notes.filter(n => n.note_part && /^verso:keep\b/.test(String(n.note_text || ''))).forEach(n => { keeps[n.entry_key + '#' + n.note_number] = n; });
+      // [Zzz5-W10:KEEP-VERSIONS] Vrso -> Claude AI 2026-11-17: every KEEP is its own sub-note (a version) - the newest one is shown, the older ones stay
+      notes.filter(n => n.note_part && /^verso:keep\b/.test(String(n.note_text || ''))).sort((a, c) => (String(a.created_at || '').localeCompare(String(c.created_at || ''))) || (Number(a.id) - Number(c.id))).forEach(n => { keeps[n.entry_key + '#' + n.note_number] = n; });
+      // [Zzz5-W10:READ-SEEN] Vrso -> Claude AI 2026-11-17 („ak by bolo viac záznamov hádam stačí len pridávať k danému záznamu nový dátum“): a page added again = a sub-note verso:seen with its own date; the page line itself never changes
+      zzzRs.seen = {};
+      notes.filter(n => n.note_part && /^verso:seen\b/.test(String(n.note_text || ''))).sort((a, c) => String(a.created_at || '').localeCompare(String(c.created_at || ''))).forEach(n => { const k = n.entry_key + '#' + n.note_number; (zzzRs.seen[k] = zzzRs.seen[k] || []).push(n.created_at); });
       zzzRs.diss = {};
-      notes.filter(n => n.note_part && !/^verso:(keep|watch)\b/.test(String(n.note_text || ''))).forEach(n => { const k = n.entry_key + '#' + n.note_number; (zzzRs.diss[k] = zzzRs.diss[k] || []).push(n); });
+      notes.filter(n => n.note_part && !/^verso:(keep|watch|seen)\b/.test(String(n.note_text || ''))).forEach(n => { const k = n.entry_key + '#' + n.note_number; (zzzRs.diss[k] = zzzRs.diss[k] || []).push(n); });
       zzzRs.watch = {};
       notes.filter(n => n.note_part && /^verso:watch\b/.test(String(n.note_text || ''))).sort((a, c) => String(a.created_at || '').localeCompare(String(c.created_at || ''))).forEach(n => { const k = n.entry_key + '#' + n.note_number; let d = null; try { d = JSON.parse(String(n.note_text).replace(/^verso:watch\s*/, '')); } catch (e) {} if (d) { d.at = n.created_at; (zzzRs.watch[k] = zzzRs.watch[k] || []).push(d); } });
       zzzRs.lines = notes.filter(n => !n.note_part && /(^|\s)(rpage|bundles|reads)(\s|$)/.test(String(n.note_tags || '')) && !/(^|\s)trash(\s|$)/.test(String(n.note_tags || '')))
@@ -30323,18 +30328,24 @@ function zzz_rs_item(n, el, keep) {
   return { id: n.id, num: n.note_number, entry: String(n.entry_key), note: n, link: /^https?:\/\//i.test(raw) ? zzz_media_norm(raw) : raw,
     name: String(n.note_name || '').trim(), tags: String(n.note_tags || '').split(/\s+/).filter(t => t && t !== 'reads' && t !== 'bundles' && t !== 'rpage' && t !== 'fav' && t !== 'watch' && !/^rp:/.test(t)).join(' '),
     seen: n.note_status === 'done', path: el ? el.path : '', keep: keep || null, elId: el ? el.id : null,
-    parent: (() => { const m = /(?:^|\s)rp:(\d+)/.exec(String(n.note_tags || '')); return m ? Number(m[1]) : null; })() };
+    parent: (() => { const m = /(?:^|\s)rp:(\d+)/.exec(String(n.note_tags || '')); return m ? Number(m[1]) : null; })(),
+    // [Zzz5-W10:MULTI-COLL] Vrso -> Claude AI 2026-11-17 („áno zapracuj ako do rôznych“): one page in SEVERAL collections at once - one rp:<n> tag per collection, the page itself is never copied (same as tabs in MEDIA CENTER, [GR:MEDIA-ONE-LINK]); parent = the first one (older readers)
+    parents: zzz_rs_parents_of(n.note_tags) };
 }
+function zzz_rs_parents_of(tags) { const out = []; String(tags || '').split(/\s+/).forEach(t => { const m = /^rp:(\d+)$/.exec(t); if (m && out.indexOf(Number(m[1])) < 0) out.push(Number(m[1])); }); return out; }
+function zzz_rs_in_coll(it, num) { return !!it && ((it.parents && it.parents.length) ? it.parents.indexOf(num) >= 0 : it.parent === num); }
 
 const zzzRsSel = {};
 function zzz_rs_sel_of(elId) { const id = elId || ((zzzRs.els[zzz_rs_key(zzzRs.path || '')] || {}).id); return id ? (zzzRsSel[id] = zzzRsSel[id] || { b: null, c: null }) : { b: null, c: null }; }
 function zzz_rs_tree_of(elId) { return (zzzRs.tree || {})[elId] || { b: [], c: [] }; }
 function zzz_rs_tree_path(it) {
   if (!it || !it.elId) return '';
-  const t = zzz_rs_tree_of(it.elId); const c = it.parent ? t.c.find(x => x.num === it.parent) : null;
-  if (!c) return it.parent ? '' : (t.b.length ? 'UNSORTED' : '');
-  const b = c.parent ? t.b.find(x => x.num === c.parent) : null;
-  return (b ? b.name + ' › ' : '') + c.name;
+  const t = zzz_rs_tree_of(it.elId);
+  const ps = (it.parents && it.parents.length) ? it.parents : (it.parent ? [it.parent] : []);
+  // [Zzz5-W10:MULTI-COLL] every collection the page is in, joined with ' · '
+  const out = ps.map(p => { const c = t.c.find(x => x.num === p); if (!c) return ''; const b = c.parent ? t.b.find(x => x.num === c.parent) : null; return (b ? b.name + ' › ' : '') + c.name; }).filter(Boolean);
+  if (!out.length) return ps.length ? '' : (t.b.length ? 'UNSORTED' : '');
+  return out.join(' · ');
 }
 function zzz_rs_next_get() { try { const v = JSON.parse(localStorage.getItem(zzz_ukey('zzz_rs_next')) || 'null'); return v && v.path ? v : {}; } catch (e) { return {}; } }
 function zzz_rs_next_set(v) { try { if (v) localStorage.setItem(zzz_ukey('zzz_rs_next'), JSON.stringify(v)); else localStorage.removeItem(zzz_ukey('zzz_rs_next')); } catch (e) {} }
@@ -30362,21 +30373,27 @@ function zzz_rs_move(it) {
   const t = zzz_rs_tree_of(it.elId);
   const o = document.createElement('div'); o.className = 'zzz-media-confirm'; o.setAttribute('data-zzz-nodraft', '1');
   const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzz-rs-setup';
-  const h = document.createElement('div'); h.className = 'zzz-media-confirm-text'; h.textContent = 'MOVE · ' + (it.name || zzz_rs_host(it.link)); b.appendChild(h);
+  const h = document.createElement('div'); h.className = 'zzz-media-confirm-text'; h.textContent = 'COLLECTIONS · ' + (it.name || zzz_rs_host(it.link)) + ' - tap = in / out, several at once'; b.appendChild(h);
   const list = document.createElement('div'); list.className = 'zzz-rs-diss-l'; b.appendChild(list);
+  // [Zzz5-W10:MULTI-COLL] tap a COLLECTION = the page is in it / out of it (several at once, the window stays open); UNSORTED = out of all
   const go = async (c) => {
     const keepT = String((it.note && it.note.note_tags) || '').split(/\s+/).filter(t => t && !/^(rpage|bundles|reads)$/.test(t) && !/^rp:/.test(t));
-    const tags = ['rpage'].concat(c ? ['rp:' + c] : [], keepT).join(' ');
+    let ps = ((it.parents && it.parents.length) ? it.parents : (it.parent ? [it.parent] : [])).slice();
+    if (c == null) ps = []; else if (ps.indexOf(c) >= 0) ps = ps.filter(x => x !== c); else ps.push(c);
+    const tags = ['rpage'].concat(ps.map(x => 'rp:' + x), keepT).join(' ');
     const { error } = await sb.from('verso_chat_notes').update({ note_tags: tags }).eq('id', it.id);
     if (error) { zzz_user_error('The page was not moved - check the connection.', error, '[Zzz5-W10:READS-TREE]'); return; }
-    it.parent = c || null; if (it.note) it.note.note_tags = tags; o.remove(); zzz6f2_show_toast('Moved to ' + (zzz_rs_tree_path(it) || 'UNSORTED') + '.', 'info', 1600); zzz_rs_render();
+    it.parents = ps; it.parent = ps.length ? ps[0] : null; if (it.note) it.note.note_tags = tags;
+    list.querySelectorAll('[data-zzz-rs-c]').forEach(x => x.classList.toggle('is-on', ps.indexOf(Number(x.getAttribute('data-zzz-rs-c'))) >= 0));
+    if (c == null) o.remove();
+    zzz6f2_show_toast('In: ' + (zzz_rs_tree_path(it) || 'UNSORTED') + '.', 'info', 1600); zzz_rs_render();
   };
   if (!t.c.length) { const e = document.createElement('div'); e.className = 'zzz-rs-set-h'; e.textContent = 'No COLLECTION yet - make a BUNDLE and a COLLECTION first (+ BUNDLE, + COLL).'; list.appendChild(e); }
   t.b.forEach(bb => {
     const cs = t.c.filter(c => c.parent === bb.num); if (!cs.length) return;
     const l = document.createElement('div'); l.className = 'zzz-rs-set-h'; l.textContent = '🗂 ' + bb.name; list.appendChild(l);
     const r = document.createElement('div'); r.className = 'zzz-b26-row';
-    cs.forEach(c => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz14cs-feed-mode' + (it.parent === c.num ? ' is-on' : ''); x.textContent = '📁 ' + c.name; x.addEventListener('click', () => go(c.num)); r.appendChild(x); });
+    cs.forEach(c => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz14cs-feed-mode' + (zzz_rs_in_coll(it, c.num) ? ' is-on' : ''); x.setAttribute('data-zzz-rs-c', String(c.num)); x.textContent = '📁 ' + c.name; x.addEventListener('click', () => go(c.num)); r.appendChild(x); });
     list.appendChild(r);
   });
   const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
@@ -30550,7 +30567,7 @@ function zzz_rs_show_module(inPath) {
 const zzzRsOpenT = {};
 function zzz_rs_tree_list(list, el, shown) {
   const t = zzz_rs_tree_of(el.id), sl = zzz_rs_sel_of(el.id), nx = zzz_rs_next_get();
-  const inColl = (c) => shown.filter(it => it.parent === c.num);
+  const inColl = (c) => shown.filter(it => zzz_rs_in_coll(it, c.num));
   const tline = (lvl, icon, name, n, key, acts) => {
     const r = document.createElement('div'); r.className = 'zzz-rs-tline is-l' + lvl + (zzzRsOpenT[key] ? ' is-open' : '');
     const ch = document.createElement('span'); ch.className = 'zzz-rs-tl-ch'; ch.textContent = zzzRsOpenT[key] ? '▾' : '▸'; r.appendChild(ch);
@@ -30571,7 +30588,7 @@ function zzz_rs_tree_list(list, el, shown) {
   };
   t.b.forEach(b => {
     const cs = t.c.filter(c => c.parent === b.num);
-    const nB = cs.reduce((a, c) => a + inColl(c).length, 0), kB = 'b:' + el.id + ':' + b.num;
+    const nB = shown.filter(it => cs.some(c => zzz_rs_in_coll(it, c.num))).length /* [Zzz5-W10:MULTI-COLL] a page in 2 collections of one bundle counts once */, kB = 'b:' + el.id + ':' + b.num;
     tline(1, '🗂', b.name, nB, kB, placeActs(b, null, b).concat([{ t: '+ COLL', title: 'New COLLECTION in ' + b.name, fn: () => { zzzRsOpenT[kB] = true; zzz_rs_tree_add(el, 'c', b.num); } }]));
     if (!zzzRsOpenT[kB]) return;
     cs.forEach(c => {
@@ -30582,7 +30599,7 @@ function zzz_rs_tree_list(list, el, shown) {
       ps.forEach(it => { const ln = zzz_rs_line(it); ln.classList.add('zzz-rs-tl-page'); list.appendChild(ln); });
     });
   });
-  const un = shown.filter(it => !it.parent || !t.c.some(c => c.num === it.parent));
+  const un = shown.filter(it => !t.c.some(c => zzz_rs_in_coll(it, c.num)));
   if (un.length || !t.b.length) {
     const kU = 'u:' + el.id;
     if (t.b.length) { tline(1, '·', 'UNSORTED', un.length, kU, []); if (!zzzRsOpenT[kU]) un.length = 0; }
@@ -30633,13 +30650,28 @@ async function zzz_rs_folder_make(path, key, me, quiet) {
   } catch (e) { zzz_user_error('The READ tab / folder could not be made - check the connection and try again.', e, '[Zzz5-W10:READ-MODEL]'); return null; }
 }
 
+// [Zzz5-W10:READ-SEEN] the page is already in READ SPACE: keep the new date on it (one per 10 min at most - double taps / auto-clip)
+async function zzz_rs_seen_add(it, from) {
+  if (!it || !it.entry || !it.num) return false;
+  const k = it.entry + '#' + it.num, list = (zzzRs.seen = zzzRs.seen || {})[k] = zzzRs.seen[k] || [];
+  const last = list.length ? Date.parse(list[list.length - 1]) : 0;
+  if (last && Date.now() - last < 10 * 60 * 1000) return false;
+  const now = new Date().toISOString();
+  list.push(now);
+  try {
+    const n = await zzz1cn_add(it.entry, 'verso:seen ' + now + (from ? ' ' + from : ''), true, { base: it.num }, 'SEEN', true, false, [], '');
+    if (!n) { list.pop(); return false; }
+    return true;
+  } catch (e) { list.pop(); return false; }
+}
+
 async function zzz_rs_add(link, path, coll) {
   link = String(link || '').trim();
   if (!/^https?:\/\//i.test(link)) { const m = /https?:\/\/\S+/i.exec(link); if (!m) { zzz6f2_show_toast('Paste a web link (https://…).', 'warn'); return null; } link = m[0]; }
   link = zzz_media_norm(link);
   await zzz_rs_load();
   const have = zzzRs.lines.find(x => x.link === link);
-  if (have) { zzz6f2_show_toast('Already in READ' + ZZZ_RS_SEP + (have.path || '') + ' - opened.', 'info'); zzz_rs_open_page(have); return have; }
+  if (have) { zzz_rs_seen_add(have, 'add'); const sn = ((zzzRs.seen || {})[have.entry + '#' + have.num] || []).length; zzz6f2_show_toast('Already in READ' + ZZZ_RS_SEP + (have.path || '') + ' - opened' + (sn ? ' · added again ' + sn + '×' : '') + '.', 'info'); zzz_rs_open_page(have); return have; }
   if (zzzRsAddBusy[link]) return zzzRsAddBusy[link];
   const run = zzz_rs_add_now(link, path, coll);
   zzzRsAddBusy[link] = run;
@@ -30681,7 +30713,7 @@ async function zzz_rs_clip_auto() {
     try { localStorage.setItem(zzz_ukey('zzz_rs_clip_last'), link); } catch (e) {}
     await zzz_rs_load();
     const have = zzzRs.lines.find(x => x.link === link);
-    if (have) { zzz6f2_show_toast('Copied link is already in READ SPACE' + ZZZ_RS_SEP + (have.path || ''), 'info', 2200); return; }
+    if (have) { zzz_rs_seen_add(have, 'clip'); zzz6f2_show_toast('Copied link is already in READ SPACE' + ZZZ_RS_SEP + (have.path || '') + ' - new date kept.', 'info', 2200); return; }
     zzz6f2_show_toast('Copied link → READ SPACE' + ZZZ_RS_SEP + zzz_rs_next_label(zzz_rs_next_get()) + ' …', 'info', 1600);
     const nx = zzz_rs_next_get();
     const it = await zzz_rs_add(link, nx.path || 'ACTUAL', nx.c || null);
@@ -30695,15 +30727,11 @@ setTimeout(() => { try { zzz_rs_clip_auto(); } catch (e) {} }, 7000);
 async function zzz_rs_keep(it, d, range) {
   if (!it || !d || d.error) { zzz6f2_show_toast('Nothing to keep - the page was not read.', 'warn'); return false; }
   const text = 'verso:keep ' + (range || zzz_rs_setup().keep) + '\n' + zzz_rs_plain(d, range || zzz_rs_setup().keep);
-  if (it.keep && it.keep.id) {
-    const { error } = await sb.from('verso_chat_notes').update({ note_text: text }).eq('id', it.keep.id);
-    if (error) { zzz_user_error('KEEP CONTENT was not saved - check the connection and try again.', error, '[Zzz5-W10:KEEP-CONTENT]'); return false; }
-    it.keep.note_text = text;
-  } else {
-    const n = await zzz1cn_add(it.entry, text, true, { base: it.num }, 'KEEP', true, false, [], '');
-    if (!n) return false;
-    it.keep = Object.assign({ note_text: text }, n);
-  }
+  // [Zzz5-W10:KEEP-VERSIONS] no overwrite any more (GR no physical deletion): the same content again = nothing new, other content = a new KEEP version
+  if (it.keep && String(it.keep.note_text || '') === text) return true;
+  const n = await zzz1cn_add(it.entry, text, true, { base: it.num }, 'KEEP', true, false, [], '');
+  if (!n) { zzz_user_error('KEEP CONTENT was not saved - check the connection and try again.', null, '[Zzz5-W10:KEEP-CONTENT]'); return false; }
+  it.keep = Object.assign({ note_text: text, created_at: new Date().toISOString() }, n);
   return true;
 }
 async function zzz_rs_mark_read(it) {
@@ -30736,8 +30764,18 @@ function zzz_rs_build() {
   const body = document.createElement('div'); body.className = 'zzz14cs-space-body zzz-rs-body'; panel.appendChild(body);
   document.body.appendChild(panel);
 }
+// [Zzz5-W10:RESTORE-AFTER-RELOAD] Vrso -> Claude AI 2026-11-17 („vyhodí na home / dashboard… možno pri update v pozadí“): after any reload (web / APK update, rollback, Android killed the page) READ SPACE comes back if it was open in the last 15 min
+function zzz_rs_last_mark(on) { try { if (on) localStorage.setItem(zzz_ukey('zzz_rs_last'), JSON.stringify({ t: Date.now(), page: !!(zzzRs && zzzRs.page) })); else localStorage.removeItem(zzz_ukey('zzz_rs_last')); } catch (e) {} }
+function zzz_rs_restore() {
+  let v = null; try { v = JSON.parse(localStorage.getItem(zzz_ukey('zzz_rs_last')) || 'null'); } catch (e) { v = null; }
+  if (!v || !v.t || Date.now() - v.t > 15 * 60000 || zzzRs.open) return;
+  try { zzz_rs_space_open(true, !!v.page); } catch (e) {}
+}
+window.addEventListener('pagehide', () => { try { if (zzzRs.open) zzz_rs_last_mark(true); } catch (e) {} });
+document.addEventListener('visibilitychange', () => { try { if (document.visibilityState === 'hidden' && zzzRs.open) zzz_rs_last_mark(true); } catch (e) {} });
 function zzz_rs_space_open(on, actual) {
   zzzRs.open = !!on;
+  zzz_rs_last_mark(zzzRs.open);
   if (zzzRs.open) {
 
     try { if (typeof zzz14csSpaceOpen !== 'undefined' && zzz14csSpaceOpen) zzz14cs_space_open(false); } catch (e) {}
@@ -30913,7 +30951,7 @@ function zzz_rs_line(it) {
     wb.addEventListener('click', (e) => { e.stopPropagation(); zzz_rs_watch_toggle(it); }); h.appendChild(wb);
     try { const st = zzz_stars_chip(it.id, { tag: 'button', count: true }); st.addEventListener('click', (e) => e.stopPropagation()); h.appendChild(st); } catch (e) {}
   }
-  if (it.elId && it.id) { const mv = document.createElement('button'); mv.type = 'button'; mv.className = 'zzz-rs-move'; mv.textContent = '↳'; mv.title = 'MOVE into a BUNDLE › COLLECTION'; mv.addEventListener('click', (e) => { e.stopPropagation(); zzz_rs_move(it); }); h.appendChild(mv); }
+  if (it.elId && it.id) { const mv = document.createElement('button'); mv.type = 'button'; mv.className = 'zzz-rs-move'; mv.textContent = '↳'; mv.title = 'COLLECTIONS - put the page into one or more BUNDLE › COLLECTION'; mv.addEventListener('click', (e) => { e.stopPropagation(); zzz_rs_move(it); }); h.appendChild(mv); }
   { const ws = zzz_rs_watch_line(it); if (ws) { const wl = document.createElement('span'); wl.className = 'zzz-rs-watchl' + (ws.changed ? ' is-changed' : ''); wl.textContent = ws.text; h.appendChild(wl); } }
   r.title = it.link;
   r.addEventListener('click', () => zzz_rs_open_page(it));
@@ -31421,7 +31459,7 @@ function zzz_rdr_show(m, opts) {
         const tx = document.createElement('div'); tx.className = 'zzz-rdr-tx'; tx.textContent = raw; r.appendChild(tx);
       }
       const sn = subs[n.note_number] || [];
-      sn.filter(x => !/^verso:(keep|watch)\b/.test(String(x.note_text || ''))).forEach(x => { const d = document.createElement('div'); d.className = 'zzz-rdr-sub'; d.textContent = '↳ ' + (x.username || '') + ': ' + String(x.note_text || '').slice(0, 600); r.appendChild(d); });
+      sn.filter(x => !/^verso:(keep|watch|seen)\b/.test(String(x.note_text || ''))).forEach(x => { const d = document.createElement('div'); d.className = 'zzz-rdr-sub'; d.textContent = '↳ ' + (x.username || '') + ': ' + String(x.note_text || '').slice(0, 600); r.appendChild(d); });
       content.appendChild(r);
     });
   });
@@ -54635,7 +54673,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-17 02:50';
+const VERSO_BUILD = '2026-11-17 17:50';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -55950,6 +55988,8 @@ function zzz_home_show() {
 })();
 window.addEventListener('popstate', () => {
   if (zzz_vkbHistIgnore > 0) { zzz_vkbHistIgnore--; return; }
+  // [Zzz14-NAV:CMD-HASH-NOT-BACK] Vrso -> Claude AI 2026-11-17 („prepne na dashboard keď kliknem oko“ / „zobrazí sa na chvíľu… ale vráti späť“): an answer of the Verso app comes as a #hash (#rpage=… DIRECT read, #media…, #alarm-new=…) - the browser reports that as popstate, but it is NOT the Back button: never close the open page / READ SPACE for it (same rule as the outside-back handler)
+  if (String(location.hash || '').length > 1) return;
   if (zzz_back_close_top()) {
     zzz_back_guard();
     setTimeout(() => { if (!zzz_home_busy()) zzz_home_show(); }, 250);
