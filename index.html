@@ -30675,7 +30675,7 @@ function zzz_ic_render(host) {
   box.setAttribute('data-5s', 'INTEREST CARD');
   const h = document.createElement('h3'); h.textContent = 'INTEREST CARD'; box.appendChild(h);
   const note = (t) => { const d = document.createElement('div'); d.className = 'zzz-ext-note'; d.textContent = t; box.appendChild(d); };
-  note('Your own card of interests - you choose, nobody collects it behind your back. Tap = MINE (gold, used only inside Verso) · again = SHARE OK (green, may be shared later with your consent) · again = off. Now NOTHING is sent anywhere.');
+  note('Your own card of interests - you choose, nobody collects it behind your back. Tap = MINE (gold, used only inside Verso) · again = SHARE OK (green, an app may read it only with your consent) · again = off. Nothing leaves Verso without your consent.');
   const grid = document.createElement('div'); grid.className = 'zzz14b2-voice'; grid.style.flexWrap = 'wrap'; box.appendChild(grid);
   const ownBox = document.createElement('div'); ownBox.className = 'zzz14b2-voice'; ownBox.style.flexWrap = 'wrap';
   let c = zzz_ic_get();
@@ -30696,7 +30696,7 @@ function zzz_ic_render(host) {
   ob.addEventListener('click', () => { const t = String(oi.value || '').trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 30); if (!t) return; if (!(c.own || []).some(x => x.t === t)) { c.own = (c.own || []).concat([{ t, s: 'mine' }]); zzz_ic_save(c); } oi.value = ''; draw(); });
   own.append(oi, ob); box.appendChild(own); box.appendChild(ownBox);
   const idr = document.createElement('div'); idr.className = 'zzz16-row';
-  const idl = document.createElement('div'); idl.textContent = 'WHEN SHARED (phase 2)'; idr.appendChild(idl);
+  const idl = document.createElement('div'); idl.textContent = 'WHEN SHARED'; idr.appendChild(idl);
   const idg = document.createElement('div'); idg.className = 'zzz14b2-voice'; idg.style.flexWrap = 'wrap';
   [['none', 'NO ID ✓ default'], ['app', 'RANDOM ID PER APP'], ['user', 'MY USERNAME']].forEach(([v, t]) => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn' + (c.id === v ? ' is-on' : ''); b.textContent = t; b.title = ({ none: 'NO ID: the other side gets only totals, never who (default).', app: 'RANDOM ID PER APP: each app gets its own random number - apps cannot connect you.', user: 'MY USERNAME: only if you want to be a known customer.' })[v];
@@ -30704,6 +30704,25 @@ function zzz_ic_render(host) {
   });
   idr.appendChild(idg); box.appendChild(idr);
   note('NO ID = Verso itself picks offers by your card, the other side gets only totals (how many saw / tapped), never who. RANDOM ID PER APP = each app gets its own random number for you - it cannot connect you across apps. MY USERNAME = only if you want to be a known customer. Every share will be a consent you can withdraw, with a log.');
+  // [Zzz14-IC:INTEREST-CARD-2] apps that may read the card (VERSO GATE scope 'interests') + DISCONNECT - Vrso -> Claude AI 2026-11-17
+  note('SHARING (VERSO GATE): an app gets your SHARE OK interests only after you allow „interests“ on its Verso consent screen - never the MINE ones. With NO ID it gets nothing about you, you are only counted in its totals (shown from 3 people up). Every reading is in your AUDIT LOG.');
+  const apps = document.createElement('div'); apps.className = 'zzz-ext-note'; apps.textContent = 'Apps that may read your card: …'; box.appendChild(apps);
+  const drawApps = async () => {
+    let L = [];
+    try { const r = await zzz10m5_call('grants', {}); L = (r.grants || []).filter(g => (g.scopes || []).indexOf('interests') >= 0); }
+    catch (e) { apps.textContent = 'Apps that may read your card: could not be loaded now (' + zzz10m5_err_text(e) + ').'; return; }
+    apps.innerHTML = '';
+    const t = document.createElement('div'); t.textContent = L.length ? 'Apps that may read your card:' : 'Apps that may read your card: none.'; apps.appendChild(t);
+    L.forEach(g => {
+      const row = document.createElement('div'); row.className = 'zzz16-row';
+      const n = document.createElement('div'); n.style.flex = '1 1 auto'; n.textContent = (g.name || g.app_id) + ' · since ' + String(g.granted_at || '').slice(0, 10); row.appendChild(n);
+      const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz16-btn'; x.textContent = '× DISCONNECT';
+      x.title = 'Withdraw the consent: the app can no longer read anything from Verso (your card, your ID). Logged in AUDIT LOG.';
+      x.addEventListener('click', async () => { x.disabled = true; try { await zzz10m5_call('revoke', { grant_id: g.id }); zzz6f2_show_toast('Disconnected: ' + (g.name || g.app_id) + '.', 'info'); drawApps(); } catch (e) { x.disabled = false; zzz6f2_show_toast(zzz10m5_err_text(e), 'warn'); } });
+      row.appendChild(x); apps.appendChild(row);
+    });
+  };
+  drawApps();
   draw();
   zzz_ic_pull().then(x => { if (x) { c = Object.assign({ items: {}, own: [], id: 'none' }, x); draw(); idg.querySelectorAll('button').forEach((b, i) => b.classList.toggle('is-on', ['none', 'app', 'user'][i] === c.id)); } });
   host.appendChild(box);
@@ -45779,7 +45798,8 @@ const ZZZ_5S_WS = [
     'PRIVATE mode puts everything on IP SHIELD whatever is set here. READ SPACE › ⚙ READ SETUP › PAGES can keep its own choice (BY SETTINGS = this switch).'] },
   { k: /^INTEREST CARD/, t: 'INTEREST CARD', i: [
     'Tap an interest: 1× = MINE (gold, used only inside Verso) · 2× = SHARE OK (green, may be shared later with your consent) · 3× = off.',
-    'Own interest: write it → + ADD. WHEN SHARED: NO ID (default, the other side gets only totals) · RANDOM ID PER APP · MY USERNAME. Now nothing is sent anywhere.'] },
+    'Own interest: write it → + ADD. WHEN SHARED: NO ID (default, the other side gets only totals from 3 people up) · RANDOM ID PER APP · MY USERNAME.',
+    'An app reads the SHARE OK interests only after you allow „interests“ on its VERSO GATE consent screen. The list below shows those apps - × DISCONNECT withdraws it at once. Every reading is in AUDIT LOG.'] },
   { k: /DASHBOARD/, t: 'DASHBOARD', i: [
     'The list of everything waiting: chat messages, REMS, SCHEDS, DISCUSS, system and ISSUES lines - coloured by priority (red urgent, orange attention, green open).',
     '2× tap on the list = full screen and back; in full screen also ✕ and „✓ ISSUES n“ = all issue lines READ on this device (they stay in your ISSUES record, UNDO a few seconds).',
@@ -55604,7 +55624,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-17 23:35';
+const VERSO_BUILD = '2026-11-18 00:10';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
