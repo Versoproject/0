@@ -22635,6 +22635,8 @@ async function submit_entries_to_db(options = {}) {
     updated_at: new Date().toISOString()
   };
 
+  // [Zzz10-M7:PRIVATE-ALL] written in PRIVATE mode = pmode + PRIVACY private
+  try { if (zzz_pm_on()) { payload.pmode = true; const fj = JSON.parse(payload.fields_json || '{}'); fj.r7 = ''; payload.fields_json = JSON.stringify(fj); zzz_pm_set(zzz_pm_ids().concat([payload.entry_id])); } } catch (e) {}
   console.log('Zzz1-D1 submit_entries_to_db - payload pripraveny na zapis:', payload);
 
   submittedEntriesCache[payload.entry_id] = payload.r1;
@@ -30245,8 +30247,42 @@ function zzz_remote_ro() {
   try { if (!zzz_remote_ro._t || Date.now() - zzz_remote_ro._t > 4000) { zzz_remote_ro._t = Date.now(); zzz6f2_show_toast('REMOTE ACCESS - read only, nothing is changed.', 'warn', 1800); } } catch (e) {}
   return new Proxy(function () {}, h);
 }
+// [Zzz10-M7:PRIVATE-ALL] PRIVATE everywhere - Vrso -> Claude AI 2026-11-17 („2. urob“ = PRIVATE aj v ostatných moduloch)
+// Records written in PRIVATE mode (ENTER) get verso_entries.pmode = true (and PRIVACY private). In the normal mode Verso hides them everywhere:
+// DATABASE / PROJECTS / lists (pmode = false), and everything hanging on them - chats, VI chats, notes, notifications, tasks (entry_id / entry_key not in the PRIVATE list).
+// MEDIA: media added in PRIVATE get the tag 'pmode' (never public). READ SPACE: pages tag 'private' (as before). In PRIVATE mode everything shows.
+var zzzSbRaw;   // set by zzz_remote_wrap (no initializer - the wrap runs earlier than this line)
+function zzz_pm_ids() { try { return (JSON.parse(localStorage.getItem(zzz_ukey('zzz_pm_ids')) || '[]') || []).map(Number).filter(n => n > 0); } catch (e) { return []; } }
+function zzz_pm_set(ids) { try { localStorage.setItem(zzz_ukey('zzz_pm_ids'), JSON.stringify(Array.from(new Set((ids || []).map(Number).filter(n => n > 0))).slice(-2000))); } catch (e) {} }
+function zzz_pm_hide() { try { return !zzz_ext_private() && !zzz_mode_remote(); } catch (e) { return false; } }
+function zzz_pm_on() { try { return zzz_ext_private() && !zzz_mode_remote(); } catch (e) { return false; } }
+function zzz_pm_tags_pass(tags) { const w = String(tags || '').toLowerCase().split(/[\s,]+/); return w.indexOf('pmode') < 0 || !zzz_pm_hide(); }
+async function zzz_pm_pull() {
+  const me = (typeof zzz_rs_me === 'function') ? zzz_rs_me() : ''; if (!me || !zzzSbRaw) return false;
+  try { const { data, error } = await zzzSbRaw.from('verso_entries').select('entry_id').eq('pmode', true).ilike('username', me).limit(2000); if (error) return false; zzz_pm_set((data || []).map(r => r.entry_id)); return true; } catch (e) { return false; }
+}
+(function zzz_pm_boot(n) { setTimeout(async () => { const ok = (typeof zzz6f7_isLoggedIn !== 'undefined' && zzz6f7_isLoggedIn) ? await zzz_pm_pull() : false; if (!ok && n < 12) zzz_pm_boot(n + 1); }, 4000); })(0);
+function zzz_pm_wrap(table, qb) { try { return zzz_pm_wrap0(table, qb); } catch (e) { return qb; } }
+function zzz_pm_wrap0(table, qb) {
+  if (!zzz_pm_hide()) return qb;
+  const isE = table === 'verso_entries';
+  const isEid = !isE && ZZZ_REMOTE_T.entry_id.indexOf(table) >= 0, isKey = ZZZ_REMOTE_T.entry_key.indexOf(table) >= 0;
+  const pids = (isEid || isKey) ? zzz_pm_ids() : [];
+  if (!isE && !pids.length) return qb;
+  return new Proxy(qb, { get(q, m) {
+    if (m === 'select') return (...a) => {
+      let b = q.select(...a);
+      if (isE) b = b.eq('pmode', false);
+      else if (isEid) b = b.not('entry_id', 'in', '(' + pids.join(',') + ')');
+      else b = b.not('entry_key', 'in', '(' + pids.join(',') + ')');
+      return b;
+    };
+    const v = q[m]; return typeof v === 'function' ? v.bind(q) : v;
+  } });
+}
 function zzz_remote_wrap(client) {
   if (!client || client.__zzzRemote) return client;
+  zzzSbRaw = client;   // [Zzz10-M7:PRIVATE-ALL] the unfiltered client (only for reading which records are PRIVATE)
   const from0 = client.from.bind(client);
   return new Proxy(client, { get(t, k) {
     if (k === '__zzzRemote') return true;
@@ -30254,7 +30290,7 @@ function zzz_remote_wrap(client) {
     return (table) => {
       let st = null; try { st = zzz_remote_state(); } catch (e) { st = null; }
       const qb = from0(table);
-      if (!st) return qb;
+      if (!st) return zzz_pm_wrap(table, qb);
       const ids = st.ids.length ? st.ids.map(Number) : [-1], keys = ids.map(String), users = String(st.users || '').split(',').filter(Boolean);
       return new Proxy(qb, { get(q, m) {
         if (m === 'insert' || m === 'update' || m === 'upsert' || m === 'delete') { if (ZZZ_REMOTE_T.writeOk.indexOf(table) >= 0) return q[m].bind(q); return () => zzz_remote_ro(); }
@@ -30336,8 +30372,9 @@ async function zzz_modes_set(mode, on, extra) {
   if (mode === 'private') {
     const cur = Object.assign({}, zzz_ext()); cur.private = on ? 'on' : 'off'; await zzz_ext_save(cur);
     zzz_live_log(on ? 'private_on' : 'private_off');   // [Zzz10-M6:TRACE-LOG] -> AUDIT LOG
-    zzz6f2_show_toast(on ? '🔒 PRIVATE on - private pages open, everything via IP SHIELD. Red 🔒 / Ctrl + S = end.' : 'PRIVATE off.', 'info', 3200);
-    zzz_modes_after(); return;
+    zzz6f2_show_toast(on ? '🔒 PRIVATE on - private records, chats, media and pages show; what you write now stays PRIVATE; everything via IP SHIELD. Verso opens again…' : 'PRIVATE off - private things are hidden again. Verso opens again…', 'info', 3000);
+    if (on) { try { await zzz_pm_pull(); } catch (e) {} }
+    zzz_modes_after(); setTimeout(() => { try { location.reload(); } catch (e) {} }, 1500); return;
   }
   if (mode === 'remote') {   // owner: open / close REMOTE ACCESS for the shares in SETTINGS
     const { error } = await sb.rpc('verso_live_set_open', { p_open: !!on });
@@ -30536,7 +30573,7 @@ function zzz_modes_render(host) {
   const h = document.createElement('h3'); h.textContent = 'MODES · PRIVATE · REMOTE ACCESS · LIVE'; box.appendChild(h);
   const p = (txt, el) => { const d = document.createElement('div'); d.className = 'zzz10m5-txt'; d.textContent = txt; (el || box).appendChild(d); return d; };
   p('Commands: hold 3 s. Computer: Ctrl + letter. Verso keyboard: hold Ctrl and hold the letter. Each command again = switch it off.');
-  p('🔒 Ctrl + S · PRIVATE (+ your secret command) - pages saved now are PRIVATE: in the normal mode they are not shown anywhere, in PRIVATE they open like the others; everything Verso reads goes via IP SHIELD. Until you end it (red 🔒 in the web line, or Ctrl + S again).');
+  p('🔒 Ctrl + S · PRIVATE (+ your secret command) - what you write now is PRIVATE: records (ENTER), their chats, VI chats, notes, notifications, media and READ SPACE pages. In the normal mode they are not shown anywhere, in PRIVATE they show like the others; everything Verso reads goes via IP SHIELD. Until you end it (red 🔒 in the web line, or Ctrl + S again). Messages you sent to other people stay with them.');
   p('📡 Ctrl + R · REMOTE ACCESS open / close (+ REMOTE command) - only then can the users below activate what you shared with them. Closed = nobody, whatever is set here.');
   p('🔗 Ctrl + A · ACCESS activate / deactivate (+ your REMOTE command) - on YOUR device: load what others shared with you (their REMOTE ACCESS must be open). Read only, under your own login.');
   p('● Ctrl + L · LIVE - choose ONE session (a shared record); the MODERATOR leads (the owner first, he can hand it over: MOD →), the others follow what he opens. Only record numbers travel - never your screen. Everything is logged.');
@@ -45706,7 +45743,7 @@ const ZZZ_5S_WS = [
   { k: /^MODES/, t: 'MODES · PRIVATE · REMOTE ACCESS · LIVE', i: [
     'SET UP ONCE: 1) VIEW / CHANGE COMMANDS · MV PHRASE → write your MV PHRASE → OPEN. 2) Write the PRIVATE command and the REMOTE command (3-40 characters, not the same). 3) PREVIEW AS (optional): usernames whose view you want to try. 4) SAVE within 15 s - after 15 s the fields close and nothing is kept on screen.',
     'HOW TO HOLD: computer = hold Ctrl + the letter 3 s · Verso keyboard = hold Ctrl and hold the letter 3 s. Then a 10 s window asks for the command. The same command again = switch off.',
-    '🔒 PRIVATE · Ctrl + S + PRIVATE command: pages saved now are PRIVATE (hidden in the normal mode), everything Verso reads goes via IP SHIELD. Red 🔒 in the web line while on. End: Ctrl + S again or tap the red 🔒.',
+    '🔒 PRIVATE · Ctrl + S + PRIVATE command: what you write now is PRIVATE - records (ENTER), their chats, VI chats, notes, notifications, media and READ SPACE pages; hidden in the normal mode, shown in PRIVATE. Everything Verso reads goes via IP SHIELD. Red 🔒 in the web line while on. End: Ctrl + S again or tap the red 🔒. Verso opens again on every switch.',
     '📡 REMOTE ACCESS (you are the OWNER): 1) share records below (REMOTE ACCESS · MY SHARES). 2) Ctrl + R + REMOTE command = OPEN (📡 in the web line). 3) Ctrl + R again = CLOSED for everybody, shares stay for next time.',
     '🔗 ACCESS (you are the GUEST, on your own device): Ctrl + A + YOUR REMOTE command = the records shared with you load READ ONLY (🔗 in the web line). The owner must have REMOTE ACCESS open. Ctrl + A again = deactivate.',
     '● LIVE: Ctrl + L = choose ONE session from what is open / activated. The MODERATOR (owner first) leads - what he opens, the others see. MOD → = hand over · LEAVE = out. Only record numbers travel, never the screen; everybody writes in chat under his own name.',
@@ -55554,7 +55591,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-17 22:45';
+const VERSO_BUILD = '2026-11-17 23:10';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -60187,6 +60224,9 @@ async function zzz_media_load() {
     (data || []).filter(n => n.note_part && n.note_text !== 'verso:state').forEach(n => { (zzzMedia.diss[n.note_number] = zzzMedia.diss[n.note_number] || []).push(n); });
     zzzMedia.plsDefs = items.filter(x => x.plsDef && !x.trash);
     zzzMedia.all = items.filter(x => !x.plsDef && (/^https?:\/\//i.test(x.link) || /^verso-file:/.test(x.link)));
+    // [Zzz10-M7:PRIVATE-ALL] media added in PRIVATE mode ('pmode') are not shown in the normal mode
+    zzzMedia.pHidden = zzzMedia.all.filter(x => !zzz_pm_tags_pass(x.tags)).map(x => x.link);
+    zzzMedia.all = zzzMedia.all.filter(x => zzz_pm_tags_pass(x.tags));
 
     for (const x of zzzMedia.all) {
       const w = zzz_media_tagw(x.tags);
@@ -60251,13 +60291,15 @@ async function zzz_media_add(link, name, tags, opts) {
   link = zzz_media_norm(link);
   const have = (zzzMedia.all || []).find(x => x.link === link);
   if (have) return have;
+  if ((zzzMedia.pHidden || []).indexOf(link) >= 0) { zzz6f2_show_toast('🔒 This medium is already saved in PRIVATE - it opens in PRIVATE mode.', 'info', 2600); return null; }
+  const pm = zzz_pm_on(); if (pm) tags = (String(tags || '') + ' pmode').trim();   // [Zzz10-M7:PRIVATE-ALL]
   const e = await zzz_media_entry(true);
   if (!e) return null;
   const n = await zzz1cn_add(String(e.entry_id), link, true, null, String(name || '').slice(0, 60), true, false, [], String(tags || '').toLowerCase().trim());
   if (!n) return null;
   const it = zzz_media_item(Object.assign({ note_text: link, note_name: name || '', note_tags: tags || '' }, n));
   zzzMedia.all = (zzzMedia.all || []).concat([it]); zzzMedia.list = zzzMedia.all.filter(x => !x.trash);
-  try { if ((zzz1cn_setup_get(String(e.entry_id)) || {}).lines === 'open') await zzz_media_set_public(it, true); } catch (x) {}
+  try { if (!pm && (zzz1cn_setup_get(String(e.entry_id)) || {}).lines === 'open') await zzz_media_set_public(it, true); } catch (x) {}
   if (!it.name) zzz_media_autoname(it);
   if (zzz_media_read_has(link)) zzz_media_mark_read(it, true);
   return it;
