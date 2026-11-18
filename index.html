@@ -53289,6 +53289,24 @@ async function zzz_b26_render_admin(host) {
   iss.forEach(x => { const r = zzz_b26_el('div', 'zzz-b26-line'); r.textContent = zzz_b26_time(x.created_at) + ' · ' + (x.username || '-') + ' · ' + (x.kind || '') + ' · ' + (x.message || '') + (x.build ? ' · ' + x.build : ''); ci.appendChild(r); });
   const ca = sec('AUDIT', au.length);
   au.forEach(x => { const r = zzz_b26_el('div', 'zzz-b26-line is-' + x.mode); r.textContent = zzz_b26_time(x.at) + ' · ' + x.admin + ' · ' + String(x.mode).toUpperCase() + ' · ' + x.action + (x.target ? ' · ' + x.target : '') + (x.reason ? ' · „' + x.reason + '“' : ''); ca.appendChild(r); });
+  // [Zzz14-ADMIN:TRAFFIC] GitHub repo (clones / views, saved daily by the server) + Verso web openings and APP downloads
+  const ct = sec('TRAFFIC · repo + web');
+  ct.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'REPO = GitHub (saved every day, GitHub itself keeps only 14 days): clones / unique · of that Vercel builds · views of the repo pages. GitHub never tells WHO cloned. WEB = openings of Verso and taps on the APP download: times / visitors / logged-in users (no IP stored).'));
+  const tl = zzz_b26_el('a', 'zzz14cs-feed-mode', 'OPEN GITHUB TRAFFIC ↗'); tl.href = 'https://github.com/Versoproject/0/graphs/traffic'; tl.target = '_blank'; tl.rel = 'noopener'; ct.appendChild(tl);
+  sb.rpc('verso_admin_traffic').then(({ data, error }) => {
+    if (error || !data) { ct.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'Traffic could not load.')); return; }
+    const KT = { web_open: 'web opened', app_download_login: 'APP download · LOGIN', app_download_register: 'APP download · REGISTER', app_download_update: 'APP update', app_download_other: 'APP download · inside Verso' };
+    const web = {}; (data.web || []).forEach(w => { (web[w.day] = web[w.day] || []).push(w); });
+    const days = Array.from(new Set((data.repo || []).map(r => r.day).concat(Object.keys(web)))).sort().reverse().slice(0, 30);
+    if (!days.length) ct.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'Nothing saved yet.'));
+    days.forEach(d => {
+      const r = (data.repo || []).find(x => x.day === d);
+      const line = zzz_b26_el('div', 'zzz-b26-line' + (r && r.views > 0 ? ' is-live' : ''));
+      line.textContent = d + (r ? ' · REPO clones ' + r.clones + ' / ' + r.clone_uniques + ' unique · Vercel ' + r.vercel_builds + ' · other ' + Math.max(0, r.clones - r.vercel_builds) + ' · views ' + r.views + ' / ' + r.view_uniques : '')
+        + (web[d] ? ' · WEB ' + web[d].map(w => (KT[w.kind] || w.kind) + ' ' + w.n + '× / ' + w.visitors + ' visitors / ' + w.users + ' users').join(' · ') : '');
+      ct.appendChild(line);
+    });
+  }, () => {});
   const cp = sec('ACTIONS (next phase)');
   ['Login recovery for a user', 'Unblock a user', 'Emergency: every device back to the last good build', 'Archive solved device issues'].forEach(t => {
     const b = zzz_b26_el('button', 'zzz14cs-feed-mode', t + ' · SOON'); b.type = 'button'; b.disabled = true; cp.appendChild(b);
@@ -53783,7 +53801,7 @@ const ZZZ10M6_ACTION_TEXT = {
   gate_key_register: 'USB key added', gate_key_revoke: 'USB key removed',
   disclosure_executed: 'Your trace was OPENED by signatories', disclosure_execute: 'You opened a disclosure',
   // [Zzz10-M7:MV-LOG] MODES / REMOTE / LIVE / INTEREST CARD - Vrso -> Claude AI 2026-11-17
-  verse_check: 'VERSE VERIFICATION', verse_added: 'Verse added', verse_removed: 'Verse removed', recover: 'Account recovery (token + verse)',
+  verse_check: 'VERSE VERIFICATION', verse_added: 'Verse added', verse_removed: 'Verse removed', repo_traffic: 'Repo traffic saved (GitHub clones / views + web)', recover: 'Account recovery (token + verse)',
   modes_unlock: 'MV phrase · Advanced setup / MODES unlocked (10 min)', modes_view: 'MV phrase · MODES commands opened', modes_change: 'MV phrase · MODES commands changed',
   modes_get: 'MV phrase · MODES (wrong)', modes_set: 'MV phrase · MODES change (wrong)',
   mode_private_on: 'PRIVATE on (command)', mode_private_off: 'PRIVATE off (command)', mode_remote_on: 'REMOTE ACCESS opened (command)', mode_remote_off: 'REMOTE ACCESS closed (command)',
@@ -55812,7 +55830,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 15:30';
+const VERSO_BUILD = '2026-11-18 16:00';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -64320,6 +64338,11 @@ const ZZZ14B17_PLAY_PROTECT = 'If Google Play Protect shows "App scan recommende
 const ZZZ14B17_APK_ALSO_WEB = 'The APK update also brings the newest web version automatically (the app opens Verso fresh).'
 
   + ' Samsung: if the update stops with "blocked", switch off Auto Blocker (Settings → Security and privacy → Auto Blocker) and tap again.';
+// [Zzz14-ADMIN:TRAFFIC] Vrso 2026-11-18 „logovať stiahnutie z login a register tabu … aj z webu … koľko userov a počet“ + „aj prezerania logovať“:
+// the server counts each opening of the Verso web and each tap on the APP download (per day: how many times, how many visitors, how many logged-in users).
+// No IP is stored - only a one-day fingerprint (server: verso_web_hit). Shown in SETTINGS › ADMIN › TRAFFIC. Never blocks anything.
+function zzz_web_hit(kind) { try { if (typeof sb !== 'undefined' && sb) sb.rpc('verso_web_hit', { p_kind: kind }).then(() => {}, () => {}); } catch (e) {} }
+setTimeout(() => zzz_web_hit('web_open'), 4000);
 function zzz14b17_render_app_download(btnHost, noteHost, mode) {
 
   let inApp = zzz14b17_in_app();
@@ -64331,6 +64354,10 @@ function zzz14b17_render_app_download(btnHost, noteHost, mode) {
   a.href = '#';
   a.setAttribute('download', 'verso.apk');
   a.addEventListener('click', (ev) => { if (a.getAttribute('href') === '#') { ev.preventDefault(); if (!document.getElementById('zzz14b17DlPanel')) zzz6f2_show_toast(ZZZ14B17_APK_MISSING, 'warn'); } });
+  a.addEventListener('click', () => {   // [Zzz14-ADMIN:TRAFFIC] where the download was tapped
+    let logged = false; try { logged = !!zzz_verso_fn_headers(); } catch (e) {}
+    zzz_web_hit(mode === 'update' ? 'app_download_update' : (a.closest('.zzz14b17-reg-dl') ? 'app_download_register' : (logged ? 'app_download_other' : 'app_download_login')));
+  });
 
   fetch('/verso-apk.json?v=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(m => {
 
