@@ -25930,7 +25930,7 @@ function zzz4_0_open_delete_all_confirm(entryIds = null) {
   confirmBtn.onclick = async () => {
     if (!allFilled()) return;
     confirmBtn.disabled = true;
-    const tk = await zzz_verse_ticket('trash', 'EMPTY TRASH · VERSE VERIFICATION', 'Permanent delete needs a fresh verification every time (2 words of your verse; no verse yet = MV PHRASE).');
+    const tk = await zzz_verse_ticket('trash', 'EMPTY TRASH · MV', 'Permanent delete needs a fresh verification every time - your MV PHRASE.');
     if (!tk) { confirmBtn.disabled = false; return; }
     confirmBtn.textContent = 'Deleting...';
     await zzz4_0_delete_all_entries(codeInput.value.trim(), '', selectedOnly ? entryIds : null, passwordInput.value, tk);
@@ -30388,7 +30388,7 @@ function zzz_mv_layer_render(host) {
 }
 // [Zzz10-M7:MV-UNLOCK] one MV PHRASE unlocks MODES changes for 10 min on the server (shares, WRITE, commands) - Vrso 2026-11-17
 async function zzz_modes_unlock() {   // [Zzz13-MV:VERSE] 2026-11-18: VERSE VERIFICATION (2 random words) instead of the whole phrase
-  const ok = await zzz_verse_verify('advanced', 'ADVANCED SETUP · VERSE VERIFICATION', 'Layer 1 of multiverification - opens Advanced setup and unlocks MODES changes (shares, WRITE, commands) for 10 minutes.');
+  const ok = await zzz_verse_verify('advanced', 'ADVANCED SETUP · MV', 'Your MV PHRASE opens Advanced setup and unlocks MODES changes (shares, WRITE, commands) for 10 minutes.');
   if (ok) zzz6f2_show_toast('🔓 Advanced setup / MODES open for 10 min.', 'info', 2000);
   return ok;
 }
@@ -30429,7 +30429,7 @@ function zzz_verse_why(r) {
     verse_too_long: 'Max. 40 words.', too_many_verses: 'Max. 10 verses.', last_factor: 'The last verse cannot be removed - add another first.', invalid_token: 'The USERNAME or the TOKEN is not valid.', token_required: 'Type the recovery TOKEN from your e-mail first.', new_password_short: 'The new password is too short.' })[x] || ('Not done (' + (x || 'error') + ').');
 }
 // one question dialog: verse mode = 2 words joined, phrase mode = the base MV PHRASE
-function zzz_verse_ask(ch, title, text) {
+function zzz_verse_ask(ch, title, text, altLabel) {
   return new Promise((resolve) => {
     const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv';
     const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', 'VERSE VERIFICATION');
@@ -30452,6 +30452,10 @@ function zzz_verse_ask(ch, title, text) {
     const n = document.createElement('button'); n.type = 'button'; n.className = 'zzz-media-btn'; n.textContent = 'CANCEL';
     let done = false; const end = (v) => { if (done) return; done = true; try { inp.value = ''; } catch (e) {} o.remove(); resolve(v); };
     n.addEventListener('click', () => end(null));
+    if (altLabel) {   // e.g. FORGOT? → VERSE: the same step answered by 2 words of the verse
+      const al = document.createElement('button'); al.type = 'button'; al.className = 'zzz-media-btn'; al.textContent = altLabel;
+      al.addEventListener('click', (e) => { e.preventDefault(); end({ alt: true }); }); row.appendChild(al);
+    }
     o.addEventListener('click', (e) => { if (e.target === o) end(null); });
     new MutationObserver((x, obs) => { if (!o.isConnected) { obs.disconnect(); end(null); } }).observe(document.body, { childList: true });
     y.addEventListener('click', () => {
@@ -30503,14 +30507,15 @@ function zzz_verse_ask(ch, title, text) {
   });
 }
 // session verification -> true when the server unlocked Advanced setup / MODES / verse changes for 10 min
-async function zzz_verse_verify(why, title, text) {
+async function zzz_verse_verify(why, title, text, purpose) {
+  purpose = purpose === 'verse' ? 'verse' : 'mv';   // [Zzz13-MV:DAILY-PHRASE] 'mv' = MV PHRASE · 'verse' = practise / test the verse
   for (let tries = 0; tries < 5; tries++) {
-    const ch = await zzz_verse_call({ action: 'challenge', purpose: 'mv' });
+    const ch = await zzz_verse_call({ action: 'challenge', purpose });
     if (!ch || !ch.success) { zzz6f2_show_toast(zzz_verse_why(ch), 'warn', 3500); return false; }
-    const v = await zzz_verse_ask(ch, title || 'VERSE VERIFICATION', text || 'Layer 1 of multiverification - it opens Advanced setup and unlocks MODES changes and verse changes for 10 minutes.');
+    const v = await zzz_verse_ask(ch, title || 'MV', text || 'Your MV PHRASE - it opens Advanced setup and unlocks MODES changes for 10 minutes.');
     if (v == null) return false;
     zzz6f2_show_toast('Checking…');
-    const r = await zzz_verse_call(ch.mode === 'verse' ? { action: 'answer', challenge_id: ch.challenge_id, joined: v, why } : { action: 'answer', challenge_id: ch.challenge_id, phrase: v, why });
+    const r = await zzz_verse_call(ch.mode === 'verse' ? { action: 'answer', purpose, challenge_id: ch.challenge_id, joined: v, why } : { action: 'answer', purpose, challenge_id: ch.challenge_id, phrase: v, why });
     if (r && r.success) { zzzAdvUntil = Math.min(Date.now() + 10 * 60 * 1000, Date.parse(r.until) || Date.now() + 10 * 60 * 1000); try { zzz_haptic_pulse(30); } catch (e) {} return true; }
     zzz6f2_show_toast(zzz_verse_why(r), 'warn', 3500);
     if (r && (r.reason === 'locked' || r.reason === 'network' || r.reason === 'no_session')) return false;
@@ -30520,13 +30525,18 @@ async function zzz_verse_verify(why, title, text) {
 // [Zzz13-MV:VERSE-TICKET] Vrso 2026-11-18 02:26 „okrem advanced setup 10 min okno všade vždy žiadať mv“: one step = one fresh verification.
 // Returns a one-time ticket (2 min, server keeps only its hash) for 'final' | 'logout' | 'trash' | 'verse', or null (cancel / lock).
 async function zzz_verse_ticket(forStep, title, text) {
+  // [Zzz13-MV:DAILY-PHRASE] Vrso 2026-11-18 14:56 „ano“: the daily MV is the base MV PHRASE; the VERSE (2 words) only for verse changes,
+  // a forgotten phrase and recovery. 'verse' ticket = verse question; 'phrase' (change of the base phrase) = old phrase, or FORGOT? → verse.
+  let purpose = forStep === 'verse' ? 'verse' : 'mv';
   for (let tries = 0; tries < 5; tries++) {
-    const ch = await zzz_verse_call({ action: 'challenge', purpose: 'mv' });
+    const ch = await zzz_verse_call({ action: 'challenge', purpose });
     if (!ch || !ch.success) { zzz6f2_show_toast(zzz_verse_why(ch), 'warn', 3500); return null; }
-    const v = await zzz_verse_ask(ch, title || 'VERSE VERIFICATION', text || 'Confirm it is you - 2 words of your verse.');
+    const alt = (forStep === 'phrase' && purpose === 'mv' && ch.mode === 'phrase' && ch.has_verse) ? 'FORGOT? → VERSE' : null;
+    const v = await zzz_verse_ask(ch, title || 'MV', text || 'Confirm it is you.', alt);
     if (v == null) return null;
+    if (v && v.alt) { purpose = 'verse'; continue; }
     zzz6f2_show_toast('Checking…');
-    const r = await zzz_verse_call(Object.assign({ action: 'answer', challenge_id: ch.challenge_id, for: forStep }, ch.mode === 'verse' ? { joined: v } : { phrase: v }));
+    const r = await zzz_verse_call(Object.assign({ action: 'answer', challenge_id: ch.challenge_id, purpose, for: forStep }, ch.mode === 'verse' ? { joined: v } : { phrase: v }));
     if (r && r.success && r.ticket) return r.ticket;
     zzz6f2_show_toast(zzz_verse_why(r), 'warn', 3500);
     if (r && (r.reason === 'locked' || r.reason === 'network' || r.reason === 'no_session')) return null;
@@ -30539,17 +30549,16 @@ function zzz_verse_section_render(host) {
   const h = document.createElement('h3'); h.textContent = 'VERSE VERIFICATION · LAYER 1'; b.appendChild(h);
   const p = (x, el) => { const d = document.createElement('div'); d.className = 'zzz10m5-txt'; d.textContent = x; (el || b).appendChild(d); return d; };
   p('Your MV phrase is a VERSE - a line or sentence of at least 7 words that only you know (a song, a poem, your own sentence). Verso never asks for the whole verse: each time it asks for 2 random words of it (e.g. word 1 + word 4), typed together without a space - „pekný deň“ → peknyden. Decoy symbols (@ # / $ & * ! ? ; : , .) may be mixed in - Verso ignores them, a watcher sees noise.');
-  p('Verso keeps only a fingerprint of each word (never the verse).');
+  p('Your VERSE is your way back (recovery) - Verso asks it rarely, so nobody can collect it. Daily you confirm with your MV PHRASE. Verso keeps only fingerprints (never the verse, never the phrase).');
   // [Zzz13-MV:WHERE] Vrso 2026-11-18 14:30 „zapíš do 5s multiverification použitia mv … a samozrejme aj v appke“: where Verso asks for MV.
   // Rule (Vrso 14:13 / 14:26): MV appears only when it is needed, never in advance - always in the moving Verso window (a different place every time).
   const wh = document.createElement('div'); wh.className = 'zzz10m5-txt'; wh.style.cssText = 'margin:6px 0;padding:6px 8px;border:1px solid #444;border-radius:8px';
   const whT = document.createElement('div'); whT.style.cssText = 'font-weight:800;color:#D4AF37;margin-bottom:3px'; whT.textContent = 'WHERE VERSO ASKS FOR MV'; wh.appendChild(whT);
   [['Only when it is needed - never in advance. Always in the moving Verso window (a different place every time, buttons may swap).', 0],
-   ['ADVANCED SETUP + MODES - one verification = 10 min (Verso accounts without it).', 1],
-   ['EVERY TIME anew (one verification = one step): FINAL (also AUTO FINAL on / off, WITHDRAW) · LOG OUT on MY DEVICE · EMPTY TRASH (permanent delete) · + ADD VERSE · × REMOVE VERSE.', 1],
-   ['RECOVERY: first the token from your e-mail - only a right token gets the question (2 words of your verse) → new password.', 1],
+   ['DAILY = your MV PHRASE (whole, decoy symbols allowed): ADVANCED SETUP + MODES (one verification = 10 min; Verso accounts without it) · EVERY TIME anew: FINAL (also AUTO FINAL on / off, WITHDRAW) · LOG OUT on MY DEVICE · EMPTY TRASH.', 1],
+   ['CHANGE of the MV PHRASE (SAVE MV PHRASE): current password + the OLD phrase (forgot it? → 2 words of your verse) + e-mail to you. Change it as often as you like.', 1],
+   ['VERSE (2 random words) - rarely, so it stays strong: + ADD / × REMOVE VERSE, a forgotten MV PHRASE, and RECOVERY (first the right token from your e-mail, then the question → new password).', 1],
    ['Never the same pair of words twice in a row. 5 wrong = 15 min lock + e-mail. Every check is in MV LOG and AUDIT LOG.', 1],
-   ['CHANGE of the base MV PHRASE (SAVE MV PHRASE): current password + MV every time (+ e-mail to you).', 1],
    ['WITHOUT MV: hold-commands Ctrl + S / R / A / L + your command (fast, also on a foreign device).', 0]
   ].forEach(([t, dot]) => { const d = document.createElement('div'); d.textContent = (dot ? '• ' : '') + t; d.style.margin = '2px 0'; wh.appendChild(d); });
   b.appendChild(wh);
@@ -30579,14 +30588,14 @@ function zzz_verse_section_render(host) {
     const r = await zzz_verse_call({ action: 'status' });
     S.innerHTML = ''; acts.innerHTML = '';
     if (!r || !r.success) { S.textContent = zzz_verse_why(r); return; }
-    p('BASE MV PHRASE: ' + (r.base_set ? 'SET ✓ (kept - Verso asks for it while you have no verse)' : 'not set'), S);
-    if (!r.verses.length) p('VERSES: none yet - add one (min. 7 words). Until then Verso asks for your base MV PHRASE.', S);
+    p('MV PHRASE (daily): ' + (r.base_set ? 'SET ✓ - change it any time in SETTINGS › SAVE MV PHRASE' : 'not set - Verso asks your verse instead'), S);
+    if (!r.verses.length) p('VERSES: none yet - add one (min. 7 words). It is your way back (recovery) and the help when you forget the MV PHRASE.', S);
     r.verses.forEach(v => {
       const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:center;gap:6px;margin:3px 0';
       const t = document.createElement('div'); t.className = 'zzz10m5-txt'; t.style.flex = '1'; t.textContent = 'VERSE #' + v.no + ' · ' + v.words + ' words · since ' + zzz10m6_time(v.created_at); row.appendChild(t);
       const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn'; x.textContent = '× REMOVE'; x.title = 'Remove this verse (always a fresh verification; an e-mail is sent).';
       x.addEventListener('click', async () => {
-        const tk = await zzz_verse_ticket('verse', '× REMOVE VERSE #' + v.no, 'Confirm it is you - removing a verse always needs a fresh verification. An e-mail is sent.'); if (!tk) return;
+        const tk = await zzz_verse_ticket('verse', '× REMOVE VERSE #' + v.no, 'Confirm it is you with your VERSE (2 words) - verses are changed only by a verse. An e-mail is sent.'); if (!tk) return;
         const q = await zzz_verse_call({ action: 'revoke_verse', id: v.id, ticket: tk });
         zzz6f2_show_toast(q && q.success ? 'Verse #' + v.no + ' removed - an e-mail was sent to you.' : zzz_verse_why(q), q && q.success ? 'ok' : 'warn', 3000); load();
       });
@@ -30596,12 +30605,16 @@ function zzz_verse_section_render(host) {
     const add = document.createElement('button'); add.type = 'button'; add.className = 'zzz10m5-big'; add.textContent = '+ ADD VERSE';
     add.title = 'Add a verse of min. 7 words. Always needs a fresh verification (your current verse / MV PHRASE). An e-mail is sent.';
     add.addEventListener('click', async () => {
-      const tk = await zzz_verse_ticket('verse', '+ ADD VERSE · VERIFICATION', 'Confirm it is you first (every time) - then write the new verse.'); if (!tk) return;
+      const tk = await zzz_verse_ticket('verse', '+ ADD VERSE · VERIFICATION', 'Confirm it is you with your VERSE (2 words; no verse yet = MV PHRASE) - then write the new verse.'); if (!tk) return;
       zzz_verse_add_dialog(tk).then(() => load());
     });
-    const chk = document.createElement('button'); chk.type = 'button'; chk.className = 'zzz-media-btn'; chk.textContent = 'TEST · VERIFY NOW';
+    const chk = document.createElement('button'); chk.type = 'button'; chk.className = 'zzz-media-btn'; chk.textContent = 'TEST · MV PHRASE';
     chk.title = 'Try a verification now (opens Advanced setup / MODES for 10 min).';
     chk.addEventListener('click', async () => { if (await zzz_verse_verify('test')) { zzz6f2_show_toast('✓ Verified - 10 min.', 'ok'); load(); } });
+    // practise the verse now and then (it is asked rarely - this keeps it in your head)
+    if (r.verses.length) { const tv = document.createElement('button'); tv.type = 'button'; tv.className = 'zzz-media-btn'; tv.textContent = 'TEST VERSE';
+      tv.title = 'Practise your verse: Verso asks 2 random words - nothing changes.'; tv.addEventListener('click', async () => { if (await zzz_verse_verify('test_verse', 'TEST VERSE', 'Practise - 2 words of your verse, together without a space.', 'verse')) zzz6f2_show_toast('✓ Your verse is right.', 'ok'); });
+      acts.appendChild(tv); }
     acts.append(add, chk);
   };
   load();
@@ -30869,7 +30882,7 @@ function zzz_modes_render(host) {
   p('😶 hold +AI+ · QUIET / SAFETY REGIME (as before): MULTIREADER silent, PRIVATE media locked, notifications still come.');
   const st = p('Commands: checking…'); st.className = 'zzz10m5-msg';
   zzz_modes_call({ action: 'status' }).then(r => { st.textContent = r && r.success ? 'Commands: PRIVATE ' + (r.private_set ? '✓ set' : '- not set') + ' · REMOTE ' + (r.remote_set ? '✓ set' : '- not set') : 'Commands: ' + zzz_modes_why(r); });
-  const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'zzz10m5-big'; btn.textContent = 'VIEW / CHANGE COMMANDS · VERSE'; btn.title = 'Opens your commands after VERSE VERIFICATION: 1) tap 2) 2 words of your verse together (or the MV PHRASE) → CONFIRM - not needed again within 10 min 3) write a new PRIVATE / REMOTE command (the old ones are never shown - only replaced) and PREVIEW AS 4) SAVE within 15 s. Logged in AUDIT LOG (never the commands).'; box.appendChild(btn);
+  const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'zzz10m5-big'; btn.textContent = 'VIEW / CHANGE COMMANDS · MV'; btn.title = 'Opens your commands after VERSE VERIFICATION: 1) tap 2) 2 words of your verse together (or the MV PHRASE) → CONFIRM - not needed again within 10 min 3) write a new PRIVATE / REMOTE command (the old ones are never shown - only replaced) and PREVIEW AS 4) SAVE within 15 s. Logged in AUDIT LOG (never the commands).'; box.appendChild(btn);
   const pan = document.createElement('div'); box.appendChild(pan);
   btn.addEventListener('click', async () => {
     // [Zzz13-MV:VERSE] VERSE VERIFICATION (fresh 10 min) instead of the whole phrase - verso-modes v7 accepts the fresh verification
@@ -55890,7 +55903,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 17:30';
+const VERSO_BUILD = '2026-11-18 18:00';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -65418,7 +65431,7 @@ function zzz10r2_logout_needs_phrase() {
 // no verse yet = MV PHRASE) -> one-time ticket -> verso-auth-gate 'logout_phrase' {mvTicket}. Wrong answers: 5 = 15 min lock + e-mail (verso-verse).
 async function zzz10r2_logout_phrase() {
   for (let tries = 0; tries < 3; tries++) {
-    const tk = await zzz_verse_ticket('logout', 'LOG OUT · VERSE VERIFICATION', 'MY DEVICE logs out only after verification (2 words of your verse, not the password).');
+    const tk = await zzz_verse_ticket('logout', 'LOG OUT · MV', 'MY DEVICE logs out only after verification - your MV PHRASE (not the password).');
     if (!tk) return false;
     const r = await zzz10v1_call_gate({ action: 'logout_phrase', username: zzz_sessionUsername, sessionId: zzz_sessionId, mvTicket: tk }, 20000);
     if (r && r.success) return true;
@@ -66322,7 +66335,7 @@ function zzz10m2_render_login_setup(body) {
       if (!currentPassword) return;
       // [Zzz13-MV:PHRASE-CHANGE] Vrso 2026-11-18 14:35 „pohyblivé okno vždy pri mv“: a fresh verification (moving Verso window) before the change;
       // the database refuses the change without it (trigger verso_mv_phrase_change_guard).
-      const mvTk = await zzz_verse_ticket('verse', 'CHANGE MV PHRASE · VERIFICATION', 'Changing your base MV PHRASE needs a fresh verification every time (2 words of your verse, or your current MV PHRASE). An e-mail is sent to you.');
+      const mvTk = await zzz_verse_ticket('phrase', 'CHANGE MV PHRASE · VERIFICATION', 'Type your OLD MV PHRASE. Forgot it? FORGOT? → VERSE asks 2 words of your verse instead. An e-mail is sent to you.');
       if (!mvTk) return;
       phraseConfirmBtn.disabled = true;
       try {
