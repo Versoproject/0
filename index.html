@@ -53279,6 +53279,32 @@ async function zzz_b26_render_admin(host) {
   const tl = zzz_b26_el('a', 'zzz14cs-feed-mode', 'OPEN GITHUB TRAFFIC ↗'); tl.href = 'https://github.com/Versoproject/0/graphs/traffic'; tl.target = '_blank'; tl.rel = 'noopener'; ct.appendChild(tl);
   sb.rpc('verso_admin_traffic').then(({ data, error }) => {
     if (error || !data) { ct.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'Traffic could not load.')); return; }
+    // [Zzz14-ADMIN:TRAFFIC-SERVER] Vrso 2026-11-18 14:31: the Verso server fetches the GitHub traffic itself every day (03:07 UTC) with a
+    // READ-ONLY GitHub token kept in the server vault (never shown again, never logged). Until a token is saved, the daily Claude task does it.
+    const lf = data.last_fetch;
+    ct.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'SERVER FETCH: ' + (data.token_set ? 'token saved ✓' : 'no GitHub token yet (the daily Claude task fills it meanwhile)')
+      + (lf ? ' · last ' + zzz_b26_time(lf.started_at) + ' (' + lf.by_who + ')' + (lf.error ? ' · ✗ ' + lf.error : (lf.done_at ? ' · ✓' : ' · running…')) : '')));
+    const trow = zzz_b26_el('div', 'zzz-b26-line'); trow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;align-items:center';
+    if (zzzB26.mode === 'live') {
+      const ti = document.createElement('input'); ti.type = 'password'; ti.autocomplete = 'off'; ti.spellcheck = false; ti.className = 'entry-cell';
+      ti.placeholder = data.token_set ? 'new GitHub token (replaces)' : 'GitHub token · read-only'; ti.style.cssText = 'flex:1;min-width:160px';
+      const ts = zzz_b26_el('button', 'zzz14cs-feed-mode', 'SAVE TOKEN'); ts.type = 'button';
+      ts.addEventListener('click', async () => {
+        const v = String(ti.value || '').trim(); if (!v) return;
+        ts.disabled = true;
+        try { const { data: r, error: e } = await sb.rpc('verso_admin_traffic_token', { p_token: v }); ti.value = '';
+          zzz6f2_show_toast(e ? 'Not saved.' : (r && r.success ? 'Token saved in the server vault - the first fetch is running (a few minutes).' : 'This is not a GitHub token (github_pat_… / ghp_…).'), r && r.success ? 'ok' : 'warn', 4000); }
+        finally { ts.disabled = false; }
+      });
+      trow.append(ti, ts);
+    }
+    if (data.token_set) {
+      const tf = zzz_b26_el('button', 'zzz14cs-feed-mode', 'FETCH NOW'); tf.type = 'button';
+      tf.addEventListener('click', async () => { const { data: r } = await sb.rpc('verso_admin_traffic_refresh'); zzz6f2_show_toast(r && r.success ? 'Fetching - the numbers come within 5 min.' : 'Not started (' + ((r && r.reason) || 'error') + ').', r && r.success ? 'ok' : 'warn'); });
+      trow.appendChild(tf);
+    }
+    if (trow.childNodes.length) ct.appendChild(trow);
+    if (zzzB26.mode === 'live' && !data.token_set) ct.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'TOKEN: github.com › Settings › Developer settings › Fine-grained tokens › Generate · Repository access: only Versoproject/0 · Permissions: Administration = Read-only (traffic), Deployments = Read-only · copy it here. It can only READ.'));
     const KT = { web_open: 'web opened', app_download_login: 'APP download · LOGIN', app_download_register: 'APP download · REGISTER', app_download_update: 'APP update', app_download_other: 'APP download · inside Verso' };
     const web = {}; (data.web || []).forEach(w => { (web[w.day] = web[w.day] || []).push(w); });
     const days = Array.from(new Set((data.repo || []).map(r => r.day).concat(Object.keys(web)))).sort().reverse().slice(0, 30);
@@ -55814,7 +55840,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 16:40';
+const VERSO_BUILD = '2026-11-18 17:00';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
