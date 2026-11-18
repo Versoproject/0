@@ -30393,7 +30393,7 @@ function zzz_verse_words(s) { return String(s || '').normalize('NFKD').replace(/
 function zzz_verse_why(r) {
   const x = (r && r.reason) || '';
   return ({ wrong_verse: 'Wrong words' + (r && r.attemptsLeft != null ? ' (' + r.attemptsLeft + ' left)' : '') + '.', wrong_mv_phrase: 'Wrong MV PHRASE' + (r && r.attemptsLeft != null ? ' (' + r.attemptsLeft + ' left)' : '') + '.',
-    locked: 'Locked for ' + ((r && r.minutes) || 15) + ' min (5 wrong tries) - an e-mail was sent to you.', challenge_expired: 'The question expired - ask again.', too_many_requests: 'Too many questions in 10 min - wait a moment.',
+    locked: 'Locked for ' + ((r && r.minutes) || 15) + ' min (5 wrong tries) - an e-mail was sent to you.', my_device_only: 'Only on MY DEVICE - this is a TRUSTED SESSION.', challenge_expired: 'The question expired - ask again.', too_many_requests: 'Too many questions in 10 min - wait a moment.',
     no_session: 'Log in to Verso first.', network: 'No connection - try again.', mv_needed: 'The verification expired (a step needs it within 2 min) - start again.', verse_too_short: 'A verse needs at least 7 words' + (r && r.words != null ? ' (now ' + r.words + ')' : '') + '.',
     verse_too_long: 'Max. 40 words.', too_many_verses: 'Max. 10 verses.', last_factor: 'The last verse cannot be removed - add another first.', invalid_token: 'The USERNAME or the TOKEN is not valid.', token_required: 'Type the recovery TOKEN from your e-mail first.', new_password_short: 'The new password is too short.' })[x] || ('Not done (' + (x || 'error') + ').');
 }
@@ -47367,6 +47367,7 @@ const ZZZ_SET_REG = [
   { m: 'Notifications', w: 'sd', scope: 'all', place: 'settings', deps: ['Shown in the notification'], help: 'Sound, vibration and reading of Verso notifications. Saved on the Verso server for your account and this way of login (VERSO APP / WEB APP / WEB keep their own). The DEVICE must allow notifications (see SET UP above).' },
   { m: 'Shown in the notification', w: 's', scope: 'all', place: 'settings', deps: ['Notifications'], help: 'What a Verso notification shows (full / only who / nothing) per priority. Verso server, per way of login.' },
   { m: 'QUIET REGIME', w: 'sd', scope: 'all', place: 'settings', help: 'Verso NOTIF MULTIREADER silent (notifications still come). Server + in the Verso app on this DEVICE.' },
+  { m: 'TRUSTED SESSION', w: 's', scope: 'all', place: 'settings', help: 'Lets your own computer log in next to MY DEVICE for a chosen time (OFF by default, DATE MODULE, MV PHRASE to switch on). SETTINGS › Login setup, only on MY DEVICE. Verso server, per account.' },
   { m: 'SESSION LENGTH · MY DEVICE', w: 's', scope: 'all', place: 'settings', help: 'How long MY DEVICE stays logged in without use (90 DAYS standard, shorter by choice, DATE MODULE). SETTINGS › Login setup. Verso server, per account.' },
   { m: 'READ RECEIPTS', w: 's', scope: 'all', place: 'settings', help: 'Whether others see when you read. Verso server - the same in the app, web app and web.' },
   { m: 'Allow notifications on FOREIGN', w: 'd', scope: 'device', place: 'settings', help: 'Only for this DEVICE and its mode (MY DEVICE / TRUSTED / FOREIGN).' },
@@ -56223,7 +56224,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 21:15';
+const VERSO_BUILD = '2026-11-18 21:30';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -65881,7 +65882,7 @@ function zzz10r2_logout(reason = 'manual', opts = {}) {
 
   if (zzz_sessionId && zzz_sessionUsername) {
     try {
-      fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+      fetch(zzz_session_fn_url(), {
         method: 'POST',
         keepalive: true,
         headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
@@ -65912,6 +65913,8 @@ function zzz10r2_logout(reason = 'manual', opts = {}) {
   if (reason === 'manual' || reason === 'superseded' || reason === 'locked_out') { try { zzz6f36_open_login_modal(); } catch (e) {   } }
 }
 
+let zzz_sessionKind = 'main';
+function zzz_session_fn_url() { return SUPABASE_URL + '/functions/v1/' + (zzz_sessionKind === 'trusted' ? 'verso-trusted' : 'verso-auth-gate'); }
 let zzz_sessionId = null;
 let zzz_sessionUsername = null;
 let zzz_sessionHeartbeatInterval = null;
@@ -65938,7 +65941,7 @@ let zzz_hbFails = 0;
 async function zzz_session_heartbeat_tick() {
   if (!zzz_sessionId || !zzz_sessionUsername) return;
   try {
-    const fetchPromise = fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+    const fetchPromise = fetch(zzz_session_fn_url(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
       body: JSON.stringify({ action: 'heartbeat', username: zzz_sessionUsername, sessionId: zzz_sessionId,
@@ -65950,6 +65953,7 @@ async function zzz_session_heartbeat_tick() {
     const resp = await Promise.race([fetchPromise, timeoutPromise]);
     const result = await resp.json();
 
+    if (result.active === false && zzz_sessionKind === 'trusted') { try { zzz6f2_show_toast('TRUSTED SESSION ended' + (result.by === 'time' ? ' - its time is over.' : result.by === 'my_device' ? ' - ended from MY DEVICE.' : result.by === 'my_device_out' ? ' - MY DEVICE is logged out.' : '.'), 'warn', 6000); } catch (e) {} }
     if (result.active === false) { zzz_enter_standby_mode(); return; }
     try { zzz_login_alert_apply(result.alert || null); } catch (e) {}
     if (result.locked) { zzz_enter_session_lock(); return; }
@@ -66000,6 +66004,7 @@ function zzz_session_stop() {
   { const _b = document.getElementById('zzzLoginAlertBar'); if (_b) _b.remove(); }
   zzz_sessionUsername = null;
   zzz_sessionId = null;
+  zzz_sessionKind = 'main';
   zzz_isInStandby = false;
   zzz_isOffline = false;
   if (zzz_sessionHeartbeatInterval) { clearInterval(zzz_sessionHeartbeatInterval); zzz_sessionHeartbeatInterval = null; }
@@ -66234,12 +66239,33 @@ async function zzz10r8_verify_login_password(username, enteredPassword) {
 
   if (zzz_sessionId && zzz_sessionUsername && zzz_sessionUsername !== zzz10v1_normalize(username)) {
     try {
-      fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+      fetch(zzz_session_fn_url(), {
         method: 'POST',
         keepalive: true,
         headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
         body: JSON.stringify({ action: 'logout', username: zzz_sessionUsername, sessionId: zzz_sessionId })
       }).catch(() => {});
+    } catch (e) {   }
+  }
+
+  if (zzz10dmPending === 'trusted') {
+    try {
+      const tr = await Promise.race([
+        fetch(`${SUPABASE_URL}/functions/v1/verso-trusted`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+          body: JSON.stringify({ action: 'login', username: zzz10v1_normalize(username), password: enteredPassword, deviceId: zzz_device_id() }) }).then(r => r.json()),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('verso-trusted timeout')), 12000))
+      ]);
+      if (tr && tr.verified === true && tr.token && tr.sessionId) {
+        zzz0r1_set_db_connection_state(true);
+        zzz0auth_sessionToken = tr.token; zzz0auth_tokenAt = Date.now();
+        zzz_my_device_clear();
+        zzz_session_start(zzz10v1_normalize(username), tr.sessionId);
+        zzz_sessionKind = 'trusted';
+        if (!(await zzz_session_mv_gate())) { try { zzz_session_stop(); } catch (e) {} zzz0auth_sessionToken = null; return { verified: false, reason: 'mv_not_confirmed' }; }
+        try { zzz6f2_show_toast('TRUSTED SESSION next to MY DEVICE - until ' + new Date(tr.ends_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) + '.', 'ok', 6000); } catch (e) {}
+        return { verified: true };
+      }
+      if (tr && tr.verified === false && tr.reason && tr.reason !== 'not_applicable') return { verified: false, reason: tr.reason };
     } catch (e) {   }
   }
   try {
@@ -66737,8 +66763,64 @@ function zzz10m2_render_login_setup(body) {
   body.appendChild(row);
   body.appendChild(zzz10dm_build_row());
   if (zzz6f7_isLoggedIn && zzz10dmActive === 'my') zzz10dm_session_length(body);
+  if (zzz6f7_isLoggedIn && zzz10dmActive === 'my') zzz10dm_trusted_block(body);
 }
 
+const ZZZ10DM_TRUSTED_EVENTS = [['off', 'OFF', 'No second session - a login elsewhere is refused while MY DEVICE is logged in']];
+const ZZZ10DM_TRUSTED_ERR = { too_short: 'Too short - at least 10 minutes.', too_long: 'Too long - 30 days is the most.', my_device_only: 'Only on MY DEVICE.', mv_needed: 'The MV PHRASE was not confirmed.', not_logged_in: 'Log in first.' };
+function zzz10dm_trusted_block(body) {
+  const box = document.createElement('div'); box.className = 'zzz10m5-txt'; box.setAttribute('data-vlabel', 'VERSO › SETTINGS › Login setup › TRUSTED SESSION'); box.setAttribute('data-vkind', 'SETUP');
+  box.style.cssText = 'margin:6px 0;padding:6px 8px;border:1px solid #444;border-radius:8px;max-width:520px';
+  const t = document.createElement('div'); t.style.cssText = 'font-weight:800;color:#D4AF37;margin-bottom:3px'; t.textContent = 'TRUSTED SESSION · PC NEXT TO THIS DEVICE';
+  const n = document.createElement('div'); n.style.cssText = 'color:#999;font-size:11px;margin-bottom:2px';
+  n.textContent = 'Lets your own computer log in while this device stays logged in - for the time you choose (AFTER = from that login, UNTIL DATE = till then). On the computer: DEVICE = TRUSTED, password, MV PHRASE. Advanced setup, verse, EMPTY TRASH and phrase / key changes stay only here. LOG OUT here ends it too.';
+  const act = document.createElement('div'); act.style.cssText = 'margin-top:4px;font-weight:700';
+  const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;align-items:center';
+  const st = document.createElement('div'); st.style.cssText = 'font-size:11px;margin-top:3px;color:#999'; st.textContent = 'Loading …';
+  box.append(t, n); body.appendChild(box);
+  let dm = null, saved = { mode: 'off' };
+  const mk = (txt, fn, on) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-btn' + (on ? ' is-on' : ''); b.textContent = txt; b.addEventListener('click', (e) => { e.preventDefault(); fn(b); }); return b; };
+  const say = (txt, col) => { st.style.color = col || '#999'; st.textContent = txt; };
+  const fail = (e) => { const k = Object.keys(ZZZ10DM_TRUSTED_ERR).find(x => String((e && e.message) || '').includes(x)); say('Not saved - ' + (k ? ZZZ10DM_TRUSTED_ERR[k] : 'the server did not answer, try again.'), '#ff8a8a'); };
+  function paint(r) {
+    act.textContent = ''; row.innerHTML = '';
+    const a = r && r.active;
+    if (a) { act.style.color = '#ffb347'; act.textContent = (a.waiting ? 'A computer is logging in now' : 'A TRUSTED SESSION is running') + ' · until ' + new Date(a.ends_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); }
+    else { act.style.color = '#999'; act.textContent = 'No TRUSTED SESSION is running.'; }
+    row.appendChild(mk('SAVE', async () => {
+      const v = dm ? dm.get() : { mode: 'off' };
+      if (v.mode === 'until' && !v.until) { say('Choose the date.'); return; }
+      try {
+        let ticket = null;
+        if (v.mode !== 'off') { ticket = await zzz_verse_ticket('trusted', 'MV · TRUSTED SESSION', 'Your MV PHRASE - it lets your own computer log in next to this device.'); if (!ticket) { say('Not saved - the MV PHRASE was not confirmed.', '#ff8a8a'); return; } }
+        say('Saving …'); await zzz4r7_rpc('verso_trusted_set', { p: v, p_ticket: ticket }); saved = v;
+        say('Saved ✓ ' + zzz_date_label(v, ZZZ10DM_TRUSTED_EVENTS), '#7CFC9A'); load();
+      } catch (e) { fail(e); }
+    }, true));
+    if (a) row.appendChild(mk('■ END', async () => { try { await zzz4r7_rpc('verso_trusted_end'); say('Ended ✓', '#7CFC9A'); load(); } catch (e) { say('Could not end it - try again.', '#ff8a8a'); } }));
+    row.appendChild(mk('↻', () => load()));
+  }
+  async function load() {
+    try {
+      const r = await zzz4r7_rpc('verso_trusted_get'); if (r && r.value && r.value.mode) saved = r.value;
+      if (!dm) { dm = zzz_date_module(box, { value: Object.assign({ n: 8, unit: 'hour' }, saved), events: ZZZ10DM_TRUSTED_EVENTS, onChange: () => say('Not saved yet - tap SAVE.') }); box.append(act, row, st); say(''); }
+      paint(r);
+    } catch (e) { say('The setting could not be read.', '#ff8a8a'); }
+  }
+  load();
+}
+
+let zzz10dmTrustedSeen = null;
+async function zzz10dm_trusted_watch() {
+  try {
+    if (!zzz6f7_isLoggedIn || zzz10dmActive !== 'my' || zzz_sessionKind !== 'main') return;
+    const r = await zzz4r7_rpc('verso_trusted_get'); const a = r && r.active && !r.active.waiting ? r.active.since : null;
+    if (a && a !== zzz10dmTrustedSeen) zzz6f2_show_toast('A TRUSTED SESSION of your account started on another device. Not you? SETTINGS › Login setup › TRUSTED SESSION › ■ END.', 'warn', 9000);
+    else if (!a && zzz10dmTrustedSeen) zzz6f2_show_toast('The TRUSTED SESSION ended.', 'ok', 4000);
+    zzz10dmTrustedSeen = a;
+  } catch (e) {}
+}
+setInterval(zzz10dm_trusted_watch, 180000); setTimeout(zzz10dm_trusted_watch, 20000);
 const ZZZ10DM_SESSLEN_EVENTS = [['default', '90 DAYS', 'The standard: the session ends after 90 days without use']];
 const ZZZ10DM_SESSLEN_ERR = { too_short: 'Too short - at least 5 minutes.', too_long: 'Too long - 90 days is the most.', my_device_only: 'Only on MY DEVICE.', not_logged_in: 'Log in first.' };
 function zzz10dm_session_length(body) {
