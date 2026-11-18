@@ -25934,7 +25934,7 @@ function zzz4_0_open_delete_all_confirm(entryIds = null) {
     box.appendChild(el);
     return el;
   };
-  const phraseInput = makeSecret('MV phrase', 'MV PHRASE');
+  // [Zzz13-MV:VERSE-TICKET] 2026-11-18: no phrase field - CONFIRM asks VERSE VERIFICATION (fresh, every time) and sends a one-time ticket
   const codeInput = makeField('Token (from email)');
   if (vkbOn) codeInput.type = 'text';
   const passwordInput = makeSecret('Password', 'PASSWORD');
@@ -25948,18 +25948,20 @@ function zzz4_0_open_delete_all_confirm(entryIds = null) {
   confirmBtn.textContent = 'CONFIRM';
   confirmBtn.disabled = true;
   confirmBtn.style.opacity = '0.4';
-  const allFilled = () => [phraseInput, codeInput, passwordInput].every(i => i.value.trim().length > 0);
+  const allFilled = () => [codeInput, passwordInput].every(i => i.value.trim().length > 0);
   const refresh = () => {
     const ok = allFilled();
     confirmBtn.disabled = !ok;
     confirmBtn.style.opacity = ok ? '1' : '0.4';
   };
-  [phraseInput, codeInput, passwordInput].forEach(i => { i.addEventListener('input', refresh); i._vkbOk = confirmBtn; });
+  [codeInput, passwordInput].forEach(i => { i.addEventListener('input', refresh); i._vkbOk = confirmBtn; });
   confirmBtn.onclick = async () => {
     if (!allFilled()) return;
     confirmBtn.disabled = true;
+    const tk = await zzz_verse_ticket('trash', 'EMPTY TRASH · VERSE VERIFICATION', 'Permanent delete needs a fresh verification every time (2 words of your verse; no verse yet = MV PHRASE).');
+    if (!tk) { confirmBtn.disabled = false; return; }
     confirmBtn.textContent = 'Deleting...';
-    await zzz4_0_delete_all_entries(codeInput.value.trim(), phraseInput.value.trim(), selectedOnly ? entryIds : null, passwordInput.value);
+    await zzz4_0_delete_all_entries(codeInput.value.trim(), '', selectedOnly ? entryIds : null, passwordInput.value, tk);
     if (typeof zzz_vkb_hide === 'function') zzz_vkb_hide();
     removeBox();
   };
@@ -25976,7 +25978,7 @@ function zzz4_0_open_delete_all_confirm(entryIds = null) {
   zzz6f41_bind_outside_click(box, () => removeBox());
 }
 
-async function zzz4_0_delete_all_entries(token, mvPhrase, entryIds = null, password = '') {
+async function zzz4_0_delete_all_entries(token, mvPhrase, entryIds = null, password = '', mvTicket = '') {
 
   const username = zzz10v1_normalize(zzz_sessionUsername || '');
   if (!username) {
@@ -25987,7 +25989,7 @@ async function zzz4_0_delete_all_entries(token, mvPhrase, entryIds = null, passw
     const resp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-      body: JSON.stringify({ action: 'empty_trash_with_token', username, token, mvPhrase, password, ...(entryIds ? { entryIds } : {}) })
+      body: JSON.stringify({ action: 'empty_trash_with_token', username, token, password, ...(mvTicket ? { mvTicket } : { mvPhrase }), ...(entryIds ? { entryIds } : {}) })
     });
     const result = await resp.json().catch(() => ({}));
     if (result && result.success) {
@@ -25998,6 +26000,7 @@ async function zzz4_0_delete_all_entries(token, mvPhrase, entryIds = null, passw
       const msg = {
         invalid_token: 'Token does not match (or was already used) - nothing was deleted.',
         wrong_mv_phrase: 'MV phrase does not match - nothing was deleted (the token is still valid).',
+        mv_needed: 'The verification expired - nothing was deleted (the token is still valid). Try again.',
         wrong_password: 'Password does not match - nothing was deleted (the token is still valid).',
         mv_phrase_not_set: 'Set your MV phrase first (Login setup -> CHANGE PASSWORD -> MV PHRASE) - nothing was deleted.'
       }[reason] || (console.warn('[Zzz4-0:DELETE-ALL] empty trash refused:', reason, result && result.detail), 'Emptying the trash failed - nothing was deleted. Try again later.');
@@ -30526,7 +30529,7 @@ function zzz_verse_section_render(host) {
   const h = document.createElement('h3'); h.textContent = 'VERSE VERIFICATION · LAYER 1'; b.appendChild(h);
   const p = (x, el) => { const d = document.createElement('div'); d.className = 'zzz10m5-txt'; d.textContent = x; (el || b).appendChild(d); return d; };
   p('Your MV phrase is a VERSE - a line or sentence of at least 7 words that only you know (a song, a poem, your own sentence). Verso never asks for the whole verse: each time it asks for 2 random words of it (e.g. word 1 + word 4), typed together without a space - „pekný deň“ → peknyden. Decoy symbols (@ # / $ & * ! ? ; : , .) may be mixed in - Verso ignores them, a watcher sees noise.');
-  p('Verso keeps only a fingerprint of each word (never the verse). It guards: Advanced setup + MODES (one verification = 10 min) · every time anew: FINAL and adding / removing a verse (soon LOG OUT on MY DEVICE and the trash too) · account RECOVERY (only recovery token from e-mail + verse). 5 wrong = 15 min lock + e-mail. Every check is in MV LOG and AUDIT LOG.');
+  p('Verso keeps only a fingerprint of each word (never the verse). It guards: Advanced setup + MODES (one verification = 10 min) · every time anew: FINAL, adding / removing a verse, LOG OUT on MY DEVICE, emptying the trash · account RECOVERY (only recovery token from e-mail + verse). 5 wrong = 15 min lock + e-mail. Every check is in MV LOG and AUDIT LOG.');
   const tip = p('RECOMMENDED: protect the e-mail of your Verso account with its own code (2-step verification of the mail provider). The recovery token comes there - until the next recovery ways arrive (hybrid server, watch, automated phone call), your e-mail + verse are the way back into your account.');
   tip.style.color = '#D4AF37'; tip.style.fontWeight = '700';
   const S = document.createElement('div'); S.textContent = 'Loading…'; b.appendChild(S);
@@ -46032,7 +46035,7 @@ const ZZZ_5S_WS = [
     'WHAT IT IS: your MV phrase is a VERSE - a song line, a poem or your own sentence of at least 7 words. Verso never asks for the whole verse - each time 2 random words (e.g. word 1 + word 4).',
     'HOW TO ANSWER: write both words TOGETHER, without a space, in the order asked - „pekný deň“ → peknyden. Accents and capitals do not matter.',
     'DECOY SYMBOLS: mix in any of @ # / $ & * ! ? ; : , . " ( ) anywhere - $p#e/k&!ny*d;e?:n counts as peknyden. A watcher or a screen recording sees noise; Verso keeps only letters and digits. (Against a hidden program that reads every key it does not help - that is why there are 2 random words and the 5-try lock.)',
-    'WHAT IT GUARDS: Advanced setup + MODES (one verification = 10 min) · EVERY TIME anew: FINAL, adding / removing a verse (soon also LOG OUT on MY DEVICE and emptying the trash) · RECOVERY (token from e-mail + verse - the only way). 5 wrong = 15 min lock + e-mail to you. Every check is in MV LOG and AUDIT LOG.',
+    'WHAT IT GUARDS: Advanced setup + MODES (one verification = 10 min) · EVERY TIME anew: FINAL, adding / removing a verse, LOG OUT on MY DEVICE, emptying the trash · RECOVERY (token from e-mail + verse - the only way). 5 wrong = 15 min lock + e-mail to you. Every check is in MV LOG and AUDIT LOG.',
     '+ ADD VERSE: verify first, then write the whole verse (min. 7 words, max. 40, up to 10 verses). Verso asks from a random one of them. Adding or removing sends you an e-mail. × REMOVE: the last verse stays (one factor always remains).',
     'BASE MV PHRASE: older accounts keep their base phrase - used while you have no verse (and for LOG OUT / FINAL for now). New accounts write their first verse at registration.',
     '⭐ RECOMMENDED: protect the e-mail of your Verso account with its own code (2-step verification at your mail provider). The recovery token comes there - until the next ways arrive (hybrid server, watch, automated phone call), e-mail + verse are your way back in. Never write the verse down anywhere.'] },
@@ -55906,7 +55909,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 03:45';
+const VERSO_BUILD = '2026-11-18 04:05';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -65384,43 +65387,22 @@ function zzz10r2_logout_needs_phrase() {
     return true;
   } catch (e) { return false; }
 }
-function zzz10r2_logout_phrase() {
-  return new Promise((resolve) => {
-    const o = document.createElement('div'); o.className = 'zzz-media-confirm';
-    const b = document.createElement('div'); b.className = 'zzz-media-confirm-box';
-    const t = document.createElement('div'); t.className = 'zzz-media-diss-t'; t.textContent = 'LOG OUT \u00b7 MV PHRASE'; b.appendChild(t);
-    const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text';
-    sub.textContent = 'MY DEVICE logs out only with your MV PHRASE (not the password).'; b.appendChild(sub);
-    const inp = zzz_vkb_make_secret('versoLogoutMvPhraseInput', 'entry-cell zzz6f36-login-local-input', 'MV PHRASE', 'your MV PHRASE');
-    inp.style.margin = '8px 0'; b.appendChild(inp);
-    const st = document.createElement('div'); st.className = 'zzz-media-diss-s'; st.style.minHeight = '16px'; b.appendChild(st);
-    const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
-    const y = document.createElement('button'); y.type = 'button'; y.className = 'zzz-media-btn is-red'; y.textContent = 'LOG OUT';
-    const n = document.createElement('button'); n.type = 'button'; n.className = 'zzz-media-btn'; n.textContent = 'CANCEL';
-    let done = false; const end = (v) => { if (done) return; done = true; o.remove(); resolve(v); };
-    n.addEventListener('click', () => end(false));
-    o.addEventListener('click', (e) => { if (e.target === o) end(false); });
-    inp._vkbOk = null;
-    y.addEventListener('click', async () => {
-      const ph = String(inp.value || '').trim();
-      if (!ph) { st.textContent = 'Type your MV PHRASE with the Verso keyboard.'; return; }
-      y.disabled = true; st.textContent = 'checking…';
-      const r = await zzz10v1_call_gate({ action: 'logout_phrase', username: zzz_sessionUsername, sessionId: zzz_sessionId, mvPhrase: ph }, 20000);
-      try { inp.value = ''; } catch (e) {}
-      y.disabled = false;
-      if (r && r.success) { end(true); return; }
-      const why = r && (r.reason || r.error);
-      if (why === 'unknown_action' || why === 'superseded') { end(true); return; }
-      st.textContent = why === 'wrong_mv_phrase' ? 'The MV PHRASE does not match - you stay logged in.' + (typeof r.attemptsLeft === 'number' ? ' ' + r.attemptsLeft + ' tries left.' : '')
-        : why === 'locked' ? 'Too many wrong tries - LOG OUT is locked for ' + (r.minutes || 15) + ' min. An e-mail went to you.'
-        : why === 'mv_phrase_not_set' ? 'Set your MV PHRASE first: Login setup › CHANGE PASSWORD › MV PHRASE. You stay logged in.'
-        : why === 'network' ? 'The Verso server cannot be reached - you stay logged in. Try again.'
-        : 'LOG OUT did not go through - you stay logged in. Try again.';
-      try { if (why && why !== 'wrong_mv_phrase') console.warn('[Zzz-SESSION:LOGOUT-PHRASE]', why); } catch (e) {}
-    });
-    row.append(y, n); b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
-    setTimeout(() => { try { inp.click(); } catch (e) {} }, 80);
-  });
+// [Zzz13-MV:VERSE-TICKET] 2026-11-18 (Vrso 02:26 „všade vždy žiadať mv“): LOG OUT on MY DEVICE = VERSE VERIFICATION every time (2 random words;
+// no verse yet = MV PHRASE) -> one-time ticket -> verso-auth-gate 'logout_phrase' {mvTicket}. Wrong answers: 5 = 15 min lock + e-mail (verso-verse).
+async function zzz10r2_logout_phrase() {
+  for (let tries = 0; tries < 3; tries++) {
+    const tk = await zzz_verse_ticket('logout', 'LOG OUT · VERSE VERIFICATION', 'MY DEVICE logs out only after verification (2 words of your verse, not the password).');
+    if (!tk) return false;
+    const r = await zzz10v1_call_gate({ action: 'logout_phrase', username: zzz_sessionUsername, sessionId: zzz_sessionId, mvTicket: tk }, 20000);
+    if (r && r.success) return true;
+    const why = r && (r.reason || r.error);
+    if (why === 'unknown_action' || why === 'superseded') return true;
+    if (why === 'mv_needed') { zzz6f2_show_toast('The verification expired - confirm again.', 'warn'); continue; }
+    zzz6f2_show_toast(why === 'network' ? 'The Verso server cannot be reached - you stay logged in. Try again.' : 'LOG OUT did not go through - you stay logged in. Try again.', 'warn', 3500);
+    try { if (why) console.warn('[Zzz-SESSION:LOGOUT-PHRASE]', why); } catch (e) {}
+    return false;
+  }
+  return false;
 }
 async function zzz10r2_logout_precheck() {
   const total = (c) => c.entries + c.confirms + c.trash + c.outbox + c.refs + c.setup;
