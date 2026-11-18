@@ -29976,7 +29976,7 @@ function zzz_ms_els() {
 
 const zzzMs = { media: {}, at: 0, denied: {} };
 async function zzz_ms_media_load(force) {
-  const els = zzz_ms_els(); if (!els.length) { zzzMs.media = {}; return zzzMs.media; }
+  const els = zzz_ms_els(); if (!els.length) { zzzMs.media = {}; zzzMs.at = Date.now(); return zzzMs.media; }   // [Zzz-FIX 2026-11-18] an empty MEDIA SPACE left zzzMs.at = 0 -> render and load called each other without end (the app froze)
   if (!force && zzzMs.at && Date.now() - zzzMs.at < 60000) return zzzMs.media;
   zzzMs.at = Date.now();
   const ok = [];
@@ -30581,6 +30581,7 @@ function zzz_verse_add_dialog(ticket) {
     const n = document.createElement('button'); n.type = 'button'; n.className = 'zzz-media-btn'; n.textContent = 'CANCEL';
     let done = false; const end = (v) => { if (done) return; done = true; try { inp.value = ''; } catch (e) {} o.remove(); resolve(v); };
     n.addEventListener('click', () => end(false));
+    new MutationObserver((x, obs) => { if (!o.isConnected) { obs.disconnect(); end(false); } }).observe(document.body, { childList: true });   // Back removes the window
     y.addEventListener('click', async () => {
       const v = String(inp.value || '');
       if (zzz_verse_words(v).length < 7) { st.textContent = 'A verse needs at least 7 words.'; return; }
@@ -55967,7 +55968,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 04:30';
+const VERSO_BUILD = '2026-11-18 13:50';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -57201,7 +57202,9 @@ function zzz_media_back_guard() {
   } catch (e) {}
   return false;
 }
-const ZZZ_BACK_CLOSERS = '.entry-modal-close, .zzz5w5cm-close, .zzz4-0-close-x, .zzz-reg-close, .zzz14cs-pin-close, .zzz-media-x, .zzz-vi-win-head .is-x, .zzz-back-x';
+const ZZZ_BACK_CLOSERS = '.entry-modal-close, .zzz5w5cm-close, .zzz4-0-close-x, .zzz-reg-close, .zzz14cs-pin-close, .zzz-media-x, .zzz-vi-win-head .is-x, .zzz-back-x, .zzz5s-x, .zzz-ctx-x, .zzz23tr-pick-x, .zzz5-6-placepick-item.is-close';
+// [Zzz14-NAV:BACK-POPUPS] 2026-11-18 (Vrso „skontroluj a oprav back gesture… všade“): small windows that have no × of their own - Back removes the top one (they all close by plain remove())
+const ZZZ_BACK_POPUPS = '.zzz5t0-tab-window, .zzz5w8-wheel-ov, .zzz1r17b-userfilter, .zzz14-quick, .zzz6x-pick, #zzzSetExplain';
 
 function zzz_back_present(b) {
   if (!b || !b.isConnected) return false;
@@ -57210,6 +57213,8 @@ function zzz_back_present(b) {
   const sp = document.getElementById('zzz14csSpace');
   if (sp && !sp.classList.contains('is-open') && sp.contains(b)) return false;
   { const rs = document.getElementById('zzzRsSpace'); if (rs && !rs.classList.contains('is-open') && rs.contains(b)) return false; }
+  // [Zzz14-NAV:BACK-POPUPS] a closed MEDIA SPACE stays in the page (slid away) - its × must not swallow every Back
+  { const ms = document.getElementById('zzzMsSpace'); if (ms && !ms.classList.contains('is-open') && ms.contains(b)) return false; }
   const r = b.getBoundingClientRect(); if (r.width < 1 || r.height < 1) return false;
   const cs = getComputedStyle(b); return cs.display !== 'none' && cs.visibility !== 'hidden' && !b.closest('[hidden]');
 }
@@ -57235,6 +57240,9 @@ function zzz_back_close_top() {
     const z = zzz_back_z(b);
     if (z > bestZ || (z === bestZ && best && (best.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING))) { best = b; bestZ = z; }
   });
+
+  { let pop = null; document.querySelectorAll(ZZZ_BACK_POPUPS).forEach(w => { if (zzz_back_visible(w)) pop = w; });
+    if (pop && (!best || pop.contains(best) || zzz_back_z(pop) >= bestZ)) { const x = best && pop.contains(best) ? best : null; if (x) x.click(); else pop.remove(); return true; } }
 
   { const rs = document.getElementById('zzzRsSpace'); if (rs && rs.classList.contains('is-open') && (!best || bestZ <= zzz_back_z(rs) || rs.contains(best)) && typeof zzz_rs_back === 'function' && zzz_rs_back()) return true; }
 
