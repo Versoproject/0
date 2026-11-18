@@ -30964,7 +30964,7 @@ function zzz_ic_render(host) {
   idr.appendChild(idg); box.appendChild(idr);
   note('NO ID = Verso itself picks offers by your card, the other side gets only totals (how many saw / tapped), never who. RANDOM ID PER APP = each app gets its own random number for you - it cannot connect you across apps. MY USERNAME = only if you want to be a known customer. Every share will be a consent you can withdraw, with a log.');
   // [Zzz14-IC:INTEREST-CARD-2] apps that may read the card (VERSO GATE scope 'interests') + DISCONNECT - Vrso -> Claude AI 2026-11-17
-  note('SHARING (VERSO GATE): an app gets your SHARE OK interests only after you allow „interests“ on its Verso consent screen - never the MINE ones. With NO ID it gets nothing about you, you are only counted in its totals (shown from 3 people up). Every reading is in your AUDIT LOG.');
+  note('SHARING (VERSO GATE): an app gets your SHARE OK interests only after you allow „interests“ on its Verso consent screen - never the MINE ones. With NO ID it gets nothing about you, you are only counted in its totals (shown from 10 people up). Every reading is in your AUDIT LOG.');
   const apps = document.createElement('div'); apps.className = 'zzz-ext-note'; apps.textContent = 'Apps that may read your card: …'; box.appendChild(apps);
   const drawApps = async () => {
     let L = [];
@@ -30982,9 +30982,65 @@ function zzz_ic_render(host) {
     });
   };
   drawApps();
+  zzz_ic_offers_render(box);
   draw();
   zzz_ic_pull().then(x => { if (x) { c = Object.assign({ items: {}, own: [], id: 'none' }, x); draw(); idg.querySelectorAll('button').forEach((b, i) => b.classList.toggle('is-on', ['none', 'app', 'user'][i] === c.id)); } });
   host.appendChild(box);
+}
+// [Zzz14-IC:INTEREST-CARD-3] Vrso 2026-11-18 04:08 „ano“: OFFERS FOR YOU (NO ID - Verso picks inside Verso, the app learns nothing about you)
+// + MY APPS · OWNER (totals only from 10 people up, EDIT OFFERS). Server: verso-gate v4 my_offers / owner_stats / offers_put. | Vrso -> Claude AI | 2026-11-18
+function zzz_ic_offers_render(box) {
+  const wrap = document.createElement('div'); box.appendChild(wrap);
+  const row = document.createElement('div'); row.className = 'zzz16-row'; row.style.flexWrap = 'wrap'; wrap.appendChild(row);
+  const out = document.createElement('div'); out.className = 'zzz-ext-note'; wrap.appendChild(out);
+  const mk = (t, title) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn'; b.textContent = t; b.title = title; row.appendChild(b); return b; };
+  const ob = mk('🎯 OFFERS FOR YOU · NO ID', 'Verso compares the offers of your connected apps with your card - here, only for you. The app does not learn who saw what (only totals of views from 10 people up).');
+  const sb2 = mk('📊 MY APPS · OWNER', 'Only for owners of an app connected through VERSO GATE: totals (from 10 people up) and EDIT OFFERS.');
+  const line = (t, el) => { const d = document.createElement('div'); d.textContent = t; (el || out).appendChild(d); return d; };
+  ob.addEventListener('click', async () => {
+    out.innerHTML = ''; line('Loading…');
+    let r; try { r = await zzz10m5_call('my_offers', {}); } catch (e) { out.innerHTML = ''; line('Offers could not be loaded now (' + zzz10m5_err_text(e) + ').'); return; }
+    out.innerHTML = '';
+    const L = r.offers || [];
+    if (!L.length) { line(r.reason === 'empty_card' ? 'Your card is empty - mark some interests above first.' : r.reason === 'no_apps' ? 'No connected app with „interests“ yet - offers come from apps you allow on their VERSO GATE consent screen.' : 'No offer matches your card now.'); return; }
+    line('Picked by Verso for you (' + L.length + ') - the apps do not know it was you:');
+    L.forEach(o => {
+      const r1 = document.createElement('div'); r1.className = 'zzz16-row';
+      const t = document.createElement('div'); t.style.flex = '1 1 auto'; t.textContent = o.title + ' · ' + o.app + ' · ' + (o.matched || []).join(', '); r1.appendChild(t);
+      if (o.url) { const a2 = document.createElement('button'); a2.type = 'button'; a2.className = 'zzz16-btn'; a2.textContent = 'OPEN ↗'; a2.title = 'Open the offer in a new tab (the shop sees a normal visit from your browser).';
+        a2.addEventListener('click', () => { try { window.open(o.url, '_blank', 'noopener'); } catch (e) {} }); r1.appendChild(a2); }
+      out.appendChild(r1);
+    });
+  });
+  sb2.addEventListener('click', async () => {
+    out.innerHTML = ''; line('Loading…');
+    let r; try { r = await zzz10m5_call('owner_stats', {}); } catch (e) { out.innerHTML = ''; line('Could not be loaded now (' + zzz10m5_err_text(e) + ').'); return; }
+    out.innerHTML = '';
+    const A = r.apps || [];
+    if (!A.length) { line('You do not own any app connected through VERSO GATE.'); return; }
+    line('Totals only - groups under ' + r.min + ' people are never shown, so nobody can be singled out.');
+    A.forEach(a => {
+      const b2 = document.createElement('div'); b2.style.cssText = 'border-top:1px solid rgba(255,255,255,.2);margin-top:6px;padding-top:6px'; out.appendChild(b2);
+      line('■ ' + a.name + (a.active ? '' : ' (inactive)') + ' · offers: ' + a.offers, b2).style.fontWeight = '700';
+      line('Consents with „interests“: ' + (a.users == null ? 'under ' + r.min : a.users), b2);
+      line('Interests (SHARE OK): ' + ((a.interests || []).map(x => x.interest + ' ' + x.users).join(' · ') || 'nothing from ' + r.min + ' people up yet'), b2);
+      line('Offer views, 30 days: ' + ((a.offer_views_30d || []).map(x => x.interest + ' ' + x.views).join(' · ') || 'nothing from ' + r.min + ' up yet'), b2);
+      const ed = document.createElement('button'); ed.type = 'button'; ed.className = 'zzz16-btn'; ed.textContent = '✎ EDIT OFFERS'; ed.title = 'One offer per line: title | https://link | tag, tag (tags = interests, e.g. SPORT, winter shoes). Saving replaces the whole list.';
+      b2.appendChild(ed);
+      ed.addEventListener('click', () => {
+        if (b2.querySelector('textarea')) return;
+        const ta = document.createElement('textarea'); ta.className = 'entry-cell'; ta.rows = 6; ta.style.width = '100%'; ta.setAttribute('data-zzz-nodraft', '1');
+        ta.placeholder = 'Winter shoes -20 % | https://shop.example/winter | shoes, winter shoes, SPORT'; b2.appendChild(ta);
+        const sv = document.createElement('button'); sv.type = 'button'; sv.className = 'zzz16-btn is-on'; sv.textContent = 'SAVE OFFERS'; b2.appendChild(sv);
+        sv.addEventListener('click', async () => {
+          const offers = String(ta.value || '').split('\n').map(x => x.split('|').map(y => y.trim())).filter(p => p[0]).map((p, i) => ({ key: String(i + 1), title: p[0], url: p[1] || '', tags: String(p[2] || '').split(',').map(t => t.trim()).filter(Boolean) }));
+          sv.disabled = true;
+          try { const q = await zzz10m5_call('offers_put', { app_id: a.app_id, offers }); zzz6f2_show_toast('Saved ' + q.saved + ' offer(s) for ' + a.name + (q.saved < offers.length ? ' - lines without a title or tag were skipped.' : '.'), 'ok', 3000); sb2.click(); }
+          catch (e) { sv.disabled = false; zzz6f2_show_toast(zzz10m5_err_text(e), 'warn'); }
+        });
+      });
+    });
+  });
 }
 // ===================== [/Zzz14-IC:INTEREST-CARD] =====================
 
@@ -46068,7 +46124,9 @@ const ZZZ_5S_WS = [
     'PRIVATE mode puts everything on IP SHIELD whatever is set here. READ SPACE › ⚙ READ SETUP › PAGES can keep its own choice (BY SETTINGS = this switch).'] },
   { k: /^INTEREST CARD/, t: 'INTEREST CARD', i: [
     'Tap an interest: 1× = MINE (gold, used only inside Verso) · 2× = SHARE OK (green, may be shared later with your consent) · 3× = off.',
-    'Own interest: write it → + ADD. WHEN SHARED: NO ID (default, the other side gets only totals from 3 people up) · RANDOM ID PER APP · MY USERNAME.',
+    'Own interest: write it → + ADD. WHEN SHARED: NO ID (default, the other side gets only totals from 10 people up) · RANDOM ID PER APP · MY USERNAME.',
+    'OFFERS FOR YOU (NO ID): Verso itself compares the offers of the apps you connected with your card (MINE + SHARE OK) and shows them only to you, here. The app never learns who saw what - it only gets totals of views per interest (SHARE OK only, from 10 people up).',
+    'MY APPS · OWNER: only if you own an app connected through VERSO GATE - its totals (consents, interests, offer views; groups under 10 are never shown) and EDIT OFFERS (one per line: title | https://link | tag, tag). Saving replaces the whole list.',
     'An app reads the SHARE OK interests only after you allow „interests“ on its VERSO GATE consent screen. The list below shows those apps - × DISCONNECT withdraws it at once. Every reading is in AUDIT LOG.'] },
   { k: /DASHBOARD/, t: 'DASHBOARD', i: [
     'The list of everything waiting: chat messages, REMS, SCHEDS, DISCUSS, system and ISSUES lines - coloured by priority (red urgent, orange attention, green open).',
@@ -55909,7 +55967,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 04:05';
+const VERSO_BUILD = '2026-11-18 04:30';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
