@@ -32209,6 +32209,105 @@ function zzz_rdr_kind(n) {
 }
 const ZZZ_RDR_GROUPS = [['tree', 'BUNDLES · COLLECTIONS'], ['web', 'WEB · PAGES'], ['media', 'MEDIA'], ['alarm', 'ALARMS'], ['note', 'NOTES']];
 
+const ZZZ4R7_VC = 'verso.container/2';
+function zzz4r7_canon(v) {
+  if (v === null || typeof v !== 'object') return v === undefined ? null : v;
+  if (Array.isArray(v)) return v.map(zzz4r7_canon);
+  const out = {}; Object.keys(v).sort().forEach(k => { if (v[k] !== undefined) out[k] = zzz4r7_canon(v[k]); }); return out;
+}
+function zzz4r7_canon_json(c) { const x = Object.assign({}, c); delete x.integrity; return JSON.stringify(zzz4r7_canon(x)); }
+async function zzz4r7_sha256(text) {
+  const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join('');
+}
+async function zzz4r7_hash(c) { return 'sha256:' + await zzz4r7_sha256(zzz4r7_canon_json(c)); }
+function zzz4r7_temp_id(now) {
+  const d = now || new Date(), p = (n, l) => String(n).padStart(l || 2, '0');
+  let dev = ''; try { dev = String(zzz_device_id() || '').replace(/[^A-Za-z0-9]/g, '').slice(-6); } catch (e) {}
+  const r = Array.from(crypto.getRandomValues(new Uint8Array(2))).map(x => x.toString(16).padStart(2, '0')).join('');
+  return 'T-' + (dev || 'web') + '-' + d.getUTCFullYear() + p(d.getUTCMonth() + 1) + p(d.getUTCDate()) + p(d.getUTCHours()) + p(d.getUTCMinutes()) + p(d.getUTCSeconds()) + '-' + r;
+}
+function zzz4r7_iso(t) { if (!t) return null; const d = new Date(t); return isNaN(d) ? String(t) : d.toISOString(); }
+function zzz4r7_tags(n) { return String(n.note_tags || '').split(/\s+/).filter(Boolean); }
+
+function zzz4r7_line_blocks(entryId, n, subs) {
+  const tags = zzz4r7_tags(n), raw = String(n.note_text || '').trim(), first = raw.split(/\s+/)[0] || '';
+  const kind = (typeof zzz_rdr_kind === 'function') ? zzz_rdr_kind(n) : 'note';
+  const base = (id, type, data, x) => Object.assign({ id, type, data, by: n.username || null, at: zzz4r7_iso(n.created_at), is_trashed: tags.indexOf('trash') >= 0,
+    src: { table: 'verso_chat_notes', id: n.id != null ? n.id : null, line: n.note_number },
+    ext: { tags, status: n.note_status || null, private: !!n.is_private, rp: tags.filter(t => /^rp:\d+$/.test(t)).map(t => Number(t.slice(3))) } }, x || {});
+  const out = [], id = 'b-' + entryId + '-' + n.note_number;
+  const seen = [], keeps = [], diss = [];
+  (subs || []).forEach(x => { const t = String(x.note_text || ''); if (/^verso:seen\b/.test(t)) seen.push(x); else if (/^verso:keep\b/.test(t)) keeps.push(x); else if (!/^verso:watch\b/.test(t)) diss.push(x); });
+  if (kind === 'web') out.push(base(id, 'web', { url: first, title: String(n.note_name || '').trim(), favicon: null, preview: null, added_at: zzz4r7_iso(n.created_at), seen_at: seen.map(x => zzz4r7_iso(x.created_at)) }));
+  else if (kind === 'media') out.push(base(id, 'media', { media: /\.(mp3|m4a|wav|ogg|flac)(\?|$)/i.test(first) ? 'audio' : (/\.(jpe?g|png|webp|gif|heic)(\?|$)/i.test(first) ? 'photo' : 'video'), source: 'link', asset: null, url: first, provider: (() => { try { return new URL(first).hostname.replace(/^www\./, ''); } catch (e) { return ''; } })(), embed_url: '', start: 0, caption: String(n.note_name || '').trim() }));
+  else if (kind === 'tree') out.push(base(id, 'container', { container: { vc: ZZZ4R7_VC, kind: 'collection', header: { title: String(n.note_name || raw).trim(), owner: n.username || null }, links: { parent: entryId, collections: tags.filter(t => /^rp:\d+$/.test(t)) } } }));
+  else out.push(base(id, 'text', { md: raw, name: String(n.note_name || '').trim() || null }));
+
+  keeps.forEach(x => { const t = String(x.note_text || ''), m = /^verso:keep\s+(\S+)?/.exec(t);
+    out.push(Object.assign(base(id + '.' + x.note_part, 'clip', { md: t.replace(/^verso:keep[^\n]*\n?/, ''), source_url: first, source_title: String(n.note_name || '').trim(), kept_at: zzz4r7_iso(x.created_at), range: (m && m[1]) || 'all' }), { by: x.username || null, at: zzz4r7_iso(x.created_at), src: { table: 'verso_chat_notes', id: x.id != null ? x.id : null, line: n.note_number, part: x.note_part } })); });
+  diss.forEach(x => out.push(Object.assign(base(id + '.' + x.note_part, 'text', { md: String(x.note_text || ''), reply_to: id }), { by: x.username || null, at: zzz4r7_iso(x.created_at), src: { table: 'verso_chat_notes', id: x.id != null ? x.id : null, line: n.note_number, part: x.note_part } })));
+  return out;
+}
+
+function zzz4r7_build(m) {
+  if (!m || !m.row) return null;
+  const row = m.row, f = m.f || {}, id = Number(m.id);
+  const lines = (m.notes || []).filter(n => !n.note_part), subs = {};
+  (m.notes || []).filter(n => n.note_part).forEach(n => { (subs[n.note_number] = subs[n.note_number] || []).push(n); });
+  const form = { id: 'b-' + id + '-form', type: 'form', data: { fields: f }, by: row.username || null, at: zzz4r7_iso(row.entry_date || row.created_at), is_trashed: !!row.is_trashed, src: { table: 'verso_entries', id } };
+  const blocks = [form];
+  lines.forEach(n => zzz4r7_line_blocks(id, n, subs[n.note_number]).forEach(b => blocks.push(b)));
+  const types = new Set(blocks.map(b => b.type));
+  const caps = []; if (types.has('text') || types.has('form')) caps.push('text'); if (types.has('web') || types.has('clip')) caps.push('web'); if (types.has('media')) caps.push('media'); if (types.has('container')) caps.push('multi');
+  const isRead = String(f.r5 || '').toLowerCase() === 'read', isMedia = String(f.r5 || f.r3 || '').toLowerCase() === 'media';
+  const vis = String(f.r7 || '').toLowerCase() === 'ano' ? 'public' : (f.r4 && String(f.r4).toLowerCase() !== String(row.username || '').toLowerCase() ? 'project' : 'private');
+  return {
+    vc: ZZZ4R7_VC,
+    kind: (isRead || isMedia) ? 'collection' : 'entry',
+    caps,
+    header: { entry_no: id || null, temp_id: f.temp_id || null, status: id ? 'registered' : 'draft', title: String(f.r3 || f.r9 || '').trim(), created_at: zzz4r7_iso(row.entry_date || row.created_at), updated_at: zzz4r7_iso(row.updated_at), owner: row.username || null, visibility: vis, is_trashed: !!row.is_trashed, archived: !!m.archived },
+    access: [{ user: row.username || null, role: 'owner', granted_by: null, at: zzz4r7_iso(row.entry_date || row.created_at) }].concat(f.r4 && String(f.r4).toLowerCase() !== String(row.username || '').toLowerCase() ? [{ user: String(f.r4), role: 'owner', granted_by: 'project', at: null }] : []),
+    links: { parent: null, children: [], collections: [], refs: [] },
+    blocks,
+    ops: { mode: 'snapshot', last_op: null },
+    storage: { provider: 'supabase', ref: 'verso_entries/' + id, location: '', external_url: null },
+    integrity: { content_hash: null, prev_hash: null, chain_seq: null, ack: { by: 'verso-registry', at: null, signature: null } },
+    src: { table: m.archived ? 'verso_trash' : 'verso_entries', id },
+    ext: {}
+  };
+}
+
+async function zzz4r7_seal(c) {
+  if (!c) return c;
+  c.integrity.content_hash = await zzz4r7_hash(c);
+  try {
+    const { data, error } = await sb.rpc('verso_container_chain', { p_entry_id: c.header.entry_no });
+    if (!error && data && data.length) {
+      const last = data[data.length - 1];
+      c.integrity.chain_seq = last.seq; c.integrity.prev_hash = last.prev_hash; c.integrity.ack.at = last.created_at; c.integrity.ack.signature = last.chain_hash;
+      c.integrity.registry = { rows: data.length, payload_hash: last.payload_hash, payload_now: last.payload_now || null, intact: last.payload_now ? last.payload_now === last.payload_hash : null };
+    }
+  } catch (e) {}
+  return c;
+}
+async function zzz4r7_of(entryId) { const m = await zzz_rdr_load(entryId); return m ? zzz4r7_seal(zzz4r7_build(m)) : null; }
+function zzz4r7_show(m) {
+  const c = zzz4r7_build(m); if (!c) return;
+  const fr = zzz_rdr_frame('CONTAINER #' + m.id, '{ } CONTAINER #' + m.id + ' · ' + c.kind + ' · ' + c.blocks.length + ' blocks', 'CONTAINER');
+  const { content, blk, btn } = fr;
+  const st = blk('div', 'zzz-rs-meta', 'Counting the hash…', 'INTEGRITY'); content.appendChild(st);
+  const pre = blk('pre', 'zzz-rdr-tx', '', 'JSON'); pre.style.cssText = 'white-space:pre-wrap;word-break:break-word;font-size:11px;line-height:1.35;user-select:text'; content.appendChild(pre);
+  const paint = () => { pre.textContent = JSON.stringify(c, null, 2);
+    const g = c.integrity, r = g.registry;
+    st.textContent = 'verso.container/2 · ' + c.kind + ' · #' + c.header.entry_no + ' · ' + (g.content_hash || '') + (r ? ' · REGISTRY seq ' + g.chain_seq + ' (' + r.rows + ' rows)' + (r.intact === true ? ' ✓ record = last registry entry' : r.intact === false ? ' · changed since the last registry entry' : '') : ' · registry link not available yet'); };
+  paint();
+  zzz4r7_seal(c).then(paint).catch(() => { st.textContent = 'Hash could not be counted here.'; });
+  btn('COPY JSON', 'Copy the container JSON', () => { try { navigator.clipboard.writeText(JSON.stringify(c, null, 2)); zzz6f2_show_toast('Container JSON copied.', 'ok'); } catch (e) {} });
+  btn('VERIFY', 'Count the hash again from the JSON shown', async () => { const h = await zzz4r7_hash(c); zzz6f2_show_toast(h === c.integrity.content_hash ? '✓ Hash matches.' : 'Hash differs.', h === c.integrity.content_hash ? 'ok' : 'warn'); });
+  fr.finish();
+}
+
 async function zzz_rdr_load(entryId, o) {
   const id = String(entryId || '').replace(/\D/g, ''); if (!id) return null;
   let row = (o && o.row) || null;
@@ -32522,6 +32621,7 @@ function zzz_rdr_show(m, opts) {
     btn('💬 #' + id, 'COMM - the chat of this record', () => { ov.remove(); zzz_open_chat_entry(id); });
     btn('CRM', 'The record window (cells, EDIT, ATTACH)', () => { ov.remove(); zzz6f29_open_entry_number_window(id); });
   }
+  btn('{ }', 'VERSO CONTAINER - this record as one container JSON (read only)', () => zzz4r7_show(m));
   if (opts.back) btn('‹ ' + opts.back.label, 'Back to the workspace reader', () => opts.back.fn());
   fr.copyAll();
   fr.finish();
@@ -55803,7 +55903,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 15:32';
+const VERSO_BUILD = '2026-11-18 15:50';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
