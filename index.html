@@ -25930,7 +25930,7 @@ function zzz4_0_open_delete_all_confirm(entryIds = null) {
   confirmBtn.onclick = async () => {
     if (!allFilled()) return;
     confirmBtn.disabled = true;
-    const tk = await zzz_verse_ticket('trash', 'EMPTY TRASH · MV', 'Permanent delete needs a fresh verification every time - your MV PHRASE.');
+    const tk = await zzz_verse_ticket('trash', 'EMPTY TRASH · VERSE', 'Permanent delete is asked like recovery - 2 words of your VERSE every time (no verse yet = MV PHRASE).');
     if (!tk) { confirmBtn.disabled = false; return; }
     confirmBtn.textContent = 'Deleting...';
     await zzz4_0_delete_all_entries(codeInput.value.trim(), '', selectedOnly ? entryIds : null, passwordInput.value, tk);
@@ -30527,7 +30527,8 @@ async function zzz_verse_verify(why, title, text, purpose) {
 async function zzz_verse_ticket(forStep, title, text) {
   // [Zzz13-MV:DAILY-PHRASE] Vrso 2026-11-18 14:56 „ano“: the daily MV is the base MV PHRASE; the VERSE (2 words) only for verse changes,
   // a forgotten phrase and recovery. 'verse' ticket = verse question; 'phrase' (change of the base phrase) = old phrase, or FORGOT? → verse.
-  let purpose = forStep === 'verse' ? 'verse' : 'mv';
+  // Vrso 14:59 „vymaž trash tiež ako recovery“: EMPTY TRASH is asked like recovery - the VERSE (server v9 refuses it from the phrase)
+  let purpose = (forStep === 'verse' || forStep === 'trash') ? 'verse' : 'mv';
   for (let tries = 0; tries < 5; tries++) {
     const ch = await zzz_verse_call({ action: 'challenge', purpose });
     if (!ch || !ch.success) { zzz6f2_show_toast(zzz_verse_why(ch), 'warn', 3500); return null; }
@@ -30555,9 +30556,9 @@ function zzz_verse_section_render(host) {
   const wh = document.createElement('div'); wh.className = 'zzz10m5-txt'; wh.style.cssText = 'margin:6px 0;padding:6px 8px;border:1px solid #444;border-radius:8px';
   const whT = document.createElement('div'); whT.style.cssText = 'font-weight:800;color:#D4AF37;margin-bottom:3px'; whT.textContent = 'WHERE VERSO ASKS FOR MV'; wh.appendChild(whT);
   [['Only when it is needed - never in advance. Always in the moving Verso window (a different place every time, buttons may swap).', 0],
-   ['DAILY = your MV PHRASE (whole, decoy symbols allowed): ADVANCED SETUP + MODES (one verification = 10 min; Verso accounts without it) · EVERY TIME anew: FINAL (also AUTO FINAL on / off, WITHDRAW) · LOG OUT on MY DEVICE · EMPTY TRASH.', 1],
-   ['CHANGE of the MV PHRASE (SAVE MV PHRASE): current password + the OLD phrase (forgot it? → 2 words of your verse) + e-mail to you. Change it as often as you like.', 1],
-   ['VERSE (2 random words) - rarely, so it stays strong: + ADD / × REMOVE VERSE, a forgotten MV PHRASE, and RECOVERY (first the right token from your e-mail, then the question → new password).', 1],
+   ['DAILY = your MV PHRASE (whole, decoy symbols allowed): ADVANCED SETUP + MODES (one verification = 10 min; Verso accounts without it) · EVERY TIME anew: FINAL (also AUTO FINAL on / off, WITHDRAW) · LOG OUT on MY DEVICE.', 1],
+   ['CHANGE of the MV PHRASE (SAVE MV PHRASE): the OLD phrase + the new one (forgot the old? → 2 words of your verse) - an e-mail goes to you. Change it as often as you like; somebody who changed it cannot keep you out - your verse brings you back.', 1],
+   ['VERSE (2 random words) - rarely, so it stays strong: EMPTY TRASH (permanent delete) · + ADD / × REMOVE VERSE · a forgotten MV PHRASE · RECOVERY (first the right token from your e-mail, then the question → new password).', 1],
    ['Never the same pair of words twice in a row. 5 wrong = 15 min lock + e-mail. Every check is in MV LOG and AUDIT LOG.', 1],
    ['WITHOUT MV: hold-commands Ctrl + S / R / A / L + your command (fast, also on a foreign device).', 0]
   ].forEach(([t, dot]) => { const d = document.createElement('div'); d.textContent = (dot ? '• ' : '') + t; d.style.margin = '2px 0'; wh.appendChild(d); });
@@ -55903,7 +55904,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 18:00';
+const VERSO_BUILD = '2026-11-18 18:20';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -66331,20 +66332,16 @@ function zzz10m2_render_login_setup(body) {
     phraseConfirmBtn.addEventListener('click', async () => {
       const mvPhrase = phraseInput.value.trim();
       if (zzz10v1_normalize(mvPhrase).length < 4) { zzz6f2_show_toast('The phrase must have at least 4 letters.', 'warn'); return; }
-      const currentPassword = zzz10r4_current_pw();
-      if (!currentPassword) return;
-      // [Zzz13-MV:PHRASE-CHANGE] Vrso 2026-11-18 14:35 „pohyblivé okno vždy pri mv“: a fresh verification (moving Verso window) before the change;
-      // the database refuses the change without it (trigger verso_mv_phrase_change_guard).
+      // [Zzz13-MV:PHRASE-CHANGE] Vrso 2026-11-18 14:59 „zmenu frázy stačí len pôvodnú frázu a novú … keď sa zmení príde notif“:
+      // no password - the OLD phrase in the moving Verso window (forgot it? → verse), then verso-verse set_phrase; the DB trigger
+      // verso_mv_phrase_change_guard checks the one-time ticket and the e-mail goes out automatically.
       const mvTk = await zzz_verse_ticket('phrase', 'CHANGE MV PHRASE · VERIFICATION', 'Type your OLD MV PHRASE. Forgot it? FORGOT? → VERSE asks 2 words of your verse instead. An e-mail is sent to you.');
       if (!mvTk) return;
       phraseConfirmBtn.disabled = true;
       try {
-        const resp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-          body: JSON.stringify({ action: 'set_mv_phrase', username: zzz10r4_account_name(), password: currentPassword, mvPhrase })
-        });
-        const result = await resp.json().catch(() => ({}));
+        const resp = { status: 200 };
+        const result0 = await zzz_verse_call({ action: 'set_phrase', newPhrase: mvPhrase });
+        const result = Object.assign({}, result0 || {});
         if (result.success) {
           phraseInput.value = '';
           currentPwInput.value = '';
@@ -66356,7 +66353,8 @@ function zzz10m2_render_login_setup(body) {
             not_registered: 'account is not registered',
             phrase_too_short: 'the phrase must have at least 4 letters',
             password_and_phrase_required: 'missing password or phrase',
-            username_required: 'the account name is missing - log out and log in again', mv_needed: 'the verification expired (2 min) - try again'
+            username_required: 'the account name is missing - log out and log in again', mv_needed: 'the verification expired (2 min) - try again',
+            same_phrase: 'it is the same as the old one', phrase_too_long: 'max. 300 characters', no_session: 'log in first', network: 'no connection'
           }[result.reason || result.error] || (/mv_needed/.test(JSON.stringify(result)) ? 'the verification expired (2 min) - try again' : null) || (console.warn('[Zzz13-MV] reason', result.reason || result.error || resp.status), 'unknown reason');
           zzz6f2_show_toast(`MV phrase not saved - ${reasonText}.`, 'warn');
         }
