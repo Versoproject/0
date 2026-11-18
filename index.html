@@ -30402,6 +30402,8 @@ function zzz_verse_why(r) {
     verse_too_long: 'Max. 40 words.', too_many_verses: 'Max. 10 verses.', last_factor: 'The last verse cannot be removed - add another first.', invalid_token: 'The USERNAME or the TOKEN is not valid.', token_required: 'Type the recovery TOKEN from your e-mail first.', new_password_short: 'The new password is too short.' })[x] || ('Not done (' + (x || 'error') + ').');
 }
 
+let zzzVerseLabels = null;
+async function zzz_verse_labels(fresh) { if (zzzVerseLabels && !fresh) return zzzVerseLabels; try { const r = await zzz4r7_rpc('verso_verse_labels'); if (Array.isArray(r)) zzzVerseLabels = r; } catch (e) {} return zzzVerseLabels || []; }
 function zzz_verse_ask(ch, title, text, altLabel) {
   return new Promise((resolve) => {
     const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv';
@@ -30411,6 +30413,7 @@ function zzz_verse_ask(ch, title, text, altLabel) {
     const isVerse = ch.mode === 'verse';
     const lab = document.createElement('button'); lab.type = 'button'; lab.className = 'entry-number-button zzz10v1-field-label zzzfin-mv-label'; lab.disabled = true;
     lab.textContent = isVerse ? ('VERSE ' + (ch.verses > 1 ? '#' + ch.verse_no + ' ' : '') + '· WORD ' + ch.positions[0] + ' + WORD ' + ch.positions[1]) : 'MV PHRASE';
+    if (isVerse) zzz_verse_labels().then(L => { const x = L[(ch.verse_no || 1) - 1]; if (x && x.label && lab.isConnected) lab.textContent += ' · „' + x.label + '“'; }).catch(() => {});
     b.appendChild(lab);
     if (isVerse) {
       const hint = document.createElement('div'); hint.className = 'zzz-media-diss-s'; hint.setAttribute('data-mv-opt', '1');
@@ -30445,7 +30448,7 @@ function zzz_verse_ask(ch, title, text, altLabel) {
     const rnd01 = () => { try { return crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296; } catch (e) { return Math.random(); } };
     let fx = rnd01(), fy = rnd01();
     try { if (crypto.getRandomValues(new Uint32Array(1))[0] % 2) row.style.flexDirection = 'row-reverse'; } catch (e) {}
-    const mv = document.createElement('button'); mv.type = 'button'; mv.className = 'zzz-media-btn'; mv.textContent = '↻ MOVE'; mv.title = 'Move this window to another place';
+    const mv = document.createElement('button'); mv.type = 'button'; mv.className = 'zzz-media-btn'; mv.textContent = '↻'; mv.title = 'Verso puts this window at a random place every time - ↻ only gives it another place by hand (when it covers something)';
     mv.style.cssText = 'float:right;margin:-4px -4px 4px 8px;padding:2px 8px;font-size:11px';
     b.insertBefore(mv, t);
     o.style.display = 'block'; o.style.overflowY = 'auto'; b.style.position = 'absolute';
@@ -30567,7 +30570,7 @@ function zzz_verse_section_render(host) {
   pick('WINDOW SIZE', 'size', [['S', 'S'], ['M', 'M'], ['L', 'L'], ['XL', 'XL']]);
   pick('KEY VIBRATION', 'vib', [['off', 'OFF'], ['light', 'LIGHT'], ['strong', 'STRONG'], ['max', 'MAX']], () => { try { zzz_haptic_pulse(zzz_vkb_haptic_ms()); } catch (e) {} });
   const pwN = document.createElement('div'); pwN.style.cssText = 'color:#999;font-size:11px;margin-top:2px';
-  pwN.textContent = 'The window always moves to a random place and stays fully on the screen above the Verso keyboard - ↻ MOVE gives it a new place. KEY VIBRATION is for every Verso keyboard key on this device (stronger = easier to feel; MAX also via the Verso app). Phones without a vibration motor ignore it.';
+  pwN.textContent = 'The window always moves to a random place and stays fully on the screen above the Verso keyboard, by itself - you never have to move it (↻ is only the manual way when it covers something). KEY VIBRATION is for every Verso keyboard key on this device (stronger = easier to feel; MAX also via the Verso app). Phones without a vibration motor ignore it.';
   pw.appendChild(pwN);
   b.appendChild(pw);
 
@@ -30601,11 +30604,15 @@ function zzz_verse_section_render(host) {
     if (!r || !r.success) { S.textContent = zzz_verse_why(r); return; }
     p('MV PHRASE (daily): ' + (r.base_set ? 'SET ✓ - change it any time in SETTINGS › SAVE MV PHRASE' : 'not set - Verso asks your verse instead'), S);
     if (!r.verses.length) p('VERSES: none yet - add one (min. 7 words). It is your way back (recovery) and the help when you forget the MV PHRASE.', S);
+    const labels = r.verses.length ? await zzz_verse_labels(true) : [];
     r.verses.forEach(v => {
       const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:center;gap:6px;margin:3px 0';
-      const t = document.createElement('div'); t.className = 'zzz10m5-txt'; t.style.flex = '1'; t.textContent = 'VERSE #' + v.no + ' · ' + v.words + ' words · since ' + zzz10m6_time(v.created_at); row.appendChild(t);
+      const lb = (labels.find(x => String(x.id) === String(v.id)) || {}).label;
+      const t = document.createElement('div'); t.className = 'zzz10m5-txt'; t.style.flex = '1'; t.textContent = 'VERSE #' + v.no + (lb ? ' · „' + lb + '“' : '') + ' · ' + v.words + ' words · since ' + zzz10m6_time(v.created_at); row.appendChild(t);
       const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn'; x.textContent = '× REMOVE'; x.title = 'Remove this verse (always a fresh verification; an e-mail is sent).';
+      if (r.verses.length <= 1) x.title = 'One verse must stay active - add another verse first, then remove this one.';
       x.addEventListener('click', async () => {
+        if (r.verses.length <= 1) { zzz6f2_show_toast('One verse must stay active - add another verse first, then remove this one.', 'warn', 4500); return; }
         const tk = await zzz_verse_ticket('verse', '× REMOVE VERSE #' + v.no, 'Confirm it is you with your VERSE (2 words) - verses are changed only by a verse. An e-mail is sent.'); if (!tk) return;
         const q = await zzz_verse_call({ action: 'revoke_verse', id: v.id, ticket: tk });
         zzz6f2_show_toast(q && q.success ? 'Verse #' + v.no + ' removed - an e-mail was sent to you.' : zzz_verse_why(q), q && q.success ? 'ok' : 'warn', 3000); load();
@@ -30620,8 +30627,9 @@ function zzz_verse_section_render(host) {
       zzz_verse_add_dialog(tk).then(() => load());
     });
     const chk = document.createElement('button'); chk.type = 'button'; chk.className = 'zzz-media-btn'; chk.textContent = 'TEST · MV PHRASE';
-    chk.title = 'Try a verification now (opens Advanced setup / MODES for 10 min).';
-    chk.addEventListener('click', async () => { if (await zzz_verse_verify('test')) { zzz6f2_show_toast('✓ Verified - 10 min.', 'ok'); load(); } });
+    chk.title = 'Only a test: type your MV PHRASE and Verso tells you if it is right.';
+
+    chk.addEventListener('click', async () => { if (await zzz_verse_verify('test', 'TEST · MV PHRASE', 'Only a test - type your MV PHRASE and Verso tells you if it is right. (A right answer also keeps Advanced setup open for 10 minutes.)')) { zzz6f2_show_toast('✓ Your MV PHRASE is right.', 'ok', 3500); load(); } });
 
     if (r.verses.length) { const tv = document.createElement('button'); tv.type = 'button'; tv.className = 'zzz-media-btn'; tv.textContent = 'TEST VERSE';
       tv.title = 'Practise your verse: Verso asks 2 random words - nothing changes.'; tv.addEventListener('click', async () => { if (await zzz_verse_verify('test_verse', 'TEST VERSE', 'Practise - 2 words of your verse, together without a space.', 'verse')) zzz6f2_show_toast('✓ Your verse is right.', 'ok'); });
@@ -30660,6 +30668,8 @@ function zzz_verse_add_dialog(ticket) {
     const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text'; sub.textContent = 'At least 7 words, max. 40. Remember it well and never write it down - Verso stores only fingerprints of the single words and will ask for 2 random ones.'; b.appendChild(sub);
     const inp = zzz_vkb_make_secret('versoVerseAddInput', 'entry-cell zzz6f36-login-local-input', 'NEW VERSE', 'the whole verse, words with spaces');
     inp.style.margin = '6px 0'; b.appendChild(inp);
+    const tag = document.createElement('input'); tag.type = 'text'; tag.className = 'zzz-verso-prompt-in'; tag.maxLength = 60; tag.autocomplete = 'off'; tag.setAttribute('data-zzz-nodraft', '1');
+    tag.placeholder = 'YOUR TAG (optional) - e.g. my favourite song'; tag.title = 'A name only you understand - it helps you remember which verse it is. Never a word of the verse itself.'; tag.style.margin = '0 0 6px'; b.appendChild(tag);
     const st = document.createElement('div'); st.className = 'zzz-media-diss-s'; st.style.minHeight = '16px'; b.appendChild(st);
     inp.addEventListener('input', () => { const n = zzz_verse_words(inp.value).length; st.textContent = n ? n + ' words' + (n < 7 ? ' - min. 7' : ' ✓') : ''; });
     const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
@@ -30670,9 +30680,12 @@ function zzz_verse_add_dialog(ticket) {
     new MutationObserver((x, obs) => { if (!o.isConnected) { obs.disconnect(); end(false); } }).observe(document.body, { childList: true });
     y.addEventListener('click', async () => {
       const v = String(inp.value || '');
-      if (zzz_verse_words(v).length < 7) { st.textContent = 'A verse needs at least 7 words.'; return; }
+      if (zzz_verse_words(v).length < 7) { st.textContent = 'A verse needs at least 7 words (now ' + zzz_verse_words(v).length + ').'; return; }
+      const tg = String(tag.value || '').trim(), vw = new Set(zzz_verse_words(v));
+      if (tg && zzz_verse_words(tg).some(w => w.length > 2 && vw.has(w))) { st.textContent = 'The tag must not contain a word of the verse - choose another name.'; return; }
       y.disabled = true; st.textContent = 'Saving…';
       const r = await zzz_verse_call({ action: 'add_verse', verse: v, ticket });
+      if (r && r.success && tg) { try { const s2 = await zzz_verse_call({ action: 'status' }); const nv = s2 && s2.verses && s2.verses[s2.verses.length - 1]; if (nv) await zzz4r7_rpc('verso_verse_label_set', { p_id: nv.id, p_label: tg }); zzzVerseLabels = null; } catch (e) {} }
       if (r && r.success) zzz4r7_uk_rewrap('verse', v);
       y.disabled = false;
       if (r && r.success) { zzz6f2_show_toast('✓ Verse saved (' + r.words + ' words) - an e-mail was sent to you.', 'ok', 3000); end(true); }
@@ -56251,7 +56264,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 22:17';
+const VERSO_BUILD = '2026-11-18 22:29';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
