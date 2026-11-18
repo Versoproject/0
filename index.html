@@ -30260,9 +30260,9 @@ function zzz_remote_wrap(client) {
     return (table) => {
       let st = null; try { st = zzz_remote_state(); } catch (e) { st = null; }
       const qb = from0(table);
-      if (!st) return zzz_pm_wrap(table, qb);
+      if (!st) return zzz4r7_notes_wrap(table, zzz_pm_wrap(table, qb));
       const ids = st.ids.length ? st.ids.map(Number) : [-1], keys = ids.map(String), users = String(st.users || '').split(',').filter(Boolean);
-      return new Proxy(qb, { get(q, m) {
+      return zzz4r7_notes_wrap(table, new Proxy(qb, { get(q, m) {
         if (m === 'insert' || m === 'update' || m === 'upsert' || m === 'delete') { if (ZZZ_REMOTE_T.writeOk.indexOf(table) >= 0) return q[m].bind(q); return (...a) => (zzz_remote_write_ok(st, table, m, a) ? q[m](...a) : zzz_remote_ro()); }
         if (m === 'select') return (...a) => {
           let b = q.select(...a);
@@ -30272,7 +30272,7 @@ function zzz_remote_wrap(client) {
           return b;
         };
         const v = q[m]; return typeof v === 'function' ? v.bind(q) : v;
-      } });
+      } }));
     };
   } });
 }
@@ -30558,6 +30558,7 @@ function zzz_verse_section_render(host) {
     if (zzz4r7_uk_open()) mk('🔒 LOCK NOW', () => { zzz4r7_uk_lock('manual'); paintKey(); }, 'Close the key on this device now');
     else mk('🔓 OPEN · MV PHRASE', async () => { await zzz_verse_verify('key', 'OPEN KEY · MV', 'Your MV PHRASE opens your END-TO-END key on this device (KEY LOCK decides for how long).'); setTimeout(paintKey, 1500); }, 'Open the key with your MV PHRASE');
     mk('OPEN WITH VERSE', () => zzz4r7_verse_full_dialog(() => paintKey()), 'Forgot / changed the MV PHRASE: the whole verse opens the key (way back)');
+    { const on = zzz4r7_e2ee_notes_on(); mk((on ? '☑' : '☐') + ' E2EE PRIVATE NOTES', () => { zzz_mvw_set({ e2eeNotes: !on }); zzz6f2_show_toast(!on ? 'New private notes on this device are locked end-to-end (only your key opens them).' : 'New private notes are saved as before.', 'info', 3500); paintKey(); }, 'New PRIVATE notes written on this device are locked with your key - only your phones with the open key can read them'); }
   }
   paintKey(); document.addEventListener('zzz4r7-key', paintKey);
   b.appendChild(kl);
@@ -32477,6 +32478,34 @@ function zzz4r7_uk_status_text() {
   const o = zzz4r7_uk_open();
   if (o) return '🔓 KEY OPEN · ' + (o.until ? 'locks ' + new Date(o.until).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : (o.mode === 'screen' ? 'locks when Verso goes to the background' : 'locks when Verso is closed'));
   return '🔒 KEY LOCKED · it opens with your next MV PHRASE';
+}
+
+const ZZZ4R7_NOTE_PFX = 'verso:e2ee1:';
+const ZZZ4R7_NOTE_LOCKED = '🔒 E2EE note · open your key with your MV PHRASE (SETTINGS › Multi Verification › KEY LOCK)';
+function zzz4r7_e2ee_notes_on() { return !!(zzz_mvw_get() || {}).e2eeNotes; }
+async function zzz4r7_note_lock(text) {
+  const o = zzz4r7_uk_open(); if (!o) return null;
+  const box = await zzz4r7_seal_bytes(o.key, new TextEncoder().encode(String(text == null ? '' : text)), 'verso-note');
+  return ZZZ4R7_NOTE_PFX + JSON.stringify({ k: o.id, iv: box.iv, ct: box.ct });
+}
+async function zzz4r7_notes_open(rows) {
+  for (const r of rows || []) {
+    if (!r || typeof r.note_text !== 'string' || r.note_text.indexOf(ZZZ4R7_NOTE_PFX) !== 0) continue;
+    const raw = r.note_text; r._e2eeRaw = raw; r._e2ee = 'locked'; r.note_text = ZZZ4R7_NOTE_LOCKED;
+    try { const j = JSON.parse(raw.slice(ZZZ4R7_NOTE_PFX.length)), o = zzz4r7_uk_open();
+      if (o && o.id === j.k) { r.note_text = new TextDecoder().decode(await zzz4r7_open_bytes(o.key, j, 'verso-note')); r._e2ee = 'open'; } } catch (e) {}
+  }
+  return rows;
+}
+
+function zzz4r7_notes_wrap(table, b) {
+  if (table !== 'verso_chat_notes' || !b) return b;
+  const wrap = (x) => (x && typeof x === 'object' && typeof x.then === 'function') ? new Proxy(x, { get(t, k) {
+    if (k === 'then') return (res, rej) => t.then(async (r) => { try { if (r && Array.isArray(r.data)) await zzz4r7_notes_open(r.data); else if (r && r.data && typeof r.data === 'object') await zzz4r7_notes_open([r.data]); } catch (e) {} return r; }).then(res, rej);
+    const v = t[k]; if (typeof v !== 'function') return v;
+    return (...a) => wrap(v.apply(t, a));
+  } }) : x;
+  return new Proxy(b, { get(t, k) { const v = t[k]; if (typeof v !== 'function') return v; return (...a) => wrap(v.apply(t, a)); } });
 }
 async function zzz4r7_of(entryId) { const m = await zzz_rdr_load(entryId); return m ? zzz4r7_seal(zzz4r7_build(m)) : null; }
 function zzz4r7_show(m) {
@@ -42252,7 +42281,7 @@ function zzz1cn_promote_payload(entryId, n, noteNumber, notePart, noteText) {
   const payload = {
     entry_key: String(entryId), username: n.username,
     note_number: noteNumber, note_part: notePart,
-    note_text: noteText, is_private: !!n.is_private,
+    note_text: (n && n._e2eeRaw) ? n._e2eeRaw : noteText, is_private: !!n.is_private,
     note_name: String(n.note_name || '').trim().slice(0, 60)
   };
   if (zzz1cn_opt_has('is_saved')) payload.is_saved = !!n.is_saved;
@@ -42557,6 +42586,10 @@ async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, i
     note_for: noteFor };
 
   const payload = { entry_key: row.entry_key, username: row.username, note_number: row.note_number, note_part: row.note_part, note_name: row.note_name, note_text: row.note_text, is_private: row.is_private };
+
+  if (payload.is_private && zzz4r7_e2ee_notes_on()) {
+    try { const enc = await zzz4r7_note_lock(payload.note_text); if (enc) payload.note_text = enc; else zzz6f2_show_toast('🔒 Your key is locked - this private note is saved WITHOUT end-to-end lock. Open the key (MV PHRASE) first.', 'warn', 4500); } catch (e) {}
+  }
 
   if (zzz1cn_opt_has('is_saved')) payload.is_saved = row.is_saved;
 
@@ -56096,7 +56129,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 16:30';
+const VERSO_BUILD = '2026-11-18 16:39';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
