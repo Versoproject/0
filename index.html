@@ -32414,8 +32414,21 @@ const ZZZ4R7_KDF_IT = 600000;
 const zzz4r7_b64 = (u8) => { let s = ''; u8.forEach(x => { s += String.fromCharCode(x); }); return btoa(s); };
 const zzz4r7_unb64 = (b) => Uint8Array.from(atob(b), ch => ch.charCodeAt(0));
 async function zzz4r7_key_new() { return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']); }
-async function zzz4r7_kek(secret, saltB64, it) {
-  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(String(secret).normalize('NFKD').replace(/\p{M}/gu, '').trim().toLowerCase()), 'PBKDF2', false, ['deriveKey']);
+
+async function zzz4r7_share(by, secret, salt) {
+  const r = await zzz_verse_call({ action: 'key_share', by: by === 'verse' ? 'verse' : 'phrase', secret: String(secret || ''), salt });
+  if (r && r.success && /^[0-9a-f]{64}$/.test(r.share || '')) return r.share;
+  throw new Error('key_share:' + ((r && r.reason) || 'no_answer'));
+}
+async function zzz4r7_kek(secret, saltB64, it, shareHex) {
+  const norm = new TextEncoder().encode(String(secret).normalize('NFKD').replace(/\p{M}/gu, '').trim().toLowerCase());
+  if (shareHex) {
+    const b0 = await crypto.subtle.importKey('raw', norm, 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: zzz4r7_unb64(saltB64), iterations: it || ZZZ4R7_KDF_IT }, b0, 256);
+    const hk = await crypto.subtle.importKey('raw', new Uint8Array(shareHex.match(/../g).map(h => parseInt(h, 16))), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    return crypto.subtle.importKey('raw', await crypto.subtle.sign('HMAC', hk, bits), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  }
+  const base = await crypto.subtle.importKey('raw', norm, 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: zzz4r7_unb64(saltB64), iterations: it || ZZZ4R7_KDF_IT }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
 }
 async function zzz4r7_seal_bytes(key, bytes, aad) {
@@ -32493,7 +32506,8 @@ async function zzz4r7_uk_rows() { const { data, error } = await sb.rpc('verso_uk
 function zzz4r7_verse_secret(verse) { return (typeof zzz_verse_words === 'function' ? zzz_verse_words(verse) : String(verse || '').split(/\s+/)).join(' '); }
 async function zzz4r7_make_wrap(uk, by, secret) {
   const salt = zzz4r7_b64(crypto.getRandomValues(new Uint8Array(16)));
-  return { wrap_by: by, kdf: { alg: 'PBKDF2-SHA256', salt, it: ZZZ4R7_KDF_IT }, blob: await zzz4r7_wrap(uk, await zzz4r7_kek(secret, salt, ZZZ4R7_KDF_IT)) };
+  const share = await zzz4r7_share(by, secret, salt);
+  return { wrap_by: by, kdf: { alg: 'PBKDF2-SHA256', salt, it: ZZZ4R7_KDF_IT, sv: 1 }, blob: await zzz4r7_wrap(uk, await zzz4r7_kek(secret, salt, ZZZ4R7_KDF_IT, share)) };
 }
 async function zzz4r7_uk_put(id, wraps) { const { data, error } = await sb.rpc('verso_ukey_put', { p_key_id: id, p_wraps: wraps }); if (error) throw error; return data || {}; }
 
@@ -32502,7 +32516,7 @@ async function zzz4r7_uk_after_phrase(phrase) {
     if (!phrase) return 'none';
     const rows = await zzz4r7_uk_rows(), pw = rows.find(r => r.wrap_by === 'phrase');
     if (pw) {
-      try { const key = await zzz4r7_unwrap(pw.blob, await zzz4r7_kek(phrase, pw.kdf.salt, pw.kdf.it), true); zzz4r7_uk_set(key, pw.key_id); return 'opened'; }
+      try { const key = await zzz4r7_unwrap(pw.blob, await zzz4r7_kek(phrase, pw.kdf.salt, pw.kdf.it, pw.kdf.sv ? await zzz4r7_share('phrase', phrase, pw.kdf.salt) : null), true); zzz4r7_uk_set(key, pw.key_id); return 'opened'; }
       catch (e) { const o = zzz4r7_uk_open(); if (o && o.id === pw.key_id) { await zzz4r7_uk_put(o.id, [await zzz4r7_make_wrap(o.key, 'phrase', phrase)]); return 'rewrapped'; } return 'phrase_changed'; }
     }
     if (rows.length) { const o = zzz4r7_uk_open(); if (o && o.id === rows[0].key_id) { await zzz4r7_uk_put(o.id, [await zzz4r7_make_wrap(o.key, 'phrase', phrase)]); return 'rewrapped'; } return 'need_verse'; }
@@ -32515,7 +32529,7 @@ async function zzz4r7_uk_after_phrase(phrase) {
 async function zzz4r7_uk_rewrap(by, secret) { const o = zzz4r7_uk_open(); if (!o || !secret) return false; try { const r = await zzz4r7_uk_put(o.id, [await zzz4r7_make_wrap(o.key, by, by === 'verse' ? zzz4r7_verse_secret(secret) : secret)]); return !!r.success; } catch (e) { return false; } }
 async function zzz4r7_uk_open_with_verse(verse) {
   const rows = await zzz4r7_uk_rows(), vw = rows.find(r => r.wrap_by === 'verse'); if (!vw) return 'no_verse_wrap';
-  try { const key = await zzz4r7_unwrap(vw.blob, await zzz4r7_kek(zzz4r7_verse_secret(verse), vw.kdf.salt, vw.kdf.it), true); zzz4r7_uk_set(key, vw.key_id); return 'opened'; } catch (e) { return 'wrong'; }
+  try { const key = await zzz4r7_unwrap(vw.blob, await zzz4r7_kek(zzz4r7_verse_secret(verse), vw.kdf.salt, vw.kdf.it, vw.kdf.sv ? await zzz4r7_share('verse', zzz4r7_verse_secret(verse), vw.kdf.salt) : null), true); zzz4r7_uk_set(key, vw.key_id); return 'opened'; } catch (e) { return 'wrong'; }
 }
 function zzz4r7_uk_status_text() {
   const o = zzz4r7_uk_open();
@@ -56224,7 +56238,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 21:30';
+const VERSO_BUILD = '2026-11-18 21:50';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
