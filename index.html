@@ -47341,6 +47341,7 @@ const ZZZ_SET_REG = [
   { m: 'Notifications', w: 'sd', scope: 'all', place: 'settings', deps: ['Shown in the notification'], help: 'Sound, vibration and reading of Verso notifications. Saved on the Verso server for your account and this way of login (VERSO APP / WEB APP / WEB keep their own). The DEVICE must allow notifications (see SET UP above).' },
   { m: 'Shown in the notification', w: 's', scope: 'all', place: 'settings', deps: ['Notifications'], help: 'What a Verso notification shows (full / only who / nothing) per priority. Verso server, per way of login.' },
   { m: 'QUIET REGIME', w: 'sd', scope: 'all', place: 'settings', help: 'Verso NOTIF MULTIREADER silent (notifications still come). Server + in the Verso app on this DEVICE.' },
+  { m: 'SESSION LENGTH · MY DEVICE', w: 's', scope: 'all', place: 'settings', help: 'How long MY DEVICE stays logged in without use (90 DAYS standard, shorter by choice, DATE MODULE). SETTINGS › Login setup. Verso server, per account.' },
   { m: 'READ RECEIPTS', w: 's', scope: 'all', place: 'settings', help: 'Whether others see when you read. Verso server - the same in the app, web app and web.' },
   { m: 'Allow notifications on FOREIGN', w: 'd', scope: 'device', place: 'settings', help: 'Only for this DEVICE and its mode (MY DEVICE / TRUSTED / FOREIGN).' },
   { m: 'Home language', w: 'sd', scope: 'all', place: 'settings', deps: ['Keyboard languages'], help: 'Your own language. Verso server; in the Verso app it is also sent to the reader and the keyboard on this DEVICE.' },
@@ -56196,7 +56197,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 18:06';
+const VERSO_BUILD = '2026-11-18 20:33';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -66686,6 +66687,36 @@ function zzz10m2_render_login_setup(body) {
 
   body.appendChild(row);
   body.appendChild(zzz10dm_build_row());
+  if (zzz6f7_isLoggedIn && zzz10dmActive === 'my') zzz10dm_session_length(body);
+}
+
+const ZZZ10DM_SESSLEN_EVENTS = [['default', '90 DAYS', 'The standard: the session ends after 90 days without use']];
+const ZZZ10DM_SESSLEN_ERR = { too_short: 'Too short - at least 5 minutes.', too_long: 'Too long - 90 days is the most.', my_device_only: 'Only on MY DEVICE.', not_logged_in: 'Log in first.' };
+function zzz10dm_session_length(body) {
+  const box = document.createElement('div'); box.className = 'zzz10m5-txt'; box.setAttribute('data-vlabel', 'VERSO › SETTINGS › Login setup › SESSION LENGTH'); box.setAttribute('data-vkind', 'SETUP');
+  box.style.cssText = 'margin:6px 0;padding:6px 8px;border:1px solid #444;border-radius:8px;max-width:520px';
+  const t = document.createElement('div'); t.style.cssText = 'font-weight:800;color:#D4AF37;margin-bottom:3px'; t.textContent = 'SESSION LENGTH · MY DEVICE';
+  const n = document.createElement('div'); n.style.cssText = 'color:#999;font-size:11px;margin-bottom:2px';
+  n.textContent = 'How long you stay logged in on MY DEVICE without using Verso. 90 DAYS is the standard and the most; choose shorter if you want. UNTIL DATE ends the session at that time once, then 90 DAYS again. Your choice is kept in your account (valid for your next MY DEVICE too).';
+  const st = document.createElement('div'); st.style.cssText = 'font-size:11px;margin-top:3px;color:#999'; st.textContent = 'Loading …';
+  box.append(t, n); body.appendChild(box);
+  let timer = null, saved = null;
+  const save = (v) => {
+    clearTimeout(timer); st.style.color = '#999'; st.textContent = 'Saving …';
+    timer = setTimeout(async () => {
+      if (v.mode === 'until' && !v.until) { st.textContent = 'Choose the date.'; return; }
+      try { await zzz4r7_rpc('verso_session_pref_set', { p: v }); saved = v; st.style.color = '#7CFC9A'; st.textContent = 'Saved ✓ ' + zzz_date_label(v, ZZZ10DM_SESSLEN_EVENTS); }
+      catch (e) { const k = Object.keys(ZZZ10DM_SESSLEN_ERR).find(x => String((e && e.message) || '').includes(x)); st.style.color = '#ff8a8a'; st.textContent = 'Not saved - ' + (k ? ZZZ10DM_SESSLEN_ERR[k] : 'the server did not answer, try again.') + (saved ? ' Still valid: ' + zzz_date_label(saved, ZZZ10DM_SESSLEN_EVENTS) : ''); }
+    }, 900);
+  };
+  (async () => {
+    let cur = { mode: 'default' };
+    try { const r = await zzz4r7_rpc('verso_session_pref_get'); if (r && r.value && r.value.mode) cur = r.value; st.textContent = ''; }
+    catch (e) { st.style.color = '#ff8a8a'; st.textContent = 'The setting could not be read - 90 DAYS holds until it is saved.'; }
+    saved = cur;
+    zzz_date_module(box, { value: Object.assign({ n: 30, unit: 'day' }, cur), events: ZZZ10DM_SESSLEN_EVENTS, onChange: save });
+    box.appendChild(st);
+  })();
 }
 
 window.__versoMainDone = true;
