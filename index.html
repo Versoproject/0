@@ -30542,6 +30542,14 @@ function zzz_verse_section_render(host) {
   pwN.textContent = 'The window always moves to a random place and stays fully on the screen above the Verso keyboard - ↻ MOVE gives it a new place. KEY VIBRATION is for every Verso keyboard key on this device (stronger = easier to feel; MAX also via the Verso app). Phones without a vibration motor ignore it.';
   pw.appendChild(pwN);
   b.appendChild(pw);
+
+  const kl = document.createElement('div'); kl.className = 'zzz10m5-txt'; kl.style.cssText = 'margin:6px 0;padding:6px 8px;border:1px solid #444;border-radius:8px';
+  const klT = document.createElement('div'); klT.style.cssText = 'font-weight:800;color:#D4AF37;margin-bottom:3px'; klT.textContent = 'KEY LOCK · THIS DEVICE'; kl.appendChild(klT);
+  const klN = document.createElement('div'); klN.style.cssText = 'color:#999;font-size:11px;margin-bottom:2px';
+  klN.textContent = 'How long your END-TO-END key stays open on this device after your MV PHRASE opened it. Then Verso asks the phrase again. SCREEN OFF / PHONE RESTART work in the Verso app; in the browser the key locks when Verso is closed.';
+  kl.appendChild(klN);
+  zzz_date_module(kl, { value: zzz4r7_keylock_get(), events: ZZZ4R7_KEYLOCK_EVENTS, onChange: (v) => zzz_mvw_set({ keylock: v }) });
+  b.appendChild(kl);
   const tip = p('RECOMMENDED: protect the e-mail of your Verso account with its own code (2-step verification of the mail provider). The recovery token comes there - until the next recovery ways arrive (hybrid server, watch, automated phone call), your e-mail + verse are the way back into your account.');
   tip.style.color = '#D4AF37'; tip.style.fontWeight = '700';
   const S = document.createElement('div'); S.textContent = 'Loading…'; b.appendChild(S);
@@ -32291,6 +32299,57 @@ async function zzz4r7_seal(c) {
   } catch (e) {}
   return c;
 }
+
+const ZZZ_DATE_UNITS = [['min', 'MIN', 60e3], ['hour', 'HOUR', 3600e3], ['day', 'DAY', 864e5], ['week', 'WEEK', 6048e5], ['month', 'MONTH', 2592e6]];
+function zzz_date_until(v, from) {
+  v = v || {}; const t0 = from || Date.now();
+  if (v.mode === 'after') { const u = ZZZ_DATE_UNITS.find(x => x[0] === v.unit) || ZZZ_DATE_UNITS[1]; return t0 + Math.max(1, Number(v.n) || 1) * u[2]; }
+  if (v.mode === 'until') { const t = Date.parse(v.until || ''); return isNaN(t) ? null : t; }
+  return null;
+}
+function zzz_date_label(v, events) {
+  v = v || {}; const ev = (events || []).find(e => e[0] === v.mode);
+  if (ev) return ev[1];
+  if (v.mode === 'after') { const u = ZZZ_DATE_UNITS.find(x => x[0] === v.unit) || ZZZ_DATE_UNITS[1]; const n = Math.max(1, Number(v.n) || 1); return 'AFTER ' + n + ' ' + u[1] + (n > 1 ? 'S' : ''); }
+  if (v.mode === 'until') { const t = Date.parse(v.until || ''); return isNaN(t) ? 'UNTIL …' : 'UNTIL ' + new Date(t).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); }
+  return '—';
+}
+
+function zzz_date_module(host, opts) {
+  opts = opts || {}; let v = Object.assign({ mode: 'after', n: 1, unit: 'hour', until: '' }, opts.value || {});
+  const box = document.createElement('div'); box.className = 'zzz-date-mod'; box.setAttribute('data-vlabel', 'VERSO › DATE MODULE'); box.setAttribute('data-5s', 'DATE MODULE');
+  box.style.cssText = 'display:flex;flex-direction:column;gap:4px;margin:3px 0';
+  const sum = document.createElement('div'); sum.style.cssText = 'font-weight:800;color:#D4AF37';
+  const r1 = document.createElement('div'), r2 = document.createElement('div'), r3 = document.createElement('div');
+  [r1, r2, r3].forEach(r => { r.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;align-items:center'; });
+  const chip = (t, on, fn, title) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-btn' + (on ? ' is-on' : ''); b.textContent = t; if (title) b.title = title; b.addEventListener('click', (e) => { e.preventDefault(); fn(); }); return b; };
+  const set = (p) => { v = Object.assign({}, v, p); draw(); try { opts.onChange && opts.onChange(Object.assign({}, v)); } catch (e) {} };
+  function draw() {
+    sum.textContent = zzz_date_label(v, opts.events);
+    r1.innerHTML = ''; r2.innerHTML = ''; r3.innerHTML = '';
+    (opts.events || []).forEach(([m, lab, note]) => r1.appendChild(chip(lab, v.mode === m, () => set({ mode: m }), note)));
+    r2.appendChild(chip('AFTER', v.mode === 'after', () => set({ mode: 'after' })));
+    if (v.mode === 'after') {
+      r2.appendChild(chip('−', false, () => set({ n: Math.max(1, (Number(v.n) || 1) - 1) })));
+      const n = document.createElement('b'); n.textContent = String(Math.max(1, Number(v.n) || 1)); n.style.cssText = 'min-width:22px;text-align:center'; r2.appendChild(n);
+      r2.appendChild(chip('+', false, () => set({ n: Math.min(999, (Number(v.n) || 1) + 1) })));
+      ZZZ_DATE_UNITS.forEach(([u, lab]) => r2.appendChild(chip(lab, v.unit === u, () => set({ unit: u }))));
+    }
+    r3.appendChild(chip('UNTIL DATE', v.mode === 'until', () => set({ mode: 'until' })));
+    if (v.mode === 'until') {
+      const i = document.createElement('input'); i.type = 'datetime-local'; i.className = 'entry-cell'; i.style.cssText = 'max-width:220px';
+      try { const t = Date.parse(v.until || ''); if (!isNaN(t)) { const d = new Date(t - new Date(t).getTimezoneOffset() * 60e3); i.value = d.toISOString().slice(0, 16); } } catch (e) {}
+      i.addEventListener('change', () => { const t = Date.parse(i.value); if (!isNaN(t)) set({ until: new Date(t).toISOString() }); });
+      r3.appendChild(i);
+    }
+  }
+  draw(); box.append(sum, r1, r2, r3); host.appendChild(box);
+  return { get: () => Object.assign({}, v), set: (p) => set(p) };
+}
+
+const ZZZ4R7_KEYLOCK_EVENTS = [['screen', 'SCREEN OFF', 'Locks when the phone screen goes off (Verso app)'], ['restart', 'PHONE RESTART', 'Locks when the phone restarts (Verso app)']];
+function zzz4r7_keylock_get() { const v = (zzz_mvw_get() || {}).keylock; return v && v.mode ? v : { mode: 'after', n: 1, unit: 'hour' }; }
+function zzz4r7_keylock_until(openedAt) { return zzz_date_until(zzz4r7_keylock_get(), openedAt); }
 
 const ZZZ4R7_KDF_IT = 600000;
 const zzz4r7_b64 = (u8) => { let s = ''; u8.forEach(x => { s += String.fromCharCode(x); }); return btoa(s); };
@@ -55959,7 +56018,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 16:01';
+const VERSO_BUILD = '2026-11-18 16:18';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
