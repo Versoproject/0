@@ -30475,6 +30475,8 @@ function zzz_verse_ask(ch, title, text, altLabel) {
 
 async function zzz_verse_verify(why, title, text, purpose) {
   purpose = purpose === 'verse' ? 'verse' : 'mv';
+
+  if (purpose === 'mv' && /^verso(\d+|-claude)?$/.test(String(zzz0r1_get_current_username() || '').toLowerCase())) purpose = 'verse';
   for (let tries = 0; tries < 5; tries++) {
     const ch = await zzz_verse_call({ action: 'challenge', purpose });
     if (!ch || !ch.success) { zzz6f2_show_toast(zzz_verse_why(ch), 'warn', 3500); return false; }
@@ -30486,6 +30488,28 @@ async function zzz_verse_verify(why, title, text, purpose) {
     zzz6f2_show_toast(zzz_verse_why(r), 'warn', 3500);
     if (r && (r.reason === 'locked' || r.reason === 'network' || r.reason === 'no_session')) return false;
   }
+  return false;
+}
+
+async function zzz_session_mv_gate() {
+  let st = null;
+  for (let i = 0; i < 2 && !st; i++) { try { st = await zzz4r7_rpc('verso_session_state'); } catch (e) { await new Promise(r => setTimeout(r, 700)); } }
+  if (st !== 'pending') return true;
+  let purpose = 'session';
+  for (let tries = 0; tries < 6; tries++) {
+    const ch = await zzz_verse_call({ action: 'challenge', purpose });
+    if (!ch || !ch.success) { zzz6f2_show_toast(zzz_verse_why(ch), 'warn', 4000); break; }
+    const alt = (purpose === 'session' && ch.mode === 'phrase' && ch.has_verse) ? 'FORGOT? → VERSE' : null;
+    const v = await zzz_verse_ask(ch, 'LOGIN · MV PHRASE', ch.mode === 'verse' ? 'New login: two words of your verse finish it.' : 'New login: your MV PHRASE finishes it. Forgotten? Cancel and use RECOVERY.', alt);
+    if (v == null) break;
+    if (v && v.alt) { purpose = 'session_verse'; continue; }
+    zzz6f2_show_toast('Checking…');
+    const r = await zzz_verse_call(Object.assign({ action: 'answer', purpose, challenge_id: ch.challenge_id }, ch.mode === 'verse' ? { joined: v } : { phrase: v }));
+    if (r && r.success) { try { zzz_haptic_pulse(30); } catch (e) {} if (ch.mode === 'phrase') setTimeout(() => { try { zzz4r7_uk_after_phrase(v); } catch (e) {} }, 1800);     return true; }
+    zzz6f2_show_toast(zzz_verse_why(r), 'warn', 4000);
+    if (r && (r.reason === 'locked' || r.reason === 'network' || r.reason === 'no_session')) break;
+  }
+  try { await zzz_verse_call({ action: 'session_cancel' }); } catch (e) {}
   return false;
 }
 
@@ -56197,7 +56221,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 20:33';
+const VERSO_BUILD = '2026-11-18 20:53';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -66173,6 +66197,7 @@ async function zzz_my_device_restore() {
     zzz0auth_sessionToken = result.token;
     zzz0auth_tokenAt = Date.now();
     zzz_session_start(saved.u, saved.s);
+    if (!(await zzz_session_mv_gate())) { try { zzz_session_stop(); } catch (e) {} zzz0auth_sessionToken = null; zzz_my_device_clear(); return false; }
     try { zzz_login_alert_apply(result.alert || null); } catch (e) {}
     const label = document.getElementById('zzz6f7UsernameLabel');
     if (label) label.textContent = saved.u;
@@ -66228,6 +66253,11 @@ async function zzz10r8_verify_login_password(username, enteredPassword) {
         } else { zzz_login_alert_apply(result.alert || null); }
       } catch (e) {}
 
+      if (!(await zzz_session_mv_gate())) {
+        try { zzz_session_stop(); } catch (e) {}
+        zzz0auth_sessionToken = null; try { zzz_my_device_clear(); } catch (e) {}
+        return { verified: false, reason: 'mv_not_confirmed' };
+      }
       setTimeout(() => { try { zzz0auth_check_bridge(); } catch (e) {   } }, 300);
     }
     return { verified: result.verified, reason: result.reason || undefined };
@@ -66291,6 +66321,7 @@ async function zzz6f36_submit_login(options = {}) {
         lookup_failed: 'could not be verified (database unreachable?)',
 
         session_failed: 'the session could not be created on the server, try again',
+        mv_not_confirmed: 'the login was not finished - the MV PHRASE was not confirmed',
         session_active_elsewhere: 'this account is logged in on another device. A second login is not allowed - log out there, or use the emergency account recovery',
         too_many_attempts: 'too many wrong passwords in a row - wait 15 minutes and try again (the account owner was notified by email)'
       }[verifyResult.reason] || 'unknown reason';
