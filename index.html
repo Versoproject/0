@@ -55968,7 +55968,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 13:50';
+const VERSO_BUILD = '2026-11-18 14:20';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -57291,10 +57291,25 @@ function zzz_home_show() {
       .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
   } catch (e) {}
 })();
-window.addEventListener('popstate', () => {
+var zzzBackStepAt = 0;
+// after a Back: an older step may still carry #media / #vi although that window is closed - clear it (keeping Verso's mark), so the next command of the app with the same hash is seen as new
+function zzz_back_hash_tidy() {
+  try {
+    const h = String(location.hash || '');
+    const stale = (/^#media\b/i.test(h) && !document.getElementById('zzzMediaWin')) || (/^#vi\b/i.test(h) && !(typeof zzzViWin !== 'undefined' && zzzViWin && zzzViWin.isConnected));
+    if (stale) history.replaceState(history.state, '', location.pathname + location.search);
+  } catch (e) {}
+}
+window.addEventListener('popstate', (ev) => {
   if (zzz_vkbHistIgnore > 0) { zzz_vkbHistIgnore--; return; }
+  if (ev && ev.state && (ev.state.zzzGuard || ev.state.zzzOutside || ev.state.zzzVkb)) zzzBackStepAt = Date.now();
+  setTimeout(zzz_back_hash_tidy, 300);
   // [Zzz14-NAV:CMD-HASH-NOT-BACK] Vrso -> Claude AI 2026-11-17 („prepne na dashboard keď kliknem oko“ / „zobrazí sa na chvíľu… ale vráti späť“): an answer of the Verso app comes as a #hash (#rpage=… DIRECT read, #media…, #alarm-new=…) - the browser reports that as popstate, but it is NOT the Back button: never close the open page / READ SPACE for it (same rule as the outside-back handler)
-  if (String(location.hash || '').length > 1) return;
+  // [Zzz14-NAV:BACK-WITH-HASH] 2026-11-18 (Vrso „oprav back gesture… MM a MMM“): while MEDIA CENTER / VI is open from the Verso app the address keeps #media / #vi,
+  // and Verso's own Back steps carry that hash too - the old rule „a hash = not Back“ then ignored EVERY Back there. A command of the app is a NEW step
+  // without Verso's mark; a real Back lands on a step Verso made itself (zzzGuard / zzzOutside / zzzVkb) - only those count as Back.
+  { const own = ev && ev.state && (ev.state.zzzGuard || ev.state.zzzOutside || ev.state.zzzVkb);
+    if (String(location.hash || '').length > 1 && !own) return; }
   if (zzz_back_close_top()) {
     zzz_back_guard();
     setTimeout(() => { if (!zzz_home_busy()) zzz_home_show(); }, 250);
@@ -58818,7 +58833,7 @@ window.addEventListener('popstate', () => {
 });
 
 let zzzHiddenAt = 0;
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') zzzHiddenAt = Date.now(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { zzzHiddenAt = Date.now(); try { zzz_back_hash_tidy(); } catch (e) {} } });
 function zzz_from_outside(cold) {
   return !!cold || document.visibilityState === 'hidden' || (zzzHiddenAt && Date.now() - zzzHiddenAt < 6000);
 }
@@ -61483,7 +61498,8 @@ function zzz_mpend_hash(tries) {
   const m = String(location.hash || '').match(/^#mpend=([A-Za-z0-9_-]{1,60000})$/);
   if (!m) return;
   if (!zzz_media_me()) { if ((tries || 0) < 60) setTimeout(() => zzz_mpend_hash((tries || 0) + 1), 500); return; }
-  try { history.replaceState(null, '', location.pathname + location.search + '#media'); } catch (e) {}
+  // [Zzz14-NAV:BACK-WITH-HASH] #media stays in the address only while MEDIA CENTER is really open - a stale #media made the next „open MEDIA CENTER“ of the app invisible (same hash = no change)
+  try { history.replaceState(null, '', location.pathname + location.search + (document.getElementById('zzzMediaWin') ? '#media' : '')); } catch (e) {}
   let list = []; try { list = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/'))))); } catch (e) { list = []; }
   (async () => {
     if (zzzMedia.loadedOf !== zzz_media_me()) { try { await zzz_media_load(); } catch (e) {} }
@@ -62662,6 +62678,8 @@ function zzz_media_edit(it, redraw) {
 
 function zzz_media_hash() {
   const h = String(location.hash || '');
+  // [Zzz14-NAV:BACK-WITH-HASH] a Back that only lands on an older step still marked #media is not a command to open MEDIA CENTER again
+  if (/^#media$/i.test(h) && Date.now() - zzzBackStepAt < 100) { zzz_back_hash_tidy(); return; }
 
   try { if (/^#media/i.test(h) && zzz_from_outside(false)) { zzzMediaFromOutside = true; zzz_outside_back_arm(); } } catch (e) {}
 
