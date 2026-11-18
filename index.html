@@ -32469,10 +32469,12 @@ function zzz4r7_idb(fn) {
     rq.onerror = () => res(null); } catch (e) { res(null); } });
 }
 function zzz4r7_idb_key() { try { return 'uk:' + String((typeof zzz0r1_get_current_username === 'function' && zzz0r1_get_current_username()) || '').toLowerCase(); } catch (e) { return 'uk:'; } }
-function zzz4r7_keep_save() { const o = zzz4r7UK; if (!o || o.mode !== 'always') return; zzz4r7_idb(st => st.put({ key: o.key, id: o.id, at: o.at }, zzz4r7_idb_key())); }
+
+function zzz4r7_my_device() { try { return typeof zzz10dmActive === 'undefined' || zzz10dmActive === 'my'; } catch (e) { return true; } }
+function zzz4r7_keep_save() { const o = zzz4r7UK; if (!o || o.mode !== 'always' || !zzz4r7_my_device()) return; zzz4r7_idb(st => st.put({ key: o.key, id: o.id, at: o.at }, zzz4r7_idb_key())); }
 function zzz4r7_keep_drop() { zzz4r7_idb(st => st.delete(zzz4r7_idb_key())); }
 async function zzz4r7_keep_restore() {
-  if (zzz4r7UK || zzz4r7_keylock_get().mode !== 'always') return;
+  if (zzz4r7UK || zzz4r7_keylock_get().mode !== 'always' || !zzz4r7_my_device()) return;
   const v = await zzz4r7_idb(st => st.get(zzz4r7_idb_key()));
   if (v && v.key && v.id && !zzz4r7UK) { zzz4r7UK = { key: v.key, id: v.id, at: v.at || Date.now(), until: null, mode: 'always' }; try { document.dispatchEvent(new CustomEvent('zzz4r7-key', { detail: { open: true } })); } catch (e) {} }
 }
@@ -56221,7 +56223,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 20:53';
+const VERSO_BUILD = '2026-11-18 21:15';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -65638,11 +65640,24 @@ function zzz10dm_activate_on_login() {
   }
 }
 function zzz10dm_after_logout() {
+  try { if (zzz10dmActive !== 'my') { zzz4r7_keep_drop(); zzz4r7_uk_lock(); } } catch (e) {}
   if (typeof zzz16_after_logout === 'function') zzz16_after_logout();
   if (zzz10dmIdleTimer) { clearTimeout(zzz10dmIdleTimer); zzz10dmIdleTimer = null; }
   zzz10dmMem.clear();
   zzz10dmActive = zzz10dm_stored_default();
   zzz10dmPending = zzz10dmActive;
+}
+
+let zzz10dmForeignAsked = false;
+async function zzz10dm_foreign_remind() {
+  try {
+    if (zzz10dmForeignAsked || !zzz6f7_isLoggedIn || zzz10dmActive !== 'my') return;
+    const r = await zzz4r7_rpc('verso_session_pref_get'); if (!r || !r.foreign_at) return;
+    zzz10dmForeignAsked = true;
+    const when = new Date(r.foreign_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    const ok = await zzz_verso_confirm('You were logged in on a FOREIGN device (' + when + '). If anybody could see your MV PHRASE there, change it now: SETTINGS › Login setup › CHANGE PASSWORD › MV PHRASE.', 'GOT IT');
+    if (ok) zzz4r7_rpc('verso_session_foreign_ack').catch(() => {});
+  } catch (e) {}
 }
 function zzz10dm_build_row() {
   const row = document.createElement('div');
@@ -66196,6 +66211,7 @@ async function zzz_my_device_restore() {
     }
     zzz0auth_sessionToken = result.token;
     zzz0auth_tokenAt = Date.now();
+    setTimeout(zzz10dm_foreign_remind, 9000);
     zzz_session_start(saved.u, saved.s);
     if (!(await zzz_session_mv_gate())) { try { zzz_session_stop(); } catch (e) {} zzz0auth_sessionToken = null; zzz_my_device_clear(); return false; }
     try { zzz_login_alert_apply(result.alert || null); } catch (e) {}
@@ -66258,6 +66274,8 @@ async function zzz10r8_verify_login_password(username, enteredPassword) {
         zzz0auth_sessionToken = null; try { zzz_my_device_clear(); } catch (e) {}
         return { verified: false, reason: 'mv_not_confirmed' };
       }
+      if (zzz10dmPending === 'foreign') setTimeout(() => { zzz4r7_rpc('verso_session_foreign_mark').catch(() => {}); }, 2500);
+      else if (zzz10dmPending === 'my') setTimeout(zzz10dm_foreign_remind, 7000);
       setTimeout(() => { try { zzz0auth_check_bridge(); } catch (e) {   } }, 300);
     }
     return { verified: result.verified, reason: result.reason || undefined };
