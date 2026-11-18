@@ -32291,6 +32291,56 @@ async function zzz4r7_seal(c) {
   } catch (e) {}
   return c;
 }
+
+const ZZZ4R7_KDF_IT = 600000;
+const zzz4r7_b64 = (u8) => { let s = ''; u8.forEach(x => { s += String.fromCharCode(x); }); return btoa(s); };
+const zzz4r7_unb64 = (b) => Uint8Array.from(atob(b), ch => ch.charCodeAt(0));
+async function zzz4r7_key_new() { return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']); }
+async function zzz4r7_kek(secret, saltB64, it) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(String(secret).normalize('NFKD').replace(/\p{M}/gu, '').trim().toLowerCase()), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: zzz4r7_unb64(saltB64), iterations: it || ZZZ4R7_KDF_IT }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function zzz4r7_seal_bytes(key, bytes, aad) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt(Object.assign({ name: 'AES-GCM', iv }, aad ? { additionalData: new TextEncoder().encode(aad) } : {}), key, bytes));
+  return { iv: zzz4r7_b64(iv), ct: zzz4r7_b64(ct) };
+}
+async function zzz4r7_open_bytes(key, box, aad) {
+  return new Uint8Array(await crypto.subtle.decrypt(Object.assign({ name: 'AES-GCM', iv: zzz4r7_unb64(box.iv) }, aad ? { additionalData: new TextEncoder().encode(aad) } : {}), key, zzz4r7_unb64(box.ct)));
+}
+
+async function zzz4r7_wrap(key, byKey) { return Object.assign({ v: 1 }, await zzz4r7_seal_bytes(byKey, new Uint8Array(await crypto.subtle.exportKey('raw', key)), 'verso-key')); }
+async function zzz4r7_unwrap(w, byKey) { return crypto.subtle.importKey('raw', await zzz4r7_open_bytes(byKey, w, 'verso-key'), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']); }
+
+async function zzz4r7_block_lock(b, key, keyRef) {
+  if (!b || (b.data && b.data.enc)) return b;
+  const box = await zzz4r7_seal_bytes(key, new TextEncoder().encode(JSON.stringify(b.data == null ? null : b.data)), 'verso-block:' + b.id);
+  return Object.assign({}, b, { data: { enc: Object.assign({ cipher: 'aes-gcm', v: 1, key_ref: keyRef }, box) } });
+}
+async function zzz4r7_block_unlock(b, key) {
+  if (!b || !b.data || !b.data.enc) return b;
+  const raw = await zzz4r7_open_bytes(key, b.data.enc, 'verso-block:' + b.id);
+  return Object.assign({}, b, { data: JSON.parse(new TextDecoder().decode(raw)) });
+}
+async function zzz4r7_container_lock(c, key, keyRef) { const o = JSON.parse(JSON.stringify(c)); o.blocks = await Promise.all((o.blocks || []).map(b => zzz4r7_block_lock(b, key, keyRef))); o.ext = Object.assign({}, o.ext, { enc: { cipher: 'aes-gcm', key_ref: keyRef } }); return o; }
+async function zzz4r7_container_unlock(c, key) { const o = JSON.parse(JSON.stringify(c)); o.blocks = await Promise.all((o.blocks || []).map(b => zzz4r7_block_unlock(b, key))); return o; }
+
+async function zzz4r7_cipher_selftest(c) {
+  const t0 = performance.now();
+  const salt = zzz4r7_b64(crypto.getRandomValues(new Uint8Array(16)));
+  const kek = await zzz4r7_kek('verso test phrase', salt, 100000);
+  const uk = await zzz4r7_key_new(), ck = await zzz4r7_key_new();
+  const ukW = await zzz4r7_wrap(uk, kek), ckW = await zzz4r7_wrap(ck, uk);
+  const ref = 'ck:' + zzz4r7_b64(crypto.getRandomValues(new Uint8Array(6))).replace(/[^A-Za-z0-9]/g, '');
+  const locked = await zzz4r7_container_lock(c, ck, ref);
+  const lockedHash = await zzz4r7_hash(locked);
+  const uk2 = await zzz4r7_unwrap(ukW, await zzz4r7_kek('verso test phrase', salt, 100000));
+  const ck2 = await zzz4r7_unwrap(ckW, uk2);
+  const back = await zzz4r7_container_unlock(locked, ck2);
+  const same = zzz4r7_canon_json(Object.assign({}, back, { ext: c.ext })) === zzz4r7_canon_json(c);
+  let wrongKey = false; try { await zzz4r7_container_unlock(locked, await zzz4r7_key_new()); } catch (e) { wrongKey = true; }
+  return { same, wrongKey, ms: Math.round(performance.now() - t0), plain: zzz4r7_canon_json(c).length, enc: zzz4r7_canon_json(locked).length, lockedHash, sample: locked.blocks[0] && locked.blocks[0].data };
+}
 async function zzz4r7_of(entryId) { const m = await zzz_rdr_load(entryId); return m ? zzz4r7_seal(zzz4r7_build(m)) : null; }
 function zzz4r7_show(m) {
   const c = zzz4r7_build(m); if (!c) return;
@@ -32305,6 +32355,12 @@ function zzz4r7_show(m) {
   zzz4r7_seal(c).then(paint).catch(() => { st.textContent = 'Hash could not be counted here.'; });
   btn('COPY JSON', 'Copy the container JSON', () => { try { navigator.clipboard.writeText(JSON.stringify(c, null, 2)); zzz6f2_show_toast('Container JSON copied.', 'ok'); } catch (e) {} });
   btn('VERIFY', 'Count the hash again from the JSON shown', async () => { const h = await zzz4r7_hash(c); zzz6f2_show_toast(h === c.integrity.content_hash ? '✓ Hash matches.' : 'Hash differs.', h === c.integrity.content_hash ? 'ok' : 'warn'); });
+
+  btn('🔒 TEST', 'End-to-end cipher self-test on this phone: lock every block (AES-GCM), unlock with the key chain, compare - nothing is stored or sent', async () => {
+    const out = blk('div', 'zzz-rs-meta', 'Testing the cipher…', 'CIPHER TEST'); content.insertBefore(out, pre);
+    try { const r = await zzz4r7_cipher_selftest(c);
+      out.textContent = (r.same && r.wrongKey ? '✓ CIPHER OK' : '✗ CIPHER PROBLEM') + ' · locked → unlocked = ' + (r.same ? 'same' : 'DIFFERENT') + ' · wrong key refused = ' + (r.wrongKey ? 'yes' : 'NO') + ' · ' + r.ms + ' ms · ' + r.plain + ' → ' + r.enc + ' bytes · locked hash ' + r.lockedHash.slice(0, 23) + '… · block 1 now: ' + JSON.stringify(r.sample).slice(0, 160) + '…';
+    } catch (e) { out.textContent = '✗ The cipher test could not run here: ' + (e && e.message || e); } });
   fr.finish();
 }
 
@@ -55903,7 +55959,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 15:50';
+const VERSO_BUILD = '2026-11-18 16:01';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
