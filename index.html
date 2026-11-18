@@ -30434,13 +30434,13 @@ function zzz_verse_ask(ch, title, text) {
     const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv';
     const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', 'VERSE VERIFICATION');
     const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = title; b.appendChild(t);
-    const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text'; sub.textContent = text; b.appendChild(sub);
+    const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text'; sub.textContent = text; sub.setAttribute('data-mv-opt', '1'); b.appendChild(sub);
     const isVerse = ch.mode === 'verse';
     const lab = document.createElement('button'); lab.type = 'button'; lab.className = 'entry-number-button zzz10v1-field-label zzzfin-mv-label'; lab.disabled = true;
     lab.textContent = isVerse ? ('VERSE ' + (ch.verses > 1 ? '#' + ch.verse_no + ' ' : '') + '· WORD ' + ch.positions[0] + ' + WORD ' + ch.positions[1]) : 'MV PHRASE';
     b.appendChild(lab);
     if (isVerse) {
-      const hint = document.createElement('div'); hint.className = 'zzz-media-diss-s';
+      const hint = document.createElement('div'); hint.className = 'zzz-media-diss-s'; hint.setAttribute('data-mv-opt', '1');
       hint.textContent = 'Word ' + ch.positions[0] + ' and word ' + ch.positions[1] + ' of your verse (' + ch.words + ' words), together without a space - e.g. „pekný deň“ → peknyden. Decoy symbols @ # / $ & * ! ? ; : , . are allowed anywhere - Verso ignores them.';
       b.appendChild(hint);
     }
@@ -30460,13 +30460,45 @@ function zzz_verse_ask(ch, title, text) {
       end(v);
     });
     inp._vkbOk = y;
-    // [Zzz13-MV:VERSE-PLACE] Vrso 2026-11-18 13:59: the question never sits in the same place - every time a different height (and side, where there is room),
-    // so a recorded tap / a fixed overlay cannot aim at it. The upper half only - the Verso keyboard takes the lower one.
-    try { const rnd = (n) => crypto.getRandomValues(new Uint32Array(1))[0] % n;
-      o.style.alignItems = 'flex-start'; o.style.paddingTop = (2 + rnd(26)) + 'vh';
-      const room = Math.max(0, window.innerWidth - 440); if (room > 20) { o.style.justifyContent = 'flex-start'; b.style.marginLeft = (10 + rnd(room)) + 'px'; }
-      if (rnd(2)) row.style.flexDirection = 'row-reverse'; } catch (e) {}
+    // [Zzz13-MV:VERSE-PLACE] Vrso 2026-11-18 13:59: the question never sits in the same place - every time a different height and side,
+    // so a recorded tap / a fixed overlay cannot aim at it. Vrso 14:35 „radšej adaptívne na displeje“: the place is a random FRACTION of the free room,
+    // re-applied on every screen change (rotation, Verso keyboard, browser bars) - the window always stays fully on the screen and above the Verso keyboard.
+    // ↻ MOVE = a new random place (also the way out if it ever sits badly). Size from SETTINGS › Multi Verification › MV WINDOW (this device).
+    const pref = zzz_mvw_get();
+    const SZ = { S: [280, 12], M: [340, 13], L: [420, 15], XL: [560, 17] }[pref.size] || [340, 13];
+    b.style.width = 'min(' + SZ[0] + 'px, calc(100vw - 16px))'; b.style.maxWidth = 'none'; b.style.fontSize = SZ[1] + 'px'; b.style.boxSizing = 'border-box';
+    t.style.fontSize = (SZ[1] + 2) + 'px';
+    const rnd01 = () => { try { return crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296; } catch (e) { return Math.random(); } };
+    let fx = rnd01(), fy = rnd01();
+    try { if (crypto.getRandomValues(new Uint32Array(1))[0] % 2) row.style.flexDirection = 'row-reverse'; } catch (e) {}
+    const mv = document.createElement('button'); mv.type = 'button'; mv.className = 'zzz-media-btn'; mv.textContent = '↻ MOVE'; mv.title = 'Move this window to another place';
+    mv.style.cssText = 'float:right;margin:-4px -4px 4px 8px;padding:2px 8px;font-size:11px';
+    b.insertBefore(mv, t);
+    o.style.display = 'block'; o.style.overflowY = 'auto'; b.style.position = 'absolute';
+    const place = () => {
+      if (!o.isConnected) return;
+      const vv = window.visualViewport;
+      const vw = vv ? vv.width : window.innerWidth, vh = vv ? vv.height : window.innerHeight;
+      let bottom = vh;
+      try { const kp = (typeof zzz_vkbPanel !== 'undefined' && zzz_vkbPanel && zzz_vkbPanel.isConnected) ? zzz_vkbPanel.getBoundingClientRect() : null; if (kp && kp.height > 0 && kp.top > 40) bottom = Math.min(bottom, kp.top); } catch (e) {}
+      const m = 8;
+      // low screen (landscape + keyboard): hide the long explanations first, so the WORD label, the field and the buttons fit above the keyboard
+      const opt = b.querySelectorAll('[data-mv-opt]');
+      opt.forEach(x => { x.style.display = ''; });
+      if (b.offsetHeight > bottom - 2 * m) opt.forEach(x => { x.style.display = 'none'; });
+      const bw = b.offsetWidth, bh = b.offsetHeight;
+      const roomX = Math.max(0, vw - bw - 2 * m), roomY = bottom - bh - 2 * m;
+      b.style.left = Math.round(m + fx * roomX) + 'px';
+      // still too high: the bottom of the window sits on the keyboard edge (field + buttons always reachable)
+      b.style.top = Math.round(roomY > 0 ? m + fy * roomY : Math.max(bottom - bh - m, Math.min(m, bottom - bh - m))) + 'px';
+    };
+    mv.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); fx = rnd01(); fy = rnd01(); place(); });
+    const onRes = () => place();
+    window.addEventListener('resize', onRes); try { window.visualViewport && window.visualViewport.addEventListener('resize', onRes); } catch (e) {}
+    const ro = (typeof ResizeObserver !== 'undefined') ? new ResizeObserver(onRes) : null; if (ro) ro.observe(b);
+    const tick = setInterval(() => { if (!o.isConnected) { clearInterval(tick); window.removeEventListener('resize', onRes); try { window.visualViewport && window.visualViewport.removeEventListener('resize', onRes); } catch (e) {} if (ro) ro.disconnect(); return; } place(); }, 400);
     row.append(y, n); b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
+    place();
     setTimeout(() => { try { inp.click(); } catch (e) {} }, 80);
   });
 }
@@ -30517,9 +30549,27 @@ function zzz_verse_section_render(host) {
    ['EVERY TIME anew (one verification = one step): FINAL (also AUTO FINAL on / off, WITHDRAW) · LOG OUT on MY DEVICE · EMPTY TRASH (permanent delete) · + ADD VERSE · × REMOVE VERSE.', 1],
    ['RECOVERY: first the token from your e-mail - only a right token gets the question (2 words of your verse) → new password.', 1],
    ['Never the same pair of words twice in a row. 5 wrong = 15 min lock + e-mail. Every check is in MV LOG and AUDIT LOG.', 1],
-   ['WITHOUT MV: hold-commands Ctrl + S / R / A / L + your command (fast, also on a foreign device). Changing the base MV PHRASE needs your current password (+ e-mail to you).', 0]
+   ['CHANGE of the base MV PHRASE (SAVE MV PHRASE): current password + MV every time (+ e-mail to you).', 1],
+   ['WITHOUT MV: hold-commands Ctrl + S / R / A / L + your command (fast, also on a foreign device).', 0]
   ].forEach(([t, dot]) => { const d = document.createElement('div'); d.textContent = (dot ? '• ' : '') + t; d.style.margin = '2px 0'; wh.appendChild(d); });
   b.appendChild(wh);
+  // [Zzz13-MV:WINDOW-PREFS] MV WINDOW · this device: size of the moving window + vibration of the Verso keyboard keys
+  const pw = document.createElement('div'); pw.className = 'zzz10m5-txt'; pw.style.cssText = 'margin:6px 0;padding:6px 8px;border:1px solid #444;border-radius:8px';
+  const pwT = document.createElement('div'); pwT.style.cssText = 'font-weight:800;color:#D4AF37;margin-bottom:3px'; pwT.textContent = 'MV WINDOW · THIS DEVICE'; pw.appendChild(pwT);
+  const pick = (label, key, opts, onPick) => {
+    const r = document.createElement('div'); r.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin:3px 0';
+    const l = document.createElement('span'); l.textContent = label; l.style.minWidth = '92px'; r.appendChild(l);
+    const draw = () => Array.from(r.querySelectorAll('button')).forEach(x => x.classList.toggle('is-on', zzz_mvw_get()[key] === x._v));
+    opts.forEach(([v, t]) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn'; x.textContent = t; x._v = v;
+      x.addEventListener('click', () => { zzz_mvw_set({ [key]: v }); draw(); if (onPick) onPick(v); }); r.appendChild(x); });
+    draw(); pw.appendChild(r);
+  };
+  pick('WINDOW SIZE', 'size', [['S', 'S'], ['M', 'M'], ['L', 'L'], ['XL', 'XL']]);
+  pick('KEY VIBRATION', 'vib', [['off', 'OFF'], ['light', 'LIGHT'], ['strong', 'STRONG'], ['max', 'MAX']], () => { try { zzz_haptic_pulse(zzz_vkb_haptic_ms()); } catch (e) {} });
+  const pwN = document.createElement('div'); pwN.style.cssText = 'color:#999;font-size:11px;margin-top:2px';
+  pwN.textContent = 'The window always moves to a random place and stays fully on the screen above the Verso keyboard - ↻ MOVE gives it a new place. KEY VIBRATION is for every Verso keyboard key on this device (stronger = easier to feel; MAX also via the Verso app). Phones without a vibration motor ignore it.';
+  pw.appendChild(pwN);
+  b.appendChild(pw);
   const tip = p('RECOMMENDED: protect the e-mail of your Verso account with its own code (2-step verification of the mail provider). The recovery token comes there - until the next recovery ways arrive (hybrid server, watch, automated phone call), your e-mail + verse are the way back into your account.');
   tip.style.color = '#D4AF37'; tip.style.fontWeight = '700';
   const S = document.createElement('div'); S.textContent = 'Loading…'; b.appendChild(S);
@@ -55840,7 +55890,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 17:00';
+const VERSO_BUILD = '2026-11-18 17:30';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -58840,6 +58890,18 @@ const ZZZ_VKB_DOUBLE_TAP_MS = 300;
 const ZZZ_VKB_X_HOLD_MS = 1000;
 
 const ZZZ_VKB_HAPTIC_MS = 12;
+// [Zzz13-MV:WINDOW-PREFS] Vrso 2026-11-18 14:35 „v mv tabe … možnosť že si user stanoví veľkosť okna a najmä by mali fungovať vibračné funkcie klávesov pre handicapovaných“:
+// per DEVICE (this phone): size of the moving MV window and the vibration of the Verso keyboard keys (everywhere, not only in MV).
+const ZZZ_MVW_KEY = 'verso_mv_window';
+function zzz_mvw_get() {
+  const d = { size: 'M', vib: 'light' };
+  try { const g = (typeof zzz10dmOrig !== 'undefined') ? zzz10dmOrig.get : Storage.prototype.getItem; return Object.assign(d, JSON.parse(g.call(window.localStorage, ZZZ_MVW_KEY) || '{}') || {}); } catch (e) { return d; }
+}
+function zzz_mvw_set(patch) {
+  try { const st = (typeof zzz10dmOrig !== 'undefined') ? zzz10dmOrig.set : Storage.prototype.setItem; st.call(window.localStorage, ZZZ_MVW_KEY, JSON.stringify(Object.assign(zzz_mvw_get(), patch))); } catch (e) {}
+}
+const ZZZ_VKB_VIB_MS = { off: 0, light: 12, strong: 40, max: 80 };
+function zzz_vkb_haptic_ms() { const v = zzz_mvw_get().vib; return ZZZ_VKB_VIB_MS[v] != null ? ZZZ_VKB_VIB_MS[v] : ZZZ_VKB_HAPTIC_MS; }
 
 const ZZZ_VKB_SPACE_DOUBLE_MS = 350;
 const ZZZ_VKB_EDGE = 4;
@@ -63046,7 +63108,7 @@ function zzz_vkb_nav_pad(target) {
       }
     };
     b.addEventListener('pointerdown', (e) => {
-      e.preventDefault(); e.stopPropagation(); zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS);
+      e.preventDefault(); e.stopPropagation(); zzz_haptic_pulse(zzz_vkb_haptic_ms());
       zzz_vkb_nav(target, d);
       stop();
       if (!arrow) { wait = setTimeout(() => { rep = setInterval(() => zzz_vkb_nav(target, d), 80); }, 450); return; }
@@ -63069,7 +63131,7 @@ function zzz_vkb_calc_box(typeFn, target) {
   const btn = (label, title, fn, cls) => {
     const b = document.createElement('button');
     b.type = 'button'; b.tabIndex = -1; b.className = 'zzz-vkb-calc-btn' + (cls ? ' ' + cls : ''); b.textContent = label; b.title = title;
-    b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS); fn(); });
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); zzz_haptic_pulse(zzz_vkb_haptic_ms()); fn(); });
     b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
     return b;
   };
@@ -63225,7 +63287,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       const row = (label, fn, cls) => {
         const b = document.createElement('button');
         b.type = 'button'; b.tabIndex = -1; b.className = 'zzz-vkb-clip-row' + (cls ? ' ' + cls : ''); b.textContent = label;
-        b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS); fn(); });
+        b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); zzz_haptic_pulse(zzz_vkb_haptic_ms()); fn(); });
         b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
         emojiPop.appendChild(b);
       };
@@ -63296,7 +63358,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     try { const rc = getComputedStyle(document.getElementById('versoAIButton')).getPropertyValue('--zzz-ai-ring'); if (rc) ai.style.setProperty('--zzz16-ring', rc); } catch (e) {}
     ai.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); });
     ai.addEventListener('pointerup', (e) => {
-      e.preventDefault(); e.stopPropagation(); zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS); closeEmoji();
+      e.preventDefault(); e.stopPropagation(); zzz_haptic_pulse(zzz_vkb_haptic_ms()); closeEmoji();
       if (page === 'media') { page = mediaBack || 'letters'; if (panel._full) zzz_vkb_toggle_full(panel, false); }
       else if (!zzz_media_on()) { zzz6f2_show_toast('VERSO MEDIA CENTER is off (SETTINGS › VERSO MEDIA CENTER).', 'info'); return; }
       else { mediaBack = page; page = 'media'; }
@@ -63446,7 +63508,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     let timer = null;
     k.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS);
+      zzz_haptic_pulse(zzz_vkb_haptic_ms());
       snapDown(k, ch);
       closePop();
       if (panel._closePops) panel._closePops();
@@ -63503,7 +63565,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
             const kp = zzz23_kb_prefs(); kp.lang = kbLang; zzz23_kb_save(kp);
             try { zzz6f2_show_toast(ZZZ23_KB_LABEL[kbLang] + ' · ' + ZZZ23_KB_NAME[kbLang], 'info'); } catch (e3) {}
             caps = false; capsLock = false; oneShotUsed = false; page = 'letters';
-            zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS * 2);
+            zzz_haptic_pulse(zzz_vkb_haptic_ms() * 2);
             setTimeout(draw, 0);
           } else typeSpace();
         }
@@ -63533,7 +63595,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     b.addEventListener('pointerdown', (e) => {
       e.preventDefault(); closePop(); panel._keyAt = Date.now();
       if (b.disabled) return;
-      zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS); b.classList.add('zzz-vkb-down');
+      zzz_haptic_pulse(zzz_vkb_haptic_ms()); b.classList.add('zzz-vkb-down');
       if (panel._closePops && panel._closePops() && html === '\u232b') { b._popOnly = true; return; }
       b._popOnly = false;
       fn(b);
@@ -63603,7 +63665,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
         if (capsLock) { capsLock = false; caps = false; oneShotUsed = false; shiftTapAt = now; draw(); return; }
         caps = !caps; oneShotUsed = false;
         if (shHoldT) clearTimeout(shHoldT);
-        shHoldT = setTimeout(() => { shHoldT = null; caps = true; capsLock = true; oneShotUsed = false; shiftTapAt = 0; zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS * 2); draw(); }, 450);
+        shHoldT = setTimeout(() => { shHoldT = null; caps = true; capsLock = true; oneShotUsed = false; shiftTapAt = 0; zzz_haptic_pulse(zzz_vkb_haptic_ms() * 2); draw(); }, 450);
         draw();
         { const up = () => { if (shHoldT) { clearTimeout(shHoldT); shHoldT = null; } };
           document.addEventListener('pointerup', up, { once: true, capture: true });
@@ -63716,7 +63778,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     const pk = ctrlKey(rc, (sym && pageHold) ? 'ABC' : nextPage === 'symbols' ? 'SYMBOLS' : nextPage === 'digits' ? (pageHold ? '123<small class="zzz-vkb-symname">SYMBOLS</small>' : '123') : 'ABC', (b) => {
       if (!pageHold) { pageGo(); return; }
       b._pgHeld = false; clearTimeout(b._pgT);
-      b._pgT = setTimeout(() => { b._pgT = null; b._pgHeld = true; sym = !sym; caps = capsLock; zzz_haptic_pulse(ZZZ_VKB_HAPTIC_MS * 2); draw(); }, 450);
+      b._pgT = setTimeout(() => { b._pgT = null; b._pgHeld = true; sym = !sym; caps = capsLock; zzz_haptic_pulse(zzz_vkb_haptic_ms() * 2); draw(); }, 450);
     }, 'zzz-vkb-a1' + (sym ? ' zzz-vkb-on' : ''));
     if (pageHold) {
       pk.addEventListener('pointerup', () => { if (pk._pgT) { clearTimeout(pk._pgT); pk._pgT = null; pageGo(); } });
@@ -66258,6 +66320,10 @@ function zzz10m2_render_login_setup(body) {
       if (zzz10v1_normalize(mvPhrase).length < 4) { zzz6f2_show_toast('The phrase must have at least 4 letters.', 'warn'); return; }
       const currentPassword = zzz10r4_current_pw();
       if (!currentPassword) return;
+      // [Zzz13-MV:PHRASE-CHANGE] Vrso 2026-11-18 14:35 „pohyblivé okno vždy pri mv“: a fresh verification (moving Verso window) before the change;
+      // the database refuses the change without it (trigger verso_mv_phrase_change_guard).
+      const mvTk = await zzz_verse_ticket('verse', 'CHANGE MV PHRASE · VERIFICATION', 'Changing your base MV PHRASE needs a fresh verification every time (2 words of your verse, or your current MV PHRASE). An e-mail is sent to you.');
+      if (!mvTk) return;
       phraseConfirmBtn.disabled = true;
       try {
         const resp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
@@ -66277,8 +66343,8 @@ function zzz10m2_render_login_setup(body) {
             not_registered: 'account is not registered',
             phrase_too_short: 'the phrase must have at least 4 letters',
             password_and_phrase_required: 'missing password or phrase',
-            username_required: 'the account name is missing - log out and log in again'
-          }[result.reason || result.error] || (console.warn('[Zzz13-MV] reason', result.reason || result.error || resp.status), 'unknown reason');
+            username_required: 'the account name is missing - log out and log in again', mv_needed: 'the verification expired (2 min) - try again'
+          }[result.reason || result.error] || (/mv_needed/.test(JSON.stringify(result)) ? 'the verification expired (2 min) - try again' : null) || (console.warn('[Zzz13-MV] reason', result.reason || result.error || resp.status), 'unknown reason');
           zzz6f2_show_toast(`MV phrase not saved - ${reasonText}.`, 'warn');
         }
       } catch (err) {
