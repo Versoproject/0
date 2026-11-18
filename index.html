@@ -30402,6 +30402,62 @@ function zzz_verse_why(r) {
     verse_too_long: 'Max. 40 words.', too_many_verses: 'Max. 10 verses.', last_factor: 'The last verse cannot be removed - add another first.', invalid_token: 'The USERNAME or the TOKEN is not valid.', token_required: 'Type the recovery TOKEN from your e-mail first.', new_password_short: 'The new password is too short.' })[x] || ('Not done (' + (x || 'error') + ').');
 }
 
+function zzz_chain_puzzle(level) {
+  return new Promise((resolve) => {
+    let lv = Math.max(1, Math.min(6, Number(level) || 1)), pz = null, ans = [], phase = 'load', done = false, timers = [];
+    const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv'; o.setAttribute('data-zzz-nodraft', '1');
+    const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', 'VERSO CHAIN PUZZLE'); b.style.cssText = 'width:min(92vw,340px);text-align:center';
+    const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = 'VERSO CHAIN PUZZLE'; b.appendChild(t);
+    const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text'; sub.style.minHeight = '36px'; b.appendChild(sub);
+    const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 280 280'); svg.style.cssText = 'width:100%;max-width:280px;height:auto;touch-action:manipulation;user-select:none;-webkit-user-select:none';
+    const links = [];
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * 2 * Math.PI - Math.PI / 2, cx = 140 + 96 * Math.cos(a), cy = 140 + 96 * Math.sin(a);
+      const g = document.createElementNS(NS, 'g'); g.style.cursor = 'pointer';
+      const hit = document.createElementNS(NS, 'circle'); hit.setAttribute('cx', cx); hit.setAttribute('cy', cy); hit.setAttribute('r', 34); hit.setAttribute('fill', 'transparent');
+      const el = document.createElementNS(NS, 'ellipse'); el.setAttribute('cx', cx); el.setAttribute('cy', cy); el.setAttribute('rx', 40); el.setAttribute('ry', 21);
+      el.setAttribute('transform', 'rotate(' + ((a * 180 / Math.PI) + 90) + ' ' + cx + ' ' + cy + ')'); el.setAttribute('fill', 'none'); el.setAttribute('stroke', '#8a8a8a'); el.setAttribute('stroke-width', 9);
+      g.append(el, hit); svg.appendChild(g); links.push(el);
+      const tap = (e) => { e.preventDefault(); if (phase !== 'play') return; glow(i, '#D4AF37', 220); ans.push(i); dots(); if (ans.length >= pz.seq.length) check(); };
+      g.addEventListener('pointerdown', tap);
+    }
+    const mid = document.createElementNS(NS, 'text'); mid.setAttribute('x', 140); mid.setAttribute('y', 148); mid.setAttribute('text-anchor', 'middle'); mid.setAttribute('fill', '#D4AF37'); mid.setAttribute('font-size', '22'); mid.setAttribute('font-weight', '800'); svg.appendChild(mid);
+    b.appendChild(svg);
+    const row = document.createElement('div'); row.className = 'zzz-media-confirm-row'; row.style.justifyContent = 'center';
+    const again = document.createElement('button'); again.type = 'button'; again.className = 'zzz-media-btn'; again.textContent = '↻ SHOW AGAIN'; again.title = 'Show the chain once more (a new one)';
+    const no = document.createElement('button'); no.type = 'button'; no.className = 'zzz-media-btn'; no.textContent = 'CANCEL';
+    row.append(again, no); b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
+    const later = (fn, ms) => { const id = setTimeout(fn, ms); timers.push(id); return id; };
+    const end = (v) => { if (done) return; done = true; timers.forEach(clearTimeout); o.remove(); resolve(v); };
+    const glow = (i, col, ms) => { const el = links[i]; el.setAttribute('stroke', col); el.setAttribute('stroke-width', 13); later(() => { el.setAttribute('stroke', '#8a8a8a'); el.setAttribute('stroke-width', 9); }, ms); };
+    const dots = () => { mid.textContent = pz ? '●'.repeat(ans.length) + '○'.repeat(Math.max(0, pz.seq.length - ans.length)) : ''; mid.setAttribute('font-size', pz && pz.seq.length > 6 ? '16' : '22'); };
+    async function start() {
+      timers.forEach(clearTimeout); timers = []; phase = 'load'; ans = []; pz = null; mid.textContent = '…'; sub.textContent = 'Getting a chain …';
+      let r = null; try { r = await zzz4r7_rpc('verso_puzzle_new', { p_level: lv }); } catch (e) {}
+      if (done) return;
+      if (!r || !r.ok) { sub.textContent = r && r.reason === 'busy' ? 'Verso is busy - try again in a minute.' : 'No connection to Verso - try again.'; mid.textContent = ''; return; }
+      pz = r; phase = 'show'; sub.textContent = 'WATCH - ' + pz.seq.length + ' links light up. Then tap them in the same order.'; mid.textContent = '👁';
+      pz.seq.forEach((li, k) => later(() => glow(li, '#fff2b0', pz.step_ms - 130), 500 + k * pz.step_ms));
+      later(() => { phase = 'play'; sub.textContent = 'YOUR TURN - tap the links in the same order.'; dots(); }, 500 + pz.seq.length * pz.step_ms + 150);
+    }
+    async function check() {
+      phase = 'check'; sub.textContent = 'Checking …';
+      let r = null; try { r = await zzz4r7_rpc('verso_puzzle_check', { p_id: pz.id, p_answer: ans }); } catch (e) {}
+      if (done) return;
+      timers.forEach(clearTimeout); timers = [];
+      if (r && r.ok && r.pass) { links.forEach(el => { el.setAttribute('stroke', '#7CFC9A'); el.setAttribute('stroke-width', 11); }); mid.textContent = '✓'; mid.setAttribute('font-size', '40'); sub.textContent = 'CHAIN CLOSED ✓'; try { zzz_haptic_pulse(30); } catch (e) {} later(() => end(r.pass), 900); return; }
+      links.forEach(el => el.setAttribute('stroke', '#ff6b6b')); mid.textContent = '✕';
+      sub.textContent = r && r.reason === 'too_fast' ? 'Too fast - watch the whole chain first.' : r && r.reason === 'expired' ? 'This chain expired - a new one comes.' : !r ? 'No connection to Verso - a new chain comes.' : 'Not the same order - a new, longer chain comes.';
+      if (r && r.reason === 'wrong') lv = Math.min(6, lv + 1);
+      later(() => { links.forEach(el => el.setAttribute('stroke', '#8a8a8a')); start(); }, 1500);
+    }
+    again.addEventListener('click', () => { if (phase === 'check') return; start(); });
+    no.addEventListener('click', () => end(null));
+    new MutationObserver((x, obs) => { if (!o.isConnected) { obs.disconnect(); end(null); } }).observe(document.body, { childList: true });
+    start();
+  });
+}
+
 let zzzVerseLabels = null;
 async function zzz_verse_labels(fresh) { if (zzzVerseLabels && !fresh) return zzzVerseLabels; try { const r = await zzz4r7_rpc('verso_verse_labels'); if (Array.isArray(r)) zzzVerseLabels = r; } catch (e) {} return zzzVerseLabels || []; }
 function zzz_verse_ask(ch, title, text, altLabel) {
@@ -30635,6 +30691,10 @@ function zzz_verse_section_render(host) {
       tv.title = 'Practise your verse: Verso asks 2 random words - nothing changes.'; tv.addEventListener('click', async () => { if (await zzz_verse_verify('test_verse', 'TEST VERSE', 'Practise - 2 words of your verse, together without a space.', 'verse')) zzz6f2_show_toast('✓ Your verse is right.', 'ok'); });
       acts.appendChild(tv); }
     acts.append(add, chk);
+    { const pzb = document.createElement('button'); pzb.type = 'button'; pzb.className = 'zzz-media-btn'; pzb.textContent = 'VERSO CHAIN PUZZLE · TRY';
+      pzb.title = 'Try the task an unknown device will get before a login (SLOW LANE) - nothing changes.';
+      pzb.addEventListener('click', async () => { const pass = await zzz_chain_puzzle(1); zzz6f2_show_toast(pass ? '✓ Chain closed - this is what an unknown device will do before a login.' : 'Puzzle closed.', pass ? 'ok' : 'warn', 4000); });
+      acts.appendChild(pzb); }
   };
   load();
 }
@@ -47406,6 +47466,7 @@ const ZZZ_SET_REG = [
   { m: 'Notifications', w: 'sd', scope: 'all', place: 'settings', deps: ['Shown in the notification'], help: 'Sound, vibration and reading of Verso notifications. Saved on the Verso server for your account and this way of login (VERSO APP / WEB APP / WEB keep their own). The DEVICE must allow notifications (see SET UP above).' },
   { m: 'Shown in the notification', w: 's', scope: 'all', place: 'settings', deps: ['Notifications'], help: 'What a Verso notification shows (full / only who / nothing) per priority. Verso server, per way of login.' },
   { m: 'QUIET REGIME', w: 'sd', scope: 'all', place: 'settings', help: 'Verso NOTIF MULTIREADER silent (notifications still come). Server + in the Verso app on this DEVICE.' },
+  { m: 'VERSO CHAIN PUZZLE', w: 'd', scope: 'all', place: 'info', help: 'The task an unknown device gets before a login (SLOW LANE): links of the Verso chain light up, tap them in the same order. Try it in SETTINGS › Multi Verification › VERSO CHAIN PUZZLE · TRY. Not asked at login yet.' },
   { m: 'TRUSTED SESSION', w: 's', scope: 'all', place: 'settings', help: 'Lets your own computer log in next to MY DEVICE for a chosen time (OFF by default, DATE MODULE, MV PHRASE to switch on). SETTINGS › Login setup, only on MY DEVICE. Verso server, per account.' },
   { m: 'SESSION LENGTH · MY DEVICE', w: 's', scope: 'all', place: 'settings', help: 'How long MY DEVICE stays logged in without use (90 DAYS standard, shorter by choice, DATE MODULE). SETTINGS › Login setup. Verso server, per account.' },
   { m: 'READ RECEIPTS', w: 's', scope: 'all', place: 'settings', help: 'Whether others see when you read. Verso server - the same in the app, web app and web.' },
@@ -56264,7 +56325,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-18 22:29';
+const VERSO_BUILD = '2026-11-18 23:18';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
