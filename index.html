@@ -55428,6 +55428,38 @@ async function zzz10m5_open_consent(req) {
 }
 
 let zzzSetTabHist = [];
+
+let zzzViewHist = [];
+const ZZZ_VIEW_ON = /(^|[\s_-])(is-on|is-active|active|on|selected|current)($|[\s_-])/;
+function zzz_view_tab_like(el) { return el && el.tagName === 'BUTTON' && !el.classList.contains('zzz10-0-tab-button') && (/tab/i.test(el.className || '') || el.getAttribute('role') === 'tab' || (el.parentElement && /(tabs|modes|seg)/i.test(el.parentElement.className || ''))); }
+function zzz_view_ws(h) { return h.set ? document.querySelector('#versoWorkspaceSection .settings-workspace') : (h.ws && h.ws.isConnected ? h.ws : null); }
+document.addEventListener('click', (e) => {
+  try {
+    if (zzzViewBackNow) return;
+    const b = e.target && e.target.closest && e.target.closest('button'); if (!zzz_view_tab_like(b)) return;
+    const ws = b.closest('#versoWorkspaceSection .db-workspace'); if (!ws || !b.parentElement) return;
+    const sib = Array.from(b.parentElement.children).filter(x => x !== b && zzz_view_tab_like(x));
+    const on = sib.find(x => ZZZ_VIEW_ON.test(x.className || '') || x.getAttribute('aria-selected') === 'true');
+    if (!on || ZZZ_VIEW_ON.test(b.className || '')) return;
+    zzzViewHist.push({ ws, text: on.textContent.trim(), pcls: b.parentElement.className, set: ws.classList.contains('settings-workspace') ? zzz10_0ActiveTab : null });
+    if (zzzViewHist.length > 30) zzzViewHist.shift();
+  } catch (er) {}
+}, true);
+let zzzViewBackNow = false;
+function zzz_view_back() {
+  while (zzzViewHist.length) {
+    const h = zzzViewHist[zzzViewHist.length - 1];
+    const ws = zzz_view_ws(h);
+    if (!ws) { zzzViewHist.pop(); continue; }
+    if (h.set && h.set !== zzz10_0ActiveTab) return false;
+    zzzViewHist.pop();
+    const btn = Array.from(ws.querySelectorAll('button')).find(x => zzz_view_tab_like(x) && x.parentElement && x.parentElement.className === h.pcls && x.textContent.trim() === h.text);
+    if (!btn || !btn.isConnected) continue;
+    zzzViewBackNow = true; try { btn.click(); } finally { zzzViewBackNow = false; }
+    return true;
+  }
+  return false;
+}
 function zzz_settings_tab_back() {
   const ws = document.querySelector('#versoWorkspaceSection .settings-workspace');
   if (!ws || !zzz_back_visible(ws)) { zzzSetTabHist = []; return false; }
@@ -55438,6 +55470,7 @@ function zzz_settings_tab_back() {
   return false;
 }
 let zzzSetTabBackNow = false;
+function zzz_view_ws_x(x) { const ws = x.closest('#versoWorkspaceSection .db-workspace'); return ws && ws.firstElementChild && ws.firstElementChild.contains(x) ? x : null; }
 function open_settings_workspace() {
   if (!zzzSetTabBackNow && !document.querySelector('#versoWorkspaceSection .settings-workspace')) zzzSetTabHist = [];
   try { if (typeof zzz_mode_remote === 'function' && zzz_mode_remote()) { zzz6f2_show_toast('REMOTE ACCESS - SETTINGS are closed (Ctrl + R + command ends it).', 'warn'); return; } } catch (e) {}
@@ -56825,7 +56858,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-19 14:16';
+const VERSO_BUILD = '2026-11-19 14:21';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -58102,7 +58135,8 @@ function zzz_back_close_top() {
   { let pop = null; document.querySelectorAll(ZZZ_BACK_POPUPS).forEach(w => { if (zzz_back_visible(w)) pop = w; });
     if (pop && (!best || pop.contains(best) || zzz_back_z(pop) >= bestZ)) { const x = best && pop.contains(best) ? best : null; if (x) x.click(); else pop.remove(); return true; } }
 
-  if (best && best.parentElement && best.parentElement.classList.contains('zzz10-0-close-row') && best.closest('.settings-workspace') && zzz_settings_tab_back()) return true;
+  if (best && best.parentElement && best.parentElement.classList.contains('zzz10-0-close-row') && best.closest('.settings-workspace') && (zzz_view_back() || zzz_settings_tab_back())) return true;
+  if (best && best.closest && best.closest('#versoWorkspaceSection .db-workspace') && best === zzz_view_ws_x(best) && zzz_view_back()) return true;
 
   { const rs = document.getElementById('zzzRsSpace'); if (rs && rs.classList.contains('is-open') && (!best || bestZ <= zzz_back_z(rs) || rs.contains(best)) && typeof zzz_rs_back === 'function' && zzz_rs_back()) return true; }
 
@@ -58112,7 +58146,7 @@ function zzz_back_close_top() {
 
   if (spaceOpen && typeof zzz14cs_space_open === 'function') { zzz14cs_space_open(false); return true; }
   if (best) { best.click(); return true; }
-  if (zzz_settings_tab_back()) return true;
+  if (zzz_view_back() || zzz_settings_tab_back()) return true;
   return false;
 }
 
