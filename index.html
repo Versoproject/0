@@ -30398,6 +30398,7 @@ function zzz_verse_why(r) {
   const x = (r && r.reason) || '';
   return ({ wrong_verse: 'Wrong words' + (r && r.attemptsLeft != null ? ' (' + r.attemptsLeft + ' left)' : '') + '.', wrong_mv_phrase: 'Wrong MV PHRASE' + (r && r.attemptsLeft != null ? ' (' + r.attemptsLeft + ' left)' : '') + '.',
     locked: 'Locked for ' + ((r && r.minutes) || 15) + ' min (5 wrong tries) - an e-mail was sent to you.', my_device_only: 'Only on MY DEVICE - this is a TRUSTED SESSION.', challenge_expired: 'The question expired - ask again.', too_many_requests: 'Too many questions in 10 min - wait a moment.',
+    chain_check_cancelled: 'VERSO CHAIN CHECK was closed.', chain_check_required: 'VERSO CHAIN CHECK is needed - try again.',
     no_session: 'Log in to Verso first.', network: 'No connection - try again.', mv_needed: 'The verification expired (a step needs it within 2 min) - start again.', verse_too_short: 'A verse needs at least 7 words' + (r && r.words != null ? ' (now ' + r.words + ')' : '') + '.',
     verse_too_long: 'Max. 40 words.', too_many_verses: 'Max. 10 verses.', last_factor: 'The last verse cannot be removed - add another first.', invalid_token: 'The USERNAME or the TOKEN is not valid.', token_required: 'Type the recovery TOKEN from your e-mail first.', new_password_short: 'The new password is too short.' })[x] || ('Not done (' + (x || 'error') + ').');
 }
@@ -32864,6 +32865,16 @@ async function zzz_dk_sign(user) {
     const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, k.priv, new TextEncoder().encode('verso-login:v1:' + user + ':' + k.kid + ':' + ts));
     return { kid: k.kid, ts, sig: btoa(String.fromCharCode.apply(null, new Uint8Array(sig))) };
   } catch (e) { return null; }
+}
+
+async function zzz_lane_retry(call) {
+  let r = await call(null);
+  if (r && r.reason === 'chain_check_required') {
+    const pass = await zzz_chain_puzzle(r.level || 1);
+    if (!pass) return { success: false, reason: 'chain_check_cancelled' };
+    r = await call(pass);
+  }
+  return r;
 }
 async function zzz_dk_register() {
   try {
@@ -56575,7 +56586,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-19 02:24';
+const VERSO_BUILD = '2026-11-19 02:42';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -65748,12 +65759,12 @@ function zzz_render_account_recovery(box) {
     if (!username) { zzz6f2_show_toast('Fill in USERNAME.', 'warn'); return; }
     requestBtn.disabled = true;
     try {
-      const resp = await fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+      const rj = await zzz_lane_retry((puzzlePass) => fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-        body: JSON.stringify({ action: 'request_override', username })
-      });
-      const rj = await resp.json().catch(() => ({}));
+        body: JSON.stringify({ action: 'request_override', username, puzzlePass: puzzlePass || undefined })
+      }).then(x => x.json()).catch(() => ({})));
+      if (rj && rj.reason === 'chain_check_cancelled') { zzz6f2_show_toast('VERSO CHAIN CHECK was closed - no token was sent.', 'warn', 3500); return; }
       if (rj && rj.reason === 'too_many_requests') { zzz6f2_show_toast('A recovery token was requested a moment ago - wait 10 minutes (max 5 a day).', 'warn', 4500); return; }
 
       zzz6f2_show_toast(rj && rj.hint ? ('Recovery token was sent to ' + String(rj.hint).slice(0, 80) + ' (check spam too). Valid until you use it.') : 'If this account exists, a recovery token was sent to its e-mail (check spam too). Valid until you use it.');
@@ -65807,7 +65818,7 @@ function zzz_render_account_recovery(box) {
     if (!username || !token || !newPassword) { zzz6f2_show_toast('Fill in USERNAME, TOKEN and NEW PASSWORD - then Verso asks for 2 words of your verse.', 'warn'); return; }
     useBtn.disabled = true;
     try {
-      const ch = await zzz_verse_call({ action: 'challenge', purpose: 'recover', username, token }, true);
+      const ch = await zzz_lane_retry((puzzlePass) => zzz_verse_call({ action: 'challenge', purpose: 'recover', username, token, puzzlePass: puzzlePass || undefined }, true));
       if (!ch || !ch.success) { zzz6f2_show_toast('Recovery failed - ' + zzz_verse_why(ch), 'warn', 3500); return; }
       const ans = await zzz_verse_ask(ch, 'RECOVERY · VERSE VERIFICATION', 'The recovery token alone is not enough - confirm it is you with your verse. Right = new password, every device is logged out and a new token comes to your e-mail.');
       if (ans == null) return;
