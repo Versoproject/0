@@ -30408,6 +30408,7 @@ function zzz_chain_puzzle(level) {
     const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv'; o.setAttribute('data-zzz-nodraft', '1');
     const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', 'VERSO CHAIN CHECK'); b.style.cssText = 'width:min(92vw,340px);text-align:center';
     const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = 'VERSO CHAIN CHECK'; b.appendChild(t);
+    zzz_mark_apply(b);
     const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text'; sub.style.minHeight = '36px'; b.appendChild(sub);
     const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 280 280'); svg.style.cssText = 'width:100%;max-width:280px;height:auto;touch-action:manipulation;user-select:none;-webkit-user-select:none';
     const links = [];
@@ -30460,11 +30461,87 @@ function zzz_chain_puzzle(level) {
 
 let zzzVerseLabels = null;
 async function zzz_verse_labels(fresh) { if (zzzVerseLabels && !fresh) return zzzVerseLabels; try { const r = await zzz4r7_rpc('verso_verse_labels'); if (Array.isArray(r)) zzzVerseLabels = r; } catch (e) {} return zzzVerseLabels || []; }
+
+const ZZZ_MARK_KEY = 'zzz_mv_personal_mark';
+const ZZZ_MARK_COLORS = [['GOLD', '#d4af37'], ['RED', '#e5484d'], ['GREEN', '#3fb950'], ['BLUE', '#4c9aff'], ['PURPLE', '#a371f7'], ['PINK', '#ff7eb6'], ['ORANGE', '#ff9f43'], ['WHITE', '#f5f5f5']];
+const ZZZ_MARK_SIGNS = ['★', '♦', '♣', '♠', '♥', '☀', '☂', '♫', '✿', '⚓', '☘', '▲', '●', '■', '✚', '∞'];
+function zzz_mark_get() {
+  try {
+    const m = JSON.parse(Storage.prototype.getItem.call(window.localStorage, ZZZ_MARK_KEY) || 'null');
+    if (!m || !ZZZ_MARK_COLORS.some(c => c[1] === m.c) || ZZZ_MARK_SIGNS.indexOf(m.s) < 0) return null;
+    return { c: m.c, s: m.s, w: String(m.w || '').slice(0, 12) };
+  } catch (e) { return null; }
+}
+function zzz_mark_save(m) {
+  try {
+    if (!m) Storage.prototype.removeItem.call(window.localStorage, ZZZ_MARK_KEY);
+    else Storage.prototype.setItem.call(window.localStorage, ZZZ_MARK_KEY, JSON.stringify({ c: m.c, s: m.s, w: String(m.w || '').slice(0, 12) }));
+    return true;
+  } catch (e) { return false; }
+}
+function zzz_mark_chip(m) {
+  m = m || zzz_mark_get(); if (!m) return null;
+  const el = document.createElement('span'); el.className = 'zzz-mark-chip'; el.setAttribute('data-5s', 'PERSONAL MARK');
+  el.style.cssText = 'display:inline-flex;align-items:center;gap:5px;padding:1px 8px;border:2px solid ' + m.c + ';border-radius:10px;color:' + m.c + ';font-weight:700;font-size:13px;line-height:1.5;white-space:nowrap;background:#000';
+  el.textContent = m.s + (m.w ? ' ' + m.w : '');
+  el.title = 'Your PERSONAL MARK - kept only on this device. No mark or another mark = do not type.';
+  return el;
+}
+function zzz_mark_apply(box) {
+  const m = zzz_mark_get(); if (!m || !box) return;
+  box.style.boxShadow = '0 0 0 3px ' + m.c;
+  const row = document.createElement('div'); row.style.cssText = 'display:flex;justify-content:center;margin:2px 0 6px';
+  row.appendChild(zzz_mark_chip(m)); box.insertBefore(row, box.children[1] || null);
+}
+function zzz_mark_dialog(done) {
+  if (!zzz4r7_my_device()) { zzz6f2_show_toast('PERSONAL MARK is set only on MY DEVICE.', 'warn', 3500); return; }
+  const cur = zzz_mark_get() || { c: ZZZ_MARK_COLORS[0][1], s: ZZZ_MARK_SIGNS[0], w: '' };
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv';
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', 'PERSONAL MARK');
+  const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = 'PERSONAL MARK'; b.appendChild(t);
+  const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text';
+  sub.textContent = 'Pick a colour and a sign (a short word if you like). Every real Verso window that asks a secret shows it. Kept only on this device - a fake page cannot know it. No mark or another mark = do not type.';
+  b.appendChild(sub);
+  const prev = document.createElement('div'); prev.style.cssText = 'display:flex;justify-content:center;margin:8px 0;min-height:28px'; b.appendChild(prev);
+  const paint = () => { prev.textContent = ''; prev.appendChild(zzz_mark_chip(cur)); };
+  const grid = (items, isOn, draw, pick) => {
+    const g = document.createElement('div'); g.style.cssText = 'display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin:6px 0';
+    items.forEach(it => {
+      const x = document.createElement('button'); x.type = 'button'; x.style.cssText = 'height:34px;border-radius:8px;border:2px solid #555;background:#111;color:#fff;font-size:17px;padding:0';
+      draw(x, it);
+      const mark = () => { Array.from(g.children).forEach(k => { k.style.outline = 'none'; }); x.style.outline = '2px solid #fff'; };
+      if (isOn(it)) mark();
+      x.addEventListener('click', () => { pick(it); mark(); paint(); });
+      g.appendChild(x);
+    });
+    b.appendChild(g);
+  };
+  grid(ZZZ_MARK_COLORS, it => it[1] === cur.c, (x, it) => { x.style.background = it[1]; x.title = it[0]; x.setAttribute('aria-label', it[0]); }, it => { cur.c = it[1]; });
+  grid(ZZZ_MARK_SIGNS, it => it === cur.s, (x, it) => { x.textContent = it; }, it => { cur.s = it; });
+  const w = document.createElement('input'); w.type = 'text'; w.maxLength = 12; w.className = 'entry-cell'; w.placeholder = 'word (optional, max 12)'; w.value = cur.w; w.autocomplete = 'off';
+  w.style.cssText = 'width:100%;margin:6px 0;box-sizing:border-box';
+  w.addEventListener('input', () => { cur.w = w.value.trim().slice(0, 12); paint(); });
+  b.appendChild(w);
+  const dev = document.createElement('div'); dev.className = 'zzz-media-diss-s'; dev.textContent = 'saved on this device only - set it again on every device of yours'; b.appendChild(dev);
+  const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
+  const end = (msg, kind) => { o.remove(); if (msg) zzz6f2_show_toast(msg, kind || 'ok', 3500); if (done) done(); };
+  const y = document.createElement('button'); y.type = 'button'; y.className = 'zzz-media-btn is-on'; y.textContent = 'SAVE';
+  y.addEventListener('click', () => end(zzz_mark_save(cur) ? 'PERSONAL MARK saved on this device.' : 'The mark could not be saved on this device.', zzz_mark_get() ? 'ok' : 'warn'));
+  const off = document.createElement('button'); off.type = 'button'; off.className = 'zzz-media-btn'; off.textContent = 'NO MARK';
+  off.addEventListener('click', () => { zzz_mark_save(null); end('PERSONAL MARK removed from this device.', 'warn'); });
+  const n = document.createElement('button'); n.type = 'button'; n.className = 'zzz-media-btn'; n.textContent = 'CANCEL';
+  n.addEventListener('click', () => end(null));
+  row.append(y, off, n); b.appendChild(row);
+  o.addEventListener('click', (e) => { if (e.target === o) end(null); });
+  o.appendChild(b); document.body.appendChild(o); paint();
+}
+
 function zzz_verse_ask(ch, title, text, altLabel) {
   return new Promise((resolve) => {
     const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv';
     const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', 'VERSE VERIFICATION');
     const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = title; b.appendChild(t);
+    zzz_mark_apply(b);
     const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text'; sub.textContent = text; sub.setAttribute('data-mv-opt', '1'); b.appendChild(sub);
     const isVerse = ch.mode === 'verse';
     const lab = document.createElement('button'); lab.type = 'button'; lab.className = 'entry-number-button zzz10v1-field-label zzzfin-mv-label'; lab.disabled = true;
@@ -30695,6 +30772,10 @@ function zzz_verse_section_render(host) {
       pzb.title = 'Try the task an unknown device will get before a login (SLOW LANE) - nothing changes.';
       pzb.addEventListener('click', async () => { const pass = await zzz_chain_puzzle(1); zzz6f2_show_toast(pass ? '✓ Chain closed - this is what an unknown device will do before a login.' : 'Check closed.', pass ? 'ok' : 'warn', 4000); });
       acts.appendChild(pzb); }
+    { const mkb = document.createElement('button'); mkb.type = 'button'; mkb.className = 'zzz-media-btn'; const mkPaint = () => { mkb.textContent = 'PERSONAL MARK'; const c = zzz_mark_chip(); if (c) { mkb.textContent = 'PERSONAL MARK · '; mkb.appendChild(c); } };
+      mkb.title = 'Your own colour + sign in every real Verso window that asks a secret - kept only on this device.';
+      mkPaint(); mkb.addEventListener('click', () => zzz_mark_dialog(mkPaint));
+      acts.appendChild(mkb); }
   };
   load();
 }
@@ -47466,6 +47547,7 @@ const ZZZ_SET_REG = [
   { m: 'Notifications', w: 'sd', scope: 'all', place: 'settings', deps: ['Shown in the notification'], help: 'Sound, vibration and reading of Verso notifications. Saved on the Verso server for your account and this way of login (VERSO APP / WEB APP / WEB keep their own). The DEVICE must allow notifications (see SET UP above).' },
   { m: 'Shown in the notification', w: 's', scope: 'all', place: 'settings', deps: ['Notifications'], help: 'What a Verso notification shows (full / only who / nothing) per priority. Verso server, per way of login.' },
   { m: 'QUIET REGIME', w: 'sd', scope: 'all', place: 'settings', help: 'Verso NOTIF MULTIREADER silent (notifications still come). Server + in the Verso app on this DEVICE.' },
+  { m: 'PERSONAL MARK', w: 'd', scope: 'all', place: 'info', help: 'PERSONAL MARK - your own colour + sign (+ short word) that frames every real Verso window asking a secret (MV PHRASE, verse, VERSO PASSBOARD, VERSO CHAIN CHECK). Saved on this device only, never sent. Before you type a secret, look for your mark: no mark or another mark = do not type, check the address. Set it in SETTINGS › Multi Verification › PERSONAL MARK (on every device of yours).' },
   { m: 'VERSO CHAIN CHECK MODULE', w: 'd', scope: 'all', place: 'info', help: 'VERSO CHAIN CHECK MODULE - the task an unknown device gets before a login (SLOW LANE): links of the Verso chain light up, tap them in the same order. Try it in SETTINGS › Multi Verification › VERSO CHAIN CHECK · TRY. Not asked at login yet.' },
   { m: 'TRUSTED SESSION', w: 's', scope: 'all', place: 'settings', help: 'Lets your own computer log in next to MY DEVICE for a chosen time (OFF by default, DATE MODULE, MV PHRASE to switch on). SETTINGS › Login setup, only on MY DEVICE. Verso server, per account.' },
   { m: 'SESSION LENGTH · MY DEVICE', w: 's', scope: 'all', place: 'settings', help: 'How long MY DEVICE stays logged in without use (90 DAYS standard, shorter by choice, DATE MODULE). SETTINGS › Login setup. Verso server, per account.' },
@@ -56325,7 +56407,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-19 01:05';
+const VERSO_BUILD = '2026-11-19 01:36';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -63688,6 +63770,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     headClose.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
     headClose.addEventListener('contextmenu', (e) => e.preventDefault());
   }
+  if (isSecret) { try { const mk = zzz_mark_chip(); if (mk) { mk.style.marginRight = '6px'; head.appendChild(mk); const mm = zzz_mark_get(); panel.style.boxShadow = '0 0 0 3px ' + mm.c; } } catch (e) {} }
   if (headTitle.textContent) head.appendChild(headTitle);
 
   const chips = document.createElement('span');
