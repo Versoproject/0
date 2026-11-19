@@ -48068,6 +48068,7 @@ async function zzz_dev_sync(force) {
   zzzDev.busy = true;
   try {
     const inf = await zzz_dev_info(), now = new Date().toISOString();
+    try { const dk = await zzz_dk_get(false); if (dk && dk.kid) inf.info.lane_kid = dk.kid; } catch (e) {}
     const { data: ex } = await sb.from('verso_devices').select('id').eq('username', me).eq('device_key', key).limit(1);
     if (ex && ex.length) {
       await sb.from('verso_devices').update({ settings: zzz_dev_snapshot(), info: inf.info, os: inf.os, name: inf.name, maker: inf.maker, model: inf.model, dtype: inf.dtype, last_seen_at: now, updated_at: now }).eq('id', ex[0].id);
@@ -48084,19 +48085,32 @@ async function zzz_dev_list() {
   try { const { data } = await sb.from('verso_devices').select('id,device_key,dtype,name,maker,model,os,last_seen_at,settings,parent_id').eq('username', me).is('archived_at', null).order('last_seen_at', { ascending: false }); zzzDev.rows = data || []; } catch (e) { zzzDev.rows = []; }
   return zzzDev.rows;
 }
-function zzz_dev_restore(row) {
+function zzz_dev_restore(row, onlyMissing) {
   const st = (row && row.settings) || {}; let n = 0;
-  Object.keys(st).forEach(k => { if (ZZZ_DEV_KEYS.indexOf(k) >= 0) { try { localStorage.setItem(ZZZ_USER_SET_KEYS.indexOf(k) >= 0 ? zzz_ukey(k) : k, String(st[k])); n++; } catch (e) {} } });
+  const here = onlyMissing ? zzz_dev_snapshot() : {};
+  Object.keys(st).forEach(k => { if (ZZZ_DEV_KEYS.indexOf(k) >= 0 && !(k in here)) { try { localStorage.setItem(ZZZ_USER_SET_KEYS.indexOf(k) >= 0 ? zzz_ukey(k) : k, String(st[k])); n++; } catch (e) {} } });
 
-  try { if (st.verso_native_settings && zzz_set_can_app()) zzz_native_go('intent://quick/settings?d=' + encodeURIComponent(String(st.verso_native_settings)) + '#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end'); } catch (e) {}
-  zzz6f2_show_toast(`Settings from ${row.name || 'that device'} restored (${n}) - Verso reloads.`, 'ok');
+  try { if (st.verso_native_settings && !('verso_native_settings' in here) && zzz_set_can_app()) zzz_native_go('intent://quick/settings?d=' + encodeURIComponent(String(st.verso_native_settings)) + '#Intent;scheme=versoapp;package=' + ZZZ14B17_PACKAGE + ';end'); } catch (e) {}
+  if (!n) { zzz6f2_show_toast('Nothing to add - this device already has all these settings.', 'info', 3000); return; }
+  zzz6f2_show_toast(`Settings from ${row.name || 'that device'} ${onlyMissing ? 'added' : 'restored'} (${n}) - Verso reloads.`, 'ok');
   setTimeout(() => { try { location.reload(); } catch (e) {} }, 1500);
 }
 function zzz_dev_ago(t) { const m = Math.round((Date.now() - (Date.parse(t || '') || Date.now())) / 60000); return m < 2 ? 'now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago'; }
+
+async function zzz_dev_lane_keys() {
+  try { const r = await zzz4r7_rpc('verso_device_keys_list', {}); return r && r.success ? (r.devices || []) : null; } catch (e) { return null; }
+}
+async function zzz_dev_lane_off(k, label, host) {
+  if (!(await zzz_verse_verify('devices', 'SWITCH OFF · LOGIN KEY', 'Your MV PHRASE - ' + label + ' then logs in on the SLOW LANE (VERSO CHAIN CHECK) until it is used again.'))) return;
+  const r = await zzz4r7_rpc('verso_device_key_off', { p_kid: k.kid });
+  zzz6f2_show_toast(r && r.success ? 'Login key switched off - that device must pass VERSO CHAIN CHECK next time.' : 'Not switched off (' + ((r && r.reason) || 'error') + ').', r && r.success ? 'ok' : 'warn', 3500);
+  zzz_dev_panel(host);
+}
 async function zzz_dev_panel(host) {
   host.innerHTML = '';
   const rows = await zzz_dev_list(), mine = zzz_dev_keyhash();
-  if (!rows.length) { host.textContent = 'No device saved yet - this one is saved within a minute after login.'; return; }
+  const lane = await zzz_dev_lane_keys(), used = {};
+  if (!rows.length) { const e0 = document.createElement('div'); e0.textContent = 'No device saved yet - this one is saved within a minute after login.'; host.appendChild(e0); }
   const ic = { phone: '📱', tablet: '📲', pc: '💻', browser: '🌐', wifi: '📶', watch: '⌚', iot: '🔌', headset: '🎧', car: '🚗', other: '⬜' };
   rows.forEach(r => {
     const d = document.createElement('div'); d.className = 'zzz16-row';
@@ -48106,12 +48120,29 @@ async function zzz_dev_panel(host) {
     const l = document.createElement('div'); l.textContent = (r.parent_id ? '↳ ' : '') + (ic[r.dtype] || '') + ' ' + kind + ' · ' + (r.name || r.model || '-') + (r.device_key === mine ? ' · THIS DEVICE' : '');
     const sm = document.createElement('small'); sm.className = 'zzz14b2-now'; sm.textContent = [mm && mm !== r.name ? mm : '', r.os, 'seen ' + zzz_dev_ago(r.last_seen_at), Object.keys(r.settings || {}).length + ' settings saved'].filter(Boolean).join(' · ');
     l.appendChild(sm); d.appendChild(l);
+    { const lk = r.info && r.info.lane_kid, k = lane && lk ? lane.find(x => x.kid === lk) : null;
+      if (k) { used[k.kid] = 1; const ks = document.createElement('small'); ks.className = 'zzz14b2-now'; ks.style.display = 'block';
+        ks.textContent = k.off ? '🔑 login key: switched off' : '🔑 login key: FAST LANE · used ' + zzz_dev_ago(k.last_used_at || k.created_at); l.appendChild(ks);
+        if (!k.off) { const kb = document.createElement('button'); kb.type = 'button'; kb.className = 'zzz16-btn'; kb.textContent = '🔑 OFF'; kb.title = 'Switch off the login key of this device';
+          kb.addEventListener('click', () => zzz_dev_lane_off(k, r.name || r.model || 'this device', host)); d.appendChild(kb); } } }
     if (r.device_key !== mine && Object.keys(r.settings || {}).length) {
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn'; b.textContent = 'RESTORE HERE';
-      b.addEventListener('click', () => zzz_dev_restore(r)); d.appendChild(b);
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn'; b.textContent = 'ADD MISSING'; b.title = 'Take only the settings this device does not have yet';
+      b.addEventListener('click', () => zzz_dev_restore(r, true)); d.appendChild(b);
+      const b2 = document.createElement('button'); b2.type = 'button'; b2.className = 'zzz16-btn'; b2.textContent = 'RESTORE ALL'; b2.title = 'Take all settings of that device (yours here are replaced)';
+      b2.addEventListener('click', () => zzz_dev_restore(r, false)); d.appendChild(b2);
     }
     host.appendChild(d);
   });
+
+  (lane || []).filter(k => !used[k.kid]).forEach(k => {
+    const d = document.createElement('div'); d.className = 'zzz16-row';
+    const l = document.createElement('div'); l.textContent = '🔑 LOGIN KEY · ' + (k.label || 'device');
+    const sm = document.createElement('small'); sm.className = 'zzz14b2-now'; sm.textContent = (k.off ? 'switched off' : 'FAST LANE') + ' · since ' + new Date(k.created_at).toLocaleDateString() + (k.last_used_at ? ' · used ' + zzz_dev_ago(k.last_used_at) : '');
+    l.appendChild(sm); d.appendChild(l);
+    if (!k.off) { const kb = document.createElement('button'); kb.type = 'button'; kb.className = 'zzz16-btn'; kb.textContent = '🔑 OFF'; kb.addEventListener('click', () => zzz_dev_lane_off(k, k.label || 'that device', host)); d.appendChild(kb); }
+    host.appendChild(d);
+  });
+  if (lane === null) { const n2 = document.createElement('small'); n2.className = 'zzz14b2-soon'; n2.style.display = 'block'; n2.textContent = '🔑 Login keys are shown only on MY DEVICE.'; host.appendChild(n2); }
   const note = document.createElement('small'); note.className = 'zzz14b2-soon';
   note.textContent = 'Linked devices (Wi-Fi, watch, IoT …) appear under their main device later. IMEI: only after your MV phrase (coming).';
   host.appendChild(note);
@@ -56754,7 +56785,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-19 05:36';
+const VERSO_BUILD = '2026-11-19 05:39';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
