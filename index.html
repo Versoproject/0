@@ -7598,6 +7598,24 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-vkb-emoji-pop .zzz-vkb-clip-row.is-sys { color: #D4AF37; font-weight: 700; }
   .zzz-vkb-emoji-pop .zzz-vkb-clip-row.is-empty { color: #71717a; }
   .zzz-vkb-emoji-pop .zzz-vkb-clip-row.is-clear { color: #f87171; font-size: 12px; text-align: center; }
+  
+  .zzz-vkb-emoji-pop.is-box { gap: 6px; }
+  .zzz-vbox-head { color: #D4AF37; font-weight: 700; font-size: 12px; letter-spacing: .08em; padding: 2px 4px; }
+  .zzz-vbox-bar { display: flex; gap: 4px; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+  .zzz-vbox-bar.is-wrap { flex-wrap: wrap; }
+  .zzz-vbox-bar button { flex: 0 0 auto; font-size: 12px; padding: 6px 10px; border: 1px solid #D4AF37; border-radius: 10px; background: #18181b; color: #D4AF37; white-space: nowrap; }
+  .zzz-vbox-bar.is-wrap button { flex: 1 1 22%; }
+  .zzz-vbox-bar button.on { background: #D4AF37; color: #000; font-weight: 700; }
+  .zzz-vbox-bar button.grey { border-color: #52525b; color: #a1a1aa; }
+  .zzz-vbox-bar button.red { border-color: #f87171; color: #f87171; }
+  .zzz-vbox-bar button.move { border-color: #22c55e; color: #22c55e; }
+  .zzz-vbox-list { display: flex; flex-direction: column; gap: 3px; max-height: 34vh; overflow-y: auto; }
+  .zzz-vbox-item { display: flex; gap: 4px; align-items: center; }
+  .zzz-vbox-item .zzz-vbox-tick { flex: 0 0 38px; font-size: 18px; color: #a1a1aa; background: none; border: 0; }
+  .zzz-vbox-item .zzz-vbox-tick.on { color: #22c55e; }
+  .zzz-vbox-item .zzz-vkb-clip-row { flex: 1 1 auto; min-width: 0; }
+  .zzz-vbox-item .zzz-vkb-clip-row.is-obj { color: #7dd3fc; }
+  .zzz-vbox-note { color: #a1a1aa; font-size: 11px; padding: 2px 4px; }
   .zzz-vkb-emoji-pop.is-sym button { color: #fff; font-weight: 700; }
   
   .zzz-vkb-rz { display: none; position: absolute; width: 22px; height: 22px; z-index: 7; touch-action: none; }
@@ -56933,7 +56951,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-19 19:36';
+const VERSO_BUILD = '2026-11-19 19:52';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -59919,6 +59937,162 @@ document.addEventListener('copy', () => {
     zzz_clip_remember(t);
   } catch (e) {}
 }, true);
+
+const zzzVbox = { entry: null, of: '', items: null, sel: new Set(), moving: false, trash: false, busy: false };
+function zzz_vbox_secret(t) {
+  t = String(t || '').trim();
+  if (/^[0-9 \-]{4,10}$/.test(t) && t.replace(/\D/g, '').length >= 4 && t.replace(/\D/g, '').length <= 8) return true;
+  return /(k[óo]d|code|otp|pin|hesl|password|passcode|overovac|verification|potvrdzovac|autoriz|authori[sz]|token|2fa|login)/i.test(t) && /\d{4,}/.test(t);
+}
+function zzz_vbox_is_obj(t) { return /^(verso:|https?:\/\/)\S+$/i.test(String(t || '').trim()); }
+function zzz_vbox_cur() { try { return localStorage.getItem(zzz_ukey('zzz_vbox_cur')) || 'MAIN'; } catch (e) { return 'MAIN'; } }
+function zzz_vbox_set_cur(b) { try { localStorage.setItem(zzz_ukey('zzz_vbox_cur'), b); } catch (e) {} }
+function zzz_vbox_extra() { try { const a = JSON.parse(localStorage.getItem(zzz_ukey('zzz_vbox_boxes')) || '[]'); return Array.isArray(a) ? a.filter(x => typeof x === 'string') : []; } catch (e) { return []; } }
+function zzz_vbox_boxes() {
+  const out = ['MAIN'];
+  zzz_vbox_extra().concat((zzzVbox.items || []).filter(x => !x.trash).map(x => x.b)).forEach(b => { if (b && out.indexOf(b) < 0) out.push(b); });
+  const c = zzz_vbox_cur(); if (out.indexOf(c) < 0) out.push(c);
+  return out;
+}
+async function zzz_vbox_entry(create) {
+  const me = zzz_media_me();
+  if (!me || typeof sb === 'undefined') return null;
+  if (zzzVbox.entry && zzzVbox.of === me) return zzzVbox.entry;
+  try {
+    const { data } = await sb.from('verso_entries').select('*').eq('is_trashed', false).ilike('username', me).order('entry_id', { ascending: true });
+    const row = (data || []).find(r => { const f = zzz_parse_fields_json(r); return String(f.r5 || '').trim().toLowerCase() === 'verso box' && String(f.r2 || '').trim() === '0' && !r.superseded_by; });
+    if (row) { zzzVbox.entry = row; zzzVbox.of = me; try { submittedEntriesFullCache[row.entry_id] = row; } catch (e) {} return row; }
+  } catch (e) {}
+  if (!create) return null;
+  const at = await zzz6f2_get_next_entry_id_atomic();
+  let id = at && at.success ? at.id : 0;
+  if (!id) { try { id = zzz6f2_compute_next_entry_id(await zzz6f2_get_known_entries()); } catch (e) { return null; } }
+  const fields = { r2: '0', r3: 'Verso Box', r4: me, r5: 'verso box', r7: 'ano', tags: 'verso box',
+    r9: 'VERSO BOX - my saved texts and links, every box (tab) is a name of the SUBS lines' };
+  const payload = { entry_id: id, r1: '', fields_json: JSON.stringify(fields), entry_date: zzz6f14_format_today(), username: zzz0r1_get_current_username(), updated_at: new Date().toISOString(),
+    zzz_session_id: zzz_sessionId };
+  try {
+    const { error } = await sb.from('verso_entries').upsert(payload, { onConflict: 'entry_id' });
+    if (error) throw error;
+    try { submittedEntriesFullCache[id] = payload; } catch (e) {}
+    zzzVbox.entry = payload; zzzVbox.of = me;
+    return payload;
+  } catch (e) { zzz_user_error('VERSO BOX: the record VERSO BOX could not be created - check the connection and try again.', e, '[Zzz14-B11:VERSO-BOX]'); return null; }
+}
+async function zzz_vbox_load() {
+  const e = await zzz_vbox_entry(false);
+  if (!e) { zzzVbox.items = []; return; }
+  try {
+    const { data } = await sb.from('verso_chat_notes').select('*').eq('entry_key', String(e.entry_id)).order('note_number', { ascending: true });
+    zzzVbox.items = (data || []).filter(n => !n.note_part && n.note_text).map(n => {
+      const w = String(n.note_tags || '').toLowerCase().split(/[\s,]+/).filter(Boolean);
+      return { id: n.id, num: n.note_number, b: String(n.note_name || '').trim() || 'MAIN', t: String(n.note_text || ''), obj: w.indexOf('obj') >= 0, trash: w.indexOf('trash') >= 0, w };
+    });
+  } catch (err) { zzzVbox.items = zzzVbox.items || []; }
+}
+async function zzz_vbox_save(t) {
+  t = String(t || '');
+  if (!t.trim()) return 'Nothing to save.';
+  if (zzz_clip_secret_now()) return 'Not from a password field.';
+  if (t.length > 4000) return 'Too long (max 4000 characters).';
+  if (zzz_vbox_secret(t)) return 'Looks like a password / code - not saved.';
+  const cur = zzz_vbox_cur();
+  if ((zzzVbox.items || []).some(x => !x.trash && x.b === cur && x.t === t)) return 'Already in ' + cur + '.';
+  const e = await zzz_vbox_entry(true);
+  if (!e) return 'Not saved.';
+  const obj = zzz_vbox_is_obj(t);
+  const n = await zzz1cn_add(String(e.entry_id), t, true, null, cur.slice(0, 60), true, false, [], 'verso box' + (obj ? ' obj' : ''));
+  if (!n) return 'Not saved.';
+  (zzzVbox.items = zzzVbox.items || []).push({ id: n.id, num: n.note_number, b: cur, t, obj, trash: false, w: ['verso', 'box'].concat(obj ? ['obj'] : []) });
+  return null;
+}
+async function zzz_vbox_update(it, upd) {
+  try { const { error } = await sb.from('verso_chat_notes').update(upd).eq('id', it.id); if (error) throw error; return true; }
+  catch (e) { zzz_user_error('VERSO BOX: not saved - check the connection and try again.', e, '[Zzz14-B11:VERSO-BOX]'); return false; }
+}
+async function zzz_vbox_set_trash(it, on) {
+  const w = (it.w || []).filter(x => x !== 'trash'); if (on) w.push('trash');
+  if (await zzz_vbox_update(it, { note_tags: w.join(' ') })) { it.w = w; it.trash = on; }
+}
+async function zzz_vbox_move(it, b) { if (await zzz_vbox_update(it, { note_name: b.slice(0, 60) })) it.b = b; }
+function zzz_vbox_build(pop, target, closeAll) {
+  pop.innerHTML = '';
+  const S = zzzVbox, insert = (txt) => { zzz_vkb_text_insert(target, txt); };
+  const btn = (host, label, cls, fn) => {
+    const b = document.createElement('button'); b.type = 'button'; b.tabIndex = -1; b.textContent = label; if (cls) b.className = cls;
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); zzz_haptic_pulse(zzz_vkb_haptic_ms()); fn(); });
+    b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+    host.appendChild(b); return b;
+  };
+  const bar = (wrap) => { const d = document.createElement('div'); d.className = 'zzz-vbox-bar' + (wrap ? ' is-wrap' : ''); pop.appendChild(d); return d; };
+  const redraw = () => zzz_vbox_build(pop, target, closeAll);
+  const cur = zzz_vbox_cur();
+  const head = document.createElement('div'); head.className = 'zzz-vbox-head';
+  head.textContent = S.moving ? 'MOVE ☑ → tap the box' : S.trash ? 'VERSO BOX · TRASH' : 'VERSO BOX · ' + cur;
+  pop.appendChild(head);
+  if (S.items === null) {
+    const n = document.createElement('div'); n.className = 'zzz-vbox-note'; n.textContent = 'Loading your VERSO BOX…'; pop.appendChild(n);
+    if (!S.busy) { S.busy = true; zzz_vbox_load().finally(() => { S.busy = false; if (pop.isConnected) redraw(); }); }
+    return;
+  }
+  const items = S.items;
+  const tabs = bar(false);
+  zzz_vbox_boxes().forEach(b => {
+    const n = items.filter(x => !x.trash && x.b === b).length;
+    btn(tabs, b + (n ? ' ' + n : ''), S.moving ? 'move' : (!S.trash && b === cur ? 'on' : ''), async () => {
+      if (S.moving) { for (const it of items.filter(x => S.sel.has(x.id))) await zzz_vbox_move(it, b); S.sel.clear(); S.moving = false; }
+      zzz_vbox_set_cur(b); S.trash = false; redraw();
+    });
+  });
+  if (S.moving) btn(tabs, '✕ cancel', 'grey', () => { S.moving = false; redraw(); });
+  else {
+    btn(tabs, '+ BOX', '', () => {
+      let nm = '';
+      try { const v = String(target.value || ''); nm = target.selectionEnd > target.selectionStart ? v.slice(target.selectionStart, target.selectionEnd) : v.slice(0, target.selectionStart || 0).split('\n').pop(); } catch (e) {}
+      nm = String(nm || '').replace(/\s+/g, ' ').trim().toUpperCase();
+      const have = zzz_vbox_boxes();
+      if (!nm || nm.length > 24 || zzz_vbox_secret(nm) || target.type === 'password') nm = 'BOX ' + (have.length + 1);
+      if (have.indexOf(nm) >= 0) nm = nm + ' ' + (have.length + 1);
+      try { localStorage.setItem(zzz_ukey('zzz_vbox_boxes'), JSON.stringify(zzz_vbox_extra().concat([nm]).slice(-40))); } catch (e) {}
+      zzz_vbox_set_cur(nm); S.trash = false; redraw();
+    });
+    btn(tabs, '🗑 TRASH', S.trash ? 'on' : 'grey', () => { S.trash = !S.trash; S.sel.clear(); redraw(); });
+  }
+  if (!S.trash && !S.moving) {
+    const add = bar(true);
+    const done = async (t, empty) => { const err = t ? await zzz_vbox_save(t) : empty; if (err) zzz6f2_show_toast('VERSO BOX: ' + err, 'info'); if (pop.isConnected) redraw(); };
+    btn(add, '+ LAST BOX', '', async () => { let t = ''; try { t = await navigator.clipboard.readText(); } catch (e) {} if (!t) t = zzz_clip_list()[0] || ''; done(t, 'nothing copied yet.'); });
+    btn(add, '+ FIELD', '', () => done(target.type === 'password' ? '' : String(target.isContentEditable ? target.textContent : (target.value || '')).trim(), target.type === 'password' ? 'Not from a password field.' : 'the field is empty.'));
+    btn(add, '+ SELECTED', '', () => { let t = ''; try { t = target.type === 'password' ? '' : String(target.value || '').slice(target.selectionStart, target.selectionEnd); } catch (e) {} done(t, 'select a text in the field first.'); });
+  }
+  const shown = items.filter(x => S.trash ? x.trash : (!x.trash && x.b === cur)).slice().reverse();
+  const list = document.createElement('div'); list.className = 'zzz-vbox-list'; pop.appendChild(list);
+  shown.forEach(it => {
+    const r = document.createElement('div'); r.className = 'zzz-vbox-item'; list.appendChild(r);
+    btn(r, S.sel.has(it.id) ? '☑' : '☐', 'zzz-vbox-tick' + (S.sel.has(it.id) ? ' on' : ''), () => { if (!S.sel.delete(it.id)) S.sel.add(it.id); redraw(); });
+    btn(r, (it.obj ? '🔗 ' : '') + (S.trash ? it.b + ' · ' : '') + it.t.replace(/\s+/g, ' ').slice(0, 140), 'zzz-vkb-clip-row' + (it.obj ? ' is-obj' : ''), () => {
+      if (S.trash) { if (!S.sel.delete(it.id)) S.sel.add(it.id); redraw(); return; }
+      insert(it.t); closeAll();
+    });
+  });
+  if (!shown.length) { const n = document.createElement('div'); n.className = 'zzz-vbox-note'; pop.appendChild(n);
+    n.textContent = S.trash ? 'TRASH is empty.' : 'Empty box. + LAST BOX = the last copy · + FIELD = the whole text you are writing · + SELECTED = only the selected text.'; }
+  if (S.moving) return;
+  const pick = bar(true);
+  [['☑ ALL', 'a'], ['☑ TEXTS', 't'], ['☑ OBJECTS', 'o'], ['☐ NONE', 'n']].forEach(([l, k]) => btn(pick, l, 'grey', () => {
+    S.sel.clear(); if (k !== 'n') shown.forEach(x => { if (k === 'a' || (k === 'o') === x.obj) S.sel.add(x.id); }); redraw(); }));
+  const acts = bar(true), ns = shown.filter(x => S.sel.has(x.id));
+  const need = () => { if (!ns.length) { zzz6f2_show_toast('Tick ☐ the items first.', 'info'); return false; } return true; };
+  if (S.trash) btn(acts, '↩ RESTORE ☑' + (ns.length ? ' ' + ns.length : ''), '', async () => { if (!need()) return; for (const it of ns) await zzz_vbox_set_trash(it, false); S.sel.clear(); redraw(); });
+  else {
+    btn(acts, 'INSERT ☑' + (ns.length ? ' ' + ns.length : ''), '', () => { if (!need()) return; insert(ns.slice().reverse().map(x => x.t).join('\n')); S.sel.clear(); closeAll(); });
+    btn(acts, 'MOVE ☑', '', () => { if (!need()) return; S.moving = true; redraw(); });
+    btn(acts, '🗑 TRASH ☑', 'red', async () => { if (!need()) return; for (const it of ns) await zzz_vbox_set_trash(it, true); S.sel.clear(); redraw(); });
+  }
+  const n = document.createElement('div'); n.className = 'zzz-vbox-note'; pop.appendChild(n);
+  n.textContent = '🔒 PRIVATE lines of your record VERSO BOX' + (S.entry ? ' (#' + S.entry.entry_id + ')' : '') + ' · tap an item = insert it · TRASH keeps everything';
+}
+
 function zzz_vkb_hide() {
 
   if (zzz_vkbPanel) setTimeout(() => {
@@ -64427,8 +64601,10 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     if (again) return;
     emojiKind = kind;
     emojiPop = document.createElement('div');
-    emojiPop.className = 'zzz-vkb-emoji-pop' + (kind === 'sym' ? ' is-sym' : '') + (kind === 'clip' ? ' is-clip' : '');
+    emojiPop.className = 'zzz-vkb-emoji-pop' + (kind === 'sym' ? ' is-sym' : '') + (kind === 'clip' ? ' is-clip' : '') + (kind === 'box' ? ' is-clip is-box' : '');
     emojiPop.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); });
+    if (kind === 'box') { zzzVbox.sel.clear(); zzzVbox.moving = false; zzzVbox.trash = false; if (zzzVbox.of !== zzz_media_me()) { zzzVbox.entry = null; zzzVbox.items = null; } else zzzVbox.items = null;
+      zzz_vbox_build(emojiPop, target, closeEmoji); panel.appendChild(emojiPop); return; }
     if (kind === 'clip') {
       const row = (label, fn, cls) => {
         const b = document.createElement('button');
@@ -64438,6 +64614,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
         emojiPop.appendChild(b);
       };
       const put = (txt) => { if (!txt) return; zzz_vkb_text_insert(target, txt); zzz_clip_remember(txt); closeEmoji(); };
+      row('\u{1F4E6} BOXES · VERSO BOX (or hold 📋)', () => openEmoji('box'), 'is-sys');
       row('\u2935 paste from the phone', async () => {
         try { const t = await navigator.clipboard.readText(); if (t) put(t); else zzz6f2_show_toast('The phone clipboard is empty.'); }
         catch (e) { zzz6f2_show_toast('Paste was not allowed - allow the clipboard for Verso in the phone settings.', 'warn'); }
@@ -64471,13 +64648,18 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     c.title = d.title;
 
     let downX = null;
+    let boxHold = 0, boxHeld = false;
     c.addEventListener('pointerdown', (e) => {
       e.preventDefault(); e.stopPropagation();
       c.classList.add('is-down');
       downX = e.clientX;
+      boxHeld = false; clearTimeout(boxHold);
+      if (d.clip) boxHold = setTimeout(() => { if (downX === null) return; boxHeld = true; zzz_haptic_pulse(25); openEmoji('box'); }, 600);
     });
     c.addEventListener('pointerup', (e) => {
       e.preventDefault(); e.stopPropagation();
+      clearTimeout(boxHold);
+      if (boxHeld) { boxHeld = false; downX = null; return; }
       if (downX === null || Math.abs(e.clientX - downX) > 10) { downX = null; return; }
       downX = null;
       if (d.emoji) openEmoji('emoji'); else if (d.sym) openEmoji('sym'); else if (d.clip) openEmoji('clip');
