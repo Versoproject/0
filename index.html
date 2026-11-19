@@ -32706,6 +32706,37 @@ function zzz4r7_uk_status_text() {
 
 let zzz4r7PK = null;
 const zzz4r7CK = {};
+
+async function zzz_dk_get(create) {
+  try {
+    let r = await zzz4r7_idb(st => st.get('dk:v1'));
+    if (r && r.priv && r.kid && r.pub) return r;
+    if (!create || !window.crypto || !crypto.subtle) return null;
+    const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+    const jwk = await crypto.subtle.exportKey('jwk', kp.publicKey);
+    const raw = await crypto.subtle.exportKey('raw', kp.publicKey);
+    const kid = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', raw))).map(x => x.toString(16).padStart(2, '0')).join('').slice(0, 40);
+    r = { priv: kp.privateKey, pub: { kty: 'EC', crv: 'P-256', x: jwk.x, y: jwk.y }, kid };
+    await zzz4r7_idb(st => st.put(r, 'dk:v1'));
+    return r;
+  } catch (e) { return null; }
+}
+async function zzz_dk_sign(user) {
+  try {
+    const k = await zzz_dk_get(false); if (!k) return null;
+    const ts = Date.now();
+    const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, k.priv, new TextEncoder().encode('verso-login:v1:' + user + ':' + k.kid + ':' + ts));
+    return { kid: k.kid, ts, sig: btoa(String.fromCharCode.apply(null, new Uint8Array(sig))) };
+  } catch (e) { return null; }
+}
+async function zzz_dk_register() {
+  try {
+    if (!zzz4r7_my_device()) return false;
+    const k = await zzz_dk_get(true); if (!k) return false;
+    const r = await zzz4r7_rpc('verso_device_key_set', { p_kid: k.kid, p_pub: k.pub, p_label: null });
+    return !!(r && r.success);
+  } catch (e) { return false; }
+}
 async function zzz4r7_rpc(fn, args) { const { data, error } = await sb.rpc(fn, args || {}); if (error) throw error; return data; }
 function zzz4r7_rid(p) { return p + zzz4r7_b64(crypto.getRandomValues(new Uint8Array(12))).replace(/[^A-Za-z0-9]/g, '').slice(0, 16); }
 async function zzz4r7_pk_ensure() {
@@ -47548,7 +47579,7 @@ const ZZZ_SET_REG = [
   { m: 'Shown in the notification', w: 's', scope: 'all', place: 'settings', deps: ['Notifications'], help: 'What a Verso notification shows (full / only who / nothing) per priority. Verso server, per way of login.' },
   { m: 'QUIET REGIME', w: 'sd', scope: 'all', place: 'settings', help: 'Verso NOTIF MULTIREADER silent (notifications still come). Server + in the Verso app on this DEVICE.' },
   { m: 'PERSONAL MARK', w: 'd', scope: 'all', place: 'info', help: 'PERSONAL MARK - your own colour + sign (+ short word) that frames every real Verso window asking a secret (MV PHRASE, verse, VERSO PASSBOARD, VERSO CHAIN CHECK). Saved on this device only, never sent. Before you type a secret, look for your mark: no mark or another mark = do not type, check the address. Set it in SETTINGS › Multi Verification › PERSONAL MARK (on every device of yours).' },
-  { m: 'VERSO CHAIN CHECK MODULE', w: 'd', scope: 'all', place: 'info', help: 'VERSO CHAIN CHECK MODULE - the task an unknown device gets before a login (SLOW LANE): links of the Verso chain light up, tap them in the same order. Try it in SETTINGS › Multi Verification › VERSO CHAIN CHECK · TRY. Not asked at login yet.' },
+  { m: 'VERSO CHAIN CHECK MODULE', w: 'd', scope: 'all', place: 'info', help: 'VERSO CHAIN CHECK MODULE - the task an unknown device gets before a login (SLOW LANE): links of the Verso chain light up, tap them in the same order. Try it in SETTINGS › Multi Verification › VERSO CHAIN CHECK · TRY. Asked at login on a device Verso does not know yet (accounts switched to FAST / SLOW LANE); a device where you logged in fully on MY DEVICE is known and is not asked.' },
   { m: 'TRUSTED SESSION', w: 's', scope: 'all', place: 'settings', help: 'Lets your own computer log in next to MY DEVICE for a chosen time (OFF by default, DATE MODULE, MV PHRASE to switch on). SETTINGS › Login setup, only on MY DEVICE. Verso server, per account.' },
   { m: 'SESSION LENGTH · MY DEVICE', w: 's', scope: 'all', place: 'settings', help: 'How long MY DEVICE stays logged in without use (90 DAYS standard, shorter by choice, DATE MODULE). SETTINGS › Login setup. Verso server, per account.' },
   { m: 'READ RECEIPTS', w: 's', scope: 'all', place: 'settings', help: 'Whether others see when you read. Verso server - the same in the app, web app and web.' },
@@ -56407,7 +56438,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-19 01:36';
+const VERSO_BUILD = '2026-11-19 01:48';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -66402,6 +66433,7 @@ async function zzz_my_device_restore() {
     zzz0auth_sessionToken = result.token;
     zzz0auth_tokenAt = Date.now();
     setTimeout(zzz10dm_foreign_remind, 9000);
+    setTimeout(() => { zzz_dk_register(); }, 4000);
     zzz_session_start(saved.u, saved.s);
     if (!(await zzz_session_mv_gate())) { try { zzz_session_stop(); } catch (e) {} zzz0auth_sessionToken = null; zzz_my_device_clear(); return false; }
     try { zzz_login_alert_apply(result.alert || null); } catch (e) {}
@@ -66454,16 +66486,27 @@ async function zzz10r8_verify_login_password(username, enteredPassword) {
     } catch (e) {   }
   }
   try {
-    const fetchPromise = fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-      body: JSON.stringify({ action: 'login', username: zzz10v1_normalize(username), password: enteredPassword, deviceId: zzz_device_id(), keep_signed_in: zzz10dmPending === 'my' })
-    });
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Zzz0Auth-Gate login timeout (12s)')), 12000)
-    );
-    const resp = await Promise.race([fetchPromise, timeoutPromise]);
-    const result = await resp.json();
+
+    const zzz_login_call = async (puzzlePass) => {
+      const dk = await zzz_dk_sign(zzz10v1_normalize(username));
+      const fetchPromise = fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+        body: JSON.stringify({ action: 'login', username: zzz10v1_normalize(username), password: enteredPassword, deviceId: zzz_device_id(), keep_signed_in: zzz10dmPending === 'my', dk: dk || undefined, puzzlePass: puzzlePass || undefined })
+      });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Zzz0Auth-Gate login timeout (12s)')), 12000)
+      );
+      const resp = await Promise.race([fetchPromise, timeoutPromise]);
+      return resp.json();
+    };
+    let result = await zzz_login_call(null);
+    if (result && result.verified === false && result.reason === 'chain_check_required') {
+      zzz0r1_set_db_connection_state(true);
+      const zzzLanePass = await zzz_chain_puzzle(result.level || 1);
+      if (!zzzLanePass) return { verified: false, reason: 'chain_check_cancelled' };
+      result = await zzz_login_call(zzzLanePass);
+    }
     if (typeof result.verified !== 'boolean') {
       throw new Error(result.error || 'unexpected answer from verso-auth-gate');
     }
@@ -66487,6 +66530,7 @@ async function zzz10r8_verify_login_password(username, enteredPassword) {
       }
       if (zzz10dmPending === 'foreign') setTimeout(() => { zzz4r7_rpc('verso_session_foreign_mark').catch(() => {}); }, 2500);
       else if (zzz10dmPending === 'my') setTimeout(zzz10dm_foreign_remind, 7000);
+      if (zzz10dmPending === 'my') setTimeout(() => { zzz_dk_register(); }, 1500);
       setTimeout(() => { try { zzz0auth_check_bridge(); } catch (e) {   } }, 300);
     }
     return { verified: result.verified, reason: result.reason || undefined };
@@ -66552,7 +66596,8 @@ async function zzz6f36_submit_login(options = {}) {
         session_failed: 'the session could not be created on the server, try again',
         mv_not_confirmed: 'the login was not finished - the MV PHRASE was not confirmed',
         session_active_elsewhere: 'this account is logged in on another device. A second login is not allowed - log out there, or use the emergency account recovery',
-        too_many_attempts: 'too many wrong passwords in a row - wait 15 minutes and try again (the account owner was notified by email)'
+        too_many_attempts: 'too many wrong passwords in a row - wait 15 minutes and try again (the account owner was notified by email)',
+        chain_check_required: 'VERSO CHAIN CHECK is needed on this device - try again', chain_check_cancelled: 'VERSO CHAIN CHECK was closed - this device is not known yet, the check comes before the password'
       }[verifyResult.reason] || 'unknown reason';
 
       if (verifyResult.reason === 'session_active_elsewhere') {
