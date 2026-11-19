@@ -30536,6 +30536,138 @@ function zzz_mark_dialog(done) {
   o.appendChild(b); document.body.appendChild(o); paint();
 }
 
+function zzz_auth_b32(str) {
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567', c = String(str || '').toUpperCase().replace(/[^A-Z2-7]/g, '');
+  if (c.length < 16) return null;
+  const out = []; let bits = 0, val = 0;
+  for (const ch of c) { val = (val << 5) | A.indexOf(ch); bits += 5; if (bits >= 8) { out.push((val >>> (bits - 8)) & 255); bits -= 8; } }
+  return new Uint8Array(out);
+}
+async function zzz_auth_code(e, now) {
+  const key = zzz_auth_b32(e.s); if (!key) return '';
+  const step = Math.floor((now || Date.now()) / 1000 / (e.p || 30)), msg = new Uint8Array(8);
+  let x = step; for (let i = 7; i >= 0; i--) { msg[i] = x % 256; x = Math.floor(x / 256); }
+  const hk = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: e.a || 'SHA-1' }, false, ['sign']);
+  const h = new Uint8Array(await crypto.subtle.sign('HMAC', hk, msg)), o = h[h.length - 1] & 15;
+  const n = ((h[o] & 127) * 16777216 + h[o + 1] * 65536 + h[o + 2] * 256 + h[o + 3]) % Math.pow(10, e.d || 6);
+  return String(n).padStart(e.d || 6, '0');
+}
+function zzz_auth_parse(text) {
+  const t = String(text || '').trim(), e = { s: '', n: '', d: 6, p: 30, a: 'SHA-1' };
+  if (/^otpauth:\/\/totp\//i.test(t)) {
+    try {
+      const u = new URL(t), q = u.searchParams;
+      e.s = q.get('secret') || ''; e.n = decodeURIComponent(u.pathname.replace(/^\/+(totp\/)?/i, '')).slice(0, 40);
+      if (q.get('issuer') && e.n.indexOf(q.get('issuer')) < 0) e.n = (q.get('issuer') + ' ' + e.n).slice(0, 40);
+      const d = parseInt(q.get('digits'), 10), p = parseInt(q.get('period'), 10), a = String(q.get('algorithm') || '').toUpperCase();
+      if (d === 6 || d === 8) e.d = d; if (p >= 15 && p <= 120) e.p = p;
+      if (a === 'SHA256') e.a = 'SHA-256'; else if (a === 'SHA512') e.a = 'SHA-512';
+    } catch (er) { return null; }
+  } else e.s = t;
+  e.s = e.s.toUpperCase().replace(/[^A-Z2-7]/g, '');
+  return zzz_auth_b32(e.s) ? e : null;
+}
+function zzz_auth_slot() { return 'auth:' + String((typeof zzz0r1_get_current_username === 'function' && zzz0r1_get_current_username()) || '').toLowerCase(); }
+async function zzz_auth_load() {
+  const uk = zzz4r7_uk_open(); if (!uk) return { ok: false, why: 'key' };
+  const box = await zzz4r7_idb(st => st.get(zzz_auth_slot()));
+  if (!box || !box.b) return { ok: true, list: [] };
+  try { return { ok: true, list: JSON.parse(new TextDecoder().decode(await zzz4r7_open_bytes(uk.key, box.b, 'verso-authenticator'))) || [] }; }
+  catch (e) { return { ok: false, why: 'other-key' }; }
+}
+async function zzz_auth_save(list) {
+  const uk = zzz4r7_uk_open(); if (!uk) return false;
+  const b = await zzz4r7_seal_bytes(uk.key, new TextEncoder().encode(JSON.stringify(list)), 'verso-authenticator');
+  return (await zzz4r7_idb(st => st.put({ v: 1, uk: uk.id, at: Date.now(), b }, zzz_auth_slot()))) !== null;
+}
+async function zzz_auth_open() {
+  if (!zzz4r7_my_device()) { zzz6f2_show_toast('VERSO AUTHENTICATOR works only on MY DEVICE.', 'warn', 3500); return; }
+  if (!(Date.now() < zzzAdvUntil) && !(await zzz_verse_verify('authenticator', 'VERSO AUTHENTICATOR', 'Your MV PHRASE opens your codes.'))) return;
+  let st = await zzz_auth_load();
+  if (!st.ok) { zzz6f2_show_toast(st.why === 'key' ? 'Your personal key is locked - open it first (Multi Verification › KEY LOCK), then the codes open.' : 'These codes were locked with another key on this device - they cannot be opened with this one.', 'warn', 6000); return; }
+  let list = st.list, showOff = false, timer = null;
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv';
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', 'VERSO AUTHENTICATOR'); b.style.cssText = 'max-height:86vh;overflow:auto';
+  const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = 'VERSO AUTHENTICATOR'; b.appendChild(t);
+  zzz_mark_apply(b);
+  const info = document.createElement('div'); info.className = 'zzz-media-diss-s';
+  info.textContent = 'Codes for other services (GitHub, Supabase …). Saved on this device only, locked with your personal key. Keep the recovery codes of each service on paper - a lost phone = lost codes here.';
+  b.appendChild(info);
+  const rows = document.createElement('div'); rows.style.cssText = 'margin:8px 0;display:flex;flex-direction:column;gap:6px'; b.appendChild(rows);
+  const close = () => { if (timer) clearInterval(timer); o.remove(); };
+  const paint = async () => {
+    rows.textContent = '';
+    const shown = list.filter(e => showOff ? e.off : !e.off);
+    if (!shown.length) { const em = document.createElement('div'); em.className = 'zzz-media-confirm-text'; em.textContent = showOff ? 'Nothing removed.' : 'No codes yet - tap + ADD.'; rows.appendChild(em); }
+    for (const e of shown) {
+      const r = document.createElement('div'); r.style.cssText = 'display:flex;align-items:center;gap:8px;border:1px solid #6b5a1e;border-radius:10px;padding:6px 8px';
+      const nm = document.createElement('div'); nm.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;font-size:13px'; nm.textContent = e.n || 'code';
+      r.appendChild(nm);
+      if (!showOff) {
+        const cd = document.createElement('button'); cd.type = 'button'; cd.className = 'zzz-media-btn is-on'; cd.style.cssText = 'font-size:18px;letter-spacing:1px;font-variant-numeric:tabular-nums;min-width:104px';
+        const c = await zzz_auth_code(e); cd.textContent = c.slice(0, c.length / 2) + ' ' + c.slice(c.length / 2); cd.title = 'Tap = copy the code';
+        cd.addEventListener('click', async () => { try { await navigator.clipboard.writeText(await zzz_auth_code(e)); zzz6f2_show_toast('Code copied.', 'ok', 1800); } catch (er) { zzz6f2_show_toast('Copy is not allowed here - type the code.', 'warn'); } });
+        const sec = document.createElement('span'); sec.style.cssText = 'width:22px;text-align:right;color:#d4af37;font-size:12px;font-variant-numeric:tabular-nums';
+        const left = (e.p || 30) - Math.floor(Date.now() / 1000) % (e.p || 30); sec.textContent = left; if (left <= 5) sec.style.color = '#e5484d';
+        r.append(cd, sec);
+      }
+      const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn'; x.style.padding = '2px 8px'; x.textContent = showOff ? '↩' : '×'; x.title = showOff ? 'Put back' : 'Remove (kept, can be put back)';
+      x.addEventListener('click', async () => {
+        if (!showOff && !(await zzz_verse_verify('authenticator', 'REMOVE CODE', 'Your MV PHRASE - the code is switched off here (it can be put back). Switch the second step off in that service too.'))) return;
+        if (showOff) delete e.off; else e.off = Date.now();
+        if (!(await zzz_auth_save(list))) zzz6f2_show_toast('Not saved - the personal key is locked.', 'warn');
+        paint();
+      });
+      r.appendChild(x); rows.appendChild(r);
+    }
+  };
+  const row = document.createElement('div'); row.className = 'zzz-media-confirm-row'; row.style.flexWrap = 'wrap';
+  const add = document.createElement('button'); add.type = 'button'; add.className = 'zzz-media-btn is-on'; add.textContent = '+ ADD';
+  add.addEventListener('click', () => zzz_auth_add(async (e) => { list.push(e); if (!(await zzz_auth_save(list))) { list.pop(); zzz6f2_show_toast('Not saved - the personal key is locked.', 'warn'); } showOff = false; paint(); }));
+  const offB = document.createElement('button'); offB.type = 'button'; offB.className = 'zzz-media-btn'; offB.textContent = 'REMOVED';
+  offB.addEventListener('click', () => { showOff = !showOff; offB.classList.toggle('is-on', showOff); paint(); });
+  const n = document.createElement('button'); n.type = 'button'; n.className = 'zzz-media-btn'; n.textContent = 'CLOSE'; n.addEventListener('click', close);
+  row.append(add, offB, n); b.appendChild(row);
+  o.addEventListener('click', (e) => { if (e.target === o) close(); });
+  o.appendChild(b); document.body.appendChild(o);
+  await paint();
+  timer = setInterval(() => { if (!o.isConnected) { clearInterval(timer); return; } if (!document.querySelector('.zzz-auth-add')) paint(); }, 1000);
+}
+function zzz_auth_add(done) {
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv zzz-auth-add';
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', 'VERSO AUTHENTICATOR');
+  const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = 'ADD CODE'; b.appendChild(t);
+  zzz_mark_apply(b);
+  const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text';
+  sub.textContent = 'In the service (e.g. GitHub › two-factor › authenticator app) choose „setup key“ and copy it. Then PASTE here, or type it with the Verso keyboard.';
+  b.appendChild(sub);
+  const nm = document.createElement('input'); nm.type = 'text'; nm.maxLength = 40; nm.className = 'entry-cell'; nm.placeholder = 'name (e.g. GitHub)'; nm.autocomplete = 'off'; nm.style.cssText = 'width:100%;margin:6px 0;box-sizing:border-box'; b.appendChild(nm);
+  const key = zzz_vkb_make_secret('versoAuthKeyInput', 'entry-cell zzz6f36-login-local-input', 'SETUP KEY', 'setup key'); key.style.margin = '6px 0'; b.appendChild(key);
+  const stt = document.createElement('div'); stt.className = 'zzz-media-diss-s'; stt.style.minHeight = '16px'; b.appendChild(stt);
+  const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
+  const ps = document.createElement('button'); ps.type = 'button'; ps.className = 'zzz-media-btn'; ps.textContent = 'PASTE';
+  ps.addEventListener('click', async () => {
+    try { const tx = await navigator.clipboard.readText(); const e = zzz_auth_parse(tx);
+      if (!e) { stt.textContent = 'The clipboard holds no setup key.'; return; }
+      key.value = e.s; key._auth = e; if (e.n && !nm.value) nm.value = e.n; stt.textContent = 'Setup key pasted (' + e.s.length + ' characters).';
+      try { await navigator.clipboard.writeText(''); } catch (er) {}
+    } catch (er) { stt.textContent = 'Paste is not allowed here - type the key with the Verso keyboard.'; }
+  });
+  const y = document.createElement('button'); y.type = 'button'; y.className = 'zzz-media-btn is-on'; y.textContent = 'SAVE';
+  const end = () => { try { key.value = ''; } catch (e) {} o.remove(); };
+  y.addEventListener('click', () => {
+    const e = (key._auth && key._auth.s === String(key.value || '').toUpperCase().replace(/[^A-Z2-7]/g, '')) ? key._auth : zzz_auth_parse(key.value);
+    if (!e) { stt.textContent = 'This is not a setup key (letters A-Z and digits 2-7, at least 16).'; return; }
+    e.n = (nm.value.trim() || e.n || 'code').slice(0, 40); e.id = Date.now().toString(36);
+    end(); done(e);
+    zzz6f2_show_toast('Code added - now type its 6 digits into the service to finish its setup.', 'ok', 5000);
+  });
+  const n = document.createElement('button'); n.type = 'button'; n.className = 'zzz-media-btn'; n.textContent = 'CANCEL'; n.addEventListener('click', end);
+  key._vkbOk = y;
+  row.append(ps, y, n); b.appendChild(row);
+  o.appendChild(b); document.body.appendChild(o);
+}
+
 function zzz_verse_ask(ch, title, text, altLabel) {
   return new Promise((resolve) => {
     const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv';
@@ -30776,6 +30908,10 @@ function zzz_verse_section_render(host) {
       mkb.title = 'Your own colour + sign in every real Verso window that asks a secret - kept only on this device.';
       mkPaint(); mkb.addEventListener('click', () => zzz_mark_dialog(mkPaint));
       acts.appendChild(mkb); }
+    { const aub = document.createElement('button'); aub.type = 'button'; aub.className = 'zzz-media-btn'; aub.textContent = 'VERSO AUTHENTICATOR';
+      aub.title = '30-second codes for other services (GitHub, Supabase …) - on this device, locked with your personal key.';
+      aub.addEventListener('click', () => zzz_auth_open());
+      acts.appendChild(aub); }
   };
   load();
 }
@@ -47578,6 +47714,7 @@ const ZZZ_SET_REG = [
   { m: 'Notifications', w: 'sd', scope: 'all', place: 'settings', deps: ['Shown in the notification'], help: 'Sound, vibration and reading of Verso notifications. Saved on the Verso server for your account and this way of login (VERSO APP / WEB APP / WEB keep their own). The DEVICE must allow notifications (see SET UP above).' },
   { m: 'Shown in the notification', w: 's', scope: 'all', place: 'settings', deps: ['Notifications'], help: 'What a Verso notification shows (full / only who / nothing) per priority. Verso server, per way of login.' },
   { m: 'QUIET REGIME', w: 'sd', scope: 'all', place: 'settings', help: 'Verso NOTIF MULTIREADER silent (notifications still come). Server + in the Verso app on this DEVICE.' },
+  { m: 'VERSO AUTHENTICATOR', w: 'd', scope: 'all', place: 'info', help: 'VERSO AUTHENTICATOR - the 30-second codes for the second step of other services (GitHub, Supabase, Vercel, Google …), the same standard as Google Authenticator. SETTINGS › Multi Verification › VERSO AUTHENTICATOR: + ADD (paste the service\'s setup key), tap a code = copy. Saved on this device only, locked with your personal key, opened by the MV PHRASE, works offline. Always keep the recovery codes of each service on paper - Verso must never be the only way in.' },
   { m: 'PERSONAL MARK', w: 'd', scope: 'all', place: 'info', help: 'PERSONAL MARK - your own colour + sign (+ short word) that frames every real Verso window asking a secret (MV PHRASE, verse, VERSO PASSBOARD, VERSO CHAIN CHECK). Saved on this device only, never sent. Before you type a secret, look for your mark: no mark or another mark = do not type, check the address. Set it in SETTINGS › Multi Verification › PERSONAL MARK (on every device of yours).' },
   { m: 'VERSO CHAIN CHECK MODULE', w: 'd', scope: 'all', place: 'info', help: 'VERSO CHAIN CHECK MODULE - the task an unknown device gets before a login (SLOW LANE): links of the Verso chain light up, tap them in the same order. Try it in SETTINGS › Multi Verification › VERSO CHAIN CHECK · TRY. Asked at login on a device Verso does not know yet (accounts switched to FAST / SLOW LANE); a device where you logged in fully on MY DEVICE is known and is not asked.' },
   { m: 'TRUSTED SESSION', w: 's', scope: 'all', place: 'settings', help: 'Lets your own computer log in next to MY DEVICE for a chosen time (OFF by default, DATE MODULE, MV PHRASE to switch on). SETTINGS › Login setup, only on MY DEVICE. Verso server, per account.' },
@@ -56438,7 +56575,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-19 01:48';
+const VERSO_BUILD = '2026-11-19 01:56';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
