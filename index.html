@@ -12155,6 +12155,8 @@ function zzz6f41_bind_outside_click(box, closeFn) {
 
     if (e.target.closest && e.target.closest('.zzz5w8-item-window')) return;
 
+    if (e.target.closest && e.target.closest('.zzz-media-confirm')) return;
+
     if (e.target.closest && e.target.closest('.zzz-vkb-panel, .zzz1r17b-userfilter')) return;
 
     if (Date.now() - zzz_vkbOpenedAt < ZZZ_VKB_OPEN_TAP_MS) return;
@@ -18049,7 +18051,9 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
   const cnMaxSlot = document.createElement('span');
   cnMaxSlot.className = 'zzz1cn-max-slot';
 
-  try { cnPrivBtn.appendChild(zzz_files_chat_button(() => { const l = Array.from(box.querySelectorAll('textarea.zzz5w7-inline-text')).find(t => t.offsetParent); return l || box.querySelector('.zzz1r17b-notes-area'); }, () => cnGateKey)); } catch (e) {}
+  { const tgt = () => { const l = Array.from(box.querySelectorAll('textarea.zzz5w7-inline-text')).find(t => t.offsetParent); return l || box.querySelector('.zzz1r17b-notes-area'); };
+    try { cnPrivBtn.appendChild(zzz_files_chat_button(tgt, () => cnGateKey)); } catch (e) {}
+    try { cnPrivBtn.appendChild(zzz_ink_chat_button(tgt, () => cnGateKey)); } catch (e) {} }
   cnPrivBtn.appendChild(cnMaxSlot);
   cnPrivBtn.appendChild(zzz56_prio_button());
   cnPrivBtn.appendChild(cnPrivBtn0);
@@ -27178,6 +27182,16 @@ function zzz5w8_bind_chat_swipe(wrap, note) {
   wrap._zzz5w8Note = note;
   zzz5w8_paint_chat_hidden(wrap);
   zzz5w8_bind_swipe(wrap, () => zzz5w8_item_of_note(note));
+
+  if (wrap._zzzHoldRead) return; wrap._zzzHoldRead = true;
+  let t = null, x0 = 0, y0 = 0, block = 0;
+  const stop = () => { if (t) { clearTimeout(t); t = null; } };
+  wrap.addEventListener('pointerdown', (e) => { if (e.button > 0 || (e.target.closest && e.target.closest('button, a, input, textarea'))) return; x0 = e.clientX; y0 = e.clientY; stop();
+    t = setTimeout(() => { t = null; block = Date.now() + 800; try { zzz_haptic_pulse(30); } catch (er) {} try { zzz5w8_play_item(zzz5w8_item_of_note(note)); } catch (er) {} }, ZZZ5W8_HOLD_PLAY_MS); });
+  wrap.addEventListener('pointermove', (e) => { if (t && (Math.abs(e.clientX - x0) > 12 || Math.abs(e.clientY - y0) > 12)) stop(); });
+  wrap.addEventListener('pointerup', stop); wrap.addEventListener('pointercancel', stop);
+  wrap.addEventListener('click', (e) => { if (Date.now() < block) { e.stopPropagation(); e.preventDefault(); } }, true);
+  wrap.addEventListener('contextmenu', (e) => { if (t || Date.now() < block) e.preventDefault(); });
 }
 async function zzz5w8_unshift(it, quiet) {
   const key = zzz5w8_skey(it);
@@ -57037,7 +57051,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-20 18:41';
+const VERSO_BUILD = '2026-11-20 19:29';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -63155,6 +63169,19 @@ function zzz_files_chat_button(getTarget, getEntry) {
   });
   return c;
 }
+
+function zzz_ink_chat_button(getTarget, getEntry) {
+  const c = document.createElement('button'); c.type = 'button'; c.className = 'zzz-file-clip'; c.textContent = '✏'; c.title = 'DRAW into this message (VERSO INK) - nothing drawn = nothing added';
+  c.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault();
+    const ta = getTarget(); if (!ta || ta.disabled) { zzz6f2_show_toast('This chat line is closed (FINAL).', 'warn'); return; }
+    zzz_ink_open({ note: String(ta.value || '').replace(/\s*📎[^\n]*verso:file=\S+/g, '').trim(), after: async (id) => {
+      if (!id) return; const f = await zzz_files_get(id); if (!f) return;
+      const cur = String(ta.value || ''); ta.value = (cur.trim() ? cur.replace(/\s+$/, '') + '\n' : '') + zzz_files_marker(f); try { ta.dispatchEvent(new Event('input', { bubbles: true })); } catch (er) {}
+      const en = getEntry ? Number(getEntry()) : 0; if (en) zzz_sf_share_many(en, [f]);
+    } });
+  });
+  return c;
+}
 function zzz_files_chat_linkify(el) {
   if (!el || String(el.textContent || '').indexOf('verso:file=') < 0) return;
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null); const todo = []; let node;
@@ -63203,6 +63230,12 @@ function zzz_ink_draw_stroke(ctx, s) {
   for (let i = 1; i < p.length; i++) { ctx.lineWidth = Math.max(0.6, bw * 2 * ((p[i - 1][2] || 0.5) + (p[i][2] || 0.5)) / 2); ctx.beginPath(); ctx.moveTo(p[i - 1][0], p[i - 1][1]); ctx.lineTo(p[i][0], p[i][1]); ctx.stroke(); }
   ctx.restore();
 }
+function zzz_ink_note(ctx, text, w) {
+  if (!text) return; ctx.save(); ctx.fillStyle = '#222'; ctx.font = '38px system-ui, sans-serif'; ctx.textBaseline = 'top';
+  let y = 40; const max = w - 80;
+  String(text).split('\n').forEach(par => { let line = ''; par.split(/\s+/).forEach(word => { const t = line ? line + ' ' + word : word; if (ctx.measureText(t).width > max && line) { ctx.fillText(line, 40, y); y += 48; line = word; } else line = t; }); ctx.fillText(line, 40, y); y += 56; });
+  ctx.restore();
+}
 async function zzz_ink_bg_image(doc) {
   if (!doc || !doc.bg) return null;
   const f = await zzz_files_get(doc.bg); if (!f) return null;
@@ -63216,6 +63249,7 @@ async function zzz_ink_render(doc, maxSide) {
   const bg = await zzz_ink_bg_image(doc);
   x.fillStyle = '#ffffff'; x.fillRect(0, 0, c.width, c.height);
   if (bg) x.drawImage(bg, 0, 0, c.width, c.height);
+  if (doc.note) { x.save(); x.scale(s, s); zzz_ink_note(x, doc.note, doc.w); x.restore(); }
   const ink = document.createElement('canvas'); ink.width = c.width; ink.height = c.height; const ix = ink.getContext('2d'); ix.scale(s, s);
   (doc.strokes || []).forEach(st => zzz_ink_draw_stroke(ix, st));
   x.drawImage(ink, 0, 0);
@@ -63259,6 +63293,7 @@ async function zzz_ink_open(opts) {
     state.doc = { v: 1, w: Math.round((w || 1080) * s), h: Math.round((h || 1440) * s), bg: f.id, strokes: [] };
     state.defName = '✏ ' + String(f.name || 'photo').replace(/\.[a-z0-9]{1,5}$/i, '');
   }
+  if (opts.note) { state.doc.note = String(opts.note).slice(0, 2000); state.defName = '✏ ' + String(opts.note).replace(/\s+/g, ' ').slice(0, 40); }
   if (opts.ref) { state.doc.ref = String(opts.ref).slice(0, 2000); try { state.defName = '✏ ' + new URL(opts.ref).hostname; } catch (e) {} }
   document.querySelectorAll('.zzz-ink-win').forEach(x => x.remove());
   const o = document.createElement('div'); o.className = 'zzz-media-confirm zzz-ink-win'; o.setAttribute('data-vlabel', 'VERSO › FILES › INK'); o.setAttribute('data-vkind', 'DATA');
@@ -63274,7 +63309,7 @@ async function zzz_ink_open(opts) {
   cBg.width = cInk.width = Math.round(doc.w * ds); cBg.height = cInk.height = Math.round(doc.h * ds);
   const ix = cInk.getContext('2d'); ix.setTransform(ds, 0, 0, ds, 0, 0);
   const bx = cBg.getContext('2d'); bx.fillStyle = '#ffffff'; bx.fillRect(0, 0, cBg.width, cBg.height);
-  zzz_ink_bg_image(doc).then(i => { if (i) bx.drawImage(i, 0, 0, cBg.width, cBg.height); });
+  zzz_ink_bg_image(doc).then(i => { if (i) bx.drawImage(i, 0, 0, cBg.width, cBg.height); if (doc.note) { bx.save(); bx.scale(ds, ds); zzz_ink_note(bx, doc.note, doc.w); bx.restore(); } });
   const redraw = () => { ix.save(); ix.setTransform(1, 0, 0, 1, 0, 0); ix.clearRect(0, 0, cInk.width, cInk.height); ix.restore(); doc.strokes.forEach(s => zzz_ink_draw_stroke(ix, s)); };
   redraw();
 
@@ -63284,7 +63319,7 @@ async function zzz_ink_open(opts) {
   requestAnimationFrame(fit);
 
   let saveT = 0; const saveSoon = () => { state.dirty = true; clearTimeout(saveT); saveT = setTimeout(() => { zzz_ink_save(state).catch(e => zzz_user_error('The drawing could not be saved - it stays open, try again.', e, '[Zzz4-9:INK]')); }, 700); };
-  const close = async () => { clearTimeout(saveT); if (state.dirty && doc.strokes.length) { try { await zzz_ink_save(state); } catch (e) {} } o.remove(); if (state.id) zzz6f2_show_toast('✏ saved in VERSO FILES › ✏ DRAWINGS', 'ok', 1800); if (opts.after) try { opts.after(state.id); } catch (e) {} };
+  const close = async () => { clearTimeout(saveT); if (state.dirty && doc.strokes.length) { try { await zzz_ink_save(state); } catch (e) {} } o.remove(); if (state.id) zzz6f2_show_toast('✏ saved in VERSO FILES › ✏ DRAWINGS', 'ok', 1800); if (opts.after) try { opts.after(doc.strokes.length ? state.id : null); } catch (e) {} };
 
   const pts = new Map(); let cur = null, pinch = null, lastPt = null;
   const toDoc = (e) => { const r = cInk.getBoundingClientRect(); return [(e.clientX - r.left) * doc.w / r.width, (e.clientY - r.top) * doc.h / r.height]; };
