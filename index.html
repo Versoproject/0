@@ -11382,6 +11382,18 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz1r17b-comm-window.zzz1cn-compact .zzz1cn-note.zzz1cn-note-mine:not(.zzz1cn-row-full) .zzz1cn-note-text { border-top-right-radius: 3px; }
   .zzz1r17b-comm-window.zzz1cn-compact .zzz1cn-note.zzz1cn-is-private:not(.zzz1cn-row-full) .zzz1cn-note-text { background-color: rgba(42, 157, 143, 0.13); }
   .zzz1r17b-comm-window.zzz1cn-compact .zzz1cn-note.zzz1cn-has-prio-urgent:not(.zzz1cn-row-full) .zzz1cn-note-text { box-shadow: inset 0 0 0 2px #c0392b; }
+  
+  .zzz1r17b-comm-window .zzz1cn-note.zzz1cn-row-full.zzz1cn-has-prio-urgent { outline: 3px solid #c0392b !important; outline-offset: -3px !important; box-shadow: none !important; }
+  .zzz1r17b-comm-window .zzz1cn-note.zzz1cn-row-full.zzz1cn-has-prio-attention { outline: 3px solid #e07b00 !important; outline-offset: -3px !important; box-shadow: none !important; }
+  
+  .zzz1cn-note { position: relative; }
+  .zzz1cn-read-grip { position: absolute; left: 2px; bottom: 0; z-index: 2; min-width: 30px; height: 26px; display: flex; align-items: center; justify-content: center;
+    font-size: 15px; line-height: 1; border-radius: 13px; background: rgba(212,175,55,.18); border: 1px solid rgba(212,175,55,.6); opacity: .75; cursor: pointer;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+  .zzz1cn-note.zzz1cn-note-mine .zzz1cn-read-grip { left: auto; right: 2px; }   
+  .zzz1cn-note.is-reading .zzz1cn-read-grip { opacity: 1; background: #D4AF37; animation: zzzGripPulse 1s ease-in-out infinite; }
+  @keyframes zzzGripPulse { 50% { transform: scale(1.15); } }
+  .zzz1r17b-comm-window .zzz1cn-note .zzz1cn-note-text { padding-bottom: 18px !important; }
   .zzz1r17b-comm-window.zzz1cn-compact .zzz1cn-note.zzz1cn-has-prio-attention:not(.zzz1cn-row-full) .zzz1cn-note-text { box-shadow: inset 0 0 0 2px #e07b00; }
   .zzz1r17b-comm-window.zzz1cn-compact .zzz1cn-note.zzz5w8-has-alarm:not(.zzz1cn-row-full) .zzz1cn-note-text { box-shadow: inset 4px 0 0 #D4AF37; }
   .zzz1r17b-comm-window.zzz1cn-compact .zzz1cn-note.zzz1cn-note-mine.zzz5w8-has-alarm:not(.zzz1cn-row-full) .zzz1cn-note-text { box-shadow: inset -4px 0 0 #D4AF37; }
@@ -44079,18 +44091,21 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   wrap.addEventListener('selectstart', (e) => { if (cnNoSel && e.cancelable) e.preventDefault(); });
   wrap.addEventListener('contextmenu', (e) => { if (cnNoSel && e.cancelable) e.preventDefault(); });
   wrap.addEventListener('touchend', () => { setTimeout(() => { cnNoSel = false; }, 50); });
-  zzz_bind_long_press(wrap, 1200, () => {
+  const cnRead = () => {
     zzz_haptic_pulse(20);
-    if (zzz1cnReadingNote === wrap && zzz16_is_reading()) { zzz16_stop_reading(); zzz1cnReadingNote = null; return; }
+    if (zzz1cnReadingNote === wrap && zzz16_is_reading()) { zzz16_stop_reading(); zzz1cnReadingNote = null; wrap.classList.remove('is-reading'); return; }
     if (typeof zzz16_mode === 'function' && zzz16_mode() !== 'my') { zzz6f2_show_toast('Reading the message text aloud works only on MY DEVICE.', 'warn'); return; }
     const txt = zzz5w7_body_of(note).replace(/\s+/g, ' ').trim();
     if (!txt) return;
-    if (zzz16_speak(txt)) zzz1cnReadingNote = wrap;
+    if (zzz16_speak(txt)) { document.querySelectorAll('.zzz1cn-note.is-reading').forEach(x => x.classList.remove('is-reading')); zzz1cnReadingNote = wrap; wrap.classList.add('is-reading');
+      setTimeout(() => { const iv = setInterval(() => { try { if (!zzz16_is_reading() || zzz1cnReadingNote !== wrap) { wrap.classList.remove('is-reading'); clearInterval(iv); } } catch (e) { clearInterval(iv); } }, 800); }, 1500); }
     else zzz6f2_show_toast('Text could not be read aloud - this browser has no speech voice.', 'warn');
-  }, (e) => {
+  };
+  wrap._zzzRead = cnRead;
+  zzz_bind_long_press(wrap, 1200, cnRead, (e) => {
 
     const t = e && e.target;
-    return !(t && t.closest && t.closest('button, input, label, .zzz1cn-note-number, .zzz1cn-note-time'));
+    return !(t && t.closest && t.closest('button, input, label, .zzz1cn-note-number, .zzz1cn-note-time, .zzz1cn-read-grip'));
   });
   const head = document.createElement('div');
   head.className = 'zzz1cn-note-head';
@@ -44468,6 +44483,14 @@ function zzz1cn_build_note(entryKey, note, onChanged, ordinal) {
   body.className = 'zzz1cn-note-text';
   body.textContent = note.note_text;
   wrap.appendChild(body);
+
+  if (String(note && note.note_text || '').trim()) {
+    const grip = document.createElement('span'); grip.className = 'zzz1cn-read-grip'; grip.textContent = '\uD83D\uDD0A'; grip.title = 'Read aloud (tap or hold) · again = stop';
+    grip.setAttribute('role', 'button'); grip.setAttribute('aria-label', 'Read aloud');
+    grip.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); if (wrap._zzzRead) wrap._zzzRead(); });
+    grip.addEventListener('contextmenu', (e) => e.preventDefault());
+    wrap.appendChild(grip);
+  }
 
   try { if (zzz10v1_normalize(note.username || '') === me && !zzz56_note_to_self(note, me)) zzz23tr_attach_own(body, note); else   zzz23tr_attach(body, entryKey, note, me); } catch (e) {}
 
@@ -57065,7 +57088,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-21 00:03';
+const VERSO_BUILD = '2026-11-21 00:04';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
