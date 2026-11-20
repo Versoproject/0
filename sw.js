@@ -27,7 +27,8 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(versoSwNavigate(req));
     return;
   }
-  if (VERSO_SW_STATIC.test(url.pathname)) {
+
+  if (VERSO_SW_STATIC.test(url.pathname) || url.pathname.startsWith('/packs/')) {
     e.respondWith((async () => {
       const cached = await caches.match(req);
       if (cached) return cached;
