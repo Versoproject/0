@@ -7285,6 +7285,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-media-numc { cursor: pointer; white-space: nowrap; position: relative; font-weight: 700; }   
   .zzz-media-numc.is-lockc::after, .zzz-media-numc.is-unlockc::after { content: '\1F512'; position: absolute; right: -2px; top: -4px; font-size: 8px; }
   .zzz-media-numc.is-unlockc::after { content: '\1F513'; }
+  .zzz-media-numc { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transition: background .2s; border-radius: 6px; }   
+  .zzz-media-numc.is-hold1 { background: rgba(212,175,55,.35); }
+  .zzz-media-numc.is-hold3 { background: rgba(220,38,38,.55); }
+  .zzz-media-row.is-sel .zzz-media-numc { background: rgba(212,175,55,.5); color: #000; }
   .zzz-media-row.is-cur > div:nth-child(2)::before { content: '\1F516 '; }   
   
   .zzz-media-listhead { flex-wrap: nowrap !important; }
@@ -56958,7 +56962,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-20 02:57';
+const VERSO_BUILD = '2026-11-20 03:17';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -63510,8 +63514,9 @@ async function zzz_media_open() {
       if (y0 === null) return; const dy = e.clientY - y0, dx = Math.abs(e.clientX - x0); y0 = null; w.style.transform = ''; grip.classList.remove('is-up', 'is-swipe');
       if (dx > Math.abs(dy)) return;
       if (el === grip && Math.abs(dy) > 40) { gripSwiped = true; setTimeout(() => { gripSwiped = false; }, 400); zzz_haptic_pulse(12);
-        if (dy < 0) zzz_media_psize(w, w.classList.contains('is-pmax') ? 1 : 2);
-        else { const on = !w.classList.contains('is-notabs'); w.classList.toggle('is-notabs', on); try { if (on && typeof zzz_vkb_hide === 'function') zzz_vkb_hide(); } catch (x) {} setTimeout(zzz_media_place, 60); }
+
+        if (dy < 0) { if (w.classList.contains('is-notabs')) { w.classList.remove('is-notabs'); zzz_media_psize(w, 1); setTimeout(zzz_media_place, 60); } else zzz_media_psize(w, w.classList.contains('is-pmax') ? 1 : 2); }
+        else { const on = !w.classList.contains('is-notabs'); w.classList.toggle('is-notabs', on); if (on) zzz_media_psize(w, 2); try { if (on && typeof zzz_vkb_hide === 'function') zzz_vkb_hide(); } catch (x) {} setTimeout(zzz_media_place, 60); }
         return; }
       if (el !== grip && dy > 70) { w.remove(); zzz_media_place(); zzz6f2_show_toast('MEDIA CENTER hidden - playing goes on.', 'info'); }
     };
@@ -63798,10 +63803,29 @@ async function zzz_media_open() {
         if (it.num) { fc.classList.add('zzz-media-numc'); if (priv) fc.classList.add(lockedNow ? 'is-lockc' : 'is-unlockc'); const en = zzzMedia.entry && zzzMedia.entry.entry_id;
           fc.textContent = String(it.num);
           fc.title = (fc.title ? fc.title + ' · ' : '') + 'MEDIAS #' + it.num + ' · tap = find / copy link';
-          fc.addEventListener('click', (e) => { e.stopPropagation(); if (!en) return; const l = 'verso:en=' + en + '&n=' + it.num, rc = fc.getBoundingClientRect();
+
+          if (it.id && !trashTab) { let t0 = 0, tm1 = null, tm3 = null, stage = 0, lastTap = 0, sx = 0, sy = 0;
+            const clr = () => { clearTimeout(tm1); clearTimeout(tm3); fc.classList.remove('is-hold1', 'is-hold3'); };
+            const pick = () => { const ids = zzzMedia.sel.size ? Array.from(zzzMedia.sel) : [it.id]; return (zzzMedia.list || []).filter(x => ids.includes(x.id)); };
+            fc.addEventListener('pointerdown', (e) => { e.stopPropagation(); t0 = Date.now(); stage = 0; sx = e.clientX; sy = e.clientY;
+              tm1 = setTimeout(() => { stage = 1; fc.classList.add('is-hold1'); try { navigator.vibrate && navigator.vibrate(15); } catch (er) {} zzz6f2_show_toast('Release = 📌 PIN MEDIA · keep holding = TRASH', 'info', 1400); }, 900);
+              tm3 = setTimeout(async () => { stage = 3; fc.classList.add('is-hold3'); try { navigator.vibrate && navigator.vibrate([20, 40, 20]); } catch (er) {}
+                const items = pick(); for (const x of items) await zzz_media_set_tags(x, zzz_media_tagw(x.tags).concat(['trash']));
+                zzzMedia.sel.clear(); zzzMedia.selecting = false; draw(); zzz6f2_show_toast(items.length + (items.length === 1 ? ' medium' : ' media') + ' moved to TRASH (TRASH tab = restore).', 'info', 2600); }, 3000); });
+            fc.addEventListener('pointermove', (e) => { if (Math.abs(e.clientX - sx) > 12 || Math.abs(e.clientY - sy) > 12) { clr(); stage = 9; } });
+            fc.addEventListener('pointercancel', () => { clr(); stage = 9; });
+            fc.addEventListener('contextmenu', (e) => e.preventDefault());
+            fc.addEventListener('pointerup', (e) => { e.stopPropagation(); const st = stage; clr(); stage = 9;
+              if (st === 1) { const items = pick(); zzz_media_attach_pick(items, () => { zzzMedia.sel.clear(); zzzMedia.selecting = false; zzz_media_redraw(); }, { title: '📌 PIN MEDIA · ' + items.length + (items.length === 1 ? ' medium' : ' media') }); return; }
+              if (st !== 0) return;
+              const now = Date.now(); if (now - lastTap < 350) { lastTap = 0; if (zzzMedia.sel.has(it.id)) zzzMedia.sel.delete(it.id); else zzzMedia.sel.add(it.id); if (!zzzMedia.sel.size) zzzMedia.selecting = false; fc._medias(); draw(); return; }
+              lastTap = now; if (zzzMedia.sel.has(it.id)) zzzMedia.sel.delete(it.id); else zzzMedia.sel.add(it.id); zzzMedia.selecting = zzzMedia.sel.size > 0; draw(); });
+            fc.addEventListener('click', (e) => e.stopPropagation()); }
+          fc._medias = () => { if (!en) return; const l = 'verso:en=' + en + '&n=' + it.num, rc = fc.getBoundingClientRect();
             zzz_scale_open('MEDIAS #' + it.num, [{ k: 1, label: '\uD83D\uDD0D FIND in its record' }, { k: 2, label: '\u29C9 COPY LINK' }], 0, rc.left + rc.width / 2, rc.bottom, (k) => {
               if (k === 1) { try { zzz_place_open('en=' + en + '&n=' + it.num); } catch (er) {} }
-              else if (k === 2) { try { navigator.clipboard.writeText(l).then(() => zzz6f2_show_toast('Copied: ' + l, 'ok', 1800), () => zzz6f2_show_toast(l, 'info', 3000)); } catch (er) { zzz6f2_show_toast(l, 'info', 3000); } } }); }); }
+              else if (k === 2) { try { navigator.clipboard.writeText(l).then(() => zzz6f2_show_toast('Copied: ' + l, 'ok', 1800), () => zzz6f2_show_toast(l, 'info', 3000)); } catch (er) { zzz6f2_show_toast(l, 'info', 3000); } } }); };
+          if (!it.id || trashTab) fc.addEventListener('click', (e) => { e.stopPropagation(); fc._medias(); }); }
       }
 
       { const nd = it.num && zzzMedia.diss && zzzMedia.diss[it.num] ? zzzMedia.diss[it.num].length : 0;
@@ -65770,7 +65794,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 385;
+const ZZZ14B17_APP_LATEST = 386;
 
 function zzz_canon_url() {
   try {
