@@ -7266,6 +7266,16 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-vi-nrw-sec { color: #D4AF37; font-size: 11px; font-weight: 700; letter-spacing: .05em; margin: 10px 0 2px; }   
   .zzz-feed-row { border-style: dashed !important; }   
   
+  .zzz-brw-box { width: min(98vw, 760px); max-height: 94vh; overflow: auto; }
+  .zzz-brw-bar { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
+  .zzz-brw-q { flex: 1 1 auto; min-width: 0; font-size: 15px; }
+  .zzz-brw-hist { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+  .zzz-brw-hist .zzz-media-btn { font-size: 11px; padding: 2px 7px; opacity: 0.85; }
+  .zzz-brw-card { display: flex; flex-direction: column; gap: 3px; }
+  .zzz-brw-card small { opacity: 0.7; word-break: break-all; }
+  .zzz-brw-acts { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 3px; }
+  .zzz-brw-reader { max-height: 70vh; overflow: auto; }
+  
   .zzz-pdf-page { display: block; margin: 6px auto; background: #fff; max-width: 100%; height: auto; }
   .zzz-office { text-align: left; background: #fff; color: #111; border-radius: 6px; padding: 10px 12px; max-height: 70vh; overflow: auto; font-size: 13px; line-height: 1.45; user-select: text; }
   .zzz-office-p { margin: 0 0 6px 0; white-space: pre-wrap; word-break: break-word; }
@@ -57027,7 +57037,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-20 17:28';
+const VERSO_BUILD = '2026-11-20 18:41';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -63079,6 +63089,7 @@ function zzz_files_open(opts) {
     btn(left, '+ ADD FILES', 'Pick files - a file outside a connected folder is kept as an encrypted Verso copy', () => fin.click());
     btn(left, '✏ DRAW', 'A new drawing (VERSO INK) - its own record in ✏ DRAWINGS', () => zzz_ink_open({ after: () => { if (o.isConnected) { tab = 'INK'; zzz_files_load().then(() => paint()); } } }));
     btn(left, '⚙ FILE SETUP', 'Folders of MY DEVICE, copy size, storage', () => zzz_files_setup_window());
+    btn(left, '🌐', 'VERSO BROWSER', () => zzz_brw_open(''));
     left.appendChild(busy);
     btn(rb, 'CLOSE', '', () => o.remove(), 'is-on');
   };
@@ -63248,6 +63259,7 @@ async function zzz_ink_open(opts) {
     state.doc = { v: 1, w: Math.round((w || 1080) * s), h: Math.round((h || 1440) * s), bg: f.id, strokes: [] };
     state.defName = '✏ ' + String(f.name || 'photo').replace(/\.[a-z0-9]{1,5}$/i, '');
   }
+  if (opts.ref) { state.doc.ref = String(opts.ref).slice(0, 2000); try { state.defName = '✏ ' + new URL(opts.ref).hostname; } catch (e) {} }
   document.querySelectorAll('.zzz-ink-win').forEach(x => x.remove());
   const o = document.createElement('div'); o.className = 'zzz-media-confirm zzz-ink-win'; o.setAttribute('data-vlabel', 'VERSO › FILES › INK'); o.setAttribute('data-vkind', 'DATA');
   const top = document.createElement('div'); top.className = 'zzz-ink-bar';
@@ -63332,6 +63344,8 @@ async function zzz_ink_open(opts) {
 }
 async function zzz_ink_view(f, host) {
   const doc = await zzz_ink_doc(f); const c = await zzz_ink_render(doc, 1600); c.className = 'zzz-file-img'; host.appendChild(c);
+  if (doc.ref) { const l = document.createElement('div'); l.className = 'zzz-file-vmeta'; l.textContent = '🌐 for ' + doc.ref; host.appendChild(l);
+    const bb = document.createElement('button'); bb.type = 'button'; bb.className = 'zzz-media-btn'; bb.textContent = '📖 THE PAGE'; bb.addEventListener('click', (e) => { e.stopPropagation(); zzz_brw_open(doc.ref); }); host.appendChild(bb); }
   const r = document.createElement('div'); r.className = 'zzz-media-confirm-row'; r.style.justifyContent = 'center';
   const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-btn is-on'; b.textContent = '✏ EDIT'; b.title = 'Continue drawing (a new version, the older one stays)';
   b.addEventListener('click', (e) => { e.stopPropagation(); document.querySelectorAll('.zzz-file-view').forEach(x => x.remove()); zzz_ink_open({ file: f }); }); r.appendChild(b); host.appendChild(r);
@@ -63546,6 +63560,90 @@ async function zzz_pack_office_view(f, host) {
 ZZZ_FILES_VIEWERS.pdf = zzz_pack_pdf_view;
 ZZZ_FILES_VIEWERS.office = zzz_pack_office_view;
 { const txt = ZZZ_FILES_VIEWERS.text; ZZZ_FILES_VIEWERS.data = (f, host) => /\.xlsx$/i.test(f.name || '') ? zzz_pack_office_view(f, host) : txt(f, host); }
+
+const zzzBrw = { hist: [] };
+function zzz_brw_hist() { try { return JSON.parse(sessionStorage.getItem('zzz_brw_hist') || '[]'); } catch (e) { return []; } }
+function zzz_brw_hist_add(q) { try { const l = zzz_brw_hist().filter(x => x !== q); l.unshift(q); sessionStorage.setItem('zzz_brw_hist', JSON.stringify(l.slice(0, 15))); } catch (e) {} }
+function zzz_brw_kind(q) {
+  q = String(q || '').trim(); let m;
+  if ((m = /verso:file=([A-Za-z0-9]{6,32})/.exec(q))) return { k: 'file', v: m[1] };
+  if ((m = /^(?:#|en=|verso:en=|rdr=)\s*(\d{1,9})$/i.exec(q))) return { k: 'rec', v: m[1] };
+  if (/^https?:\/\/\S+$/i.test(q)) return { k: 'web', v: q };
+  if (/^(www\.)?([a-z0-9-]+\.)+[a-z]{2,}(\/\S*)?$/i.test(q) && !/\s/.test(q) && !/\.(pdf|docx?|xlsx?|pptx?|odt|txt|md|csv|json|png|jpe?g|gif|webp|heic|svg|mp[34]|m4a|mov|webm|zip|rar|7z)$/i.test(q)) return { k: 'web', v: 'https://' + q };
+  return { k: 'words', v: q };
+}
+function zzz_brw_open(q) {
+  document.querySelectorAll('.zzz-brw-win').forEach(x => x.remove());
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm zzz-brw-win';
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzz-brw-box'; b.setAttribute('data-vlabel', 'VERSO › BROWSER'); b.setAttribute('data-vkind', 'UI');
+  o.appendChild(b); document.body.appendChild(o);
+  o.addEventListener('click', (e) => { if (e.target === o) o.remove(); });
+  const h = document.createElement('div'); h.className = 'zzz-media-confirm-t'; h.textContent = '🌐 VERSO BROWSER'; b.appendChild(h);
+  const bar = document.createElement('div'); bar.className = 'zzz-brw-bar'; b.appendChild(bar);
+  const inp = document.createElement('input'); inp.type = 'text'; inp.className = 'zzz-media-tagq zzz-brw-q'; inp.setAttribute('data-zzz-nodraft', '1'); inp.placeholder = 'web address, #record, words…'; inp.setAttribute('enterkeyhint', 'go'); bar.appendChild(inp);
+  const go = document.createElement('button'); go.type = 'button'; go.className = 'zzz-media-btn is-on'; go.textContent = 'GO'; bar.appendChild(go);
+  const hist = document.createElement('div'); hist.className = 'zzz-brw-hist'; b.appendChild(hist);
+  const out = document.createElement('div'); out.className = 'zzz-brw-out'; b.appendChild(out);
+  const foot = document.createElement('div'); foot.className = 'zzz-media-confirm-row'; foot.style.justifyContent = 'flex-end'; b.appendChild(foot);
+  const cl = document.createElement('button'); cl.type = 'button'; cl.className = 'zzz-media-btn is-on'; cl.textContent = 'CLOSE'; cl.addEventListener('click', () => o.remove()); foot.appendChild(cl);
+  const btn = (host, t, tip, fn, cls) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn' + (cls ? ' ' + cls : ''); x.textContent = t; if (tip) x.title = tip; x.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); host.appendChild(x); return x; };
+  const card = (title, sub, kind) => { const c = document.createElement('div'); c.className = 'zzz-rs-blk zzz-brw-card'; c.setAttribute('data-vkind', 'DATA'); c.setAttribute('data-vlabel', 'VERSO › BROWSER › ' + kind);
+    const t = document.createElement('b'); t.textContent = title; c.appendChild(t); if (sub) { const s = document.createElement('small'); s.textContent = sub; c.appendChild(s); }
+    const r = document.createElement('div'); r.className = 'zzz-brw-acts'; c.appendChild(r); out.appendChild(c); return r; };
+  const note = (t) => { const n = document.createElement('div'); n.className = 'zzz-vi-nrw-none'; n.textContent = t; out.appendChild(n); };
+  const paintHist = () => { hist.innerHTML = ''; zzz_brw_hist().slice(0, 8).forEach(x => btn(hist, x.length > 28 ? x.slice(0, 27) + '…' : x, x, () => { inp.value = x; run(); })); };
+  const webActs = (r, link) => {
+    btn(r, '📖 VERSO', 'Read the page as a Verso page (via Verso\'s server) - save, mark, draw', () => readIn(link), 'is-on');
+    btn(r, '💾 READ SPACE', 'Save the link into READ SPACE (ACTUAL)', async () => { const it = await zzz_rs_add(link); if (it) zzz6f2_show_toast('💾 saved in READ SPACE', 'ok', 1800); });
+    btn(r, '↗ WEB', 'The original page in a new tab (outside Verso)', () => { try { window.open(link, '_blank', 'noopener'); } catch (e) {} }, 'zzz-file-ext');
+  };
+  const readIn = async (link) => {
+    out.innerHTML = '';
+    const top = document.createElement('div'); top.className = 'zzz-media-confirm-row'; top.style.justifyContent = 'flex-start'; top.style.flexWrap = 'wrap'; out.appendChild(top);
+    btn(top, '‹ BACK', 'Back to the results', () => run());
+    btn(top, '💾 READ SPACE', 'Save into READ SPACE (ACTUAL) - there: KEEP CONTENT, notes, chat', async () => { const it = await zzz_rs_add(link); if (it) zzz6f2_show_toast('💾 saved in READ SPACE', 'ok', 1800); });
+    btn(top, '✏ DRAW', 'A drawing for this page (VERSO INK, saved in ✏ DRAWINGS with the page address)', () => zzz_ink_open({ ref: link }));
+    btn(top, '↗ WEB', 'The original page in a new tab (outside Verso)', () => { try { window.open(link, '_blank', 'noopener'); } catch (e) {} }, 'zzz-file-ext');
+    const box = document.createElement('div'); box.className = 'zzz-rs-reader zzz-brw-reader'; out.appendChild(box);
+    const content = document.createElement('div'); content.className = 'zzz-rs-content'; box.appendChild(content);
+    content.textContent = '⏳ reading ' + zzz_rs_host(link) + '…';
+    const d = await zzz_rs_fetch(link);
+    if (!d || d.error) { content.textContent = (d && d.error) || 'The page could not be read.'; return; }
+    try { zzz_rs_paint(content, d, box); } catch (e) { content.textContent = 'The page could not be shown: ' + (e && e.message || e); }
+    zzz_mod_usage('browser', 'use');
+  };
+  const run = async () => {
+    const q = String(inp.value || '').trim(); out.innerHTML = '';
+    if (!q) { note('Type a web address (verso.sk, https://…), a record (#123) or words to find in your Verso.'); return; }
+    zzz_brw_hist_add(q); paintHist();
+    const k = zzz_brw_kind(q);
+    if (k.k === 'web') { const r = card(zzz_rs_host(k.v), k.v, 'WEB'); webActs(r, k.v); return; }
+    if (k.k === 'rec') { const r = card('#' + k.v, (submittedEntriesCache[k.v] ? String(submittedEntriesCache[k.v]) : 'Verso record'), 'RECORD'); btn(r, '📖 READER', 'Open the record in the RECORD READER', () => zzz_rdr_open(k.v), 'is-on'); return; }
+    if (k.k === 'file') { const f = (await zzz_files_get(k.v)) || ((await zzz_sf_meta(k.v)) || {}).f; if (!f) { note('This file is not reachable for you.'); return; } const r = card((ZZZ_FILES_ICON[f.cat] || '📦') + ' ' + f.name, zzz_files_size(f.size), 'FILE'); btn(r, '👁 OPEN', '', () => zzz_files_view(f), 'is-on'); return; }
+
+    const ql = q.toLowerCase(); let n = 0;
+    const files = (await zzz_files_load()).filter(f => !f.trash && !f.newer && String(f.name || '').toLowerCase().indexOf(ql) >= 0).slice(0, 15);
+    files.forEach(f => { n++; const r = card((ZZZ_FILES_ICON[f.cat] || '📦') + ' ' + f.name, 'VERSO FILES · ' + zzz_files_size(f.size), 'FILE'); btn(r, '👁 OPEN', '', () => zzz_files_view(f, files), 'is-on'); });
+    try { await Promise.race([zzz_rs_load(), new Promise(z => setTimeout(z, 3000))]); (zzzRs.lines || []).filter(x => (String(x.name || '') + ' ' + String(x.link || '')).toLowerCase().indexOf(ql) >= 0).slice(0, 15).forEach(x => { n++; const r = card('📖 ' + (x.name || zzz_rs_host(x.link)), 'READ SPACE · ' + (x.path || '') + ' · ' + x.link, 'READ SPACE'); btn(r, '📖 OPEN', 'Open in READ SPACE', () => { o.remove(); zzz_rs_open_page(x); }, 'is-on'); btn(r, '↗ WEB', '', () => { try { window.open(x.link, '_blank', 'noopener'); } catch (e) {} }, 'zzz-file-ext'); }); } catch (e) {}
+    Object.keys(submittedEntriesCache || {}).filter(id => String(submittedEntriesCache[id] || '').toLowerCase().indexOf(ql) >= 0).slice(0, 15).forEach(id => { n++; const r = card('#' + id + ' · ' + String(submittedEntriesCache[id]).slice(0, 80), 'record', 'RECORD'); btn(r, '📖 READER', '', () => zzz_rdr_open(id), 'is-on'); });
+    if (!n) note('Nothing in your Verso for „' + q + '“.');
+    const r = card('↗ Search the web for „' + q + '“', 'opens a search engine in a new tab (outside Verso) - web results inside Verso come next', 'WEB SEARCH');
+    btn(r, '↗ SEARCH THE WEB', '', () => { try { window.open('https://duckduckgo.com/?q=' + encodeURIComponent(q), '_blank', 'noopener'); } catch (e) {} }, 'zzz-file-ext');
+  };
+  go.addEventListener('click', run);
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
+  paintHist();
+  if (q) { inp.value = q; run(); } else { note('Type a web address (verso.sk, https://…), a record (#123) or words to find in your Verso.'); setTimeout(() => { try { inp.focus(); } catch (e) {} }, 80); }
+  return o;
+}
+function zzz_brw_hash() {
+  const m = /^#browse(?:=(.*))?$/.exec(String(location.hash || '')); if (!m) return;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  let q = ''; try { q = decodeURIComponent(m[1] || ''); } catch (e) { q = m[1] || ''; }
+  setTimeout(() => { try { zzz_brw_open(q); } catch (e) {} }, 60);
+}
+window.addEventListener('hashchange', zzz_brw_hash);
+window.addEventListener('load', () => setTimeout(zzz_brw_hash, 1400));
 
 function zzz_media_tablist_raw() {
   if (zzzMedia.tab === 'TRASH') return (zzzMedia.all || []).filter(x => x.trash);
@@ -66731,7 +66829,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 392;
+const ZZZ14B17_APP_LATEST = 393;
 
 function zzz_canon_url() {
   try {
