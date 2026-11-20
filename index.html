@@ -57027,7 +57027,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-20 17:24';
+const VERSO_BUILD = '2026-11-20 17:28';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -63421,9 +63421,23 @@ function zzz_pack_states() { try { return JSON.parse(localStorage.getItem('zzz_p
 function zzz_pack_on(k) { const s = zzz_pack_states(); if (k in s) return !!s[k]; const p = ZZZ_PACKS[k]; return !!p && (!p.files.length || !zzz14b17_in_app()); }
 function zzz_mod_usage(mod, act, extra) {
   try { const k = zzz_ukey('zzz_mod_usage'); const l = JSON.parse(localStorage.getItem(k) || '[]');
-    l.push(Object.assign({ m: mod, a: act, at: new Date().toISOString(), dev: zzz14b17_in_app() ? 'app' : 'web' }, extra || {}));
+    const at = new Date().toISOString();
+    l.push(Object.assign({ k: at + ':' + mod + ':' + act + ':' + zzz_files_rand(4), m: mod, a: act, at, dev: zzz14b17_in_app() ? 'app' : 'web' }, extra || {}));
     localStorage.setItem(k, JSON.stringify(l.slice(-500))); } catch (e) {}
+  clearTimeout(zzz_mod_usage.t); zzz_mod_usage.t = setTimeout(zzz_mod_usage_sync, 4000);
 }
+
+async function zzz_mod_usage_sync() {
+  if (!zzz5w9_logged_in() || zzz_mod_usage_sync.busy) return;
+  const k = zzz_ukey('zzz_mod_usage'); let l; try { l = JSON.parse(localStorage.getItem(k) || '[]'); } catch (e) { return; }
+  const todo = l.filter(e => !e.s); if (!todo.length) return;
+  zzz_mod_usage_sync.busy = true;
+  try { todo.forEach(e => { if (!e.k) e.k = e.at + ':' + e.m + ':' + e.a; });
+    const { data, error } = await sb.rpc('verso_module_usage_add', { p_events: todo.slice(0, 500).map(e => ({ k: e.k, m: e.m, a: e.a, dev: e.dev, b: e.b || 0, at: e.at })) });
+    if (!error && data && data.success) { const sent = new Set(todo.slice(0, 500).map(e => e.k)); l.forEach(e => { if (sent.has(e.k)) e.s = 1; }); localStorage.setItem(k, JSON.stringify(l)); }
+  } catch (e) {} finally { zzz_mod_usage_sync.busy = false; }
+}
+window.addEventListener('load', () => setTimeout(zzz_mod_usage_sync, 15000));
 function zzz_mod_usage_list() { try { return JSON.parse(localStorage.getItem(zzz_ukey('zzz_mod_usage')) || '[]'); } catch (e) { return []; } }
 async function zzz_pack_cached(k) { const p = ZZZ_PACKS[k]; if (!p || !p.files.length) return true; try { for (const u of p.files) if (!(await caches.match(u))) return false; return true; } catch (e) { return false; } }
 async function zzz_pack_set(k, on) {
