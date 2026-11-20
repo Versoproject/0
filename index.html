@@ -7309,6 +7309,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-board-msg.is-drag { box-shadow: 0 4px 14px rgba(0,0,0,0.35); z-index: 2; }
   .zzz-board-msg-h { font-size: 11px; color: #8a7a45; margin-bottom: 2px; }
   .zzz-board-msg-t { white-space: pre-wrap; word-break: break-word; }
+  .zzz-board-prevbox { margin-top: 4px; }
+  .zzz-board-prev { display: block; max-width: 100%; max-height: 180px; border: 1px solid #d8d2c0; border-radius: 6px; cursor: pointer; }
   .zzz-board-info { flex: 1 1 auto; min-width: 0; font-size: 11px; opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   
   .zzz-file-box { max-height: 92vh; overflow: auto; width: min(96vw, 640px); }
@@ -18069,7 +18071,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
     try { cnPrivBtn.appendChild(zzz_files_chat_button(tgt, () => cnGateKey)); } catch (e) {}
     try { cnPrivBtn.appendChild(zzz_ink_chat_button(tgt, () => cnGateKey, () => { try { if (!cnOptionsAnchor) return null; const a = cnFeedNotes.find(x => String(x.id) === String(cnOptionsAnchor)); return a ? { text: zzz5w7_body_of(a).replace(/\s*📎[^\n]*verso:file=\S+/g, '').trim().slice(0, 600), user: a.username } : null; } catch (e) { return null; } })); } catch (e) {} }
     try { cnPrivBtn.appendChild(zzz_board_chat_button({ entry: () => cnGateKey, owner: () => String(entryData["4"] || '').trim(), notes: () => cnFeedNotes,
-      send: async (text) => { const r = await zzz1cn_add(cnEntryKey, text, false, null, '', false, 0, [], '', 0); try { await cnRefreshFeed(); } catch (e) {} return !!r; } })); } catch (e) {}
+      send: async (text) => { const r = await zzz1cn_add(cnEntryKey, text, false, null, '', false, 0, [], '', 0, null, { allChat: true }); try { await cnRefreshFeed(); } catch (e) {} return !!r; } })); } catch (e) {}
   cnPrivBtn.appendChild(cnMaxSlot);
   cnPrivBtn.appendChild(zzz56_prio_button());
   cnPrivBtn.appendChild(cnPrivBtn0);
@@ -18487,7 +18489,7 @@ function zzz1_build_context_chat_window(fieldId, sourceRow = null) {
       try { zzz14cs_vote_linkify(body); } catch (e) {}
       try { zzz_media_chat_linkify(body, n); } catch (e) {}
       try { zzz_files_chat_linkify(body); } catch (e) {}
-      try { zzz_board_linkify(body); } catch (e) {}
+      try { zzz_board_linkify(body, n.username); } catch (e) {}
     }
   };
 
@@ -43256,10 +43258,11 @@ async function zzz1cn_load(entryKey) {
   return zzz1cn_local_load(entryKey);
 }
 
-async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, isPriority, noteTo, noteTags, replyToId, trOrig) {
+async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, isPriority, noteTo, noteTags, replyToId, trOrig, opts) {
+
   const username = (zzz0r1_get_current_username() || '').trim();
 
-  const packOpen = (typeof zzz56_pack_open_members === 'function') ? zzz56_pack_open_members(entryKey) : null;
+  const packOpen = (opts && opts.allChat) ? null : (typeof zzz56_pack_open_members === 'function') ? zzz56_pack_open_members(entryKey) : null;
 
   let noteFor = '';
   if (packOpen && !isSaved) {
@@ -43274,7 +43277,7 @@ async function zzz1cn_add(entryKey, text, isPrivate, subOf, noteName, isSaved, i
     return null;
   }
 
-  if (zzz56_priv_on(entryKey) && !packOpen) {
+  if (!(opts && opts.allChat) && zzz56_priv_on(entryKey) && !packOpen) {
     const meP = zzz10v1_normalize(username || '');
     const pickedAll = zzz56_priv_recipients(entryKey);
 
@@ -57068,7 +57071,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-20 21:37';
+const VERSO_BUILD = '2026-11-20 23:38';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -63428,19 +63431,29 @@ function zzz_board_draft_set(entry, d) {
   catch (e) { zzz6f2_show_toast('The draft is too big to keep on this device - ✓ CONFIRM it now.', 'warn', 4200); }
 }
 function zzz_board_bb(s) { let a = 1e9, b = 1e9, c = -1e9, d = -1e9; (s.p || []).forEach(q => { if (q[0] < a) a = q[0]; if (q[1] < b) b = q[1]; if (q[0] > c) c = q[0]; if (q[1] > d) d = q[1]; }); const m = zzz_ink_tool_w(s.t, s.w || 4) * 2 + 2; return [a - m, b - m, c + m, d + m]; }
+async function zzz_board_fetch(id, author) {
+  if (zzzBoard.cache[id]) return zzzBoard.cache[id];
+  let bytes = null; const f = await zzz_files_get(id);
+  if (f && f.cat === 'board') bytes = await zzz_files_bytes(f, false);
+  else { const r = await zzz_sf_meta(id); if (!r || !r.f) return { why: (r && r.why) || 'none' }; if (author && zzz10v1_normalize(r.f.owner || '') !== zzz10v1_normalize(author)) return { why: 'owner' }; bytes = await zzz_sf_bytes(r.f, false); }
+  const doc = JSON.parse(new TextDecoder().decode(bytes)); if (!doc || doc.kind !== 'board') return { why: 'none' };
+  zzzBoard.cache[id] = doc; return doc;
+}
+async function zzz_board_preview(doc) {
+  const l = doc.strokes || []; if (!l.length) return null;
+  let a = 1e9, b = 1e9, c = -1e9, d = -1e9; l.forEach(x => { const q = zzz_board_bb(x); a = Math.min(a, q[0]); b = Math.min(b, q[1]); c = Math.max(c, q[2]); d = Math.max(d, q[3]); });
+  a = Math.max(0, a - 10); b = Math.max(0, b - 10); const w = Math.max(40, c - a + 10), h = Math.max(40, d - b + 10), sc = Math.min(2, 520 / w, 360 / h);
+  const cv = document.createElement('canvas'); cv.width = Math.round(w * sc); cv.height = Math.round(h * sc); const x = cv.getContext('2d');
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, cv.width, cv.height); x.setTransform(sc, 0, 0, sc, -a * sc, -b * sc); l.forEach(st => zzz_ink_draw_stroke(x, st));
+  cv.className = 'zzz-board-prev'; return cv;
+}
 async function zzz_board_load_shared(notes, owner) {
   const own = zzz10v1_normalize(owner || '');
   const list = (notes || []).filter(n => ZZZ_BOARD_RE.test(String(n.note_text || '')) && zzz10v1_normalize(n.username || '') === own).sort((a, b) => Number(b.id) - Number(a.id));
   for (const n of list) {
     const id = String(n.note_text).match(ZZZ_BOARD_RE)[1];
-    if (zzzBoard.cache[id]) return { id, doc: zzzBoard.cache[id] };
-    try {
-      let bytes = null; const f = await zzz_files_get(id);
-      if (f && f.cat === 'board') bytes = await zzz_files_bytes(f, false);
-      else { const r = await zzz_sf_meta(id); if (!r || !r.f) return { id, why: (r && r.why) || 'none' }; if (zzz10v1_normalize(r.f.owner || '') !== own) continue; bytes = await zzz_sf_bytes(r.f, false); }
-      const doc = JSON.parse(new TextDecoder().decode(bytes)); if (!doc || doc.kind !== 'board') continue;
-      zzzBoard.cache[id] = doc; return { id, doc };
-    } catch (e) { return { id, why: 'err' }; }
+    try { const doc = await zzz_board_fetch(id, owner); if (doc.why === 'owner' || doc.why === 'none') continue; if (doc.why) return { id, why: doc.why }; return { id, doc }; }
+    catch (e) { return { id, why: 'err' }; }
   }
   return { id: null, doc: null };
 }
@@ -63455,14 +63468,17 @@ async function zzz_board_mine_save(st) {
   else Object.assign(f, { size: bytes.byteLength, hash: await zzz_files_sha(bytes), h: st.H, at: Date.now() });
   delete zzzFiles.thumbs[f.id]; await zzz_files_put(f);
 }
-function zzz_board_linkify(el) {
+function zzz_board_linkify(el, author) {
   if (!el || String(el.textContent || '').indexOf('verso:board=') < 0) return;
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null); const todo = []; let node;
   while ((node = walker.nextNode())) if (/verso:board=f[a-z0-9]/.test(node.nodeValue)) todo.push(node);
-  todo.forEach(tn => { const parts = tn.nodeValue.split(/verso:board=f[a-z0-9]{8,24}/); const frag = document.createDocumentFragment();
+  todo.forEach(tn => { const ids = (tn.nodeValue.match(/verso:board=f[a-z0-9]{8,24}/g) || []).map(x => x.slice(12)); const parts = tn.nodeValue.split(/verso:board=f[a-z0-9]{8,24}/); const frag = document.createDocumentFragment();
+    ids.slice(-1).forEach(id => { const ph = document.createElement('div'); ph.className = 'zzz-board-prevbox'; frag.__ph = ph;
+      zzz_board_fetch(id, author).then(doc => { if (doc && doc.why === 'key') { ph.textContent = '🔒 open your key to see the drawing'; return null; } return doc && !doc.why ? zzz_board_preview(doc) : null; })
+        .then(cv => { if (cv) { ph.appendChild(cv); cv.addEventListener('click', (e) => { e.stopPropagation(); if (zzzBoard.openCur) zzzBoard.openCur(); }); } }).catch(() => {}); });
     parts.forEach((p, i) => { if (p) frag.appendChild(document.createTextNode(p)); if (i < parts.length - 1) { const c = document.createElement('button'); c.type = 'button'; c.className = 'zzz-file-chip'; c.textContent = '▦ OPEN BOARD';
       c.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); if (zzzBoard.openCur) zzzBoard.openCur(); else zzz6f2_show_toast('Open the chat first - the board belongs to it.', 'info'); }); frag.appendChild(c); } });
-    tn.parentNode.replaceChild(frag, tn); });
+    const ph = frag.__ph, par = tn.parentNode; par.replaceChild(frag, tn); if (ph) (par.nodeType === 1 ? par : el).appendChild(ph); });
 }
 function zzz_board_chat_button(ctx) {
   const c = document.createElement('button'); c.type = 'button'; c.className = 'zzz-file-clip'; c.textContent = '▦'; c.title = 'BOARD - this chat as one page with drawings (🔒 MINE only for you)';
@@ -63535,11 +63551,16 @@ async function zzz_board_open(ctx) {
   const draftSave = () => { if (st.draft) zzz_board_draft_set(entry, st.draft); paintTop(); };
   const close = () => { clearTimeout(mineT); if (st.mineDirty) zzz_board_mine_save(st).catch(() => {}); ro.disconnect(); o.remove(); };
   const btn = (host, t, tip, fn, on) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn' + (on ? ' is-on' : ''); x.textContent = t; if (tip) x.title = tip; x.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); host.appendChild(x); return x; };
+  let busy = false, pending = null;
   async function confirm() {
-    const n = zzz_board_changes(st.draft); if (!n) return;
+    const n = zzz_board_changes(st.draft); if (!n || busy) return;
+    busy = true; try { await confirm1(n); } finally { busy = false; paintTop(); }
+  }
+  async function confirm1(n) {
     if (!myDev) { zzz6f2_show_toast('The BOARD is confirmed only from MY DEVICE.', 'warn'); return; }
     const pos = Object.assign({}, base.pos || {}, st.draft.mv);
     const doc = { v: 1, kind: 'board', entry, w: ZZZ_BOARD_W, h: st.H, pos, strokes: shStrokes().map(x => ({ id: x.id, t: x.t, c: x.c, w: x.w, p: x.p })), by: me, at: new Date().toISOString(), base: sh.id || null };
+    if (pending && pending.sig === JSON.stringify(st.draft)) return sendNotice(pending.id, pending.doc, n);
     const bytes = new TextEncoder().encode(JSON.stringify(doc)), id = 'f' + zzz_files_rand(12);
     if (bytes.byteLength > ZZZ_SF_MAX) { zzz6f2_show_toast('The board is too big to share (' + zzz_files_size(bytes.byteLength) + ').', 'warn', 4200); return; }
     try {
@@ -63548,11 +63569,16 @@ async function zzz_board_open(ctx) {
       zzzFiles.cat.unshift(f); await zzz_files_put(f);
       const r = await zzz_sf_share(entry, f);
       if (!r.ok) { zzz6f2_show_toast(r.why === 'key' ? ZZZ_SF_KEYMSG : 'The board could not be shared - the draft stays, try ✓ CONFIRM again.', 'warn', 5200); return; }
+      pending = { id, doc, sig: JSON.stringify(st.draft) }; return sendNotice(id, doc, n);
+    } catch (e) { zzz_user_error('The board could not be confirmed - the draft stays.', e, '[Zzz4-9:CHAT-BOARD]'); }
+  }
+  async function sendNotice(id, doc, n) {
+    try {
       const ok = await ctx.send('▦ BOARD updated · ' + n + ' change' + (n > 1 ? 's' : '') + ' verso:board=' + id);
       if (!ok) { zzz6f2_show_toast('The board is shared, but the notice did not go out - tap ✓ CONFIRM again.', 'warn', 4200); return; }
-      zzzBoard.cache[id] = doc; Object.assign(base, doc); sh.id = id; sh.doc = doc; st.draft = { base: id, add: [], del: [], mv: {} }; zzz_board_draft_set(entry, st.draft); st.undo = [];
+      pending = null; zzzBoard.cache[id] = doc; Object.assign(base, doc); sh.id = id; sh.doc = doc; st.draft = { base: id, add: [], del: [], mv: {} }; zzz_board_draft_set(entry, st.draft); st.undo = [];
       zzz6f2_show_toast('▦ BOARD confirmed - the members got one notice.', 'ok', 2400); paintTop(); paintTools();
-    } catch (e) { zzz_user_error('The board could not be confirmed - the draft stays.', e, '[Zzz4-9:CHAT-BOARD]'); }
+    } catch (e) { zzz_user_error('The notice could not be sent - tap ✓ CONFIRM again.', e, '[Zzz4-9:CHAT-BOARD]'); }
   }
   function paintTop() {
     top.innerHTML = '';
@@ -63561,7 +63587,7 @@ async function zzz_board_open(ctx) {
     const n = zzz_board_changes(st.draft);
     inf.textContent = n ? 'DRAFT · ' + n + ' change' + (n > 1 ? 's' : '') + ' (only you see them)' : (sh.doc ? 'SHARED · ' + String(base.at || '').slice(0, 16).replace('T', ' ') : (sh.why === 'key' ? '🔒 open your key to see the shared board' : 'no shared drawing yet'));
     top.appendChild(inf);
-    if (isOwner && n) { btn(top, '✓ CONFIRM', 'Share the board with the chat - ONE notice to the members', confirm, true);
+    if (isOwner && n) { btn(top, busy ? '⏳' : '✓ CONFIRM', 'Share the board with the chat - ONE notice to the members', confirm, true);
       btn(top, '✕ DRAFT', 'Throw the draft away (the shared board stays)', () => { st.draft = { base: sh.id, add: [], del: [], mv: {} }; zzz_board_draft_set(entry, st.draft); st.undo = st.undo.filter(u => u.l === 'mine'); layout(); paintTop(); paintTools(); }); }
     btn(top, '✕', 'Close (Back) - back to the chat; the draft and 🔒 MINE stay saved', close);
   }
