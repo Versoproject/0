@@ -7341,6 +7341,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-board-txt { flex: 1 1 auto; min-width: 0; font-size: 14px; padding: 4px 6px; border: 1px solid #D4AF37; border-radius: 6px; background: #fff; color: #111; resize: vertical; }
   .zzz-board-info { font-size: 12px; color: #D4AF37; font-weight: 700; margin-right: auto; }
   .zzz-file-clip.is-on { background: #D4AF37 !important; color: #111 !important; }
+  .zzz-setpath { color: #D4AF37; text-decoration: underline; cursor: pointer; font-weight: 700; }
+  .zzz-setpath-flash { outline: 3px solid #D4AF37 !important; outline-offset: 3px; transition: outline-color 0.4s; }
   
   .zzz-file-box { max-height: 92vh; overflow: auto; width: min(96vw, 640px); }
   .zzz-file-tabs .zzz-media-btn { font-size: 11px; padding: 3px 7px; }
@@ -13207,6 +13209,53 @@ function zzz_place_open(hash) {
   if (location.hash === '#' + hash) { try { window.dispatchEvent(new HashChangeEvent('hashchange')); } catch (e) {} return; }
   location.hash = hash;
 }
+
+const ZZZ_SETPATH_RE = /SETTINGS((?:\s*›\s*[A-Za-z0-9+ℹ][A-Za-z0-9 +&\/'-]*[A-Za-z0-9+])+)/g;
+function zzz_setpath_open(path) {
+  const parts = String(path || '').split('›').map(x => x.trim()).filter(Boolean); if (!parts.length) return;
+  const tab = ZZZ10_0_TABS.find(t => t.label.toLowerCase() === parts[0].toLowerCase());
+  try { if (!(typeof zzz6f7_isLoggedIn !== 'undefined' && zzz6f7_isLoggedIn)) { zzz6f2_show_toast('Log in to Verso first.', 'info'); return; } zzz10_0ActiveTab = 'settings'; open_settings_workspace(); } catch (e) { return; }
+  const rest = (tab ? parts.slice(1) : parts).map(x => x.toUpperCase());
+  let n = 0, clicked = false;
+  const go = () => {
+    if (tab && !clicked) { const b = Array.from(document.querySelectorAll('.zzz10-0-tab-button')).find(x => x.textContent.trim().toLowerCase() === tab.label.toLowerCase()); if (b) { b.click(); clicked = true; } }
+    let el = null;
+    for (const p of rest.slice().reverse()) {
+      el = Array.from(document.querySelectorAll('#versoWorkspaceSection [data-5s]')).find(x => String(x.getAttribute('data-5s')).toUpperCase() === p)
+        || Array.from(document.querySelectorAll('#versoWorkspaceSection h3, #versoWorkspaceSection h4, #versoWorkspaceSection .zzz10m5-big, #versoWorkspaceSection summary')).find(x => x.textContent.trim().toUpperCase().indexOf(p) === 0);
+      if (el) break;
+    }
+    if (el || (!rest.length && clicked)) { if (el) { el.scrollIntoView({ block: 'start', behavior: 'smooth' }); el.classList.add('zzz-setpath-flash'); setTimeout(() => el.classList.remove('zzz-setpath-flash'), 2600); } return; }
+    if (n++ < 40) setTimeout(go, 400);
+  };
+  setTimeout(go, 300);
+}
+function zzz_setpath_trim(path) {
+  const segs = path.split('›'); const lastRaw = segs.pop(); const words = lastRaw.trim().split(/\s+/); const caps = (w) => w === w.toUpperCase() && /[A-Z]/.test(w);
+  let k = 1; if (caps(words[0])) { while (k < words.length && caps(words[k])) k++; } else { if (words.length > 1 && /^[a-z]+$/.test(words[1]) && words[1].length > 2) k = 2; }
+  const keep = words.slice(0, k).join(' '); const pre = lastRaw.slice(0, lastRaw.indexOf(words[0]));
+  return segs.join('›') + '›' + pre + keep;
+}
+function zzz_setpath_linkify(el) {
+  if (!el || String(el.textContent || '').indexOf('SETTINGS') < 0) return false;
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null); const todo = []; let node;
+  while ((node = walker.nextNode())) { const pe = node.parentElement; if (!pe || pe.closest('.zzz-setpath, input, textarea, [contenteditable="true"], #versoWorkspaceSection')) continue; ZZZ_SETPATH_RE.lastIndex = 0; if (ZZZ_SETPATH_RE.test(node.nodeValue)) todo.push(node); }
+  todo.forEach(tn => {
+    const frag = document.createDocumentFragment(), txt = tn.nodeValue; let last = 0, m; ZZZ_SETPATH_RE.lastIndex = 0;
+    while ((m = ZZZ_SETPATH_RE.exec(txt))) {
+      if (m.index > last) frag.appendChild(document.createTextNode(txt.slice(last, m.index)));
+      const path = zzz_setpath_trim(m[1]), full = 'SETTINGS' + path; ZZZ_SETPATH_RE.lastIndex = m.index + full.length;
+      const a = document.createElement('span'); a.className = 'zzz-setpath'; a.textContent = full; a.title = 'Open this place in SETTINGS';
+      a.addEventListener('click', (ev) => { ev.stopPropagation(); ev.preventDefault(); const host = a.closest('.zzz-media-confirm'); if (host) host.remove(); else { const t = a.parentElement; if (t && t._zzz6f2Remove) t._zzz6f2Remove(); } zzz_setpath_open(path); });
+      frag.appendChild(a); last = m.index + full.length;
+    }
+    if (last < txt.length) frag.appendChild(document.createTextNode(txt.slice(last)));
+    tn.parentNode.replaceChild(frag, tn);
+  });
+  return todo.length > 0;
+}
+
+document.addEventListener('DOMContentLoaded', () => new MutationObserver((ms) => { ms.forEach(m => m.addedNodes.forEach(nd => { if (nd.nodeType === 1 && nd.classList && nd.classList.contains('zzz-media-confirm')) { zzz_setpath_linkify(nd); setTimeout(() => zzz_setpath_linkify(nd), 400); const ob = new MutationObserver(() => { ob.disconnect(); zzz_setpath_linkify(nd); ob.observe(nd, { childList: true, subtree: true, characterData: true }); }); ob.observe(nd, { childList: true, subtree: true, characterData: true }); } })); }).observe(document.body, { childList: true }));
 
 function zzz_place_linkify(el) {
   if (!el) return;
@@ -21796,11 +21845,12 @@ function zzz6f2_show_toast(message, kindOrDuration, maybeDuration) {
   }
   toast.addEventListener('click', removeToast);
   document.body.appendChild(toast);
+  try { zzz_setpath_linkify(toast); } catch (e) {}
   zzz6f2_activeToasts.push(toast);
   reposition();
 
   toast._zzz6f2Remove = removeToast;
-  toast._zzz6f2Timer = setTimeout(removeToast, duration);
+  toast._zzz6f2Timer = setTimeout(removeToast, toast.querySelector('.zzz-setpath') ? Math.max(duration, 10000) : duration);
 }
 
 function zzz_mask_text(s) {
@@ -57382,7 +57432,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-21 14:50';
+const VERSO_BUILD = '2026-11-21 14:55';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
