@@ -6208,6 +6208,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz14cs-feed-show::-webkit-scrollbar { display: none; }
   .zzz14cs-feed-show > .zzz14cs-feed-chip { flex: 0 0 auto; padding: 1px 6px !important; font-size: 13px; line-height: 20px; }
   .zzz14cs-feed-show > .zzz14cs-feed-chip .zzz-siren { font-size: 13px; }
+  
+  .zzz14cs-feed-show-siren.is-off { opacity: .55; }
+  .zzz14cs-feed-chips .zzz1cn-prio3.zzz14cs-siren-btn, .zzz5w7-inline-flags .zzz1cn-prio3.zzz14cs-siren-btn { width: auto !important; height: auto !important; flex: 0 0 auto !important; border: 1px solid #555 !important; background: #171717 !important; border-radius: 14px; padding: 1px 8px; font-size: 16px; line-height: 24px; }
+  .zzz14cs-feed-chips .zzz5w7-inline-prio:has(.zzz14cs-siren-btn) > span:empty { display: none; }
   .zzz14cs-lock-teal { display: inline-block; filter: hue-rotate(140deg) saturate(1.6) brightness(1.05); }
   .zzz14cs-feed-find { flex: 1 1 90px; min-width: 90px; display: inline-flex; align-items: center; gap: 2px; border: 1px dashed #D4AF37; border-radius: 10px; padding: 0 2px 0 6px; height: 22px; }
   .zzz14cs-feed-find input { flex: 1 1 auto; min-width: 0; width: 60px; background: transparent; border: 0; outline: 0; color: #eee; font-size: 12px; padding: 0; }
@@ -41320,6 +41324,17 @@ function zzz14cs_feed_refresh() {
   }, 120);
 }
 
+function zzz_fit_row(row, minPx) {
+  if (!row || !row.isConnected || !row.clientWidth) return;
+  const kids = Array.from(row.children);
+  kids.forEach(k => { k.style.fontSize = ''; k.style.paddingLeft = ''; k.style.paddingRight = ''; });
+  if (row.scrollWidth <= row.clientWidth + 1) return;
+  let f = parseFloat(getComputedStyle(kids[kids.length - 1] || row).fontSize) || 12;
+  for (let i = 0; i < 12 && row.scrollWidth > row.clientWidth + 1 && f > (minPx || 8); i++) {
+    f = Math.max(minPx || 8, f - 1);
+    kids.forEach(k => { k.style.fontSize = f + 'px'; if (k.tagName === 'BUTTON') { k.style.paddingLeft = Math.max(3, Math.round(f * 0.45)) + 'px'; k.style.paddingRight = k.style.paddingLeft; } });
+  }
+}
 function zzz14cs_feed_paint(wrap, listOnly) {
   const p = zzz14cs_feed_prefs();
   const chats = zzz14cs_feed_chats();
@@ -41358,7 +41373,17 @@ function zzz14cs_feed_paint(wrap, listOnly) {
   {
     const sb = document.createElement('div'); sb.className = 'zzz14cs-feed-show';
     const lab = document.createElement('span'); lab.className = 'zzz14cs-feed-show-lab'; lab.textContent = 'SHOW'; sb.appendChild(lab);
+
+    { const PR = ['urgent', 'attention', 'open'], cur = PR.find(k => p.show[k]) || '';
+      const b = document.createElement('button'); b.type = 'button';
+      b.className = 'zzz14cs-feed-chip zzz14cs-feed-show-siren' + (cur ? ' is-on zzz14cs-feed-show-' + cur : ' is-off');
+      b.innerHTML = zzz_siren_html(cur || 'open'); b.setAttribute('aria-label', 'PRIORITY ' + (cur ? cur.toUpperCase() : 'all'));
+      b.title = cur ? 'SHOW only ' + cur.toUpperCase() + ' - tap = next priority (URGENT → ATTENTION → OPEN → all)' : 'All priorities - tap = only URGENT (then ATTENTION, OPEN, all)';
+      b.addEventListener('click', () => { const q = zzz14cs_feed_prefs(); q.show = Object.assign({}, q.show); const c0 = PR.find(k => q.show[k]) || ''; PR.forEach(k => delete q.show[k]);
+        const nx = c0 === '' ? 'urgent' : (PR[PR.indexOf(c0) + 1] || ''); if (nx) q.show[nx] = 1; zzz14cs_feed_save(q); zzz14cs_feed_paint(wrap, true); });
+      sb.appendChild(b); }
     ZZZ14CS_FEED_SHOW.forEach(([k, t]) => {
+      if (k === 'urgent' || k === 'attention' || k === 'open') return;
       const b = document.createElement('button'); b.type = 'button';
       b.className = 'zzz14cs-feed-chip zzz14cs-feed-show-' + k + (p.show[k] ? ' is-on' : '');
       b.innerHTML = (ZZZ14CS_FEED_SHOW_HTML[k] || (() => t))(); b.setAttribute('aria-label', t);
@@ -41386,7 +41411,7 @@ function zzz14cs_feed_paint(wrap, listOnly) {
     bar.appendChild(e);
   } else {
     const allOn = chats.every(c => !p.off[c.id]);
-    { const al = document.createElement('span'); al.className = 'zzz14cs-feed-show-lab zzz14cs-feed-att-lab'; al.textContent = 'ATTACHMENTS'; bar.appendChild(al); }
+    { const al = document.createElement('span'); al.className = 'zzz14cs-feed-show-lab zzz14cs-feed-att-lab'; al.textContent = 'CHATS'; bar.appendChild(al); }
     const ab = document.createElement('button'); ab.type = 'button';
     ab.className = 'zzz14cs-feed-chip is-all' + (allOn ? ' is-on' : '');
     ab.textContent = 'ALL';
@@ -41423,6 +41448,7 @@ function zzz14cs_feed_paint(wrap, listOnly) {
   }
   items.forEach(it => list.appendChild(zzz14cs_feed_row(it, wrap)));
   try { zzz14cs_feed_find_apply(wrap); } catch (e) {}
+  try { requestAnimationFrame(() => { zzz_fit_row(wrap.querySelector('.zzz14cs-feed-head'), 8); zzz_fit_row(wrap.querySelector('.zzz14cs-feed-show'), 9); }); } catch (e) {}
 
   const posKey = () => zzz_ukey('zzz14cs_feed_pos_' + p.mode);
   let pos = null; try { pos = JSON.parse(localStorage.getItem(posKey()) || 'null'); } catch (e) {}
@@ -42028,9 +42054,11 @@ function zzz14cs_feed_composer(comp, items) {
   comp.appendChild(tg);
 
   const chips = document.createElement('div'); chips.className = 'zzz14cs-feed-chips';
-  const prio = zzz1cn_prio_control(zzz14csFeedPrio, (v) => { zzz14csFeedPrio = v; prioTx.textContent = v || 'priority'; });
+
+  const prio = zzz1cn_prio_control(zzz14csFeedPrio, (v) => { zzz14csFeedPrio = v; prioTx.textContent = ''; prio.el.innerHTML = zzz_siren_html(v || 'open'); });
+  prio.el.classList.add('zzz14cs-siren-btn'); prio.el.innerHTML = zzz_siren_html(zzz14csFeedPrio || 'open');
   const prioWrap = document.createElement('label'); prioWrap.className = 'zzz5w7-inline-priv zzz5w7-inline-prio';
-  const prioTx = document.createElement('span'); prioTx.textContent = zzz14csFeedPrio || 'priority';
+  const prioTx = document.createElement('span'); prioTx.textContent = '';
   prioWrap.append(prio.el, prioTx);
   const privWrap = document.createElement('label'); privWrap.className = 'zzz5w7-inline-priv';
   const privChk = document.createElement('input'); privChk.type = 'checkbox'; privChk.className = 'zzz1cn-note-privchk';
@@ -42089,8 +42117,8 @@ function zzz14cs_feed_composer(comp, items) {
     tools.insertBefore(bd, tools.children[1] || null); }
   let qrow = null;
   try { qrow = zzz1_build_quickchips_row(() => String((comp.querySelector('textarea') || {}).value || ''), (v) => { const t2 = comp.querySelector('textarea'); if (t2) { t2.value = v; try { t2.dispatchEvent(new Event('input', { bubbles: true })); } catch (er) {} } }); } catch (e) {}
-  if (qrow) { tk.classList.add('zzz1-quickchip', 'zzz1-quickchip-fixed'); fz.classList.add('zzz1-quickchip', 'zzz1-quickchip-fixed'); const add = qrow.querySelector('.zzz1-quickchip-add'); qrow.insertBefore(fz, add ? add.nextSibling : null); qrow.insertBefore(tk, fz); comp.appendChild(qrow); chips.append(tools, prioWrap, privWrap); }
-  else chips.append(tk, fz, tools, prioWrap, privWrap);
+  if (qrow) { tk.classList.add('zzz1-quickchip', 'zzz1-quickchip-fixed'); fz.classList.add('zzz1-quickchip', 'zzz1-quickchip-fixed'); const add = qrow.querySelector('.zzz1-quickchip-add'); qrow.insertBefore(fz, add ? add.nextSibling : null); qrow.insertBefore(tk, fz); comp.appendChild(qrow); chips.append(tools, prioWrap); }
+  else chips.append(tk, fz, tools, prioWrap);
   if (pk) chips.appendChild(pk);
   comp.appendChild(chips);
 
@@ -42169,7 +42197,7 @@ function zzz14cs_feed_composer(comp, items) {
       if (saved) {
         zzz6f2_show_toast((save ? 'Note saved' : 'Chatnote') + ` #${zzz5w7_label_of(saved)} → #${ek}.`);
         zzzLastActAt = Date.now();
-        ta.value = ''; zzz14csFeedPrio = ''; prio.set(''); prioTx.textContent = 'priority'; privChk.checked = false;
+        ta.value = ''; zzz14csFeedPrio = ''; prio.set(''); prioTx.textContent = ''; prio.el.innerHTML = zzz_siren_html('open'); privChk.checked = false;
         zzz14csFeedNum = null; paintNum();
       }
     } finally { busy = false; send.disabled = false; }
@@ -57330,7 +57358,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-21 05:06';
+const VERSO_BUILD = '2026-11-21 05:09';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
