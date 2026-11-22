@@ -13215,7 +13215,7 @@ setInterval(zzz14cs_comm_guard, 700);
 window.addEventListener('load', () => setTimeout(() => zzz14cs_hash_check(0), 900));
 window.addEventListener('load', () => setTimeout(() => zzz_register_link_check(0), 900));
 
-const ZZZ_PLACE_RE = /\bverso:((?:apps=[a-z-]+(?:&app=[a-z0-9-]+)?)|(?:place=[a-z0-9][a-z0-9/-]*[a-z0-9])|(?:en=\d+(?:&n=\d+(?:-[a-z][a-z0-9]*)?)?))/gi;
+const ZZZ_PLACE_RE = /\bverso:((?:apps=[a-z-]+(?:&app=[a-z0-9-]+)?)|(?:place=[a-z0-9][a-z0-9/-]*[a-z0-9])|(?:en=\d+(?:&n=\d+(?:-[a-z][a-z0-9]*)?)?)|(?:read=[a-z0-9][a-z0-9/-]*[a-z0-9])|(?:rp=\d+-\d+))/gi;
 function zzz_place_internal(hash) { return 'verso:' + hash; }
 function zzz_place_label(hash) {
   let m = /^apps=([a-z-]+)(?:&app=([a-z0-9-]+))?/i.exec(hash || '');
@@ -13226,6 +13226,10 @@ function zzz_place_label(hash) {
   }
   m = /^place=([a-z0-9/-]+)/i.exec(hash || '');
   if (m) return 'VERSO › ' + m[1].split('/').map(p => p.replace(/-/g, ' ').toUpperCase()).join(' › ');
+  m = /^read=([a-z0-9/-]+)/i.exec(hash || '');
+  if (m) return 'VERSO › READ SPACE › ' + m[1].split('/').map(p => p.replace(/-/g, ' ').toUpperCase()).join(' › ');
+  m = /^rp=(\d+)-(\d+)/i.exec(hash || '');
+  if (m) return 'VERSO › READ SPACE › PAGE #' + m[1] + '-' + m[2];
   m = /^en=(\d+)&n=(\d+(?:-[a-z][a-z0-9]*)?)/i.exec(hash || '');
   if (m) return 'VERSO › #' + m[1] + ' › #' + m[2];
   m = /^en=(\d+)/i.exec(hash || '');
@@ -32414,6 +32418,42 @@ function zzz_rs_read_hash() {
 window.addEventListener('hashchange', zzz_rs_read_hash);
 setTimeout(() => { try { zzz_rs_read_hash(); } catch (e) {} }, 3000);
 
+function zzz_rs_rp_hash(tries) {
+  const m = /^#rp=(\d+)-(\d+)$/.exec(String(location.hash || '')); if (!m) return;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  setTimeout(async () => {
+    await zzz_rs_load();
+    const it = (zzzRs.lines || []).find(x => String(x.entry) === m[1] && Number(x.num) === Number(m[2]));
+    if (!it) { zzz6f2_show_toast('This READ SPACE page is not yours or not there any more.', 'warn'); return; }
+    zzzRs.path = it.path || zzzRs.path; zzz_rs_space_open(true); setTimeout(() => { try { zzz_rs_open_page(it); } catch (e) {} }, 300);
+  }, 700);
+}
+window.addEventListener('hashchange', zzz_rs_rp_hash);
+setTimeout(() => { try { zzz_rs_rp_hash(); } catch (e) {} }, 3000);
+function zzz_rs_send_window(text, what) {
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm'; const b = document.createElement('div'); b.className = 'zzz-media-confirm-box'; o.appendChild(b);
+  b.setAttribute('data-vlabel', 'VERSO › READ SPACE › 🔗 SEND'); b.setAttribute('data-vkind', 'UI');
+  const t = document.createElement('div'); t.className = 'zzz-media-confirm-t'; t.textContent = '🔗 SEND · ' + what; b.appendChild(t);
+  const pv = document.createElement('div'); pv.className = 'zzz-ext-note'; pv.style.whiteSpace = 'pre-wrap'; pv.textContent = text; b.appendChild(pv);
+  const h = document.createElement('div'); h.className = 'zzz-rs-rec-h'; h.textContent = 'INTO CHAT'; b.appendChild(h);
+  const r = document.createElement('div'); r.className = 'zzz-media-confirm-row'; r.style.flexWrap = 'wrap'; r.style.justifyContent = 'flex-start'; b.appendChild(r);
+  const send = async (id) => { id = String(id || '').replace(/[^0-9]/g, ''); if (!id) return;
+    const n = await zzz1cn_add(id, text, false, null, '', false, false, [], '');
+    if (n) { o.remove(); zzz6f2_show_toast('🔗 sent into chat #' + id, 'ok', 1800); } else zzz_user_error('Not sent - check the chat number and the connection.', null, '[Zzz4-10:READ-SEND]'); };
+  let chats = []; try { chats = zzz14cs_feed_chats(); } catch (e) { chats = []; }
+  chats.slice(0, 20).forEach(c => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn'; x.textContent = c.label; x.addEventListener('click', () => send(c.id)); r.appendChild(x); });
+  const nr = document.createElement('div'); nr.className = 'zzz-media-confirm-row'; b.appendChild(nr);
+  const inp = document.createElement('input'); inp.type = 'text'; inp.inputMode = 'numeric'; inp.className = 'zzz-media-tagq'; inp.placeholder = 'chat #number'; inp.setAttribute('data-zzz-nodraft', '1'); nr.appendChild(inp);
+  const go = document.createElement('button'); go.type = 'button'; go.className = 'zzz-media-btn is-on'; go.textContent = 'SEND'; go.addEventListener('click', () => send(inp.value)); nr.appendChild(go);
+  const f = document.createElement('div'); f.className = 'zzz-media-confirm-row'; f.style.justifyContent = 'flex-end'; b.appendChild(f);
+  const cp = document.createElement('button'); cp.type = 'button'; cp.className = 'zzz-media-btn'; cp.textContent = 'COPY'; cp.addEventListener('click', async () => { try { await navigator.clipboard.writeText(text); zzz6f2_show_toast('Copied.', 'info', 1200); } catch (e) {} }); f.appendChild(cp);
+  const cl = document.createElement('button'); cl.type = 'button'; cl.className = 'zzz-media-btn'; cl.textContent = 'CLOSE'; cl.addEventListener('click', () => o.remove()); f.appendChild(cl);
+  o.addEventListener('click', (e) => { if (e.target === o) o.remove(); });
+  document.body.appendChild(o);
+}
+function zzz_rs_send_page(it) { zzz_rs_send_window('📖 ' + (it.name || zzz_rs_host(it.link)) + '\n' + it.link + '\nverso:rp=' + it.entry + '-' + it.num, 'PAGE'); }
+function zzz_rs_send_place(path, b, c, name) { const tg = zzz_rs_read_tag(path, b, c).replace(/^read:/, ''); zzz_rs_send_window('📚 READ SPACE › ' + (name || path) + '\nverso:read=' + tg, 'PLACE'); }
+
 const ZZZ_RS_WATCH_EVERY = 20 * 3600000;
 let zzzRsWatchBusy = false;
 function zzz_rs_watch_price(txt) {
@@ -32559,6 +32599,7 @@ function zzz_rs_tree_list(list, el, shown) {
     return [
       { t: isNext ? '⦿' : '○', on: isNext, title: 'NEXT UP: incoming links land here', fn: () => { zzz_rs_next_set(isNext ? null : cur); zzz6f2_show_toast(isNext ? 'NEXT UP off - incoming links go to ACTUAL.' : 'NEXT UP: ' + zzz_rs_next_label(cur), 'info', 1800); zzz_rs_render(); } },
       { t: '💬' + (nn ? ' ' + nn : ''), title: 'DISS - notes of ' + focus.name, fn: () => zzz_rs_diss({ entry: focus.entry, num: focus.num, name: focus.name, link: '', readTag: zzz_rs_read_tag(el.path, cur.b, cur.c) }, () => zzz_rs_render()) },
+      { t: '🔗', title: 'SEND a link to ' + focus.name + ' into a chat', fn: () => zzz_rs_send_place(el.path, cur.b, cur.c, el.path + (b ? ' › ' + b.name : '') + (c ? ' › ' + c.name : '')) },
     ];
   };
   t.b.forEach(b => {
@@ -33146,6 +33187,7 @@ function zzz_rs_record_parts(content, it, d) {
   const op = (zzzRs.opinion || {})[k]; const cur = op ? String(op.note_text || '').replace(/^verso:opinion\s*\n?/, '') : '';
   const myT = document.createElement('div'); myT.className = 'zzz-rs-rec-mytext'; myT.textContent = cur || '— nothing yet · ✎ write what this page means for you'; if (!cur) myT.classList.add('is-empty'); my.appendChild(myT);
   const ed = document.createElement('button'); ed.type = 'button'; ed.className = 'zzz-rs-keep'; ed.textContent = '✎ ' + (cur ? 'EDIT' : 'WRITE'); my.appendChild(ed);
+  { const sb2 = document.createElement('button'); sb2.type = 'button'; sb2.className = 'zzz-rs-keep'; sb2.style.marginLeft = '6px'; sb2.textContent = '🔗 SEND'; sb2.title = 'Send this page into a chat'; sb2.addEventListener('click', (e) => { e.stopPropagation(); zzz_rs_send_page(it); }); src.appendChild(document.createTextNode(' ')); src.appendChild(sb2); }
   ed.addEventListener('click', (e) => { e.stopPropagation();
     const ta = document.createElement('textarea'); ta.className = 'zzz-rs-diss-in'; ta.rows = 4; ta.value = cur; ta.placeholder = 'Your text / opinion about this page…';
     const sv = document.createElement('button'); sv.type = 'button'; sv.className = 'zzz-rs-keep is-on'; sv.textContent = 'SAVE';
@@ -57632,7 +57674,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-22 20:59';
+const VERSO_BUILD = '2026-11-22 21:01';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
