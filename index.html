@@ -10846,6 +10846,15 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-rs-sw-grip { width: 34px; height: 4px; border-radius: 2px; background: #D4AF37; flex: 0 0 auto; }
   .zzz-rs-sw-t { flex: 1 1 auto; color: #e8c86a; font-size: 11.5px; font-weight: 700; letter-spacing: .03em; }
   
+  .zzz-rs-rec { margin: 0 0 10px; padding: 8px 10px; border: 1px solid #D4AF37; border-radius: 10px; background: #141414; }
+  .zzz-rs-rec-t { color: #D4AF37; font-size: 12px; font-weight: 800; letter-spacing: .03em; }
+  .zzz-rs-rec-src a { color: #7fb8ff; font-size: 13px; word-break: break-all; }
+  .zzz-rs-rec-ack { color: #999; font-size: 11px; margin: 2px 0 6px; }
+  .zzz-rs-rec-h { color: #D4AF37; font-size: 11px; font-weight: 800; margin: 6px 0 3px; }
+  .zzz-rs-rec-mytext { color: #eee; font-size: 14px; white-space: pre-wrap; margin-bottom: 4px; }
+  .zzz-rs-rec-mytext.is-empty { color: #777; font-style: italic; }
+  .zzz-rs-rec-notes { margin: 12px 0 4px; padding-top: 8px; border-top: 1px solid #333; }
+  
   .zzz-rs-keepbar { position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px; margin: 0 0 8px; background: #171717; border: 1px solid #D4AF37; border-radius: 10px; }
   .zzz-rs-keepbar-t { flex: 1 1 100%; color: #D4AF37; font-size: 12px; font-weight: 700; }
   .zzz-rs-content.is-keeppick .zzz-rs-blk { cursor: pointer; border-left: 3px solid #D4AF37; padding-left: 6px; }
@@ -32221,7 +32230,9 @@ async function zzz_rs_load(force) {
       zzzRs.seen = {};
       notes.filter(n => n.note_part && /^verso:seen\b/.test(String(n.note_text || ''))).sort((a, c) => String(a.created_at || '').localeCompare(String(c.created_at || ''))).forEach(n => { const k = n.entry_key + '#' + n.note_number; (zzzRs.seen[k] = zzzRs.seen[k] || []).push(n.created_at); });
       zzzRs.diss = {};
-      notes.filter(n => n.note_part && !/^verso:(keep|watch|seen)\b/.test(String(n.note_text || ''))).forEach(n => { const k = n.entry_key + '#' + n.note_number; (zzzRs.diss[k] = zzzRs.diss[k] || []).push(n); });
+      notes.filter(n => n.note_part && !/^verso:(keep|watch|seen|opinion)\b/.test(String(n.note_text || ''))).forEach(n => { const k = n.entry_key + '#' + n.note_number; (zzzRs.diss[k] = zzzRs.diss[k] || []).push(n); });
+      zzzRs.opinion = {};
+      notes.filter(n => n.note_part && /^verso:opinion\b/.test(String(n.note_text || ''))).sort((a, c) => String(a.created_at || '').localeCompare(String(c.created_at || ''))).forEach(n => { zzzRs.opinion[n.entry_key + '#' + n.note_number] = n; });
       zzzRs.watch = {};
       notes.filter(n => n.note_part && /^verso:watch\b/.test(String(n.note_text || ''))).sort((a, c) => String(a.created_at || '').localeCompare(String(c.created_at || ''))).forEach(n => { const k = n.entry_key + '#' + n.note_number; let d = null; try { d = JSON.parse(String(n.note_text).replace(/^verso:watch\s*/, '')); } catch (e) {} if (d) { d.at = n.created_at; (zzzRs.watch[k] = zzzRs.watch[k] || []).push(d); } });
 
@@ -33118,6 +33129,54 @@ function zzz_rs_paint(content, d, box) {
   });
   if (!(d.blocks || []).length) { const e = document.createElement('p'); e.className = 'zzz-rs-err'; e.textContent = d.desc || 'This page gave no readable text (maybe it needs a login - later VERSO GATE). Hold ▶ = the original.'; content.appendChild(e); }
   zzz_rs_filter(content, box.querySelector('.zzz-rs-find-n'));
+  try { const it = box && box._rsPage; if (it && it.id && !it.tmp) zzz_rs_record_parts(content, it, d); } catch (e) {}
+}
+
+function zzz_rs_record_parts(content, it, d) {
+  const k = it.entry + '#' + it.num;
+  const head = document.createElement('div'); head.className = 'zzz-rs-rec'; head.setAttribute('data-vlabel', 'VERSO › READ SPACE › RECORD #' + it.entry + '-' + it.num); head.setAttribute('data-vkind', 'DATA');
+  const t = document.createElement('div'); t.className = 'zzz-rs-rec-t'; t.textContent = '📝 RECORD · #' + it.entry + '-' + it.num + (d && d.kept ? ' · KEPT parts' : ' · live page'); head.appendChild(t);
+  const src = document.createElement('div'); src.className = 'zzz-rs-rec-src';
+  const a = document.createElement('a'); a.href = it.link; a.target = '_blank'; a.rel = 'noopener'; a.textContent = '↗ ' + String(it.link || '').replace(/^https?:\/\//, '').slice(0, 80); src.appendChild(a); head.appendChild(src);
+  const n0 = it.note || {}; const ack = document.createElement('div'); ack.className = 'zzz-rs-rec-ack';
+  ack.textContent = 'ACKNOWLEDGEMENT · source: ' + zzz_rs_host(it.link) + (d && d.byline ? ' · ' + d.byline : '') + ' · saved ' + String(n0.created_at || '').slice(0, 10) + (n0.username ? ' by ' + n0.username : '');
+  head.appendChild(ack);
+  const my = document.createElement('div'); my.className = 'zzz-rs-rec-my';
+  const myH = document.createElement('div'); myH.className = 'zzz-rs-rec-h'; myH.textContent = 'MY TEXT / OPINION'; my.appendChild(myH);
+  const op = (zzzRs.opinion || {})[k]; const cur = op ? String(op.note_text || '').replace(/^verso:opinion\s*\n?/, '') : '';
+  const myT = document.createElement('div'); myT.className = 'zzz-rs-rec-mytext'; myT.textContent = cur || '— nothing yet · ✎ write what this page means for you'; if (!cur) myT.classList.add('is-empty'); my.appendChild(myT);
+  const ed = document.createElement('button'); ed.type = 'button'; ed.className = 'zzz-rs-keep'; ed.textContent = '✎ ' + (cur ? 'EDIT' : 'WRITE'); my.appendChild(ed);
+  ed.addEventListener('click', (e) => { e.stopPropagation();
+    const ta = document.createElement('textarea'); ta.className = 'zzz-rs-diss-in'; ta.rows = 4; ta.value = cur; ta.placeholder = 'Your text / opinion about this page…';
+    const sv = document.createElement('button'); sv.type = 'button'; sv.className = 'zzz-rs-keep is-on'; sv.textContent = 'SAVE';
+    myT.replaceWith(ta); ed.replaceWith(sv); ta.focus();
+    sv.addEventListener('click', async (e2) => { e2.stopPropagation(); const v = ta.value.trim(); if (v === cur) { zzz_rs_render_page_again(content, it, d); return; } sv.disabled = true;
+      const n = await zzz1cn_add(it.entry, 'verso:opinion\n' + v, true, { base: it.num }, 'MY TEXT', true, false, [], '');
+      sv.disabled = false;
+      if (!n) { zzz_user_error('MY TEXT was not saved - check the connection and try again.', null, '[Zzz4-10:READ-RECORD]'); return; }
+      (zzzRs.opinion = zzzRs.opinion || {})[k] = Object.assign({}, n, { note_text: 'verso:opinion\n' + v, created_at: new Date().toISOString() });
+      zzz6f2_show_toast('📝 MY TEXT saved (new version).', 'ok', 1600); zzz_rs_render_page_again(content, it, d); });
+  });
+  head.appendChild(my);
+  content.insertBefore(head, content.firstChild);
+
+  const foot = document.createElement('div'); foot.className = 'zzz-rs-rec-notes'; foot.setAttribute('data-vlabel', 'VERSO › READ SPACE › RECORD › NOTES'); foot.setAttribute('data-vkind', 'DATA');
+  const ns = ((zzzRs.diss || {})[k] || []).slice().sort((x, y) => String(x.created_at || '').localeCompare(String(y.created_at || '')));
+  const fh = document.createElement('div'); fh.className = 'zzz-rs-rec-h'; fh.textContent = 'MY NOTES · ' + ns.length; foot.appendChild(fh);
+  ns.forEach(n => { const r = document.createElement('div'); r.className = 'zzz-rs-diss-r'; const w = document.createElement('b'); w.textContent = (n.username || '') + ' · ' + String(n.created_at || '').slice(0, 10) + ' '; r.appendChild(w); r.appendChild(document.createTextNode(String(n.note_text || ''))); foot.appendChild(r); });
+  const ta = document.createElement('textarea'); ta.className = 'zzz-rs-diss-in'; ta.rows = 2; ta.placeholder = '+ note to this page…'; foot.appendChild(ta);
+  const row = document.createElement('div'); row.className = 'zzz-media-confirm-row'; row.style.justifyContent = 'flex-start';
+  const add = document.createElement('button'); add.type = 'button'; add.className = 'zzz-rs-keep is-on'; add.textContent = '+ NOTE'; row.appendChild(add);
+  const ch = document.createElement('button'); ch.type = 'button'; ch.className = 'zzz-rs-keep'; ch.textContent = '💬 chat #' + it.entry; ch.addEventListener('click', (e) => { e.stopPropagation(); try { zzz_rs_chat(it.entry); } catch (er) {} }); row.appendChild(ch);
+  foot.appendChild(row);
+  add.addEventListener('click', async (e) => { e.stopPropagation(); const v = ta.value.trim(); if (!v) return; add.disabled = true;
+    const n = await zzz1cn_add(it.entry, v, true, { base: it.num }, '', true, false, [], ''); add.disabled = false;
+    if (n) { ((zzzRs.diss = zzzRs.diss || {})[k] = zzzRs.diss[k] || []).push(Object.assign({ note_text: v, username: zzz_rs_me(), created_at: new Date().toISOString() }, n)); zzz_rs_render_page_again(content, it, d); } });
+  content.appendChild(foot);
+}
+function zzz_rs_render_page_again(content, it, d) {
+  const box = content.closest('.zzz-rs-reader') || content.parentNode; const y = content.scrollTop;
+  try { zzz_rs_paint(content, d, box); content.scrollTop = y; } catch (e) {}
 }
 
 function zzz_rs_keep_parts(box, it, keepB) {
@@ -57573,7 +57632,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-22 20:56';
+const VERSO_BUILD = '2026-11-22 20:59';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
