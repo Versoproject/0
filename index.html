@@ -10845,6 +10845,11 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     border-radius: 0 0 8px 8px; touch-action: none; cursor: pointer; -webkit-user-select: none; user-select: none; }
   .zzz-rs-sw-grip { width: 34px; height: 4px; border-radius: 2px; background: #D4AF37; flex: 0 0 auto; }
   .zzz-rs-sw-t { flex: 1 1 auto; color: #e8c86a; font-size: 11.5px; font-weight: 700; letter-spacing: .03em; }
+  
+  .zzz-rs-keepbar { position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px; margin: 0 0 8px; background: #171717; border: 1px solid #D4AF37; border-radius: 10px; }
+  .zzz-rs-keepbar-t { flex: 1 1 100%; color: #D4AF37; font-size: 12px; font-weight: 700; }
+  .zzz-rs-content.is-keeppick .zzz-rs-blk { cursor: pointer; border-left: 3px solid #D4AF37; padding-left: 6px; }
+  .zzz-rs-content.is-keeppick .zzz-rs-blk.is-drop { opacity: .35; text-decoration: line-through; border-left-color: #555; }
   .zzz-rs-keep { background: none; border: 1px solid #D4AF37; color: #D4AF37; border-radius: 8px; font-size: 11px; font-weight: 800; padding: 3px 8px; }
   .zzz-rs-keep.is-on { background: #D4AF37; color: #111; }
   .zzz-rs-comm, .zzz-rs-diss { white-space: nowrap; }
@@ -32161,7 +32166,7 @@ function zzz_rs_plain(d, range) {
     return out.join('\n');
   }
   (d.blocks || []).forEach(b => {
-    if (b.t === 'img') { if (range === 'all') out.push('[image] ' + b.v + (b.a ? ' (' + b.a + ')' : '')); return; }
+    if (b.t === 'img') { if (range === 'all' || range === 'parts') out.push('[image] ' + b.v + (b.a ? ' (' + b.a + ')' : '')); return; }
     out.push(b.t === 'h' ? '## ' + b.v : b.t === 'li' ? '• ' + b.v : b.t === 'q' ? '> ' + b.v : b.v);
   });
   return out.join('\n').slice(0, 200000);
@@ -32999,10 +33004,8 @@ function zzz_rs_reader(it) {
   keepB.addEventListener('click', async (e) => {
     e.stopPropagation();
     if (it.tmp || !it.id) { zzz6f2_show_toast('Add the page into READ first (ADD CONTENT).', 'warn'); return; }
-    if (!box._rsData || box._rsData.kept) { zzz6f2_show_toast(it.keep ? 'Already kept.' : 'Wait until the page is read.', 'info'); return; }
-    keepB.disabled = true;
-    if (await zzz_rs_keep(it, box._rsData)) { keepB.textContent = 'KEPT'; keepB.classList.add('is-on'); zzz6f2_show_toast('KEEP CONTENT: stored in #' + it.entry + '.', 'info', 1800); }
-    keepB.disabled = false;
+    if (!box._rsData || box._rsData.error) { zzz6f2_show_toast('Wait until the page is read.', 'info'); return; }
+    zzz_rs_keep_parts(box, it, keepB);
   });
   sw.appendChild(keepB);
 
@@ -33101,7 +33104,7 @@ function zzz_rs_paint(content, d, box) {
         if (zzz_brw_is_media(L)) mk('▶ MEDIA CENTER', () => zzz_brw_to_media(L), 'is-on');
         mk('↗ WEB', () => { try { window.open(L, '_blank', 'noopener'); } catch (e) {} }, 'zzz-file-ext'); nb.appendChild(r); }
       content.appendChild(nb); } } catch (e) {}
-  (d.blocks || []).forEach(b => {
+  (d.blocks || []).forEach((b, bi) => {
     let el;
     if (b.t === 'img') {
       el = zzz_rs_image(b);
@@ -33110,11 +33113,39 @@ function zzz_rs_paint(content, d, box) {
       if (b.t === 'li') el.className = 'zzz-rs-li';
       el.textContent = b.v;
     }
-    el.classList.add('zzz-rs-blk');
+    el.classList.add('zzz-rs-blk'); el.dataset.bi = String(bi);
     content.appendChild(el);
   });
   if (!(d.blocks || []).length) { const e = document.createElement('p'); e.className = 'zzz-rs-err'; e.textContent = d.desc || 'This page gave no readable text (maybe it needs a login - later VERSO GATE). Hold ▶ = the original.'; content.appendChild(e); }
   zzz_rs_filter(content, box.querySelector('.zzz-rs-find-n'));
+}
+
+function zzz_rs_keep_parts(box, it, keepB) {
+  const content = box.querySelector('.zzz-rs-content'); const d = box._rsData; if (!content || !d) return;
+  if (content.classList.contains('is-keeppick')) return;
+  const blks = () => Array.from(content.querySelectorAll('.zzz-rs-blk[data-bi]'));
+  content.classList.add('is-keeppick');
+  const bar = document.createElement('div'); bar.className = 'zzz-rs-keepbar'; bar.setAttribute('data-vlabel', 'VERSO › READ SPACE › KEEP PARTS'); bar.setAttribute('data-vkind', 'FN');
+  const info = document.createElement('span'); info.className = 'zzz-rs-keepbar-t'; bar.appendChild(info);
+  const count = () => { const a = blks(), off = a.filter(x => x.classList.contains('is-drop')).length; info.textContent = 'KEEP ' + (a.length - off) + ' / ' + a.length + ' parts · tap a part = leave out'; ok.textContent = '✓ KEEP ' + (a.length - off); };
+  const mk = (t, fn, cls) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-rs-keep' + (cls ? ' ' + cls : ''); b.textContent = t; b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); bar.appendChild(b); return b; };
+  mk('ALL', () => { blks().forEach(x => x.classList.remove('is-drop')); count(); });
+  mk('NONE', () => { blks().forEach(x => x.classList.add('is-drop')); count(); });
+  const ok = mk('✓ KEEP', async () => {
+    const off = new Set(blks().filter(x => x.classList.contains('is-drop')).map(x => Number(x.dataset.bi)));
+    const keepIdx = (d.blocks || []).map((b, i) => i).filter(i => !off.has(i));
+    if (!keepIdx.length) { zzz6f2_show_toast('Nothing chosen - tap ALL or take some parts back.', 'warn'); return; }
+    const d2 = Object.assign({}, d, { blocks: keepIdx.map(i => d.blocks[i]) });
+    ok.disabled = true;
+    if (await zzz_rs_keep(it, d2, off.size ? 'parts' : null)) { keepB.textContent = 'KEPT'; keepB.classList.add('is-on'); zzz6f2_show_toast('KEEP CONTENT: ' + keepIdx.length + ' parts stored in #' + it.entry + '.', 'info', 1800); end(); }
+    ok.disabled = false;
+  }, 'is-on');
+  mk('✕', () => end());
+  const pick = (e) => { const b = e.target.closest && e.target.closest('.zzz-rs-blk[data-bi]'); if (!b || !content.contains(b)) return; e.preventDefault(); e.stopPropagation(); b.classList.toggle('is-drop'); count(); };
+  content.addEventListener('click', pick, true);
+  const end = () => { content.classList.remove('is-keeppick'); blks().forEach(x => x.classList.remove('is-drop')); content.removeEventListener('click', pick, true); bar.remove(); };
+  content.insertBefore(bar, content.firstChild); count();
+  try { bar.scrollIntoView({ block: 'nearest' }); } catch (e) {}
 }
 
 function zzz_rs_filter(content, countEl) {
@@ -57542,7 +57573,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-22 20:54';
+const VERSO_BUILD = '2026-11-22 20:56';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
