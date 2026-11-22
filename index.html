@@ -46845,7 +46845,7 @@ async function zzz_native_launch(url) {
 function zzz_native_cmd_able(url) {
 
   try {
-    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|buzz|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|mediaact|mediapls|mediaplaces|vistuck|mediapend|feedcfg|feedpend|mediadone|actdiag|mcnow|readfetch|vipacks|qcb|ring|relaunch|webview|webpend)\b/.test(String(url || 'intent://quick/quiet'))
+    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|buzz|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|mediaact|mediapls|mediaplaces|vistuck|mediapend|feedcfg|feedpend|mediadone|actdiag|mcnow|readfetch|vipacks|qcb|ring|relaunch|webview|webpend|rsplaces)\b/.test(String(url || 'intent://quick/quiet'))
       && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator;
   } catch (e) { return false; }
 }
@@ -57542,7 +57542,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-22 20:26';
+const VERSO_BUILD = '2026-11-22 20:54';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -64532,14 +64532,14 @@ function zzz_brw_open(q) {
     zzz_brw_full_btn(r, link, btn);
     if (zzz_brw_is_media(link)) btn(r, '▶ MEDIA CENTER', 'A media site: into ALL MEDIA (one line, READ kept) and play it in MEDIA CENTER', () => zzz_brw_to_media(link), 'is-on');
     btn(r, '📖 VERSO', 'Read the page as a Verso page (via Verso\'s server) - save, mark, draw', () => readIn(link), 'is-on');
-    btn(r, '💾 READ SPACE', 'Save the link into READ SPACE (ACTUAL)', async () => { const it = await zzz_rs_add(link); if (it) zzz6f2_show_toast('💾 saved in READ SPACE', 'ok', 1800); });
+    zzz_brw_save_btns(r, link, btn);
     btn(r, '↗ WEB', 'The original page in a new tab (outside Verso)', () => { try { window.open(link, '_blank', 'noopener'); } catch (e) {} }, 'zzz-file-ext');
   };
   const readIn = async (link) => {
     out.innerHTML = '';
     const top = document.createElement('div'); top.className = 'zzz-media-confirm-row'; top.style.justifyContent = 'flex-start'; top.style.flexWrap = 'wrap'; out.appendChild(top);
     btn(top, '‹ BACK', 'Back to the results', () => run());
-    btn(top, '💾 READ SPACE', 'Save into READ SPACE (ACTUAL) - there: KEEP CONTENT, notes, chat', async () => { const it = await zzz_rs_add(link); if (it) zzz6f2_show_toast('💾 saved in READ SPACE', 'ok', 1800); });
+    zzz_brw_save_btns(top, link, btn);
     btn(top, '✏ DRAW', 'A drawing for this page (VERSO INK, saved in ✏ DRAWINGS with the page address)', () => zzz_ink_open({ ref: link }));
     zzz_brw_full_btn(top, link, btn);
     btn(top, '↗ WEB', 'The original page in a new tab (outside Verso)', () => { try { window.open(link, '_blank', 'noopener'); } catch (e) {} }, 'zzz-file-ext');
@@ -64771,11 +64771,53 @@ async function zzz_media_places_to_app() {
 }
 setInterval(zzz_media_places_to_app, 6000);
 
-async function zzz_rs_add_titled(link, title) {
+function zzz_rs_last_place() { try { return zzz_rs_path_norm(localStorage.getItem(zzz_ukey('zzz_rs_last_place')) || '') || 'ACTUAL'; } catch (e) { return 'ACTUAL'; } }
+function zzz_rs_set_last_place(p) { try { localStorage.setItem(zzz_ukey('zzz_rs_last_place'), zzz_rs_path_norm(p) || 'ACTUAL'); } catch (e) {} zzzRs.plSent = ''; }
+function zzz_rs_places() {
+  const a = Object.values(zzzRs.els || {}).map(e => e && e.path).filter(Boolean);
+  if (a.indexOf('ACTUAL') < 0) a.unshift('ACTUAL');
+  return Array.from(new Set(a)).sort((x, y) => x === 'ACTUAL' ? -1 : y === 'ACTUAL' ? 1 : x.localeCompare(y)).slice(0, 120);
+}
+async function zzz_rs_pick_place(onPick) {
+  try { await Promise.race([zzz_rs_load(), new Promise(z => setTimeout(z, 3000))]); } catch (e) {}
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm'; const b = document.createElement('div'); b.className = 'zzz-media-confirm-box'; o.appendChild(b);
+  b.setAttribute('data-vlabel', 'VERSO › BROWSER › 💾 PLACE'); b.setAttribute('data-vkind', 'UI');
+  const t = document.createElement('div'); t.className = 'zzz-media-confirm-t'; t.textContent = '💾 SAVE INTO · READ SPACE'; b.appendChild(t);
+  const r = document.createElement('div'); r.className = 'zzz-media-confirm-row'; r.style.flexWrap = 'wrap'; r.style.justifyContent = 'flex-start'; b.appendChild(r);
+  const last = zzz_rs_last_place();
+  const done = (p) => { o.remove(); zzz_rs_set_last_place(p); try { onPick(p); } catch (e) {} };
+  zzz_rs_places().forEach(p => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn' + (p === last ? ' is-on' : ''); x.textContent = p.split(ZZZ_RS_SEP).join(' › '); x.addEventListener('click', () => done(p)); r.appendChild(x); });
+  const nr = document.createElement('div'); nr.className = 'zzz-media-confirm-row'; b.appendChild(nr);
+  const inp = document.createElement('input'); inp.type = 'text'; inp.className = 'zzz-media-tagq'; inp.placeholder = '+ new folder (e.g. TRAVEL)'; inp.setAttribute('data-zzz-nodraft', '1'); nr.appendChild(inp);
+  const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'zzz-media-btn is-on'; ok.textContent = '+ SAVE'; nr.appendChild(ok);
+  ok.addEventListener('click', () => { const p = zzz_rs_path_norm(String(inp.value || '').trim().toUpperCase()); if (p) done(p); });
+  const f = document.createElement('div'); f.className = 'zzz-media-confirm-row'; f.style.justifyContent = 'flex-end'; b.appendChild(f);
+  const cl = document.createElement('button'); cl.type = 'button'; cl.className = 'zzz-media-btn'; cl.textContent = 'CLOSE'; cl.addEventListener('click', () => o.remove()); f.appendChild(cl);
+  o.addEventListener('click', (e) => { if (e.target === o) o.remove(); });
+  document.body.appendChild(o);
+}
+function zzz_brw_save_btns(host, link, btn) {
+  const save = async (p) => { const it = await zzz_rs_add(link, p); if (it) zzz6f2_show_toast('💾 saved in READ SPACE › ' + p.split(ZZZ_RS_SEP).join(' › '), 'ok', 1800); };
+  const b1 = btn(host, '💾 ' + zzz_rs_last_place().split(ZZZ_RS_SEP).pop(), 'Save into READ SPACE › ' + zzz_rs_last_place() + ' (▾ = another place)', () => save(zzz_rs_last_place()));
+  btn(host, '▾', 'Pick the READ SPACE place (tab / folder) for 💾', () => zzz_rs_pick_place((p) => { save(p); try { if (b1) b1.textContent = '💾 ' + p.split(ZZZ_RS_SEP).pop(); } catch (e) {} }));
+}
+async function zzz_rs_places_to_app() {
+  try {
+    if (!zzz_brw_shadow_able() || zzz14b17_app_code() < ZZZ_BRW_PLACE_APP || !zzz_rs_me() || !zzzRs.loadedOf) return;
+    const js = JSON.stringify(zzz_rs_places()), last = zzz_rs_last_place(), sig = zzz_rs_me() + '|' + last + '|' + js;
+    if (sig === zzzRs.plSent) return;
+    if (!(await zzz_native_cmd_parts('intent://quick/rsplaces', zzz_media_b64(js).replace(/=+$/, ''), '&last=' + encodeURIComponent(last)))) return;
+    zzzRs.plSent = sig;
+  } catch (e) {}
+}
+const ZZZ_BRW_PLACE_APP = 404;
+setInterval(zzz_rs_places_to_app, 7000);
+
+async function zzz_rs_add_titled(link, title, path) {
   link = zzz_media_norm(String(link || '').trim()); if (!/^https?:\/\//i.test(link)) return 0;
   await zzz_rs_load();
   if ((zzzRs.hidden || []).indexOf(link) >= 0 || zzzRs.lines.find(x => x.link === link)) return -1;
-  const el = await zzz_rs_folder('ACTUAL', true); if (!el) return 0;
+  const el = await zzz_rs_folder(zzz_rs_path_norm(path || '') || 'ACTUAL', true); if (!el) return 0;
   const name = String(title || '').replace(/\s+/g, ' ').trim().slice(0, 60) || zzz_rs_host(link);
   const tg0 = 'rpage' + (zzz_ext_private() ? ' private' : '') + (zzz_mode_remote() ? ' remote' : '');
   const n = await zzz1cn_add(String(el.id), link, true, null, name, true, false, [], tg0);
@@ -64790,8 +64832,8 @@ function zzz_wpend_hash(tries) {
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
   let list = []; try { list = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/'))))); } catch (e) { list = []; }
   (async () => { let n = 0, dup = 0; const seen = new Set();
-    for (const o of (Array.isArray(list) ? list : []).slice(0, 200)) { const k = String(o && o.u || ''); if (seen.has(k)) { dup++; continue; } seen.add(k); try { const r = await zzz_rs_add_titled(o && o.u, o && o.t); if (r > 0) n++; else if (r < 0) dup++; } catch (e) {} }
-    if (n || dup) zzz6f2_show_toast('💾 ' + n + ' page' + (n === 1 ? '' : 's') + ' from FULL PAGE → READ SPACE › ACTUAL' + (dup ? ' · ' + dup + ' already there' : ''), 'info', 2600);
+    for (const o of (Array.isArray(list) ? list : []).slice(0, 200)) { const k = String(o && o.u || ''); if (seen.has(k)) { dup++; continue; } seen.add(k); try { const r = await zzz_rs_add_titled(o && o.u, o && o.t, o && o.p); if (r > 0) n++; else if (r < 0) dup++; } catch (e) {} }
+    if (n || dup) zzz6f2_show_toast('💾 ' + n + ' page' + (n === 1 ? '' : 's') + ' from FULL PAGE → READ SPACE' + (dup ? ' · ' + dup + ' already there' : ''), 'info', 2600);
   })();
 }
 window.addEventListener('hashchange', () => zzz_wpend_hash());
@@ -68210,7 +68252,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 403;
+const ZZZ14B17_APP_LATEST = 404;
 
 function zzz_canon_url() {
   try {
