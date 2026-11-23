@@ -57697,7 +57697,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-23 13:14';
+const VERSO_BUILD = '2026-11-23 14:34';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -61854,6 +61854,9 @@ function zzz_media_nat_ok(x) {
   return !zzz_media_embed(x.link) && zzz_media_streamish(x);
 }
 function zzz_media_not_media(it) {
+
+  if (it && /^https?:/i.test(it.link || '') && !zzz_media_line(it)) { zzz_media_ask_webstream(it.link).then(async (ok) => { if (!ok) { zzz6f2_show_toast((zzz_media_title(it) || 'This link') + ' is a web page - opened in its app.', 'info'); try { zzz_media_open_app(it.link); } catch (e) {} return; }
+    const l = await zzz_media_add(it.link, it.name || '', zzz_media_where_tags().join(' '), { webstream: true }); zzz_media_live_open(l || it); try { zzz_media_redraw(); } catch (e) {} }); return; }
   zzz6f2_show_toast((zzz_media_title(it) || 'This link') + ' is a web page, not a medium - opened in its app.', 'info');
   zzz_media_hist_add(it);
   try { zzz_media_open_app(it.link); } catch (e) {}
@@ -61898,9 +61901,25 @@ function zzz_media_ok_first(l) { const a = (l || []).filter(x => x && x.link); r
 function zzz_media_is_problem(it) { if (it && it.link && !zzz_media_is_mediaish(it.link)) return true; const l = it && it.link ? zzz_media_line(it) : null; return !!(l && zzz_media_tagw(l.tags).indexOf('problem') >= 0); }
 
 const ZZZ_MEDIA_PORTALS = /(^|\.)(twitch\.tv|dailymotion\.com|dai\.ly|mixcloud\.com|bandcamp\.com|deezer\.com|music\.apple\.com|podcasts\.apple\.com|tidal\.com|rumble\.com|odysee\.com|kick\.com|ted\.com|archive\.org|v\.redd\.it|music\.youtube\.com|audiomack\.com|beatport\.com|nts\.live|radio\.garden|tunein\.com)$/i;
+
+const ZZZ_MEDIA_LIVE = /(^|\.)(zoom\.us|zoom\.com|zoomgov\.com|teams\.microsoft\.com|teams\.live\.com|meet\.google\.com|webex\.com|whereby\.com|meet\.jit\.si|streamyard\.com|restream\.io|on24\.com|bigmarker\.com|hopin\.com|livestorm\.co|gotowebinar\.com|goto\.com|livestream\.com|vimeo\.com\/event)$/i;
+function zzz_media_is_live(link) {
+  const l = String(link || ''); if (!/^https?:/i.test(l)) return false;
+  try { if (ZZZ_MEDIA_LIVE.test(new URL(l).hostname.replace(/^www\./, ''))) return true; } catch (e) { return false; }
+  try { const L = (zzzMedia.all || []).find(x => x.link === l || x.link === zzz_media_norm(l)); return !!(L && zzz_media_tagw(L.tags).indexOf('webstream') >= 0); } catch (e) { return false; }
+}
+function zzz_media_live_open(it) {
+  zzzMedia.cur = it; try { zzz_media_hist_add(it); zzz_media_mark_actual(it); } catch (e) {}
+  if (zzz_brw_full_able()) { zzz_brw_full_open(it.link); zzz6f2_show_toast('▶ WEB STREAM · ' + (zzz_media_title(it) || zzz_rs_host(it.link)) + ' in ⛶ FULL PAGE (mic / camera only if you allow)', 'info', 2600); }
+  else { try { window.open(it.link, '_blank', 'noopener'); } catch (e) {} }
+}
+async function zzz_media_ask_webstream(link) {
+  return zzz_verso_confirm('Verso does not know this link as a medium (' + zzz_rs_host(link) + '). Add it as a ▶ WEB STREAM? It stays in ACTUAL and ▶ opens it as the whole page (⛶ FULL PAGE).', '+ WEB STREAM');
+}
 function zzz_media_is_mediaish(link) {
   const l = String(link || '');
   if (!/^https?:/i.test(l)) return true;
+  if (zzz_media_is_live(l)) return true;
   if (zzz_media_web_ok({ link: l })) return true;
   if (typeof zzz_tv_is === 'function' && zzz_tv_is(l)) return true;
   try { return ZZZ_MEDIA_PORTALS.test(new URL(l).hostname.replace(/^www\.|^m\./, '')); } catch (e) { return false; }
@@ -62799,7 +62818,8 @@ function zzz_media_verso_ref(text) {
 }
 async function zzz_media_add(link, name, tags, opts) {
   if (/^https?:\/\//i.test(String(link || '').trim()) && !zzz_media_is_mediaish(String(link).trim())) {
-    zzz6f2_show_toast('Not a medium (a web page / app link) - not added to VERSO MEDIA CENTER.', 'info'); return null; }
+    if (!(opts && opts.webstream)) { zzz6f2_show_toast('Not a medium (a web page / app link) - not added to VERSO MEDIA CENTER. + ADD in MEDIA CENTER can add it as a ▶ WEB STREAM.', 'info'); return null; }
+    tags = (String(tags || '') + ' webstream').trim(); }
   { const tw = String(tags || '').toLowerCase().split(/\s+/).filter(Boolean); if (!tw.some(w => ZZZ_MEDIA_TABWORDS.indexOf(w) >= 0)) { const a = zzz_media_autotag(link); if (a) tags = (tw.concat([a])).join(' '); } }
   link = String(link || '').trim();
   if (!/^https?:\/\//i.test(link)) { zzz6f2_show_toast('A link must start with https://', 'warn'); return null; }
@@ -65575,6 +65595,7 @@ function zzz_media_play(it, queue) {
   if (queue) zzzMedia.queue = queue.filter(x => x.link && !zzz_media_locked_now(x));
   if (zzzMedia.newId && String(zzzMedia.newId) === String(it.id || '')) zzzMedia.newId = null;
   const offNow = zzz_media_offline() || navigator.onLine === false;
+  if (/^https?:/i.test(it.link) && !zzz_media_has_file(it) && !zzz_media_web_ok(it) && zzz_media_is_live(it.link) && !offNow) { zzz_media_live_open(it); return; }
   if (/^https?:/i.test(it.link) && !zzz_media_has_file(it) && !zzz_media_web_ok(it)) { if (offNow) { zzz6f2_show_toast('No internet - ' + (zzz_media_title(it) || 'this link') + ' needs it.', 'info'); return; } zzz_media_not_media(it); return; }
   if (offNow && /^https?:/i.test(it.link) && !zzz_media_has_file(it)) { zzz6f2_show_toast('No internet and no copy on this phone - ' + (zzz_media_title(it) || 'this one') + ' is skipped.', 'info'); const nx = (zzzMedia.queue || []).find(x => x.link !== it.link && zzz_media_has_file(x)); if (nx) zzz_media_play(nx); return; }
   if (zzz_media_native() && (zzz_media_offline() || !zzz_media_embed(it.link))) { zzz_media_play_native(it, zzzMedia.queue); return; }
@@ -66241,8 +66262,9 @@ async function zzz_media_open() {
       if (await zzz_media_set_tags(had, w0.concat(more))) { zzzMedia.newId = had.id; inp.value = ''; readyPaint(); zzz6f2_show_toast('#' + had.num + ' added to ' + want.join(' ').toUpperCase() + '.', 'ok'); draw(); zzz_media_add_play_app(had); }
       return;
     }
-    if (!zzz_media_is_mediaish(u)) { zzz6f2_show_toast('Not a medium (a web page / app link) - not added to VERSO MEDIA CENTER.', 'info'); return; }
-    const it = await zzz_media_add(u, '', want.join(' '));
+    let wsOk = false;
+    if (!zzz_media_is_mediaish(u)) { if (!/^https?:\/\//i.test(u) || !(await zzz_media_ask_webstream(u))) return; wsOk = true; }
+    const it = await zzz_media_add(u, '', want.join(' '), wsOk ? { webstream: true } : undefined);
     if (it) { zzzMedia.newId = it.id; inp.value = ''; readyPaint(); zzz6f2_show_toast('Added as #' + it.num + ' (' + want.join(' ') + ') - hold the row = name / tags.', 'ok'); draw(); zzz_media_add_play_app(it); }
     else zzz6f2_show_toast('+ ADD failed - the link was not saved. Check the connection and try again.', 'warn');
   });
@@ -68815,7 +68837,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 409;
+const ZZZ14B17_APP_LATEST = 411;
 
 function zzz_canon_url() {
   try {
