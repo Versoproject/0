@@ -9485,7 +9485,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   <div class="zzz2-m12-web-line-bar" id="versoWebLineBar"><button type="button" class="zzz-wl-btn zzz-wl-priv" id="zzzWlPriv" hidden>🔒</button><input type="text" class="zzz-wl-in" id="zzzWlInput" placeholder="Web" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" data-zzz-nodraft="1"><button type="button" class="zzz-wl-btn zzz-wl-x" id="zzzWlX" title="Reset the web line" aria-label="Reset">×</button><button type="button" class="zzz-wl-btn zzz-wl-eye" id="zzzWlEye" title="👁 WATCH this page (READ SPACE › TEMP)">👁</button></div>
   
   
-  <div id="versoDashBar" role="button" aria-label="Dashboard swipe bar: swipe up hides, swipe down shows, double tap opens the calendar" title="Swipe up = hide DASHBOARD, down = show; double tap = CALENDAR"><span></span></div>
+  <div id="versoDashBar" role="button" aria-label="Dashboard bar: hold and pull up hides, pull down from the Web line shows, double tap opens the calendar" title="Hold + pull up = hide DASHBOARD · pull down from the Web line = show · double tap = CALENDAR"><span></span></div>
 </div>
 
 <div class="section section-system locked">
@@ -10177,6 +10177,9 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
   #versoDashBar span { width: 56px; height: 5px; border-radius: 3px; background: #D4AF37; box-shadow: 0 0 0 1px #5a4d1e; }
   body.zzz3tb-no-dash.zzz3tb-no-core.zzz3tb-no-sys #versoDashBar span { background: #8d8d8d; }
+  #versoDashBar.is-held span { background: #f6e7b0; box-shadow: 0 0 6px rgba(212,175,55,.8); }   
+  #versoDashBar.is-ready span { background: #fff3c4; }
+  #versoDashBar { height: 24px; }
   @media (max-width: 440px) { .zzz5cal-head .zzz5w8-title { display: none; } }
   @media (max-width: 380px) { .zzz5w8-cal-txt { display: none; } }
   .zzz5w8-acts .zzz5w5cm-chip.zzz5w8-alarm-head { height: 32px; min-height: 32px; padding: 0 12px; border-radius: 8px; border-width: 1.5px; font-size: 13px; letter-spacing: .04em; line-height: 1; display: inline-flex; align-items: center; }
@@ -35386,26 +35389,48 @@ function zzz_ws_lean_hold() { zzzWsLeanHold = zzz_ws_lean_sig() || 'home'; zzz_w
 function zzz3tb_all(hidden) {
   try { sessionStorage.setItem('zzz3tb_hint', '1'); } catch (e) {}
   ['core', 'dash', 'sys'].forEach(k => zzz3tb_set(k, hidden));
-  if (hidden) { try { zzz6f2_show_toast('DASHBOARD and sections 1, 2 hidden - swipe down on the top bar to show them.', 'info'); } catch (e) {} }
+  if (hidden) { try { zzz6f2_show_toast('DASHBOARD hidden - pull down from the Web line to show it.', 'info'); } catch (e) {} }
 }
 (function zzz3dbar_bind() {
+
   const bar = document.getElementById('versoDashBar');
+  const top = document.getElementById('versoWebLineSection') || bar;
   if (!bar) return;
-  let x0 = 0, y0 = 0, on = false, lastTap = 0, swAt = 0;
-  const start = (x, y) => { x0 = x; y0 = y; on = true; };
+  const span = bar.querySelector('span');
+  const isHidden = () => document.body.classList.contains('zzz-ws-lean') || (document.body.classList.contains('zzz3tb-no-dash') && document.body.classList.contains('zzz3tb-no-core') && document.body.classList.contains('zzz3tb-no-sys'));
+  const HOLD = 250, DIST = 36;
+  let x0 = 0, y0 = 0, on = false, onBar = false, armed = false, moved = false, ht = 0, lastTap = 0, swAt = 0, dy = 0;
+  const follow = (d) => { if (!span) return; span.style.transition = 'none'; span.style.transform = 'translateY(' + Math.max(-14, Math.min(14, d / 3)) + 'px) scaleX(' + (1 + Math.min(1, Math.abs(d) / 80)) + ')';
+    bar.classList.toggle('is-ready', Math.abs(d) >= DIST); };
+  const reset = () => { clearTimeout(ht); armed = false; bar.classList.remove('is-held', 'is-ready'); if (span) { span.style.transition = 'transform .18s ease'; span.style.transform = ''; } };
+  const start = (x, y, fromBar) => { x0 = x; y0 = y; on = true; onBar = fromBar; moved = false; dy = 0; armed = false; clearTimeout(ht);
+    if (fromBar && !isHidden()) ht = setTimeout(() => { if (!on || moved) return; armed = true; bar.classList.add('is-held'); try { zzz_haptic_pulse(20); } catch (e) {} }, HOLD); };
+  const move = (x, y) => { if (!on) return; const dx = x - x0; dy = y - y0;
+    if (!armed && !moved && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) { moved = true; clearTimeout(ht); }
+    if (armed && dy < 0) follow(dy);
+    else if (isHidden() && dy > 0 && Math.abs(dy) > Math.abs(dx)) follow(dy);
+  };
   const finish = (x, y) => {
-    if (!on) return; on = false;
-    const dx = x - x0, dy = y - y0;
-    if (Math.abs(dy) >= 16 && Math.abs(dy) > Math.abs(dx) * 1.2) { swAt = Date.now(); lastTap = 0; zzz3tb_all(dy < 0); return; }
-    if (Math.abs(dx) > 14 || Math.abs(dy) > 14) return;
+    if (!on) return; on = false; const dx = x - x0; dy = y - y0; const wasArmed = armed; reset();
+    if (wasArmed && dy <= -DIST && Math.abs(dy) > Math.abs(dx)) { swAt = Date.now(); lastTap = 0; try { zzz_haptic_pulse(60); } catch (e) {} zzz3tb_all(true); return; }
+    if (isHidden() && dy >= DIST && Math.abs(dy) > Math.abs(dx) * 1.2) { swAt = Date.now(); lastTap = 0; try { zzz_haptic_pulse(40); } catch (e) {} zzz3tb_all(false); return; }
+    if (!onBar || Math.abs(dx) > 14 || Math.abs(dy) > 14) return;
+    if (!wasArmed && !isHidden() && Math.abs(dy) < 14) {
+      try { if (!sessionStorage.getItem('zzz3dbar_hint')) { sessionStorage.setItem('zzz3dbar_hint', '1'); zzz6f2_show_toast('DASHBOARD: hold the bar and pull it up to hide · pull down from the Web line to show · double tap = CALENDAR.', 'info', 3500); } } catch (e) {}
+    }
     const now = Date.now();
     if (now - lastTap < 400) { lastTap = 0; zzz3d_open_calendar(true); } else lastTap = now;
   };
-  bar.addEventListener('touchstart', (e) => { const t = e.touches && e.touches[0]; if (t && e.touches.length === 1) start(t.clientX, t.clientY); else on = false; }, { passive: true });
-  bar.addEventListener('touchend', (e) => { const t = e.changedTouches && e.changedTouches[0]; if (t) { finish(t.clientX, t.clientY); e.preventDefault(); } }, { passive: false });
-  bar.addEventListener('touchcancel', () => { on = false; }, { passive: true });
-  bar.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse' && e.button === 0) { start(e.clientX, e.clientY); try { bar.setPointerCapture(e.pointerId); } catch (_) {} } });
-  bar.addEventListener('pointerup', (e) => { if (e.pointerType === 'mouse') finish(e.clientX, e.clientY); });
+  top.addEventListener('touchstart', (e) => { const t = e.touches && e.touches[0]; if (t && e.touches.length === 1) start(t.clientX, t.clientY, bar.contains(e.target)); else { on = false; reset(); } }, { passive: true });
+  top.addEventListener('touchmove', (e) => { const t = e.touches && e.touches[0]; if (t) move(t.clientX, t.clientY); }, { passive: true });
+  top.addEventListener('touchend', (e) => { const t = e.changedTouches && e.changedTouches[0]; if (t) finish(t.clientX, t.clientY); }, { passive: true });
+  top.addEventListener('touchcancel', () => { on = false; reset(); }, { passive: true });
+  bar.addEventListener('touchend', (e) => { if (Date.now() - swAt < 600) e.preventDefault(); }, { passive: false });
+
+  top.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse' && e.button === 0) { start(e.clientX, e.clientY, bar.contains(e.target)); if (bar.contains(e.target)) { try { bar.setPointerCapture(e.pointerId); } catch (_) {} } } });
+  top.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') move(e.clientX, e.clientY); });
+  top.addEventListener('pointerup', (e) => { if (e.pointerType === 'mouse') finish(e.clientX, e.clientY); });
+  top.addEventListener('click', (e) => { if (Date.now() - swAt < 600) { e.stopPropagation(); e.preventDefault(); } }, true);
 })();
 
 const ZZZ3NS_IN = 'verso_notif_sync_in', ZZZ3NS_DONE = 'zzz3_ns_done:';
@@ -57692,7 +57717,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-23 00:36';
+const VERSO_BUILD = '2026-11-23 03:42';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
