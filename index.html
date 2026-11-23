@@ -9165,6 +9165,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   
   .zzz-brw-win.is-live { bottom: auto; align-items: flex-start; background: transparent; pointer-events: none; }
   .zzz-brw-win.is-live > .zzz-brw-box { pointer-events: auto; max-height: 70vh; overflow-y: auto; margin-top: 0; }
+  .zzz-brw-fav-r { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+  .zzz-brw-fav-t { flex: 1 1 auto; min-width: 0; text-align: left; background: #141414; color: #eee; border: 1px solid #333; border-radius: 10px; padding: 6px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
   .zzz-wl-btn.zzz-wl-go { color: #111; background: #D4AF37; border-color: #D4AF37; }
   .zzz-wl-btn { flex: 0 0 auto; height: 18px; min-width: 20px; padding: 0 4px; border-radius: 6px; border: 1px solid #3a3a3a; background: #0f0f0f; color: #D4AF37; font-size: 10px; line-height: 16px; cursor: pointer; }
   .zzz-wl-btn.is-on { background: #D4AF37; color: #111; border-color: #D4AF37; }
@@ -30685,7 +30687,8 @@ async function zzz_wl_go(watch) {
     inp.addEventListener('input', () => { zzz_wl_paint(); zzz_wl_live(); });
     inp.addEventListener('focus', () => { if (inp.value.trim().length >= 2) zzz_wl_live(); });
     { const g = document.getElementById('zzzWlGo'); if (g) { g.addEventListener('click', (e) => { e.stopPropagation(); zzz_wl_load(); });
-      try { const m = zzz_mic_btn(inp, () => zzz_wl_load(), 'zzz-wl-btn zzz-wl-mic'); g.parentNode.insertBefore(m, g); } catch (e) {} } }
+      try { const m = zzz_mic_btn(inp, () => zzz_wl_load(), 'zzz-wl-btn zzz-wl-mic'); g.parentNode.insertBefore(m, g); } catch (e) {}
+      try { const fv = document.createElement('button'); fv.type = 'button'; fv.className = 'zzz-wl-btn zzz-wl-fav'; fv.textContent = '⭐'; fv.title = 'FAVOURITE WEBS'; fv.addEventListener('click', (e) => { e.stopPropagation(); zzz_brw_fav_open(); }); g.parentNode.insertBefore(fv, g); } catch (e) {} } }
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); zzz_wl_go(false); } if (e.key === 'Escape') { inp.value = ''; zzz_wl_paint(); inp.blur(); } });
     const x = document.getElementById('zzzWlX'); if (x) x.addEventListener('click', (e) => { e.stopPropagation(); inp.value = ''; zzz_wl_paint(); zzz_wl_live(); inp.focus(); });
     const eye = document.getElementById('zzzWlEye'); if (eye) eye.addEventListener('click', (e) => { e.stopPropagation(); zzz_wl_go(true); });
@@ -57788,7 +57791,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-23 16:24';
+const VERSO_BUILD = '2026-11-23 16:26';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -64762,8 +64765,56 @@ ZZZ_FILES_VIEWERS.office = zzz_pack_office_view;
 { const txt = ZZZ_FILES_VIEWERS.text; ZZZ_FILES_VIEWERS.data = (f, host) => /\.xlsx$/i.test(f.name || '') ? zzz_pack_office_view(f, host) : txt(f, host); }
 
 const zzzBrw = { hist: [] };
-function zzz_brw_hist() { try { return JSON.parse(sessionStorage.getItem('zzz_brw_hist') || '[]'); } catch (e) { return []; } }
-function zzz_brw_hist_add(q) { if (zzz_brw_opts().inc) return;   try { const l = zzz_brw_hist().filter(x => x !== q); l.unshift(q); sessionStorage.setItem('zzz_brw_hist', JSON.stringify(l.slice(0, 15))); } catch (e) {} }
+
+function zzz_brw_mem_on() { return zzz_brw_opts().mem !== false; }
+function zzz_brw_hist() { try { return (JSON.parse(localStorage.getItem(zzz_ukey('zzz_brw_mem')) || '[]') || []).map(x => typeof x === 'string' ? x : x.q).filter(Boolean); } catch (e) { return []; } }
+function zzz_brw_hist_add(q) { if (zzz_brw_opts().inc || !zzz_brw_mem_on()) return;   q = String(q || '').trim(); if (!q || q.length > 300) return;
+  try { const l = zzz_brw_hist().filter(x => x !== q); l.unshift(q); localStorage.setItem(zzz_ukey('zzz_brw_mem'), JSON.stringify(l.slice(0, 100))); } catch (e) {} }
+function zzz_brw_hist_del(q) { try { localStorage.setItem(zzz_ukey('zzz_brw_mem'), JSON.stringify(q == null ? [] : zzz_brw_hist().filter(x => x !== q))); } catch (e) {} }
+function zzz_brw_favs() { try { return (JSON.parse(localStorage.getItem(zzz_ukey('zzz_brw_fav')) || '[]') || []).filter(x => x && /^https?:\/\//i.test(x.u)); } catch (e) { return []; } }
+function zzz_brw_favs_set(l) { try { localStorage.setItem(zzz_ukey('zzz_brw_fav'), JSON.stringify((l || []).slice(0, 200))); } catch (e) {} }
+function zzz_brw_is_fav(u) { return zzz_brw_favs().some(x => x.u === u); }
+function zzz_brw_fav_toggle(u, t) { const l = zzz_brw_favs(); const i = l.findIndex(x => x.u === u); if (i >= 0) l.splice(i, 1); else l.push({ u, t: String(t || zzz_rs_host(u)).slice(0, 80) }); zzz_brw_favs_set(l); zzz6f2_show_toast(i >= 0 ? '☆ removed from FAVOURITE WEBS' : '⭐ added to FAVOURITE WEBS', 'info', 1500); return i < 0; }
+function zzz_brw_open_link(u) { if (zzz_brw_full_able()) zzz_brw_full_open(u); else { try { window.open(u, '_blank', 'noopener'); } catch (e) {} } }
+function zzz_brw_fav_list(host, inWin) {
+  host.innerHTML = ''; const l = zzz_brw_favs();
+  if (!l.length) { const n = document.createElement('div'); n.className = 'zzz-ext-note'; n.textContent = 'No favourite webs yet - tap ☆ on a web card in the VERSO BROWSER.'; host.appendChild(n); return; }
+  l.forEach((x, i) => { const r = document.createElement('div'); r.className = 'zzz-brw-fav-r';
+    const t = document.createElement('button'); t.type = 'button'; t.className = 'zzz-brw-fav-t'; t.textContent = '⭐ ' + (x.t || zzz_rs_host(x.u)); t.title = x.u; t.addEventListener('click', () => { if (inWin) inWin(); zzz_brw_open_link(x.u); }); r.appendChild(t);
+    const mk = (lab, fn, tip) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-btn'; b.textContent = lab; b.title = tip; b.addEventListener('click', (e) => { e.stopPropagation(); fn(); zzz_brw_fav_list(host, inWin); }); r.appendChild(b); };
+    mk('▲', () => { if (i > 0) { const a = zzz_brw_favs(); [a[i - 1], a[i]] = [a[i], a[i - 1]]; zzz_brw_favs_set(a); } }, 'Up');
+    mk('▼', () => { const a = zzz_brw_favs(); if (i < a.length - 1) { [a[i + 1], a[i]] = [a[i], a[i + 1]]; zzz_brw_favs_set(a); } }, 'Down');
+    mk('×', () => { zzz_brw_favs_set(zzz_brw_favs().filter(y => y.u !== x.u)); }, 'Remove');
+    host.appendChild(r); });
+}
+function zzz_brw_fav_open() {
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm'; const b = document.createElement('div'); b.className = 'zzz-media-confirm-box'; o.appendChild(b);
+  b.setAttribute('data-vlabel', 'VERSO › BROWSER › ⭐ FAVOURITE WEBS'); b.setAttribute('data-vkind', 'UI');
+  const t = document.createElement('div'); t.className = 'zzz-media-confirm-t'; t.textContent = '⭐ FAVOURITE WEBS'; b.appendChild(t);
+  const list = document.createElement('div'); b.appendChild(list); zzz_brw_fav_list(list, () => o.remove());
+  const f = document.createElement('div'); f.className = 'zzz-media-confirm-row'; f.style.justifyContent = 'flex-end'; b.appendChild(f);
+  const cl = document.createElement('button'); cl.type = 'button'; cl.className = 'zzz-media-btn is-on'; cl.textContent = 'CLOSE'; cl.addEventListener('click', () => o.remove()); f.appendChild(cl);
+  o.addEventListener('click', (e) => { if (e.target === o) o.remove(); }); document.body.appendChild(o);
+}
+function zzz_brw_render_mem(box) {
+  const sec = (title) => { const h = document.createElement('div'); h.className = 'zzz-rs-rec-h'; h.style.marginTop = '10px'; h.textContent = title; box.appendChild(h); };
+  sec('REMEMBERED PAGES');
+  const sw = document.createElement('div'); sw.className = 'zzz16-row'; const sl = document.createElement('div'); sl.textContent = 'REMEMBER WHAT I LOAD'; sw.appendChild(sl);
+  const g = document.createElement('div'); g.className = 'zzz14b2-voice';
+  [['ON ✓ default', true], ['OFF', false]].forEach(([lab, v]) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn' + (zzz_brw_mem_on() === v ? ' is-on' : ''); b.textContent = lab;
+    b.addEventListener('click', () => { zzz_brw_opts_set({ mem: v }); g.querySelectorAll('button').forEach(y => y.classList.toggle('is-on', y === b)); }); g.appendChild(b); });
+  sw.appendChild(g); box.appendChild(sw);
+  const ml = document.createElement('div'); box.appendChild(ml);
+  const paint = () => { ml.innerHTML = ''; const l = zzz_brw_hist();
+    if (!l.length) { const n = document.createElement('div'); n.className = 'zzz-ext-note'; n.textContent = 'Nothing remembered yet (saved on this device, for you only; not in INCOGNITO).'; ml.appendChild(n); return; }
+    l.forEach(q => { const r = document.createElement('div'); r.className = 'zzz-brw-fav-r'; const t = document.createElement('button'); t.type = 'button'; t.className = 'zzz-brw-fav-t'; t.textContent = q; t.addEventListener('click', () => zzz_brw_open(q, { full: true })); r.appendChild(t);
+      const st = document.createElement('button'); st.type = 'button'; st.className = 'zzz-media-btn'; st.textContent = '☆'; st.title = 'Add to FAVOURITE WEBS'; st.addEventListener('click', () => { const u = zzz_wl_link(q); if (!u) { zzz6f2_show_toast('Only web addresses can be favourites.', 'info'); return; } if (!zzz_brw_is_fav(u)) zzz_brw_fav_toggle(u, zzz_rs_host(u)); paintF(); }); r.appendChild(st);
+      const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn'; x.textContent = '×'; x.addEventListener('click', () => { zzz_brw_hist_del(q); paint(); }); r.appendChild(x); ml.appendChild(r); });
+    const ca = document.createElement('button'); ca.type = 'button'; ca.className = 'zzz-media-btn'; ca.textContent = '🗑 FORGET ALL'; ca.addEventListener('click', () => { zzz_brw_hist_del(null); paint(); }); ml.appendChild(ca); };
+  paint();
+  sec('⭐ FAVOURITE WEBS'); const fl = document.createElement('div'); box.appendChild(fl); const paintF = () => zzz_brw_fav_list(fl, null); paintF();
+}
+
 function zzz_brw_kind(q) {
   q = String(q || '').trim(); let m;
   if ((m = /verso:file=([A-Za-z0-9]{6,32})/.exec(q))) return { k: 'file', v: m[1] };
@@ -64806,6 +64857,7 @@ function zzz_brw_render_settings(host) {
     g.appendChild(b); });
   r.appendChild(g); box.appendChild(r);
   try { zzz_brw_render_opts(box); } catch (e) {}
+  try { zzz_brw_render_mem(box); } catch (e) {}
   const n = document.createElement('div'); n.className = 'zzz-ext-note'; n.textContent = 'Words typed in the WEB LINE of ⛶ FULL PAGE (Verso app) and ↗ SEARCH THE WEB go to this engine - it is outside Verso and sees your phone. Addresses open directly. 💾 in FULL PAGE keeps the address + title in READ SPACE › ACTUAL; 📚 lists them. Saved on this device.'; box.appendChild(n);
   host.appendChild(box);
 }
@@ -64822,7 +64874,7 @@ function zzz_brw_open(q, opts) {
   o.appendChild(b); document.body.appendChild(o);
   o.addEventListener('click', (e) => { if (e.target === o) o.remove(); });
   const h = document.createElement('div'); h.className = 'zzz-media-confirm-t'; h.textContent = '🌐 VERSO BROWSER '; b.appendChild(h);
-  { const g = document.createElement('button'); g.type = 'button'; g.className = 'zzz-media-btn'; g.textContent = '⚙'; g.title = 'BROWSER SETUP'; g.addEventListener('click', () => { o.remove(); zzz_brw_setup_open(); }); h.appendChild(g); }
+  { const g = document.createElement('button'); g.type = 'button'; g.className = 'zzz-media-btn'; g.textContent = '⚙'; g.title = 'BROWSER SETUP'; g.addEventListener('click', () => { o.remove(); zzz_brw_setup_open(); }); { const fv = document.createElement('button'); fv.type = 'button'; fv.className = 'zzz-media-btn'; fv.textContent = '⭐'; fv.title = 'FAVOURITE WEBS'; fv.addEventListener('click', () => zzz_brw_fav_open()); h.appendChild(fv); } h.appendChild(g); }
   const bar = document.createElement('div'); bar.className = 'zzz-brw-bar'; b.appendChild(bar);
   const inp = document.createElement('input'); inp.type = 'text'; inp.className = 'zzz-media-tagq zzz-brw-q'; inp.setAttribute('data-zzz-nodraft', '1'); inp.placeholder = 'web address, #record, words…'; inp.setAttribute('enterkeyhint', 'go'); bar.appendChild(inp);
   try { bar.appendChild(zzz_mic_btn(inp, () => run())); } catch (e) {}
@@ -64842,6 +64894,7 @@ function zzz_brw_open(q, opts) {
     if (zzz_brw_is_media(link)) btn(r, '▶ MEDIA CENTER', 'A media site: into ALL MEDIA (one line, READ kept) and play it in MEDIA CENTER', () => zzz_brw_to_media(link), 'is-on');
     btn(r, '📖 VERSO', 'Read the page as a Verso page (via Verso\'s server) - save, mark, draw', () => readIn(link), 'is-on');
     zzz_brw_save_btns(r, link, btn);
+    { const sb = btn(r, zzz_brw_is_fav(link) ? '⭐' : '☆', 'FAVOURITE WEBS: add / remove', () => { const on = zzz_brw_fav_toggle(link, zzz_rs_host(link)); sb.textContent = on ? '⭐' : '☆'; }); }
     btn(r, '↗ WEB', 'The original page in a new tab (outside Verso)', () => { try { window.open(link, '_blank', 'noopener'); } catch (e) {} }, 'zzz-file-ext');
   };
   const readIn = async (link) => {
