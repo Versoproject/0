@@ -30641,6 +30641,29 @@ function zzz_wl_load() {
   try { window.open(link || zzz_brw_search_url(v), '_blank', 'noopener'); } catch (e) {}
 }
 
+function zzz_mic_btn(input, done, cls) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const b = document.createElement('button'); b.type = 'button'; b.className = cls || 'zzz-media-btn'; b.textContent = '🎤';
+  b.title = SR ? '🎤 voice - EXTERNAL (the browser sends your voice to ' + (/Edg\//.test(navigator.userAgent) ? 'Microsoft' : 'Google') + ')' : 'Voice input is not available in this browser';
+  b.addEventListener('mousedown', (e) => e.preventDefault());
+  b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation();
+    if (!SR) { zzz6f2_show_toast('Voice input is not available in this browser.', 'warn'); return; }
+    if (window.zzzVkbRec) { try { window.zzzVkbRec.stop(); } catch (er) {} return; }
+    let warned = false; try { warned = localStorage.getItem('zzz_vkb_mic_ext') === '1'; } catch (er) {}
+    if (!warned) { zzz6f2_show_toast('EXTERNAL: voice input goes to ' + (/Edg\//.test(navigator.userAgent) ? 'Microsoft (Edge)' : 'Google (Chrome)') + ' for recognition - outside Verso. Tap 🎤 again to start.', 'warn'); try { localStorage.setItem('zzz_vkb_mic_ext', '1'); } catch (er) {} return; }
+    try {
+      const rec = new SR(); rec.lang = (navigator.language || 'sk-SK'); rec.interimResults = false; rec.maxAlternatives = 1; rec.continuous = false;
+      rec.onresult = (ev) => { let t = ''; for (let i = ev.resultIndex; i < ev.results.length; i++) if (ev.results[i].isFinal) t += ev.results[i][0].transcript; t = String(t || '').trim(); if (!t) return;
+        if (/^[\w-]+( ?(bodka|dot|\.) ?[\w-]+)+$/i.test(t)) t = t.replace(/ ?(bodka|dot) ?/gi, '.').replace(/\s+/g, '');
+        input.value = t; try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (er) {} try { done && done(t); } catch (er) {} };
+      rec.onerror = (ev) => { const er = ev && ev.error; if (er && er !== 'no-speech' && er !== 'aborted') zzz_user_error(er === 'not-allowed' ? 'Microphone not allowed - allow it for Verso.' : 'Voice input did not work - try again.', null, '[Zzz4-10:WL-VOICE]'); };
+      rec.onend = () => { window.zzzVkbRec = null; b.classList.remove('is-on'); };
+      window.zzzVkbRec = rec; b.classList.add('is-on'); rec.start();
+    } catch (er) { window.zzzVkbRec = null; b.classList.remove('is-on'); zzz_user_error('Voice input did not work - try again.', er, '[Zzz4-10:WL-VOICE]'); }
+  });
+  return b;
+}
+
 async function zzz_wl_go(watch) {
   const inp = document.getElementById('zzzWlInput'); if (!inp) return;
 
@@ -30661,7 +30684,8 @@ async function zzz_wl_go(watch) {
     const inp = document.getElementById('zzzWlInput'); if (!inp) return false;
     inp.addEventListener('input', () => { zzz_wl_paint(); zzz_wl_live(); });
     inp.addEventListener('focus', () => { if (inp.value.trim().length >= 2) zzz_wl_live(); });
-    { const g = document.getElementById('zzzWlGo'); if (g) g.addEventListener('click', (e) => { e.stopPropagation(); zzz_wl_load(); }); }
+    { const g = document.getElementById('zzzWlGo'); if (g) { g.addEventListener('click', (e) => { e.stopPropagation(); zzz_wl_load(); });
+      try { const m = zzz_mic_btn(inp, () => zzz_wl_load(), 'zzz-wl-btn zzz-wl-mic'); g.parentNode.insertBefore(m, g); } catch (e) {} } }
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); zzz_wl_go(false); } if (e.key === 'Escape') { inp.value = ''; zzz_wl_paint(); inp.blur(); } });
     const x = document.getElementById('zzzWlX'); if (x) x.addEventListener('click', (e) => { e.stopPropagation(); inp.value = ''; zzz_wl_paint(); zzz_wl_live(); inp.focus(); });
     const eye = document.getElementById('zzzWlEye'); if (eye) eye.addEventListener('click', (e) => { e.stopPropagation(); zzz_wl_go(true); });
@@ -57764,7 +57788,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-23 16:16';
+const VERSO_BUILD = '2026-11-23 16:24';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -64801,6 +64825,7 @@ function zzz_brw_open(q, opts) {
   { const g = document.createElement('button'); g.type = 'button'; g.className = 'zzz-media-btn'; g.textContent = '⚙'; g.title = 'BROWSER SETUP'; g.addEventListener('click', () => { o.remove(); zzz_brw_setup_open(); }); h.appendChild(g); }
   const bar = document.createElement('div'); bar.className = 'zzz-brw-bar'; b.appendChild(bar);
   const inp = document.createElement('input'); inp.type = 'text'; inp.className = 'zzz-media-tagq zzz-brw-q'; inp.setAttribute('data-zzz-nodraft', '1'); inp.placeholder = 'web address, #record, words…'; inp.setAttribute('enterkeyhint', 'go'); bar.appendChild(inp);
+  try { bar.appendChild(zzz_mic_btn(inp, () => run())); } catch (e) {}
   const go = document.createElement('button'); go.type = 'button'; go.className = 'zzz-media-btn is-on'; go.textContent = 'GO'; bar.appendChild(go);
   const hist = document.createElement('div'); hist.className = 'zzz-brw-hist'; b.appendChild(hist);
   const out = document.createElement('div'); out.className = 'zzz-brw-out'; b.appendChild(out);
@@ -68911,7 +68936,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 414;
+const ZZZ14B17_APP_LATEST = 415;
 
 function zzz_canon_url() {
   try {
