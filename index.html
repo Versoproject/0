@@ -7321,6 +7321,8 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-ink-count { opacity: 0.6; font-size: 11px; margin-left: auto; }
   
   .zzz-board-live { position: fixed; z-index: 30; pointer-events: none; display: none; }
+  .zzz-vkb-mark-bg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 1.9em; opacity: .38; pointer-events: none; z-index: 0; line-height: 1; }   
+  .zzz-vkb-ok { overflow: hidden; }
   
   .zzz-ms-title { background: #D4AF37; color: #171717; border: 0; border-radius: 16px; padding: 4px 12px; font: inherit; font-weight: 800; letter-spacing: .04em; cursor: pointer; display: inline-flex; align-items: baseline; gap: 2px; max-width: 75%; white-space: nowrap; overflow: hidden; }
   .zzz-ms-title .zzz14cs-space-count { color: #171717; opacity: .7; } .zzz-ms-mode { font-size: .85em; margin-left: 4px; }
@@ -30914,17 +30916,32 @@ async function zzz_verse_labels(fresh) { if (zzzVerseLabels && !fresh) return zz
 const ZZZ_MARK_KEY = 'zzz_mv_personal_mark';
 const ZZZ_MARK_COLORS = [['GOLD', '#d4af37'], ['RED', '#e5484d'], ['GREEN', '#3fb950'], ['BLUE', '#4c9aff'], ['PURPLE', '#a371f7'], ['PINK', '#ff7eb6'], ['ORANGE', '#ff9f43'], ['WHITE', '#f5f5f5']];
 const ZZZ_MARK_SIGNS = ['★', '♦', '♣', '♠', '♥', '☀', '☂', '♫', '✿', '⚓', '☘', '▲', '●', '■', '✚', '∞'];
+
 function zzz_mark_get() {
   try {
     const m = JSON.parse(Storage.prototype.getItem.call(window.localStorage, ZZZ_MARK_KEY) || 'null');
     if (!m || !ZZZ_MARK_COLORS.some(c => c[1] === m.c) || ZZZ_MARK_SIGNS.indexOf(m.s) < 0) return null;
-    return { c: m.c, s: m.s, w: String(m.w || '').slice(0, 12) };
+    if (m.w) { try { Storage.prototype.setItem.call(window.localStorage, ZZZ_MARK_KEY, JSON.stringify({ c: m.c, s: m.s })); } catch (e) {} }
+    return { c: m.c, s: m.s };
   } catch (e) { return null; }
+}
+const ZZZ_MARK_APP = 413;
+function zzz_mark_to_app(force) {
+  try { if (!zzz14b17_in_app() || zzz14b17_app_code() < ZZZ_MARK_APP) return; const m = zzz_mark_get();
+    const sig = m ? ZZZ_MARK_SIGNS.indexOf(m.s) + ':' + ZZZ_MARK_COLORS.findIndex(c => c[1] === m.c) : 'off';
+    if (!force && zzz_mark_to_app._s === sig) return; zzz_mark_to_app._s = sig;
+    zzz_native_cmd('intent://quick/kbmark?' + (m ? 's=' + ZZZ_MARK_SIGNS.indexOf(m.s) + '&c=' + ZZZ_MARK_COLORS.findIndex(c => c[1] === m.c) : 'off=1')); } catch (e) {}
+}
+setTimeout(() => zzz_mark_to_app(false), 11000);
+function zzz_mark_key_bg(key) {
+  try { const m = zzz_mark_get(); if (!m || !key) return; const g = document.createElement('span'); g.className = 'zzz-vkb-mark-bg'; g.textContent = m.s; g.style.color = m.c; g.setAttribute('aria-hidden', 'true');
+    key.style.position = key.style.position || 'relative'; key.insertBefore(g, key.firstChild); } catch (e) {}
 }
 function zzz_mark_save(m) {
   try {
     if (!m) Storage.prototype.removeItem.call(window.localStorage, ZZZ_MARK_KEY);
-    else Storage.prototype.setItem.call(window.localStorage, ZZZ_MARK_KEY, JSON.stringify({ c: m.c, s: m.s, w: String(m.w || '').slice(0, 12) }));
+    else Storage.prototype.setItem.call(window.localStorage, ZZZ_MARK_KEY, JSON.stringify({ c: m.c, s: m.s }));
+    setTimeout(() => zzz_mark_to_app(true), 50);
     return true;
   } catch (e) { return false; }
 }
@@ -30932,7 +30949,7 @@ function zzz_mark_chip(m) {
   m = m || zzz_mark_get(); if (!m) return null;
   const el = document.createElement('span'); el.className = 'zzz-mark-chip'; el.setAttribute('data-5s', 'PERSONAL MARK');
   el.style.cssText = 'display:inline-flex;align-items:center;gap:5px;padding:1px 8px;border:2px solid ' + m.c + ';border-radius:10px;color:' + m.c + ';font-weight:700;font-size:13px;line-height:1.5;white-space:nowrap;background:#000';
-  el.textContent = m.s + (m.w ? ' ' + m.w : '');
+  el.textContent = m.s;
   el.title = 'Your PERSONAL MARK - kept only on this device. No mark or another mark = do not type.';
   return el;
 }
@@ -30973,12 +30990,12 @@ try { new MutationObserver((ms) => { if (!zzz_mark_get()) return; ms.forEach(m =
   .observe(document.body, { childList: true, subtree: true }); } catch (e) {}
 function zzz_mark_dialog(done) {
   if (!zzz4r7_my_device()) { zzz6f2_show_toast('PERSONAL MARK is set only on MY DEVICE.', 'warn', 3500); return; }
-  const cur = zzz_mark_get() || { c: ZZZ_MARK_COLORS[0][1], s: ZZZ_MARK_SIGNS[0], w: '' };
+  const cur = zzz_mark_get() || { c: ZZZ_MARK_COLORS[0][1], s: ZZZ_MARK_SIGNS[0] };
   const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv';
   const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', 'PERSONAL MARK');
   const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = 'PERSONAL MARK'; b.appendChild(t);
   const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text';
-  sub.textContent = 'Pick a colour and a sign (a short word if you like). Every real Verso window that asks a secret shows it. Kept only on this device - a fake page cannot know it. No mark or another mark = do not type.';
+  sub.textContent = 'Pick a colour and a sign. Every real Verso window that asks a secret shows it, and it lies under the Enter key of every Verso keyboard. Kept only on this device - a fake page cannot know it. No mark or another mark = do not type.';
   b.appendChild(sub);
   const prev = document.createElement('div'); prev.style.cssText = 'display:flex;justify-content:center;margin:8px 0;min-height:28px'; b.appendChild(prev);
   const paint = () => { prev.textContent = ''; prev.appendChild(zzz_mark_chip(cur)); };
@@ -30996,10 +31013,6 @@ function zzz_mark_dialog(done) {
   };
   grid(ZZZ_MARK_COLORS, it => it[1] === cur.c, (x, it) => { x.style.background = it[1]; x.title = it[0]; x.setAttribute('aria-label', it[0]); }, it => { cur.c = it[1]; });
   grid(ZZZ_MARK_SIGNS, it => it === cur.s, (x, it) => { x.textContent = it; }, it => { cur.s = it; });
-  const w = document.createElement('input'); w.type = 'text'; w.maxLength = 12; w.className = 'entry-cell'; w.placeholder = 'word (optional, max 12)'; w.value = cur.w; w.autocomplete = 'off';
-  w.style.cssText = 'width:100%;margin:6px 0;box-sizing:border-box';
-  w.addEventListener('input', () => { cur.w = w.value.trim().slice(0, 12); paint(); });
-  b.appendChild(w);
   const dev = document.createElement('div'); dev.className = 'zzz-media-diss-s'; dev.textContent = 'saved on this device only - set it again on every device of yours'; b.appendChild(dev);
   const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
   const end = (msg, kind) => { o.remove(); if (msg) zzz6f2_show_toast(msg, kind || 'ok', 3500); if (done) done(); };
@@ -47025,7 +47038,7 @@ async function zzz_native_launch(url) {
 function zzz_native_cmd_able(url) {
 
   try {
-    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|buzz|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|mediaact|mediapls|mediaplaces|vistuck|mediapend|feedcfg|feedpend|mediadone|actdiag|mcnow|readfetch|vipacks|qcb|ring|relaunch|webview|webpend|rsplaces|webprefs|mspace)\b/.test(String(url || 'intent://quick/quiet'))
+    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|buzz|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|mediaact|mediapls|mediaplaces|vistuck|mediapend|feedcfg|feedpend|mediadone|actdiag|mcnow|readfetch|vipacks|qcb|ring|relaunch|webview|webpend|rsplaces|webprefs|mspace|kbmark)\b/.test(String(url || 'intent://quick/quiet'))
       && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator;
   } catch (e) { return false; }
 }
@@ -57723,7 +57736,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-23 14:44';
+const VERSO_BUILD = '2026-11-23 16:05';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -68339,12 +68352,14 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
         zzz_vkb_text_enter(target);
         if (jednoriadkove) zzz_vkb_hide();
       }, 'zzz-vkb-ok');
+      zzz_mark_key_bg(okKey);
       okKey.title = jednoriadkove ? 'Confirm and close the keyboard' : (okTarget ? 'Confirm this window (e.g. send to the chat) - new line = ⇧ twice' : 'New line');
     } else {
       const space = charKey(rc, ' ', null);
       space.classList.add('zzz-vkb-space');
       ctrlKey(rc, 'CLEAR', () => { target.value = ''; }, 'zzz-vkb-clear');
       const ok = ctrlKey(rc, 'OK', () => {}, 'zzz-vkb-ok');
+      zzz_mark_key_bg(ok);
       ok.title = 'Confirm (next field or the confirm button)';
       ok.addEventListener('click', (e) => { e.preventDefault(); zzz_vkb_ok(target); });
     }
@@ -68863,7 +68878,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 412;
+const ZZZ14B17_APP_LATEST = 413;
 
 function zzz_canon_url() {
   try {
