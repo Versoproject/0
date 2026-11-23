@@ -7322,6 +7322,10 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   
   .zzz-board-live { position: fixed; z-index: 30; pointer-events: none; display: none; }
   
+  .zzz-ms-title { background: #D4AF37; color: #171717; border: 0; border-radius: 16px; padding: 4px 12px; font: inherit; font-weight: 800; letter-spacing: .04em; cursor: pointer; display: inline-flex; align-items: baseline; gap: 2px; max-width: 75%; white-space: nowrap; overflow: hidden; }
+  .zzz-ms-title .zzz14cs-space-count { color: #171717; opacity: .7; } .zzz-ms-mode { font-size: .85em; margin-left: 4px; }
+  #zzzMsSpace.is-mm .zzz-ms-body { padding-bottom: 52vh; } #zzzMsSpace.is-mmm .zzz-ms-body { padding-bottom: 120px; }
+  
   .zzz-ia-pair { display: inline-flex; align-items: stretch; flex: 0 0 auto; }
   .zzz-ia-pair > button:first-child { border-top-right-radius: 0 !important; border-bottom-right-radius: 0 !important; margin-right: 0 !important; }
   .zzz-ia-pair > button + button { border-top-left-radius: 0 !important; border-bottom-left-radius: 0 !important; margin-left: -1px !important; }
@@ -30296,10 +30300,16 @@ function zzz_ms_build() {
   if (document.getElementById('zzzMsSpace')) return;
   const panel = document.createElement('div'); panel.id = 'zzzMsSpace'; panel.className = 'zzz-ms-space';
   const bar = document.createElement('div'); bar.className = 'zzz14cs-space-bar';
-  const title = document.createElement('span'); title.textContent = 'MEDIA SPACE ';
-  const cnt = document.createElement('span'); cnt.className = 'zzz14cs-space-count'; cnt.textContent = '(0)'; title.appendChild(cnt); bar.appendChild(title);
+
+  const title = document.createElement('button'); title.type = 'button'; title.className = 'zzz-ms-title'; title.title = 'Tap = MM ⇄ MMM (the MEDIA MODULE of the Verso app)';
+  const tl = document.createElement('span'); tl.className = 'zzz-ms-title-t'; tl.textContent = 'MEDIA SPACE '; title.appendChild(tl);
+  const cnt = document.createElement('span'); cnt.className = 'zzz14cs-space-count'; cnt.textContent = '(0)'; title.appendChild(cnt);
+  const md = document.createElement('span'); md.className = 'zzz-ms-mode'; title.appendChild(md);
+  title.addEventListener('click', (e) => { e.stopPropagation(); zzz_ms_mode_set(zzz_ms_mode() === 'mm' ? 'mmm' : 'mm'); });
+  bar.appendChild(title);
   const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz5w5cm-close'; x.setAttribute('aria-label', 'Close'); x.textContent = '×';
   x.addEventListener('click', () => zzz_ms_open(false)); bar.appendChild(x); panel.appendChild(bar);
+  zzz_ms_mode_paint(panel);
   const body = document.createElement('div'); body.className = 'zzz14cs-space-body zzz-ms-body'; panel.appendChild(body);
   document.body.appendChild(panel);
 }
@@ -30327,8 +30337,24 @@ function zzz_ms_render() {
   body.appendChild(zzz5w5cm_build_ccl(ZZZ_MS_KEY, rows, { cols: ZZZ_MS_COLS }));
   if (!zzzMs.at || Date.now() - zzzMs.at > 60000) zzz_ms_media_load().then(() => { if (zzzMsOpen) zzz_ms_render(); });
 }
+const ZZZ_MS_MM_APP = 412;
+function zzz_ms_mode() { try { return localStorage.getItem('zzz_ms_mode') === 'mmm' ? 'mmm' : 'mm'; } catch (e) { return 'mm'; } }
+function zzz_ms_mm_able() { try { return zzz14b17_in_app() && zzz14b17_app_code() >= ZZZ_MS_MM_APP && zzz_native_cmd_able('intent://quick/mspace'); } catch (e) { return false; } }
+function zzz_ms_mode_paint(panel) {
+  panel = panel || document.getElementById('zzzMsSpace'); if (!panel) return;
+  const m = zzz_ms_mode(), md = panel.querySelector('.zzz-ms-mode'); if (md) md.textContent = m === 'mm' ? '· MM ⇄' : '· MMM ⇄';
+  panel.classList.toggle('is-mm', m === 'mm' && zzz_ms_mm_able()); panel.classList.toggle('is-mmm', m === 'mmm' && zzz_ms_mm_able());
+}
+function zzz_ms_mode_set(m) {
+  try { localStorage.setItem('zzz_ms_mode', m); } catch (e) {}
+  zzz_ms_mode_paint();
+  if (zzz_ms_mm_able()) { zzz_native_cmd('intent://quick/mspace?m=' + m); zzz_haptic_pulse(20); }
+  else zzz6f2_show_toast('MM / MMM is the MEDIA MODULE of the Verso app - open MEDIA SPACE in the Verso app (APK update).', 'info', 2600);
+}
 function zzz_ms_open(on) {
+  const was = zzzMsOpen;
   zzzMsOpen = !!on;
+  try { if (zzz_ms_mm_able() && was !== zzzMsOpen) zzz_native_cmd('intent://quick/mspace?m=' + (zzzMsOpen ? zzz_ms_mode() : 'off')); } catch (e) {}
   if (zzzMsOpen) {
     try { if (typeof zzz14csSpaceOpen !== 'undefined' && zzz14csSpaceOpen) zzz14cs_space_open(false); } catch (e) {}
     try { if (typeof zzzRs !== 'undefined' && zzzRs.open) zzz_rs_space_open(false); } catch (e) {}
@@ -46999,7 +47025,7 @@ async function zzz_native_launch(url) {
 function zzz_native_cmd_able(url) {
 
   try {
-    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|buzz|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|mediaact|mediapls|mediaplaces|vistuck|mediapend|feedcfg|feedpend|mediadone|actdiag|mcnow|readfetch|vipacks|qcb|ring|relaunch|webview|webpend|rsplaces)\b/.test(String(url || 'intent://quick/quiet'))
+    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(quiet|read|readstop|home|buzz|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|mediaact|mediapls|mediaplaces|vistuck|mediapend|feedcfg|feedpend|mediadone|actdiag|mcnow|readfetch|vipacks|qcb|ring|relaunch|webview|webpend|rsplaces|webprefs|mspace)\b/.test(String(url || 'intent://quick/quiet'))
       && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator;
   } catch (e) { return false; }
 }
@@ -57697,7 +57723,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-23 14:34';
+const VERSO_BUILD = '2026-11-23 14:44';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -68837,7 +68863,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 411;
+const ZZZ14B17_APP_LATEST = 412;
 
 function zzz_canon_url() {
   try {
