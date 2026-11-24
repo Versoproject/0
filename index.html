@@ -31309,6 +31309,15 @@ async function zzz_conn_alarm(c, expIso) {
     if (!error) zzz6f2_show_toast('⏰ ALARM set: ' + title + ' · ' + due.toLocaleDateString() + ' (' + Math.round(ahead / 1440 * 10) / 10 + ' day ahead).', 'ok', 4000);
   } catch (e) {}
 }
+
+function zzz_conn_until(c) {
+  const st = c.tv && zzzConnStat[c.tv] && zzzConnStat[c.tv].r, ex = st && st.info && st.info.exp;
+  if (ex) return { at: new Date(ex), src: 'service' };
+  if (!c.until) return null;
+  const d = new Date(c.until + 'T09:00:00'); if (isNaN(d)) return null;
+  if (c.renew === 'month' || c.renew === 'year') { let n = 0; while (d.getTime() < Date.now() && n++ < 600) { if (c.renew === 'month') d.setMonth(d.getMonth() + 1); else d.setFullYear(d.getFullYear() + 1); } }
+  return { at: d, src: c.renew === 'month' ? 'monthly' : c.renew === 'year' ? 'yearly' : 'once' };
+}
 async function zzz_conn_alarm_off(c) {
   try { const me = String(zzz0r1_get_current_username() || '').trim().toLowerCase();
     await sb.from('verso_notif_items').update({ done_at: new Date().toISOString() }).eq('username', me).eq('tag', 'conn:' + c.id).is('done_at', null); } catch (e) {}
@@ -31477,10 +31486,24 @@ async function zzz_conn_open(startTab, opt) {
             if (isHere) c.dev = devs.filter(x => x.id !== here); else { const inf = await zzz_dev_info().catch(() => ({ name: 'this device' })); c.dev = devs.concat([{ id: here, n: String(inf.name || 'this device').slice(0, 24) }]); }
             if (!c.dev.length) delete c.dev; ch(); paint(); }, isHere ? 'Tap = take THIS device off the list' : 'Tap = allow it only on the listed devices (+ this one)'));
           { const steps = [1440, 4320, 10080, 0], cur = c.alarmOff ? 0 : (Number(c.alarmAhead) || 1440), lab = { 1440: '1 DAY', 4320: '3 DAYS', 10080: '1 WEEK' };
-            ar2.appendChild(btn('⏰ ALARM · ' + (cur ? lab[cur] + ' AHEAD' : 'OFF'), !!cur, async () => { const nx = steps[(steps.indexOf(cur) + 1) % steps.length];
+            const un = zzz_conn_until(c);
+            ar2.appendChild(btn('⏰ ALARM · ' + (cur ? lab[cur] + ' AHEAD' + (un ? ' · ' + un.at.toLocaleDateString() : ' · no date yet') : 'OFF'), !!cur, async () => { const nx = steps[(steps.indexOf(cur) + 1) % steps.length];
               if (nx) { c.alarmAhead = nx; delete c.alarmOff; } else c.alarmOff = 1; ch();
               if (c.alarmOff) await zzz_conn_alarm_off(c); else if (c.tv) delete zzzConnStat[c.tv]; paint(); }, 'Tap = 1 day → 3 days → 1 week → off. A reminder in NOTIFICATIONS before the service ends (when the service tells the date)')); }
-          sg.appendChild(ar2); }
+          sg.appendChild(ar2);
+
+          { const ur = document.createElement('div'); ur.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0';
+            const ul = document.createElement('span'); ul.style.cssText = 'color:#d4af37;font-size:12px;font-weight:700'; ul.textContent = '📅 PAID UNTIL';
+            const ud = document.createElement('input'); ud.type = 'date'; ud.className = 'entry-cell'; ud.style.cssText = 'flex:0 1 150px;min-width:0'; ud.value = c.until || '';
+            ud.addEventListener('change', async () => { c.until = ud.value || undefined; ch(); if (!c.alarmOff) { const u2 = zzz_conn_until(c); if (u2) await zzz_conn_alarm(c, u2.at.toISOString()); else await zzz_conn_alarm_off(c); } paint(); });
+            const rv = c.renew || 'once', rl = { once: '🔁 ONE-TIME', month: '🔁 MONTHLY', year: '🔁 YEARLY' }, nx = { once: 'month', month: 'year', year: 'once' };
+            ur.append(ul, ud, btn(rl[rv], rv !== 'once', async () => { c.renew = nx[rv]; if (c.renew === 'once') delete c.renew; ch(); const u2 = zzz_conn_until(c); if (u2 && !c.alarmOff) await zzz_conn_alarm(c, u2.at.toISOString()); paint(); },
+              'Tap = one-time → monthly → yearly. Monthly / yearly: after the date passes, the alarm moves to the next term by itself'));
+            const un2 = zzz_conn_until(c);
+            if (un2 && un2.src === 'service') { const nt = document.createElement('span'); nt.style.cssText = 'color:#8a8a8a;font-size:11px'; nt.textContent = '(the service reports ' + un2.at.toLocaleDateString() + ' - it wins)'; ur.appendChild(nt); }
+            sg.appendChild(ur);
+            if (un2 && un2.src !== 'service' && !c.alarmOff) zzz_conn_alarm(c, un2.at.toISOString()); }
+        }
         { const sb3 = document.createElement('div'); sb3.style.cssText = 'border-top:1px solid #33475a;margin-top:6px;padding-top:4px'; sg.appendChild(sb3); restat = () => zzz_conn_status(c, sb3, save, paint); restat();
           const tr2 = document.createElement('div'); tr2.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:4px';
           if (zzz_conn_has(c, 'media › iptv')) {
@@ -58102,7 +58125,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-24 21:52';
+const VERSO_BUILD = '2026-11-24 21:55';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
