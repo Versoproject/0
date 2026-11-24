@@ -31333,6 +31333,8 @@ function zzz_conn_status(c, host, save, repaint) {
     if (i.max_connections) add('📱 ' + (i.active_cons || 0) + ' of ' + i.max_connections + ' device(s) in use now');
     if (i.formats && i.formats.length) add('🎞 formats ' + i.formats.join(', '));
     add('💳 credit / price: the service does not report it - write it in 📝 INFO › NOTE.', '#8a8a8a');
+    { const sl = line('📊 …', '#b8b8b8'); sl.dataset.st = '1'; const h0 = r.host || zzz_conn_host(c.link);
+      zzz_svc_stats().then(st => { const x = (st.services || []).find(y => y.host === h0); sl.textContent = zzz_svc_stats_text(x) + ' · watching time is not reported by the player'; }).catch(() => { sl.remove(); }); }
     if (i.checked) add('checked ' + new Date(i.checked).toLocaleString(), '#8a8a8a');
     if (exp && !i.locked) zzz_conn_alarm(c, i.exp);
   };
@@ -31341,6 +31343,16 @@ function zzz_conn_status(c, host, save, repaint) {
   show(null);
   zzz_tv_call('tv_status', { id: c.tv }).then(r => { zzzConnStat[c.tv] = { t: Date.now(), r }; if (host.isConnected) show(r); })
     .catch(e => { const r = { err: zzz_tv_err(e) }; zzzConnStat[c.tv] = { t: Date.now(), r }; if (host.isConnected) show(r); });
+}
+
+let zzzSvcStats = null;
+async function zzz_svc_stats(force) {
+  if (!force && zzzSvcStats && Date.now() - zzzSvcStats.t < 300000) return zzzSvcStats.r;
+  const r = await zzz_tv_call('tv_stats', {}); zzzSvcStats = { t: Date.now(), r }; return r;
+}
+function zzz_svc_stats_text(x) {
+  if (!x) return '📊 not used in Verso in the last 30 days';
+  return '📊 in Verso (30 days): ' + x.plays30 + ' play(s) · ' + x.days30 + ' day(s) · ' + x.share30 + ' % of your catalogue use' + (x.last ? ' · last ' + new Date(x.last).toLocaleDateString() : '');
 }
 
 async function zzz_conn_open(startTab, opt) {
@@ -34018,6 +34030,13 @@ async function zzz_logs_open() {
   let rows = []; try { rows = (await zzz_tv_call('tv_logs', { limit: 400 })).rows || []; } catch (e) { zzz6f2_show_toast('📜 ' + zzz_tv_err(e), 'warn', 3000); }
   const fr = zzz_rdr_frame('LOGS', '📜 LOGS · ' + rows.length, 'LOGS');
   const { content, blk } = fr;
+
+  let st = null; try { st = await zzz_svc_stats(true); } catch (e) {}
+  if (st && (st.services || []).length) { content.appendChild(blk('h2', 'zzz-rs-h', '📊 USAGE · 30 DAYS · ' + (st.total30 || 0) + ' actions', 'USAGE'));
+    st.services.forEach((x, i) => { const u = blk('div', 'zzz-rdr-line', undefined, 'USAGE ' + (i + 1)); u.setAttribute('data-vf', JSON.stringify({ KIND: 'usage', CATALOG: String(x.catalog || ''), SERVICE: String(x.host || '') }));
+      const a1 = document.createElement('div'); a1.className = 'zzz-rdr-lh'; a1.textContent = x.service; const a2 = document.createElement('div'); a2.className = 'zzz-rdr-lt'; a2.textContent = zzz_svc_stats_text(x).replace(/^📊 in Verso \(30 days\): /, '') + ' · 90 days: ' + x.plays90 + ' play(s)';
+      u.append(a1, a2); content.appendChild(u); });
+    content.appendChild(blk('p', '', 'Watching time is not known - the TV player is an app of another company and does not report it.', 'USAGE NOTE')); }
   const h = blk('h2', 'zzz-rs-h', 'SERVICES · ' + rows.length, 'SERVICES'); content.appendChild(h);
   if (!rows.length) content.appendChild(blk('p', '', 'Nothing yet - entries come when a service of yours does something (TV play, save, lock …).', 'EMPTY'));
   rows.forEach((x, i) => {
@@ -34103,7 +34122,7 @@ function zzz_rdr_item_btn(it, from) {
 }
 
 const ZZZ_RDR_PRESETS = {
-  LOGS:        [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'TV · PLAY', snap: { 'limit:KIND': 'play', sort: 'new' } }, { name: 'SECURITY · LOCK / SAVE / REMOVE', snap: { q: 'lock', sort: 'new' } }],
+  LOGS:        [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: '📊 USAGE', snap: { 'limit:KIND': 'usage' } }, { name: 'TV · PLAY', snap: { 'limit:KIND': 'play', sort: 'new' } }, { name: 'SECURITY · LOCK / SAVE / REMOVE', snap: { q: 'lock', sort: 'new' } }],
   '*':         [{ name: 'ALL · NEWEST', snap: { sort: 'new' } }],
   ALL:         [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'ISSUES · BY DATE', snap: { 'limit:PROJECT CATEGORY': 'issues', sort: 'new' } }, { name: 'LOGS · BY DATE', snap: { 'limit:PROJECT CATEGORY': 'logs', sort: 'new' } }, { name: 'URGENT', snap: { 'on:urgent': true, sort: 'new' } }],
   DATABASE:    [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'ISSUES · BY DATE', snap: { 'limit:PROJECT CATEGORY': 'issues', sort: 'new' } }, { name: 'LOGS · BY DATE', snap: { 'limit:PROJECT CATEGORY': 'logs', sort: 'new' } }],
@@ -58023,7 +58042,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-24 03:19';
+const VERSO_BUILD = '2026-11-24 03:30';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -69770,6 +69789,9 @@ function zzz5w9_render() {
         if (sl && /^https:\/\//i.test(sp.contact || '')) { const lk = document.createElement('a'); lk.href = sp.contact; lk.target = '_blank'; lk.rel = 'noopener'; lk.textContent = ' ↗ contact'; lk.style.color = '#e57373'; sl.appendChild(lk); }
         line('ACKNOWLEDGEMENT', a.ack || (zzz5w9_tab_of(a) === 'verso' ? 'The Verso Project' : ''));
         if (a.sub) line('PART', ((ZZZ5W9_SUBS.find(x => x[0] === a.sub) || [])[1] || a.sub) + ' · ' + ((ZZZ5W9_TABS.find(x => x.key === zzz5w9_tab_of(a)) || {}).label || ''));
+        if (a.id === 'televizo') { const ul = line('USE', '…');
+          zzz_svc_stats().then(st => { const l = (st.services || []).filter(x => x.catalog === 'media'); const p = l.reduce((n, x) => n + x.plays30, 0), sh = l.reduce((n, x) => n + x.share30, 0), dy = Math.max(0, ...l.map(x => x.days30));
+            ul.lastChild.textContent = p ? p + ' play(s) in 30 days · up to ' + dy + ' day(s) · ' + sh + ' % of your catalogue use (watching time is not reported)' : 'not used in the last 30 days'; }).catch(() => { ul.lastChild.textContent = 'log in to see it'; }); }
         mid.appendChild(hp); }
     }
     if (Array.isArray(a.modules) && a.modules.length) {
