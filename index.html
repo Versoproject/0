@@ -31429,7 +31429,10 @@ async function zzz_conn_open(startTab, opt) {
           ar2.appendChild(btn(devs.length ? '📱 ONLY ' + devs.map(x => x.n).join(', ') : '📱 ALL MY DEVICES', !!devs.length, async () => {
             if (isHere) c.dev = devs.filter(x => x.id !== here); else { const inf = await zzz_dev_info().catch(() => ({ name: 'this device' })); c.dev = devs.concat([{ id: here, n: String(inf.name || 'this device').slice(0, 24) }]); }
             if (!c.dev.length) delete c.dev; ch(); paint(); }, isHere ? 'Tap = take THIS device off the list' : 'Tap = allow it only on the listed devices (+ this one)'));
-          ar2.appendChild(btn('⏰ ALARM · ' + (c.alarmOff ? 'OFF' : '1 DAY AHEAD'), !c.alarmOff, async () => { c.alarmOff = c.alarmOff ? undefined : 1; ch(); if (c.alarmOff) await zzz_conn_alarm_off(c); else if (c.tv) delete zzzConnStat[c.tv]; paint(); }, 'A reminder in NOTIFICATIONS one day before the service ends (when the service tells the date)'));
+          { const steps = [1440, 4320, 10080, 0], cur = c.alarmOff ? 0 : (Number(c.alarmAhead) || 1440), lab = { 1440: '1 DAY', 4320: '3 DAYS', 10080: '1 WEEK' };
+            ar2.appendChild(btn('⏰ ALARM · ' + (cur ? lab[cur] + ' AHEAD' : 'OFF'), !!cur, async () => { const nx = steps[(steps.indexOf(cur) + 1) % steps.length];
+              if (nx) { c.alarmAhead = nx; delete c.alarmOff; } else c.alarmOff = 1; ch();
+              if (c.alarmOff) await zzz_conn_alarm_off(c); else if (c.tv) delete zzzConnStat[c.tv]; paint(); }, 'Tap = 1 day → 3 days → 1 week → off. A reminder in NOTIFICATIONS before the service ends (when the service tells the date)')); }
           sg.appendChild(ar2); }
         { const sb3 = document.createElement('div'); sb3.style.cssText = 'border-top:1px solid #33475a;margin-top:6px;padding-top:4px'; sg.appendChild(sb3); zzz_conn_status(c, sb3, save, paint);
           const tr2 = document.createElement('div'); tr2.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:4px';
@@ -31438,6 +31441,12 @@ async function zzz_conn_open(startTab, opt) {
             else tr2.append(btn('↻ CHECK', false, () => { delete zzzConnStat[c.tv]; paint(); }),
               btn('📺 OPEN TV', false, () => { close(); zzz_tv_open(); }),
               btn('UPDATE TV LOGIN', false, async () => { if (await zzz_conn_tv_link(c, save)) paint(); }, 'Sends the login of this connector to TV again (after a password change)'),
+              (() => { const others = data.conn.filter(x => x !== c && !x.off && x.tv); const cur = others.find(x => x.tv === c.subst);
+                return btn('🔁 SUBSTITUTE: ' + (cur ? (cur.n || 'connector') : (others.length ? 'none' : 'add a 2nd IPTV')), !!cur, async () => {
+                  if (!others.length) { zzz6f2_show_toast('A substitute is another IPTV connector used for TV - add one first.', 'info', 3500); return; }
+                  const i = cur ? others.indexOf(cur) : -1, nx = others[i + 1] || null;
+                  try { await zzz_tv_call('tv_subst', { id: c.tv, subst: nx ? nx.tv : null }); c.subst = nx ? nx.tv : undefined; zzzTvSrcCache = null; ch(); paint(); } catch (e) { zzz6f2_show_toast('📺 ' + zzz_tv_err(e), 'warn'); } },
+                  'Tap = next IPTV connector / none. When a channel does not play here, TV tries the same channel name there'); })(),
               btn('STOP USING FOR TV', false, async () => { if (!(await zzz_verso_confirm('TV stops using this connector and its encrypted copy on the Verso server is removed. Channels already in MEDIA CENTER stay. Go on?', 'STOP'))) return;
                 try { await zzz_tv_call('tv_source_remove', { id: c.tv }); } catch (e) {} delete zzzConnStat[c.tv]; c.tv = null; zzzTvSrcCache = null; ch(); paint(); }));
           }
@@ -31500,8 +31509,11 @@ async function zzz_conn_open(startTab, opt) {
         ? btn('🔓 UNLOCK', false, async () => { if (!(await zzz_verse_verify('connectors', 'UNLOCK CONNECTORS', 'Your MV PHRASE opens all connectors again.'))) return; delete data.lock; await save();
             try { await zzz_tv_call('tv_lock', { lock: false }); for (const c of data.conn) if (c.tv && (c.pause || c.off)) await zzz_tv_call('tv_lock', { id: c.tv, lock: true }); } catch (e) {}
             Object.keys(zzzConnStat).forEach(k => delete zzzConnStat[k]); zzz6f2_show_toast('🔓 Connectors open again.', 'ok'); paint(); }, 'Locked since ' + new Date(data.lock).toLocaleString())
-        : btn('🔒 LOCK ALL', false, async () => { if (!(await zzz_verso_confirm('🔒 LOCK ALL connectors? Nothing can be shown or copied and TV stops using its server login - on all your devices - until you UNLOCK with your MV PHRASE. Use it e.g. when a phone is lost.', 'LOCK ALL'))) return;
-            data.lock = Date.now(); await save(); try { await zzz_tv_call('tv_lock', { lock: true }); } catch (e) {} Object.keys(zzzConnStat).forEach(k => delete zzzConnStat[k]); zzz6f2_show_toast('🔒 All connectors locked.', 'ok'); paint(); }, 'Emergency: close every login at once'));
+        : btn('🔒 LOCK ALL', false, () => lockAll(), 'Emergency: close every login at once'));
+      tabs.appendChild(btn('📜 LOGS', false, () => zzz_logs_open(), 'What your services did (TV …) - newest first'));
+      async function lockAll() { if (!(await zzz_verso_confirm('🔒 LOCK ALL connectors? Nothing can be shown or copied and TV stops using its server login - on all your devices - until you UNLOCK with your MV PHRASE. Use it e.g. when a phone is lost.', 'LOCK ALL'))) return;
+            data.lock = Date.now(); await save(); try { await zzz_tv_call('tv_lock', { lock: true }); } catch (e) {} Object.keys(zzzConnStat).forEach(k => delete zzzConnStat[k]); zzz6f2_show_toast('🔒 All connectors locked.', 'ok'); paint(); }
+      if (opt && opt.lockAll && !data.lock) { opt.lockAll = false; setTimeout(lockAll, 50); }
       body.textContent = ''; infoPaint();
       if (tab === 'conn') await paintConn(); else paintCodes();
     } finally { painting = false; }
@@ -34001,6 +34013,29 @@ function zzz_rdr_of_item(it) {
   return { id, focus: (it.src === 'chat' && r.note_number) ? Number(r.note_number) : 0 };
 }
 
+async function zzz_logs_open() {
+  zzz6f2_show_toast('📜 loading…', 'info', 900);
+  let rows = []; try { rows = (await zzz_tv_call('tv_logs', { limit: 400 })).rows || []; } catch (e) { zzz6f2_show_toast('📜 ' + zzz_tv_err(e), 'warn', 3000); }
+  const fr = zzz_rdr_frame('LOGS', '📜 LOGS · ' + rows.length, 'LOGS');
+  const { content, blk } = fr;
+  const h = blk('h2', 'zzz-rs-h', 'SERVICES · ' + rows.length, 'SERVICES'); content.appendChild(h);
+  if (!rows.length) content.appendChild(blk('p', '', 'Nothing yet - entries come when a service of yours does something (TV play, save, lock …).', 'EMPTY'));
+  rows.forEach((x, i) => {
+    const r = blk('div', 'zzz-rdr-line', undefined, 'LOG ' + (i + 1));
+    r.setAttribute('data-vf', JSON.stringify({ KIND: String(x.action || ''), CATALOG: String(x.catalog || ''), SERVICE: String(x.service_host || '') }));
+    const t = Date.parse(x.at); if (t) r.setAttribute('data-vt', String(t));
+    const lh = document.createElement('div'); lh.className = 'zzz-rdr-lh';
+    lh.textContent = String(x.action || '').toUpperCase() + ' · ' + (t ? zzz5w8_fmt_time(t) : '') + ' · ' + [x.catalog, x.service_kind, x.service_host].filter(Boolean).join(' › ');
+    const lt = document.createElement('div'); lt.className = 'zzz-rdr-lt';
+    const d = x.details || {}; lt.textContent = [x.item_kind ? x.item_kind + (x.item_id ? ' #' + x.item_id : '') : '', x.package ? 'package ' + x.package : '', Object.keys(d).map(k => k + ' ' + (typeof d[k] === 'object' ? JSON.stringify(d[k]) : d[k])).join(', ')].filter(Boolean).join(' · ');
+    r.append(lh, lt); content.appendChild(r);
+  });
+  const h2 = blk('h2', 'zzz-rs-h', 'ISSUES · SETTINGS · READ', 'MORE'); content.appendChild(h2);
+  const more = blk('p', '', 'Problems of your devices and the system notes are records: DATABASE › 📖 READER › preset ISSUES · BY DATE or LOGS · BY DATE.', 'MORE TEXT'); content.appendChild(more);
+  fr.btn('📖 ISSUES / LOGS RECORDS', 'Open all records in the reader (presets ISSUES / LOGS)', () => { try { fr.ov.remove(); zzz_rdr_sum_open(); } catch (e) {} });
+  fr.copyAll();
+  fr.finish();
+}
 function zzz_rdr_items_open(root, items) {
   const fr = zzz_rdr_frame(root, root + ' · ' + (items || []).length, root);
   const { content, blk } = fr;
@@ -34068,6 +34103,7 @@ function zzz_rdr_item_btn(it, from) {
 }
 
 const ZZZ_RDR_PRESETS = {
+  LOGS:        [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'TV · PLAY', snap: { 'limit:KIND': 'play', sort: 'new' } }, { name: 'SECURITY · LOCK / SAVE / REMOVE', snap: { q: 'lock', sort: 'new' } }],
   '*':         [{ name: 'ALL · NEWEST', snap: { sort: 'new' } }],
   ALL:         [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'ISSUES · BY DATE', snap: { 'limit:PROJECT CATEGORY': 'issues', sort: 'new' } }, { name: 'LOGS · BY DATE', snap: { 'limit:PROJECT CATEGORY': 'logs', sort: 'new' } }, { name: 'URGENT', snap: { 'on:urgent': true, sort: 'new' } }],
   DATABASE:    [{ name: 'ALL · NEWEST', snap: { sort: 'new' }, def: true }, { name: 'ISSUES · BY DATE', snap: { 'limit:PROJECT CATEGORY': 'issues', sort: 'new' } }, { name: 'LOGS · BY DATE', snap: { 'limit:PROJECT CATEGORY': 'logs', sort: 'new' } }],
@@ -49092,7 +49128,9 @@ function zzz_set_overview(host) {
   const il = document.createElement('div'); il.style.display = 'none';
   ib.addEventListener('click', () => { const on = il.style.display === 'none'; il.style.display = on ? 'block' : 'none'; if (on) zzz_mem_panel(il); });
   const bar = document.createElement('div'); bar.className = 'zzz14b2-voice'; bar.style.flexWrap = 'wrap';
-  bar.appendChild(nb); bar.appendChild(db); bar.appendChild(vb); bar.appendChild(ib); box.appendChild(bar); box.appendChild(nl); box.appendChild(dl); box.appendChild(vl); box.appendChild(il);
+
+  const lgb = document.createElement('button'); lgb.type = 'button'; lgb.className = 'zzz16-btn'; lgb.textContent = '📜 LOGS'; lgb.setAttribute('data-5s', 'LOGS'); lgb.addEventListener('click', () => zzz_logs_open());
+  bar.appendChild(nb); bar.appendChild(db); bar.appendChild(vb); bar.appendChild(ib); bar.appendChild(lgb); box.appendChild(bar); box.appendChild(nl); box.appendChild(dl); box.appendChild(vl); box.appendChild(il);
   const first = host.querySelector('.zzz16-for');
   host.insertBefore(box, first ? first.nextSibling : host.firstChild);
   zzz_set_decorate(host);
@@ -55668,7 +55706,12 @@ function zzz10m5_gate_items() {
   (zzz10m5GateData.tv || []).forEach((sv) => { const inf = sv.info || {};
     items.push({ tab: 'out', mode: 'active', kind: 'IPTV', name: sv.name + ' · ' + sv.host, owner: me, scope: 'media › iptv › ' + sv.host, status: inf.locked ? 'LOCKED' : (String(inf.status || '').toUpperCase() || 'ACTIVE'), since: inf.exp ? 'until ' + zzz10m5_date(inf.exp) : '',
       text: 'Used by MEDIA CENTER › TV (channels play in Televizo). The login is in 🔑 CONNECTORS; VERSO GATE keeps an encrypted copy only for TV.' + (inf.max_connections ? ' ' + inf.max_connections + ' device(s) at once.' : ''),
-      acts: [{ label: '🔑 CONNECTOR', fn: () => zzz_conn_open('conn', { tv: sv.id }) }, { label: '📺 TV', fn: () => zzz_tv_open() }] }); });
+      acts: [{ label: '🔑 CONNECTOR', fn: () => zzz_conn_open('conn', { tv: sv.id }) }, { label: '📺 TV', fn: () => zzz_tv_open() },
+
+        inf.locked ? { label: '🔓 UNLOCK', fn: () => zzz_conn_open('conn', { tv: sv.id }) } : { label: '🔒 LOCK', red: true, fn: async () => { try { await zzz_tv_call('tv_lock', { id: sv.id, lock: true }); zzzTvSrcCache = null; zzz6f2_show_toast('🔒 TV does not use ' + sv.host + ' now - UNLOCK in its connector (MV PHRASE).', 'ok', 4000); zzz10m5_gate_reload(); } catch (e) { zzz6f2_show_toast('📺 ' + zzz_tv_err(e), 'warn'); } } }] }); });
+  if ((zzz10m5GateData.tv || []).length) items.push({ tab: 'out', mode: 'active', kind: 'EMERGENCY', name: '🔒 LOCK ALL CONNECTORS', owner: me, scope: 'all logins in 🔑 CONNECTORS + TV', status: 'READY', since: '',
+    text: 'One tap closes every login on all your devices and TV stops using its server copy (e.g. when a phone is lost). Opening again needs your MV PHRASE.',
+    acts: [{ label: '🔒 LOCK ALL', red: true, fn: async () => { try { await zzz_tv_call('tv_lock', { lock: true }); zzzTvSrcCache = null; } catch (e) {} zzz_conn_open('conn', { lockAll: true }); } }, { label: '📜 LOGS', fn: () => zzz_logs_open() }] });
   [['APP ACCOUNT', 'YouTube (Google)', 'official Google sign-in - Verso never sees your password; 2-3 accounts = 2-3 separate connections, each with its own name'],
    ['WEB ACCOUNT', 'Websites without an app link (e.g. sme.sk discussions)', 'only with saved login data - encrypted and kept only on your device, never readable on the server; the most sensitive part, comes last']
   ].forEach(([kind, name, text]) => items.push({ tab: 'out', mode: 'prepared', kind, name, owner: me, scope: 'your account there', status: 'PREPARED', since: '', text }));
@@ -57980,7 +58023,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-24 02:06';
+const VERSO_BUILD = '2026-11-24 03:19';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -67488,7 +67531,15 @@ async function zzz_tv_play(it) {
   if (!/Android/i.test(navigator.userAgent || '')) { zzz6f2_show_toast('📺 TV plays in Televizo on your Android phone - open it there.', 'info', 3200); return; }
   zzz6f2_show_toast('📺 VERSO GATE · asking for the stream…', 'info', 1400);
   let r; try { r = await zzz_tv_call('tv_play', { source_id: p.src, kind: p.kind, stream_id: p.id, ext: p.ext || undefined }); }
-  catch (e) { zzz6f2_show_toast('📺 ' + zzz_tv_err(e), 'warn', 3600); return; }
+  catch (e) {
+
+    let alt = null; try { await zzz_tv_sources_cached(); const s0 = zzz_tv_src_of(p.src), sub = s0 && s0.info && s0.info.subst, nm = String((it && (it.name || it.title)) || '').trim();
+      if (sub && nm.length >= 2) { const q = await zzz_tv_call('tv_search', { q: nm, source_id: sub, limit: 20 }); const low = (x) => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim();
+        const hits = (q.results || []).filter(x => x.kind === p.kind); alt = hits.find(x => low(x.name) === low(nm)) || hits[0] || null;
+        if (alt) { zzz6f2_show_toast('📺 ' + ((s0 && s0.host) || 'source') + ' did not play - trying the substitute…', 'info', 2200);
+          r = await zzz_tv_call('tv_play', { source_id: sub, kind: alt.kind, stream_id: alt.id, ext: alt.ext || undefined }); } } } catch (e2) { r = null; }
+    if (!r) { zzz6f2_show_toast('📺 ' + zzz_tv_err(e) + (alt ? ' (the substitute did not play either)' : ''), 'warn', 3600); return; }
+  }
   const intent = zzz_tv_intent(r.url, (it && (it.name || it.title)) || '');
   r = null;
   if (!intent) { zzz6f2_show_toast('📺 The stream address is not usable.', 'warn'); return; }
