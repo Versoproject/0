@@ -688,13 +688,17 @@ body{margin:0;color:#fff;font-family:sans-serif;}
 .circle#versoEntryButton.zzz-chain-busy { --zzz-chain-fill: #9fd4b0; --zzz-chain-ink: #4f8a63; --zzz-chain-dur: 1.2s; }
 
 .circle#versoEntryButton.zzz-chain-sys { --zzz-chain-fill: #e3c463; --zzz-chain-ink: #8a6a12; --zzz-chain-dur: 1.6s; }
+.circle#versoEntryButton.zzz-logo-turq { --zzz-chain-fill: #9fe6e0; --zzz-chain-ink: #2f8f88; }
+.circle#versoEntryButton.zzz-logo-blue { --zzz-chain-fill: #a9c8f5; --zzz-chain-ink: #3b67a8; }
+.circle#versoEntryButton.zzz-logo-silver { --zzz-chain-fill: #d9dde2; --zzz-chain-ink: #7a8088; }
+
 .circle#versoEntryButton.zzz-logo-orange { --zzz-chain-fill: #f6c89a; --zzz-chain-ink: #a8763f; }
 .circle#versoEntryButton.zzz-logo-red { --zzz-chain-fill: #eeaaaa; --zzz-chain-ink: #a14a4a; }
 .circle#versoEntryButton.zzz-chain-busy .zzz-chain-spin,
 .circle#versoEntryButton.zzz-chain-sys .zzz-chain-spin { animation: zzzChainSpin var(--zzz-chain-dur, 2.4s) linear infinite; }
 .circle#versoEntryButton.zzz-logo-orange .zzz-chain-spin,
 .circle#versoEntryButton.zzz-logo-red .zzz-chain-spin { animation: none; }
-.circle#versoEntryButton:not(.zzz-chain-busy):not(.zzz-chain-sys):not(.zzz-logo-orange):not(.zzz-logo-red) { --zzz-chain-fill: #ffffff; --zzz-chain-ink: #5a5a5a; }
+.circle#versoEntryButton:not(.zzz-chain-busy):not(.zzz-chain-sys):not(.zzz-logo-orange):not(.zzz-logo-red):not(.zzz-logo-silver):not(.zzz-logo-blue):not(.zzz-logo-turq) { --zzz-chain-fill: #ffffff; --zzz-chain-ink: #5a5a5a; }
 
 .zzz-chain-info { position: absolute; inset: 0; pointer-events: none; z-index: 1; container-type: size; }
 .zzz-ci-wx { position: absolute; left: 22cqw; top: 32.5%; width: 30cqw; height: 11cqw; opacity: 1; } 
@@ -30615,11 +30619,14 @@ function zzz_wl_paint_now() {
 
     const SMALL = '<span style="font-size:.7em;vertical-align:middle">🪞</span>';
     const parts = []; if (rs) parts.push(rs.kind === 'access' ? '🔗' : SMALL); if (on) parts.push('🔒'); if (op) parts.push('🪞'); if (lv) parts.push('●');
+
+    try { if (zzzSecState.red) parts.unshift('⚠'); if (zzzSecState.overseDown) parts.push('⚪'); } catch (e) {}
     pv.hidden = !parts.length; pv.classList.remove('is-on'); pv.classList.toggle('is-red', !!parts.length);
     pv.innerHTML = parts.join('');
     pv.title = [rs ? (rs.kind === 'access' ? 'ACCESS active (from ' + rs.users + ') - tap / Ctrl + A = end' : 'PREVIEW AS ' + rs.users + ' - tap = end') : '', on ? 'INCOGNITO on - tap = off' : '', op ? 'REMOTE ACCESS open - Ctrl + R = close' : '', lv ? 'LIVE session - Ctrl + L' : ''].filter(Boolean).join(' · ');
   }
   if (x && inp) x.hidden = !inp.value;
+  try { zzz_recompute_logo_status(); } catch (e) {}
 }
 
 let zzzWlLiveT = 0;
@@ -30696,7 +30703,7 @@ async function zzz_wl_go(watch) {
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); zzz_wl_go(false); } if (e.key === 'Escape') { inp.value = ''; zzz_wl_paint(); inp.blur(); } });
     const x = document.getElementById('zzzWlX'); if (x) x.addEventListener('click', (e) => { e.stopPropagation(); inp.value = ''; zzz_wl_paint(); zzz_wl_live(); inp.focus(); });
     const eye = document.getElementById('zzzWlEye'); if (eye) eye.addEventListener('click', (e) => { e.stopPropagation(); zzz_wl_go(true); });
-    const pv = document.getElementById('zzzWlPriv'); if (pv) pv.addEventListener('click', (e) => { e.stopPropagation(); const rs = zzz_remote_state(); if (rs) zzz_modes_hotkey(rs.kind === 'access' ? 'access' : 'remote'); else if (zzz_ext_private()) zzz_modes_hotkey('private'); else if (typeof zzzLive !== 'undefined' && zzzLive.ch) zzz_live_pick(); else if (zzz_live_open_cached()) zzz_modes_hotkey('remote'); });
+    const pv = document.getElementById('zzzWlPriv'); if (pv) pv.addEventListener('click', (e) => { e.stopPropagation(); const rs = zzz_remote_state(); if ((typeof zzzSecState !== 'undefined' && (zzzSecState.red || zzzSecState.overseDown)) || (!rs && zzz_live_open_cached())) { zzz_logo_state_window(); return; } if (rs) zzz_modes_hotkey(rs.kind === 'access' ? 'access' : 'remote'); else if (zzz_ext_private()) zzz_modes_hotkey('private'); else if (typeof zzzLive !== 'undefined' && zzzLive.ch) zzz_live_pick(); else if (zzz_live_open_cached()) zzz_modes_hotkey('remote'); });
     setTimeout(() => { try { zzz_wl_paint(); } catch (e) {} }, 0);
     return true;
   };
@@ -31872,6 +31879,12 @@ async function zzz_live_log(kind, owner, entry, details) { try { await sb.rpc('v
 
 async function zzz_modes_set(mode, on, extra) {
   zzz_haptic_pulse(on ? 60 : 30);
+
+  if (on && mode !== 'private' && zzz_ext_private()) { zzz6f2_show_toast('🔒 INCOGNITO is on - REMOTE ACCESS, ACCESS and PREVIEW AS are blocked. Ctrl + I = off first.', 'warn', 4500); return; }
+  if (mode === 'private' && on) {
+    try { if (zzz_live_open_cached()) { await sb.rpc('verso_live_set_open', { p_open: false }); try { localStorage.setItem(zzz_ukey('zzz_live_open'), '0'); } catch (e) {} zzz_live_leave(true); } } catch (e) {}
+    try { if (zzz_remote_state()) zzz_remote_end(); } catch (e) {}
+  }
   if (mode === 'private') {
     const cur = Object.assign({}, zzz_ext()); cur.private = on ? 'on' : 'off'; await zzz_ext_save(cur);
     zzz_live_log(on ? 'private_on' : 'private_off');
@@ -58074,7 +58087,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-24 18:36';
+const VERSO_BUILD = '2026-11-24 20:28';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -70703,13 +70716,23 @@ function zzz_recompute_logo_status() {
   if (!circle) return;
   const label = document.getElementById('zzz6f7UsernameLabel');
   const isDbDisconnected = !!(label && label.classList.contains('zzz0r1-db-disconnected'));
-  circle.classList.remove('zzz-logo-orange', 'zzz-logo-red');
+  circle.classList.remove('zzz-logo-orange', 'zzz-logo-red', 'zzz-logo-silver', 'zzz-logo-blue', 'zzz-logo-turq');
   const aiC = document.getElementById('versoAIButton');
   if (aiC) aiC.classList.remove('zzz-logo-orange', 'zzz-logo-red');
-  if (zzz_isInStandby) {
+
+  const sec = (typeof zzzSecState !== 'undefined' && zzzSecState) || {};
+  if (zzz_isInStandby || sec.red || document.getElementById('zzzLoginAlertBar')) {
     circle.classList.add('zzz-logo-red');
   } else if (zzz_isOffline || isDbDisconnected) {
     circle.classList.add('zzz-logo-orange');
+  } else if (sec.overseDown) {
+    circle.classList.add('zzz-logo-silver');
+  } else {
+    try {
+      const rs = zzz_remote_state(), op = zzz_live_open_cached(), lv = !!(typeof zzzLive !== 'undefined' && zzzLive.ch);
+      if (rs || op || lv) circle.classList.add('zzz-logo-blue');
+      else if (zzz_ext_private()) circle.classList.add('zzz-logo-turq');
+    } catch (e) {}
   }
 
   if (label) {
@@ -70719,6 +70742,53 @@ function zzz_recompute_logo_status() {
       label.classList.toggle('zzz6-f7-no-real-session', zzz6f7_isLoggedIn && !hasRealSession);
     } catch (e) {   }
   }
+}
+
+var zzzSecState = { red: false, overseDown: false, info: null };
+async function zzz_sec_watch() {
+  try {
+    if (!zzz6f7_isLoggedIn || !zzz_sessionId) { zzzSecState = { red: false, overseDown: false, info: null }; zzz_recompute_logo_status(); return; }
+    const [a, b] = await Promise.all([sb.rpc('verso_my_security_state'), sb.rpc('verso_overse_status')]);
+    const st = (a && !a.error && a.data) || {}, ov = (b && !b.error && b.data) || { ok: true };
+    const red = (Number(st.wrong_password) || 0) > 0 || (Number(st.refused_logins) || 0) > 0;
+    const down = ov.ok === false;
+    if (down !== zzzSecState.overseDown) zzz6f2_show_toast(down ? '⚪ OVERSE not reachable - you work in hybrid; new logins and MV steps wait.' : '✓ OVERSE answers again - MV steps work.', down ? 'warn' : 'ok', 5000);
+    if (red && !zzzSecState.red) zzz6f2_show_toast('🔴 SECURITY: ' + (st.refused_logins ? 'a login with your password was refused' : 'a wrong password was typed for your account') + ' while you were logged in. Tap the VERSO logo for details.', 'warn', 8000);
+    zzzSecState = { red, overseDown: down, info: st };
+    zzz_wl_paint();
+  } catch (e) {}
+}
+setInterval(zzz_sec_watch, 5 * 60 * 1000); setTimeout(zzz_sec_watch, 25000);
+
+function zzz_logo_state_window() {
+  const c = document.getElementById('versoEntryButton'); if (!c) return;
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm';
+  const box = document.createElement('div'); box.className = 'zzz-media-confirm-box'; o.appendChild(box);
+  const h = document.createElement('div'); h.style.cssText = 'font-weight:800;color:#D4AF37;margin-bottom:6px'; h.textContent = 'VERSO LOGO · STATE'; box.appendChild(h);
+  const line = (t, col) => { const d = document.createElement('div'); d.style.cssText = 'margin:4px 0;font-size:14px;color:' + (col || '#ddd'); d.textContent = t; box.appendChild(d); return d; };
+  const btn = (t, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-btn'; b.textContent = t; b.style.margin = '4px 4px 0 0'; b.addEventListener('click', fn); box.appendChild(b); return b; };
+  const st = zzzSecState.info || {};
+  const fmt = (x) => { try { return new Date(x).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); } catch (e) { return ''; } };
+  let any = false;
+  if (c.classList.contains('zzz-logo-red')) { any = true;
+    if (st.refused_logins) line('🔴 ' + st.refused_logins + '× a login with your correct password was refused (you were logged in) · last ' + fmt(st.refused_at), '#ff8a8a');
+    if (st.wrong_password) line('🔴 ' + st.wrong_password + '× a wrong password for your account while you were logged in · last ' + fmt(st.wrong_password_at), '#ff8a8a');
+    if (zzz_isInStandby) line('🔴 This session was taken over or stopped - log in again on MY DEVICE.', '#ff8a8a');
+    line('Not you? Change the password: SETTINGS › Login setup › CHANGE PASSWORD.', '#bbb'); }
+  if (c.classList.contains('zzz-logo-orange')) { any = true; line('🟠 No connection to the Verso server - Verso keeps your work and sends it later.', '#ffb347'); }
+  if (zzzSecState.overseDown) { any = true; line('⚪ OVERSE not reachable - you work in hybrid; new logins, recovery and MV steps wait.', '#d9dde2'); }
+  const rs = zzz_remote_state(), op = zzz_live_open_cached(), lv = !!(typeof zzzLive !== 'undefined' && zzzLive.ch);
+  if (op) { any = true; line('🔵 REMOTE ACCESS is OPEN - the users of your shares can activate them.', '#a9c8f5');
+    const ls = line('Loading who …', '#999');
+    sb.rpc('verso_live_my_shares').then(({ data }) => { const sh = (data && data.shares) || []; ls.textContent = sh.length ? 'Shared: ' + sh.map(x => x.guest + ' · ' + x.title + ' (' + x.rights + ')').join(' · ') : 'No shares.'; }).catch(() => { ls.textContent = ''; });
+    sb.rpc('verso_live_my_log', { p_limit: 20 }).then(({ data }) => { const me = String(zzz_sessionUsername || '').toLowerCase(); const g = (data || []).filter(x => x.actor && String(x.actor).toLowerCase() !== me && /activate|join/.test(x.kind)).slice(0, 5); if (g.length) line('Last guests: ' + g.map(x => x.actor + ' ' + fmt(x.at)).join(' · '), '#bbb'); }).catch(() => {});
+    btn('■ CLOSE REMOTE ACCESS', () => { o.remove(); zzz_modes_set('remote', false); }); }
+  if (rs) { any = true; line('🔵 ' + (rs.kind === 'access' ? 'ACCESS active (from ' + rs.users + ')' : 'PREVIEW AS ' + rs.users), '#a9c8f5'); btn('■ END', () => { o.remove(); zzz_modes_set(rs.kind === 'access' ? 'access' : 'preview', false); }); }
+  if (lv) { any = true; line('🔵 LIVE session running.', '#a9c8f5'); }
+  if (zzz_ext_private()) { any = true; line('🩵 INCOGNITO on - REMOTE ACCESS is blocked while it is on (Ctrl + I = off).', '#9fe6e0'); }
+  if (!any) line('Everything fine.', '#7CFC9A');
+  btn('CLOSE', () => o.remove());
+  document.body.appendChild(o);
 }
 
 function zzz_enter_standby_mode() {
