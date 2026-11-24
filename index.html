@@ -31212,7 +31212,138 @@ function zzz_conn_text_row(host, label, get, set, changed, ph) {
   r.append(l, i); host.appendChild(r); return i;
 }
 function zzz_conn_new() { return { id: 'c' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36), n: '', link: '', user: '', pw: '', totp: null, tokens: [], codes: '', extra: [], note: '', need: ['pw'], auto: false, at: Date.now() }; }
-async function zzz_conn_open(startTab) {
+
+const ZZZ_CONN_CATS = [
+  ['media', 'MEDIA', ['iptv', 'playlist', 'video', 'music', 'radio', 'podcast']], ['ai', 'AI SERVICES', ['chat', 'voice', 'image']],
+  ['apps', 'APPS', ['dev', 'office', 'social', 'shop']], ['system', 'SYSTEM', ['network', 'device', 'security']],
+  ['cloud', 'CLOUD SPACE', ['storage', 'backup', 'mail']], ['data', 'DATA', ['database', 'api']], ['games', 'GAMES', ['platform']],
+  ['public', 'PUBLIC', ['web', 'forum', 'news']], ['private', 'PRIVATE', ['bank', 'home', 'other']]];
+const zzzConnStat = {};
+function zzz_conn_host(link) { try { return new URL(String(link || '').trim()).host.toLowerCase().replace(/^www\./, ''); } catch (e) { return ''; } }
+function zzz_conn_tag(cat, kind, svc) { return [cat, kind, svc].filter(Boolean).join(' › '); }
+function zzz_conn_tags(c) { return Array.isArray(c.tags) ? c.tags : (c.tags = []); }
+function zzz_conn_has(c, want) { return zzz_conn_tags(c).some(t => t === want || t.indexOf(want + ' › ') === 0); }
+function zzz_conn_addtag(c, t) { if (t && zzz_conn_tags(c).indexOf(t) < 0) c.tags.push(t); }
+
+function zzz_conn_recognize(link) {
+  let u; try { u = new URL(String(link || '').trim()); } catch (e) { return null; }
+  if (!/^https?:$/.test(u.protocol)) return null;
+  const host = u.host.toLowerCase().replace(/^www\./, ''), path = u.pathname.toLowerCase(), q = u.searchParams;
+  const out = { host, clean: u.protocol + '//' + u.host + (u.pathname === '/' ? '' : u.pathname), user: '', pw: '', server: u.protocol + '//' + u.host };
+  if (/\/(player_api|get|xmltv|panel_api)\.php$/.test(path) || (q.has('username') && q.has('password'))) {
+    out.cat = 'media'; out.kind = 'iptv'; out.user = q.get('username') || ''; out.pw = q.get('password') || ''; out.label = 'IPTV account (Xtream Codes)'; out.clean = out.server; }
+  else if (/\.m3u8?$/.test(path)) { out.cat = 'media'; out.kind = 'playlist'; out.label = 'playlist'; }
+  else if (/(^|\.)(youtube\.com|youtu\.be)$/.test(host)) { out.cat = 'media'; out.kind = 'video'; out.label = 'video'; }
+  else if (/(^|\.)spotify\.com$/.test(host)) { out.cat = 'media'; out.kind = 'music'; out.label = 'music'; }
+  else if (/(^|\.)github\.com$/.test(host)) { out.cat = 'apps'; out.kind = 'dev'; out.label = 'developer account'; }
+  else if (/(^|\.)(drive\.google\.com|dropbox\.com|onedrive\.live\.com)$/.test(host)) { out.cat = 'cloud'; out.kind = 'storage'; out.label = 'cloud storage'; }
+  else if (/(^|\.)(facebook\.com|instagram\.com|tiktok\.com|x\.com|twitter\.com|linkedin\.com)$/.test(host)) { out.cat = 'apps'; out.kind = 'social'; out.label = 'social account'; }
+  else { out.cat = 'public'; out.kind = 'web'; out.label = 'web account'; }
+  out.tag = zzz_conn_tag(out.cat, out.kind, host); return out;
+}
+
+function zzz_conn_apply_link(c, link) {
+  const r = zzz_conn_recognize(link); if (!r) return '';
+  c.link = r.clean; zzz_conn_addtag(c, r.tag); if (!c.n) c.n = r.host.slice(0, 40);
+  let took = [];
+  if (r.user && !c.user) { c.user = r.user; took.push('username'); }
+  if (r.pw && !c.pw) { c.pw = r.pw; c.pwAt = Date.now(); took.push('password'); }
+  return 'Recognised: ' + r.label + ' · ' + r.tag + (took.length ? ' · ' + took.join(' + ') + ' taken from the link (the link is kept without it)' : '') + '.';
+}
+function zzz_conn_dup_of(c, list) {
+  const h = zzz_conn_host(c.link), u = String(c.user || '').trim().toLowerCase();
+  if (!h || !u) return null;
+  return list.find(d => d !== c && !d.off && zzz_conn_host(d.link) === h && String(d.user || '').trim().toLowerCase() === u) || null;
+}
+function zzz_conn_merge(c, d) {
+  ['n', 'link', 'user', 'pw', 'pwAt', 'pk', 'tv'].forEach(k => { if (!c[k] && d[k]) c[k] = d[k]; });
+  if (!c.totp && d.totp) c.totp = d.totp;
+  (d.tags || []).forEach(t => zzz_conn_addtag(c, t));
+  c.tokens = (c.tokens || []).concat(d.tokens || []); c.extra = (c.extra || []).concat(d.extra || []);
+  if (d.codes && d.codes !== c.codes) c.codes = [c.codes, d.codes].filter(Boolean).join('\n');
+  if (d.note && d.note !== c.note) c.note = [c.note, d.note].filter(Boolean).join(' · ');
+  (d.need || []).forEach(k => { c.need = c.need || []; if (c.need.indexOf(k) < 0) c.need.push(k); });
+  d.off = Date.now(); d.merged = c.id; c.at = Date.now();
+}
+function zzz_conn_dev_ok(c) { return !(Array.isArray(c.dev) && c.dev.length) || c.dev.some(x => x.id === zzz_device_id_base()); }
+function zzz_conn_used(c) {
+  const u = [];
+  if (c.tv) u.push('📺 MEDIA CENTER › TV' + (c.pause ? ' (paused)' : ''));
+  if (c.auto) u.push('AUTO LOGIN (wish)');
+  return u.length ? u.join(' · ') : 'nothing yet';
+}
+
+async function zzz_conn_alarm(c, expIso) {
+  try {
+    if (!expIso || c.alarmOff) return; const due = new Date(expIso); if (!(due.getTime() > Date.now())) return;
+    const me = String(zzz0r1_get_current_username() || '').trim().toLowerCase(); if (!me) return;
+    const tag = 'conn:' + c.id, title = '🔑 ' + (c.n || zzz_conn_host(c.link) || 'service') + ' ends', ahead = Number(c.alarmAhead) || 1440;
+    const { data } = await sb.from('verso_notif_items').select('id, due_at, notify_before_min').eq('username', me).eq('tag', tag).is('done_at', null).limit(1);
+    if (data && data.length) {
+      if (Math.abs(Date.parse(data[0].due_at) - due.getTime()) > 60000 || data[0].notify_before_min !== ahead) await sb.from('verso_notif_items').update({ due_at: due.toISOString(), title, notify_before_min: ahead }).eq('id', data[0].id);
+      return;
+    }
+    const { error } = await sb.from('verso_notif_items').insert({ entry_id: null, username: me, kind: 'reminder', title, due_at: due.toISOString(), priority: 'attention', tag, notify_before_min: ahead });
+    if (!error) zzz6f2_show_toast('⏰ ALARM set: ' + title + ' · ' + due.toLocaleDateString() + ' (' + Math.round(ahead / 1440 * 10) / 10 + ' day ahead).', 'ok', 4000);
+  } catch (e) {}
+}
+async function zzz_conn_alarm_off(c) {
+  try { const me = String(zzz0r1_get_current_username() || '').trim().toLowerCase();
+    await sb.from('verso_notif_items').update({ done_at: new Date().toISOString() }).eq('username', me).eq('tag', 'conn:' + c.id).is('done_at', null); } catch (e) {}
+}
+
+async function zzz_conn_tv_link(c, save) {
+  const h = zzz_conn_host(c.link);
+  if (!h || !c.user || !c.pw) { zzz6f2_show_toast('Fill LINK, USERNAME and PASSWORD first - or 🔍 FROM LINK with the playlist link.', 'warn', 4000); return false; }
+  let srcs = []; try { srcs = await zzz_tv_sources_cached(true); } catch (e) {}
+  const same = srcs.find(s => s.host === h && (!s.info || !s.info.connector || s.info.connector === c.id));
+  const ok = await zzz_verso_confirm(same
+    ? '📺 TV already has a source on ' + h + '. Link this connector to it and refresh its login from here?'
+    : '📺 TV needs this login on the Verso server to find channels and give Televizo the stream. VERSO GATE keeps an encrypted copy there, only for TV (STOP USING FOR TV removes it). Allow?', 'ALLOW');
+  if (!ok) return false;
+  let srv = c.link; try { const u = new URL(c.link); srv = u.protocol + '//' + u.host; } catch (e) {}
+  try {
+    const r = await zzz_tv_call('tv_source_save', { id: same ? same.id : undefined, name: (c.n || h).slice(0, 60), server: srv, username: c.user, password: c.pw, catalog: 'media', connector: c.id });
+    c.tv = r.id; zzz_conn_addtag(c, zzz_conn_tag('media', 'iptv', h)); zzzTvSrcCache = null; delete zzzConnStat[c.tv]; c.at = Date.now(); await save();
+    if (r.info && r.info.exp) zzz_conn_alarm(c, r.info.exp);
+    zzz6f2_show_toast('📺 Connected - MEDIA CENTER › TV uses this connector.', 'ok'); return true;
+  } catch (e) { zzz6f2_show_toast('📺 ' + zzz_tv_err(e), 'warn', 6000); return false; }
+}
+
+function zzz_conn_status(c, host, save, repaint) {
+  host.textContent = ''; const line = (t, col) => { const x = document.createElement('div'); x.style.cssText = 'font-size:12px;line-height:1.35;color:' + (col || '#fff'); x.textContent = t; host.appendChild(x); return x; };
+  const miss = [];
+  if (!c.link) miss.push('LINK'); if (!c.user) miss.push('USERNAME'); if (!c.pw && !c.tv) miss.push('PASSWORD');
+  if (!zzz_conn_tags(c).length) miss.push('a TAG (which service it is)');
+  if (miss.length) line('⚠ missing: ' + miss.join(', '), '#e8a33d');
+  if (!zzz_conn_has(c, 'media › iptv')) { if (!miss.length) line('✅ ready · this service reports no status to Verso (only IPTV does today).', '#8fd18f'); return; }
+  if (!c.tv) { line('📺 not used by TV yet.', '#b8b8b8'); return; }
+  const show = (r) => {
+    host.querySelectorAll('[data-st]').forEach(x => x.remove());
+    const add = (t, col) => { const x = line(t, col); x.dataset.st = '1'; };
+    if (!r) { add('… asking the service', '#b8b8b8'); return; }
+    if (r.err) { if (/does not exist/i.test(r.err)) { add('❌ TV source was removed in TV - tap USE FOR 📺 TV again.', '#e57373'); c.tv = null; save(); } else add('❌ ' + r.err, '#e57373'); return; }
+    const i = r.info || {}, exp = i.exp ? new Date(i.exp) : null, left = exp ? Math.ceil((exp - Date.now()) / 86400000) : null;
+    if (i.locked) add('🔒 locked - TV does not use it until you unlock it.', '#e8a33d');
+    else if (r.reach === 'down') add('❌ the service did not answer' + (i.error ? ' (' + i.error + ')' : '') + ' - last known data below.', '#e57373');
+    else if (r.reach === 'login') add('❌ the service did not accept the login - change USERNAME / PASSWORD, then UPDATE TV LOGIN.', '#e57373');
+    else if (String(i.status || '').toLowerCase() === 'active') add('✅ connected · account Active', '#8fd18f');
+    else add('⚠ account status: ' + (i.status || 'unknown'), '#e8a33d');
+    if (exp) add('📋 valid until ' + exp.toLocaleDateString() + (left !== null ? (left < 0 ? ' · ENDED' : ' · ' + left + ' day(s) left') : ''), left !== null && left <= 7 ? '#e8a33d' : '#fff');
+    if (i.max_connections) add('📱 ' + (i.active_cons || 0) + ' of ' + i.max_connections + ' device(s) in use now');
+    if (i.formats && i.formats.length) add('🎞 formats ' + i.formats.join(', '));
+    add('💳 credit / price: the service does not report it - write it in 📝 INFO › NOTE.', '#8a8a8a');
+    if (i.checked) add('checked ' + new Date(i.checked).toLocaleString(), '#8a8a8a');
+    if (exp && !i.locked) zzz_conn_alarm(c, i.exp);
+  };
+  const cached = zzzConnStat[c.tv];
+  if (cached && Date.now() - cached.t < 600000) { show(cached.r); return; }
+  show(null);
+  zzz_tv_call('tv_status', { id: c.tv }).then(r => { zzzConnStat[c.tv] = { t: Date.now(), r }; if (host.isConnected) show(r); })
+    .catch(e => { const r = { err: zzz_tv_err(e) }; zzzConnStat[c.tv] = { t: Date.now(), r }; if (host.isConnected) show(r); });
+}
+
+async function zzz_conn_open(startTab, opt) {
   if (!zzz4r7_my_device()) { zzz6f2_show_toast('VERSO GATE · CONNECTORS open only on MY DEVICE.', 'warn', 3500); return; }
   if (!(Date.now() < zzzAdvUntil) && !(await zzz_verse_verify('connectors', 'VERSO GATE · CONNECTORS', 'Your MV PHRASE opens your connectors and codes.'))) return;
   const st = await zzz_vault_load('connectors');
@@ -31243,22 +31374,28 @@ async function zzz_conn_open(startTab) {
   };
   async function paintConn() {
     const q = find.toLowerCase();
-    const shown = data.conn.filter(c => (showOff ? c.off : !c.off) && (!q || (c.n + ' ' + c.link + ' ' + c.user).toLowerCase().indexOf(q) >= 0));
+    const shown = data.conn.filter(c => (showOff ? c.off : !c.off) && (!q || (c.n + ' ' + c.link + ' ' + c.user + ' ' + zzz_conn_tags(c).join(' ')).toLowerCase().indexOf(q) >= 0));
     const top = document.createElement('div'); top.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;align-items:center';
-    const fi = document.createElement('input'); fi.type = 'text'; fi.className = 'entry-cell'; fi.placeholder = 'find (name / link)'; fi.value = find; fi.autocomplete = 'off'; fi.style.cssText = 'flex:1;min-width:120px;box-sizing:border-box';
+    const fi = document.createElement('input'); fi.type = 'text'; fi.className = 'entry-cell'; fi.placeholder = 'find (name / link / tag)'; fi.value = find; fi.autocomplete = 'off'; fi.style.cssText = 'flex:1;min-width:120px;box-sizing:border-box';
     fi.addEventListener('change', () => { find = fi.value.trim(); paint(); });
-    top.append(fi, btn('+ CONNECTOR', true, () => { const c = zzz_conn_new(); data.conn.push(c); openId = c.id; showOff = false; paint(); }), btn('REMOVED', showOff, () => { showOff = !showOff; openId = null; paint(); }));
+    top.append(fi, btn('+ CONNECTOR', true, () => { const c = zzz_conn_new(); data.conn.push(c); openId = c.id; showOff = false; paint(); }),
+      btn('🔍 + FROM LINK', false, () => zzz_conn_ask_secret('SERVICE LINK', 'Paste the playlist / login link of the service - Verso recognises it, tags it and takes the login from it. Nothing of it is shown.', (v) => {
+        const c = zzz_conn_new(); const msg = zzz_conn_apply_link(c, v); if (!msg) { zzz6f2_show_toast('This is not a link (https://… or http://…).', 'warn'); return; }
+        const d = zzz_conn_dup_of(c, data.conn); if (d) { zzz_conn_merge(d, c); openId = d.id; zzz6f2_show_toast('This service + username is already „' + (d.n || 'connector') + '“ - joined there, no second connector.', 'info', 5000); save(); paint(); return; }
+        data.conn.push(c); openId = c.id; showOff = false; zzz6f2_show_toast(msg, 'ok', 5000); save(); paint(); }), 'Paste a service link - recognised + tagged automatically'),
+      btn('REMOVED', showOff, () => { showOff = !showOff; openId = null; paint(); }));
     body.appendChild(top);
     if (!shown.length) { const em = document.createElement('div'); em.className = 'zzz-media-confirm-text'; em.textContent = showOff ? 'Nothing removed.' : 'No connector yet - tap + CONNECTOR (e.g. „GitHub“).'; body.appendChild(em); }
     for (const c of shown) {
       const d = box();
       const head = document.createElement('div'); head.style.cssText = 'display:flex;align-items:center;gap:8px';
       const nm = document.createElement('button'); nm.type = 'button'; nm.style.cssText = 'flex:1;min-width:0;text-align:left;background:none;border:0;color:#fff;font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:4px 0';
-      nm.textContent = (openId === c.id ? '▾ ' : '▸ ') + (c.n ? c.n + ' connector' : 'new connector'); nm.addEventListener('click', () => { openId = openId === c.id ? null : c.id; paint(); });
+      nm.textContent = (openId === c.id ? '▾ ' : '▸ ') + (c.n ? c.n + ' connector' : 'new connector') + (c.pause ? ' · ⏸' : '') + (c.tv ? ' · 📺' : ''); nm.addEventListener('click', () => { openId = openId === c.id ? null : c.id; paint(); });
       head.appendChild(nm);
-      if (c.totp && !c.off) head.appendChild(await codeBtn(c));
-      if (showOff) head.appendChild(btn('↩', false, async () => { delete c.off; await save(); paint(); }, 'Put back'));
+      if (c.totp && !c.off && !data.lock && zzz_conn_dev_ok(c)) head.appendChild(await codeBtn(c));
+      if (showOff) head.appendChild(btn('↩', false, async () => { delete c.off; await save(); if (c.tv && !c.pause && !data.lock) zzz_tv_call('tv_lock', { id: c.tv, lock: false }).catch(() => {}); paint(); }, 'Put back'));
       d.appendChild(head);
+      if (zzz_conn_tags(c).length) { const tl = document.createElement('div'); tl.style.cssText = 'color:#8fb8d8;font-size:11px;margin:-2px 0 2px'; tl.textContent = '🏷 ' + c.tags.join(' · '); d.appendChild(tl); }
       if (openId === c.id && !c.off) {
         const ch = () => { c.at = Date.now(); save(); };
         const ways = (c.need || []).map(k => (ZZZ_CONN_NEEDS.find(x => x[0] === k) || [])[1]).filter(Boolean);
@@ -31269,6 +31406,47 @@ async function zzz_conn_open(startTab) {
           if (sub) { const u = document.createElement('div'); u.className = 'zzz-media-diss-s'; u.style.margin = '0 0 2px'; u.textContent = sub; x.appendChild(u); }
           d.appendChild(x); return x; };
         zzz_conn_text_row(d, 'NAME', () => c.n, (v) => { c.n = v.slice(0, 40); }, () => { ch(); }, 'e.g. GitHub');
+
+        const sg = grp('🏷 SERVICE · USED BY · STATUS', 'Which service it is (tags put it in the right catalogue), who uses it and how it is.', '#8fb8d8');
+        { const tr = document.createElement('div'); tr.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin:4px 0';
+          zzz_conn_tags(c).forEach((t, i) => tr.appendChild(btn(t + ' ×', true, () => { c.tags.splice(i, 1); ch(); paint(); }, 'Remove this tag')));
+          tr.appendChild(btn('🔍 FROM LINK', false, () => zzz_conn_ask_secret('SERVICE LINK', 'Paste the playlist / login link - Verso recognises the service, tags it and takes the login from it (only into empty fields).', (v) => { const m = zzz_conn_apply_link(c, v); if (!m) { zzz6f2_show_toast('This is not a link (https://… or http://…).', 'warn'); return; } zzz6f2_show_toast(m, 'ok', 5000); ch(); paint(); }), 'Recognise from a link'));
+          sg.appendChild(tr);
+          const pr = document.createElement('div'); pr.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin:2px 0';
+          const cs = document.createElement('select'); cs.className = 'entry-cell'; cs.style.cssText = 'flex:1 1 90px;min-width:0'; ZZZ_CONN_CATS.forEach(([k, l]) => { const o = document.createElement('option'); o.value = k; o.textContent = l; cs.appendChild(o); });
+          const ks = document.createElement('select'); ks.className = 'entry-cell'; ks.style.cssText = 'flex:1 1 80px;min-width:0';
+          const fillK = () => { ks.textContent = ''; ((ZZZ_CONN_CATS.find(x => x[0] === cs.value) || [])[2] || []).concat(['other']).forEach(k => { const o = document.createElement('option'); o.value = k; o.textContent = k; ks.appendChild(o); }); };
+          cs.addEventListener('change', fillK); fillK();
+          pr.append(cs, ks, btn('+ TAG', false, () => { zzz_conn_addtag(c, zzz_conn_tag(cs.value, ks.value, zzz_conn_host(c.link))); ch(); paint(); }, 'Adds catalog › kind › service (service = the host of LINK)'));
+          sg.appendChild(pr); }
+        { const ub = document.createElement('div'); ub.className = 'zzz-media-diss-s'; ub.textContent = 'USED BY: ' + zzz_conn_used(c); sg.appendChild(ub); }
+        { const dup = zzz_conn_dup_of(c, data.conn); if (dup) { const w = document.createElement('div'); w.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;color:#e8a33d;font-size:12px;margin:4px 0'; w.append('⚠ same service + username as „' + (dup.n || 'connector') + '“', btn('MERGE INTO THIS', false, async () => { zzz_conn_merge(c, dup); await save(); paint(); }, 'Joins the other one into this - it goes to REMOVED')); sg.appendChild(w); } }
+        { const ar2 = document.createElement('div'); ar2.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0';
+          ar2.appendChild(btn(c.pause ? '⏸ PAUSED' : '▶ ACTIVE', !c.pause, async () => { c.pause = c.pause ? undefined : Date.now(); ch();
+            if (c.tv) { try { await zzz_tv_call('tv_lock', { id: c.tv, lock: !!c.pause || !!data.lock }); delete zzzConnStat[c.tv]; } catch (e) { zzz6f2_show_toast('📺 ' + zzz_tv_err(e), 'warn'); } }
+            paint(); }, 'PAUSED = no service uses it (TV stops), the login stays'));
+          const here = zzz_device_id_base(), devs = Array.isArray(c.dev) ? c.dev : [], isHere = devs.some(x => x.id === here);
+          ar2.appendChild(btn(devs.length ? '📱 ONLY ' + devs.map(x => x.n).join(', ') : '📱 ALL MY DEVICES', !!devs.length, async () => {
+            if (isHere) c.dev = devs.filter(x => x.id !== here); else { const inf = await zzz_dev_info().catch(() => ({ name: 'this device' })); c.dev = devs.concat([{ id: here, n: String(inf.name || 'this device').slice(0, 24) }]); }
+            if (!c.dev.length) delete c.dev; ch(); paint(); }, isHere ? 'Tap = take THIS device off the list' : 'Tap = allow it only on the listed devices (+ this one)'));
+          ar2.appendChild(btn('⏰ ALARM · ' + (c.alarmOff ? 'OFF' : '1 DAY AHEAD'), !c.alarmOff, async () => { c.alarmOff = c.alarmOff ? undefined : 1; ch(); if (c.alarmOff) await zzz_conn_alarm_off(c); else if (c.tv) delete zzzConnStat[c.tv]; paint(); }, 'A reminder in NOTIFICATIONS one day before the service ends (when the service tells the date)'));
+          sg.appendChild(ar2); }
+        { const sb3 = document.createElement('div'); sb3.style.cssText = 'border-top:1px solid #33475a;margin-top:6px;padding-top:4px'; sg.appendChild(sb3); zzz_conn_status(c, sb3, save, paint);
+          const tr2 = document.createElement('div'); tr2.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:4px';
+          if (zzz_conn_has(c, 'media › iptv')) {
+            if (!c.tv) tr2.appendChild(btn('USE FOR 📺 TV', true, async () => { if (await zzz_conn_tv_link(c, save)) paint(); }, 'TV takes its channels from this login (one consent)'));
+            else tr2.append(btn('↻ CHECK', false, () => { delete zzzConnStat[c.tv]; paint(); }),
+              btn('📺 OPEN TV', false, () => { close(); zzz_tv_open(); }),
+              btn('UPDATE TV LOGIN', false, async () => { if (await zzz_conn_tv_link(c, save)) paint(); }, 'Sends the login of this connector to TV again (after a password change)'),
+              btn('STOP USING FOR TV', false, async () => { if (!(await zzz_verso_confirm('TV stops using this connector and its encrypted copy on the Verso server is removed. Channels already in MEDIA CENTER stay. Go on?', 'STOP'))) return;
+                try { await zzz_tv_call('tv_source_remove', { id: c.tv }); } catch (e) {} delete zzzConnStat[c.tv]; c.tv = null; zzzTvSrcCache = null; ch(); paint(); }));
+          }
+          if (tr2.childNodes.length) sg.appendChild(tr2); }
+        if (data.lock || !zzz_conn_dev_ok(c)) {
+          const lk = document.createElement('div'); lk.style.cssText = 'color:#e8a33d;font-size:12px;margin:8px 0';
+          lk.textContent = data.lock ? '🔒 LOCK ALL is on - the login data is closed. 🔓 UNLOCK at the top (MV PHRASE).' : '📱 This connector works only on: ' + c.dev.map(x => x.n).join(', ') + '. Its login data stays closed here.';
+          d.appendChild(lk); body.appendChild(d); continue;
+        }
         let g = grp('🔐 LOGIN DATA', 'What you type or paste to log in - kept locked, shown only on 👁.', '#d4af37');
         zzz_conn_text_row(g, 'USERNAME', () => c.user, (v) => { c.user = v; }, ch, 'username or e-mail there');
         g.appendChild(btn('COPY USERNAME', false, () => zzz_conn_copy(c.user, 'Username')));
@@ -31279,7 +31457,7 @@ async function zzz_conn_open(startTab) {
         zzz_conn_secret_row(g, 'RECOVERY CODES', () => c.codes, (v) => { c.codes = v; }, ch, true);
         kvList(g, 'SPECIAL PASSWORDS', c.extra || (c.extra = []), ch);
         g = grp('🧭 HOW YOU LOG IN', 'The page and the order of the steps.', '#b8b8b8');
-        const li = zzz_conn_text_row(g, 'LINK', () => c.link, (v) => { c.link = v; }, ch, 'https://… (login page)');
+        const li = zzz_conn_text_row(g, 'LINK', () => c.link, (v) => { const r = zzz_conn_recognize(v); if (r && (r.user || r.pw)) zzz6f2_show_toast(zzz_conn_apply_link(c, v), 'ok', 5000); else { c.link = v; if (r) zzz_conn_addtag(c, r.tag); } }, () => { ch(); paint(); }, 'https://… (login page)');
         g.appendChild(btn('OPEN LINK', false, () => { const u = String(c.link || li.value || '').trim(); if (!/^https:\/\//i.test(u)) { zzz6f2_show_toast('Write the link first (https://…).', 'warn'); return; } window.open(u, '_blank', 'noopener'); }, 'Opens the login page - you log in yourself'));
         const nh = document.createElement('div'); nh.style.cssText = 'color:#d4af37;font-size:12px;font-weight:700;margin-top:6px'; nh.textContent = 'STEPS (tap in the order it asks)'; g.appendChild(nh);
         const nr = document.createElement('div'); nr.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin:4px 0';
@@ -31292,12 +31470,13 @@ async function zzz_conn_open(startTab) {
         g = grp('📝 INFO', 'Only for you - never used to log in.', '#8a8a8a');
         zzz_conn_text_row(g, 'NOTE', () => c.note, (v) => { c.note = v; }, ch, 'anything to remember');
         zzz_conn_text_row(g, 'PASSKEY · WHERE', () => c.pk, (v) => { c.pk = v.slice(0, 120); }, ch, 'e.g. Fold, Google Password Manager');
-        { const rr = document.createElement('div'); rr.style.cssText = 'display:flex;justify-content:flex-end;margin-top:4px'; rr.appendChild(btn('× REMOVE', false, async () => { if (!(await zzz_verse_verify('connectors', 'REMOVE CONNECTOR', 'Your MV PHRASE - the connector is switched off here (REMOVED › ↩ puts it back).'))) return; c.off = Date.now(); openId = null; await save(); paint(); })); d.appendChild(rr); }
+        { const rr = document.createElement('div'); rr.style.cssText = 'display:flex;justify-content:flex-end;margin-top:4px'; rr.appendChild(btn('× REMOVE', false, async () => { if (!(await zzz_verse_verify('connectors', 'REMOVE CONNECTOR', 'Your MV PHRASE - the connector is switched off here (REMOVED › ↩ puts it back).'))) return; c.off = Date.now(); openId = null; await save(); if (c.tv) zzz_tv_call('tv_lock', { id: c.tv, lock: true }).catch(() => {}); zzz_conn_alarm_off(c); paint(); })); d.appendChild(rr); }
       }
       body.appendChild(d);
     }
   }
   function paintCodes() {
+    if (data.lock) { const em = document.createElement('div'); em.className = 'zzz-media-confirm-text'; em.textContent = '🔒 LOCK ALL is on - your codes are closed. 🔓 UNLOCK at the top (MV PHRASE).'; body.appendChild(em); return; }
     const top = document.createElement('div'); top.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
     top.append(btn('+ CODE', true, () => { data.codes.push({ id: 'k' + Date.now().toString(36), n: '', v: '', note: '', at: Date.now() }); paint(); }), btn('REMOVED', showOff, () => { showOff = !showOff; paint(); }));
     body.appendChild(top);
@@ -31316,6 +31495,13 @@ async function zzz_conn_open(startTab) {
     try {
       tabs.textContent = '';
       tabs.append(btn('CONNECTORS (' + data.conn.filter(c => !c.off).length + ')', tab === 'conn', () => { tab = 'conn'; showOff = false; paint(); }), btn('PERSONAL CODES (' + data.codes.filter(c => !c.off).length + ')', tab === 'codes', () => { tab = 'codes'; showOff = false; openId = null; paint(); }), btn('CLOSE', false, close));
+
+      tabs.appendChild(data.lock
+        ? btn('🔓 UNLOCK', false, async () => { if (!(await zzz_verse_verify('connectors', 'UNLOCK CONNECTORS', 'Your MV PHRASE opens all connectors again.'))) return; delete data.lock; await save();
+            try { await zzz_tv_call('tv_lock', { lock: false }); for (const c of data.conn) if (c.tv && (c.pause || c.off)) await zzz_tv_call('tv_lock', { id: c.tv, lock: true }); } catch (e) {}
+            Object.keys(zzzConnStat).forEach(k => delete zzzConnStat[k]); zzz6f2_show_toast('🔓 Connectors open again.', 'ok'); paint(); }, 'Locked since ' + new Date(data.lock).toLocaleString())
+        : btn('🔒 LOCK ALL', false, async () => { if (!(await zzz_verso_confirm('🔒 LOCK ALL connectors? Nothing can be shown or copied and TV stops using its server login - on all your devices - until you UNLOCK with your MV PHRASE. Use it e.g. when a phone is lost.', 'LOCK ALL'))) return;
+            data.lock = Date.now(); await save(); try { await zzz_tv_call('tv_lock', { lock: true }); } catch (e) {} Object.keys(zzzConnStat).forEach(k => delete zzzConnStat[k]); zzz6f2_show_toast('🔒 All connectors locked.', 'ok'); paint(); }, 'Emergency: close every login at once'));
       body.textContent = ''; infoPaint();
       if (tab === 'conn') await paintConn(); else paintCodes();
     } finally { painting = false; }
@@ -31323,6 +31509,12 @@ async function zzz_conn_open(startTab) {
   o.addEventListener('click', (e) => { if (e.target === o) close(); });
   o.appendChild(b); document.body.appendChild(o);
   if (await zzz_conn_takeover(data)) await save();
+
+  if (opt && opt.iptv) { const c = zzz_conn_new(); c.tags = [zzz_conn_tag('media', 'iptv')]; c.n = 'IPTV'; data.conn.push(c); openId = c.id; }
+  else if (opt && opt.tv) { let c = data.conn.find(x => x.tv === opt.tv && !x.off);
+    if (!c) { const s = zzz_tv_src_of(opt.tv) || {}; c = zzz_conn_new(); c.tv = opt.tv; c.n = String(s.name || s.host || 'IPTV').slice(0, 40); c.link = s.host ? 'http://' + s.host : ''; c.need = ['pw'];
+      c.tags = [zzz_conn_tag('media', 'iptv', s.host || '')]; c.note = 'Made from the TV source - its login is kept by VERSO GATE for TV; type USERNAME / PASSWORD here too if you want them in your vault.'; data.conn.push(c); await save(); }
+    openId = c.id; }
   await paint();
 
   timer = setInterval(async () => { if (!o.isConnected) { clearInterval(timer); return; }
@@ -55352,7 +55544,6 @@ function zzz10m5_render_advanced_setup(host) {
   try { zzz_files_adv_box(host); } catch (e) {}
 
   zzz10m5_render_gate_module(host);
-  try { zzz_tv_gate_box(host); } catch (e) {}
 
   const sec = zzz10m5_el('div', 'zzz10m5-box');
   sec.appendChild(zzz10m5_el('h3', '', 'HOW YOUR ACCOUNT IS PROTECTED'));
@@ -55473,6 +55664,10 @@ function zzz10m5_gate_items() {
   }
   items.push({ tab: 'in', mode: 'prepared', kind: 'TEST', name: 'Verso gate test app', owner: me, scope: 'identity', status: 'PREPARED', since: '', text: 'A pretend app to try "Log in with Verso" safely.', acts: [{ label: 'TRY IT', fn: () => { location.href = './verso-gate-test.html'; } }] });
 
+  (zzz10m5GateData.tv || []).forEach((sv) => { const inf = sv.info || {};
+    items.push({ tab: 'out', mode: 'active', kind: 'IPTV', name: sv.name + ' · ' + sv.host, owner: me, scope: 'media › iptv › ' + sv.host, status: inf.locked ? 'LOCKED' : (String(inf.status || '').toUpperCase() || 'ACTIVE'), since: inf.exp ? 'until ' + zzz10m5_date(inf.exp) : '',
+      text: 'Used by MEDIA CENTER › TV (channels play in Televizo). The login is in 🔑 CONNECTORS; VERSO GATE keeps an encrypted copy only for TV.' + (inf.max_connections ? ' ' + inf.max_connections + ' device(s) at once.' : ''),
+      acts: [{ label: '🔑 CONNECTOR', fn: () => zzz_conn_open('conn', { tv: sv.id }) }, { label: '📺 TV', fn: () => zzz_tv_open() }] }); });
   [['APP ACCOUNT', 'YouTube (Google)', 'official Google sign-in - Verso never sees your password; 2-3 accounts = 2-3 separate connections, each with its own name'],
    ['WEB ACCOUNT', 'Websites without an app link (e.g. sme.sk discussions)', 'only with saved login data - encrypted and kept only on your device, never readable on the server; the most sensitive part, comes last']
   ].forEach(([kind, name, text]) => items.push({ tab: 'out', mode: 'prepared', kind, name, owner: me, scope: 'your account there', status: 'PREPARED', since: '', text }));
@@ -55505,8 +55700,9 @@ function zzz10m5_gate_match(it) {
 async function zzz10m5_gate_reload() {
   try {
     const [g, k] = await Promise.all([zzz10m5_call('grants'), zzz10m5_call('keys')]);
-    zzz10m5GateData = { grants: g.grants || [], keys: k.keys || [], err: '' };
+    zzz10m5GateData = { grants: g.grants || [], keys: k.keys || [], err: '', tv: zzz10m5GateData.tv || [] };
   } catch (e) { zzz10m5GateData.err = zzz10m5_err_text(e); }
+  try { zzz10m5GateData.tv = await zzz_tv_sources_cached(true); } catch (e) {}
   zzz10m5_gate_paint_all();
 }
 function zzz10m5_gate_paint_all() { document.querySelectorAll('.zzz10m5-gate').forEach((m) => zzz10m5_gate_paint(m)); }
@@ -57783,7 +57979,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-23 19:08';
+const VERSO_BUILD = '2026-11-24 01:41';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -67411,21 +67607,11 @@ async function zzz_tv_open() {
 
   const form = (edit) => {
     bd.innerHTML = '';
-    bd.appendChild(el('div', 'zzz-tv-crumb', edit ? '✎ ' + edit.name : '+ NEW TV SOURCE (Xtream Codes)'));
-    bd.appendChild(el('div', 'zzz-tv-note', 'Same fields as in Televizo › New Xtream Codes playlist. The login is checked with the IPTV server and kept ONLY in VERSO GATE, encrypted - never in the page, never in this browser.' + (edit ? ' Type the username and password again to change them.' : '')));
-    const inp = (ph, type, val) => { const i = el('input', 'zzz-tv-in'); i.placeholder = ph; i.type = type || 'text'; i.autocomplete = 'off'; i.spellcheck = false; if (val) i.value = val; bd.appendChild(i); return i; };
-    const n = inp('Playlist name', 'text', edit ? edit.name : ''), sv = inp('Server address (http://… or https://…)', 'url', edit ? 'http://' + edit.host : ''), u = inp('Username'), p = inp('Password', 'password');
-    bd.appendChild(el('div', 'zzz-tv-note', 'CATALOG (which Verso service catalog it belongs to) · PACKAGE (optional - a bundle of services, for access and sharing later):'));
-    const cat = el('select', 'zzz-tv-in'); ZZZ_SVC_CATALOGS.forEach(([k, l]) => { const o = el('option', '', l); o.value = k; cat.appendChild(o); }); cat.value = (edit && edit.catalog) || 'media'; bd.appendChild(cat);
-    const pk = inp('Package (optional)', 'text', edit && edit.package ? edit.package : '');
-    const msg = el('div', 'zzz-tv-note', '');
+    bd.appendChild(el('div', 'zzz-tv-crumb', edit ? '✎ ' + edit.name : '+ NEW TV SOURCE'));
+    bd.appendChild(el('div', 'zzz-tv-note', 'TV logins live in VERSO GATE › CONNECTORS - one place for every login. ' + (edit ? 'Open its connector to see the status, change the login or stop it.' : 'Tap 🔑 below: paste the playlist link (or fill server, username, password), then USE FOR 📺 TV.')));
     const bar = el('div', 'zzz-tv-bar');
-    bar.append(btn('SAVE TO VERSO GATE', 'is-gold', async () => {
-      msg.textContent = 'Checking with the IPTV server…';
-      try { await zzz_tv_call('tv_source_save', { id: edit ? edit.id : undefined, name: n.value, server: sv.value, username: u.value, password: p.value, catalog: cat.value, package: pk.value }); zzzTvSrcCache = null; u.value = ''; p.value = ''; zzz6f2_show_toast('📺 Saved in VERSO GATE.', 'ok'); await loadSources(); }
-      catch (e) { msg.textContent = '⚠ ' + zzz_tv_err(e); }
-    }), btn('CANCEL', '', () => st.sources.length ? home() : ov.remove()));
-    bd.append(bar, msg);
+    bar.append(btn('🔑 ' + (edit ? 'ITS CONNECTOR' : 'NEW IPTV CONNECTOR'), 'is-gold', () => { ov.remove(); zzz_conn_open('conn', edit ? { tv: edit.id } : { iptv: true }); }), btn('CANCEL', '', () => st.sources.length ? home() : ov.remove()));
+    bd.append(bar);
   };
 
   const home = () => {
@@ -67604,7 +67790,7 @@ async function zzz_media_setup_open() {
 
   const se = sec('⚙ SETTINGS · VERSO MEDIA CENTER', 'MEDIA CENTER on / off, COPIED LINKS → ACTUAL, OFFLINE files.');
   bar(se, btn('OPEN SETTINGS', '', () => { document.getElementById('zzzMediaSetupOv').remove(); try { open_settings_workspace(); } catch (e) {} }));
-  sec('🔒 ADVANCED SETUP · VERSO GATE', 'Apps connected through VERSO GATE, recovery, and your TV sources (box TV SOURCES · IPTV) - SETTINGS › ADVANCED SETUP (needs your MV PHRASE).');
+  sec('🔒 ADVANCED SETUP · VERSO GATE', 'Apps connected through VERSO GATE, recovery, and your TV sources (VERSO GATE › MY ACCOUNTS ELSEWHERE, login in 🔑 CONNECTORS) - SETTINGS › ADVANCED SETUP (needs your MV PHRASE).');
 }
 
 function zzz_tv_tab_bar(list) {
@@ -67614,16 +67800,6 @@ function zzz_tv_tab_bar(list) {
   mk('📜 EPG', 'Programme (now / then) of the TV channels shown here · also ⏯ MY 2× tap', () => zzz_tv_epg_open());
   mk('⚙ MEDIA SETUP', 'FEEDER · TV · VERSO GATE · Televizo', () => zzz_media_setup_open());
   list.appendChild(bar);
-}
-
-function zzz_tv_gate_box(host) {
-  const box = zzz10m5_el('div', 'zzz10m5-box');
-  box.appendChild(zzz10m5_el('h3', '', 'TV SOURCES · IPTV (VERSO GATE)'));
-  box.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'IPTV logins (Xtream Codes) for MEDIA CENTER › TV. Kept only here in VERSO GATE, encrypted - never in the page. Channels play in Televizo.'));
-  const l = zzz10m5_el('div', 'zzz10m5-msg', '…'); box.appendChild(l);
-  const b = zzz10m5_el('button', 'zzz10m5-big', '📺 TV SOURCES'); b.type = 'button'; b.addEventListener('click', () => zzz_tv_open()); box.appendChild(b);
-  zzz_tv_call('tv_sources').then(r => { const s = r.sources || []; l.textContent = s.length ? s.map(x => x.name + ' · ' + x.host + (x.info && x.info.exp ? ' · expires ' + zzz10m5_date(x.info.exp) : '')).join('\n') : 'No TV source yet.'; }).catch(e => { l.textContent = '⚠ ' + zzz_tv_err(e); });
-  host.appendChild(box);
 }
 
 async function zzz_media_add_link(link) {
