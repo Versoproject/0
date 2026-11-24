@@ -58055,7 +58055,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-24 13:08';
+const VERSO_BUILD = '2026-11-24 13:18';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -69591,6 +69591,11 @@ function zzz5w9_status(a) {
   if (a.kind === 'planned') return { text: a.group === 'packs' ? 'planned' : 'planned - coming as its own small app', cls: 'is-info' };
 
   if (a.kind === 'external') return { text: 'external service · ' + (a.provider || 'not Verso') + ' · replaceable' + (a.setup ? ' in ' + a.setup : ''), cls: 'is-ext', action: a.open ? 'open' : '', actionLabel: a.open ? 'SETUP' : '' };
+  if (a.kind === 'catalog') {
+    const t = a.tab === 'verso' ? 'Verso system · free' : a.tab === 'recommended' ? 'Verso package' + (a.package ? ' ' + a.package : '') + (a.modular ? ' · also alone' : '') + (a.recommended_by ? ' · offered by ' + a.recommended_by : '')
+      : (a.own ? 'your own service · paid by your account' : 'listed by Verso · another company · paid by your account');
+    return { text: t, cls: a.tab === 'external' ? 'is-ext' : 'is-info', action: a.open ? 'open' : '', actionLabel: a.open ? 'OPEN' : '' };
+  }
   if (a.kind === 'store') return { text: (a.store || 'app store') + ' · not from Verso, no fingerprint', cls: 'is-info', action: 'open', actionLabel: 'OPEN STORE' };
   if (a.kind === 'pack') {
     const on = zzz_pack_on(a.pack), p = ZZZ_PACKS[a.pack] || {}, uses = zzz_mod_usage_list().filter(u => u.m === 'pack-' + a.pack && u.a === 'use').length;
@@ -69672,6 +69677,7 @@ function zzz5w9_download(a, onClose) {
 function zzz5w9_act(a, st) {
   if (st.action === 'packon' || st.action === 'packoff') { zzz_pack_set(a.pack, st.action === 'packon').then(() => zzz5w9_render()); return; }
   if (st.action === 'open' && a.kind === 'external') { try { zzz_setpath_open(a.open); } catch (e) {} return; }
+  if (st.action === 'open' && a.kind === 'catalog') { window.open(a.open, '_blank', 'noopener'); return; }
   if (st.action === 'open') { location.href = a.open; return; }
   if (st.action === 'update') { zzz_apk_update_go(false); return; }
   if (st.action === 'install') zzz5w9_download(a, () => zzz5w9_render());
@@ -69723,6 +69729,9 @@ function zzz5w9_render() {
     const sb1 = document.createElement('button'); sb1.type = 'button'; sb1.className = 'zzz5w9-btn'; sb1.textContent = '📊 ALL VERSO'; sb1.title = 'Use of every catalogue service by all users - no names'; sb1.addEventListener('click', () => zzz_svc_stats_all_open()); sf.appendChild(sb1);
     if (typeof zzz5w9_cat_add_open === 'function') { const sb2 = document.createElement('button'); sb2.type = 'button'; sb2.className = 'zzz5w9-btn zzz5w9-btn-main'; sb2.textContent = '+ ADD TO CATALOGUE'; sb2.addEventListener('click', () => zzz5w9_cat_add_open()); sf.appendChild(sb2); }
     body.appendChild(sf); }
+  else if (zzz5w9Tab === 'external' && zzz_sessionId) { const mb = document.createElement('div'); mb.className = 'zzz5w9-bar';
+    const b2 = document.createElement('button'); b2.type = 'button'; b2.className = 'zzz5w9-btn zzz5w9-btn-main'; b2.textContent = '+ MY SERVICE'; b2.title = 'Add a service of another company you use - only you see it, it is paid by your own account'; b2.addEventListener('click', () => zzz5w9_cat_add_open());
+    mb.appendChild(b2); body.appendChild(mb); }
 
   { const subs = ZZZ5W9_SUBS.filter(([k]) => inTab.some(a => (a.sub || '') === k));
     const sr = document.createElement('div'); sr.className = 'zzz5w9-bar zzz5w9-subs';
@@ -69797,6 +69806,7 @@ function zzz5w9_render() {
         if (zzz5w9_switchable(a)) { const off = zzz5w9_is_off(a.id); mk(off ? '⏸ OFF' : '▶ ACTIVE', off ? 'Tap = switch it on' : 'Tap = switch it off here (hidden where it would show)', () => { zzz5w9_set_off(a.id, !off); zzz5w9_render(); }, !off); }
         else mk(a.required ? '🔒 ALWAYS ON · change in ' + (a.setup || 'its SETUP') : '🔒 ALWAYS ON', 'A system part - it cannot be switched off', null, false);
       }
+      if (a.kind === 'catalog' && (zzz10v1_normalize(zzz_sessionUsername || '') === 'verso' || a.own)) mk('✎', 'Change / hide this catalogue row', () => zzz5w9_cat_add_open(a.dbRow), false);
       const ho = zzz5w9Help.has(a.id);
       mk((ho ? '▾' : '❓') + ' HELP', 'What it is, how to use it, who helps', () => { ho ? zzz5w9Help.delete(a.id) : zzz5w9Help.add(a.id); zzz5w9_render(); }, ho);
       mid.appendChild(cr);
@@ -69871,9 +69881,58 @@ function zzz5w9_render() {
   });
 }
 
+let zzz5w9CatRows = [];
+async function zzz5w9_cat_merge() {
+  try { const { data, error } = await sb.rpc('verso_catalog_list'); if (error) throw error; zzz5w9CatRows = Array.isArray(data) ? data : []; } catch (e) { zzz5w9CatRows = []; return; }
+  const have = new Set((zzz5w9Catalog.apps || []).map(a => a.id));
+  zzz5w9CatRows.forEach(r => { if (have.has(r.id)) return;
+    (zzz5w9Catalog.apps = zzz5w9Catalog.apps || []).push({ id: r.id, name: r.name, info: r.info, tab: r.layer, sub: r.sub, kind: 'catalog', open: r.open_url || '', store: r.store || '',
+      help: r.help || {}, support: r.support || {}, ack: r.ack || '', package: r.package || '', modular: !!r.modular, recommended_by: r.recommended_by || '', paid_by: r.paid_by,
+      own: r.owner !== 'verso', dbRow: r }); });
+}
+function zzz5w9_cat_add_open(edit) {
+  const isV = zzz10v1_normalize(zzz_sessionUsername || '') === 'verso', r = edit || {};
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm';
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box'; b.style.maxHeight = '86vh'; b.style.overflow = 'auto';
+  const h = document.createElement('div'); h.className = 'zzz-media-confirm-text'; h.textContent = edit ? '✎ ' + r.name : (isV ? '+ ADD TO CATALOGUE' : '+ MY SERVICE (paid by your account)'); b.appendChild(h);
+  const f = {}; const row = (label, el) => { const w = document.createElement('label'); w.style.cssText = 'display:block;margin:6px 0;font-size:12px;color:#c9a227'; w.textContent = label; el.style.cssText = 'display:block;width:100%;box-sizing:border-box;margin-top:2px'; el.className = 'entry-cell'; w.appendChild(el); b.appendChild(w); return el; };
+  const inp = (k, label, v, ph) => { const x = document.createElement('input'); x.value = v || ''; if (ph) x.placeholder = ph; f[k] = row(label, x); return x; };
+  const sel = (k, label, opts, v) => { const x = document.createElement('select'); opts.forEach(([val, l]) => { const op = document.createElement('option'); op.value = val; op.textContent = l; x.appendChild(op); }); x.value = v || opts[0][0]; f[k] = row(label, x); return x; };
+  const layers = isV ? [['verso', 'VERSO SYSTEM · free'], ['recommended', 'RECOMMENDED · Verso package'], ['external', 'EXTERNAL · paid by the user']] : [['external', 'EXTERNAL · paid by your account']];
+  const ly = sel('layer', 'LAYER', layers, r.layer || (isV ? 'recommended' : 'external'));
+  sel('sub', 'PART', ZZZ5W9_SUBS.map(([k, l]) => [k, l]), r.sub || 'apps');
+  inp('name', 'NAME', r.name, 'e.g. Televizo');
+  inp('id', 'ID (letters, digits, -)', r.id, 'auto from the name'); if (edit) f.id.disabled = true;
+  inp('info', 'ONE LINE (what it does for the user)', r.info);
+  const hp = r.help || {}; inp('what', 'HELP · WHAT', hp.what); inp('how', 'HELP · HOW', hp.how); inp('limits', 'HELP · LIMITS', hp.limits);
+  const sp = r.support || {}; inp('sby', 'SUPPORT · BY', sp.by); inp('scontact', 'SUPPORT · CONTACT (https://… or text)', sp.contact);
+  inp('ack', 'ACKNOWLEDGEMENT (owner · licence)', r.ack);
+  inp('open_url', 'OPEN LINK (https://…)', r.open_url); inp('store', 'STORE (e.g. Google Play)', r.store);
+  const pk = inp('package', 'PACKAGE (recommended)', r.package, 'e.g. MEDIA PACK'); const mo = sel('modular', 'ALSO ALONE (modular)', [['0', 'no - only in the package'], ['1', 'yes - also as one module']], r.modular ? '1' : '0');
+  const rb = inp('recommended_by', 'OFFERED BY (third party, if any)', r.recommended_by);
+  const sync = () => { const rec = ly.value === 'recommended'; [pk, mo, rb].forEach(x => { x.parentNode.style.display = rec ? '' : 'none'; }); }; ly.addEventListener('change', sync); sync();
+  const rw = document.createElement('div'); rw.className = 'zzz-media-confirm-row';
+  const mk = (t, cls, fn) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn' + (cls ? ' ' + cls : ''); x.textContent = t; x.addEventListener('click', fn); rw.appendChild(x); };
+  const put = async (active) => {
+    const name = f.name.value.trim(); const id = (f.id.value.trim() || name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
+    if (name.length < 2 || id.length < 2) { zzz6f2_show_toast('Fill NAME (2+ letters).', 'warn'); return; }
+    const url = f.open_url.value.trim(); if (url && !/^https:\/\//i.test(url)) { zzz6f2_show_toast('OPEN LINK must start with https://', 'warn'); return; }
+    const p = { id, layer: ly.value, sub: f.sub.value, name, info: f.info.value.trim(), help: { what: f.what.value.trim(), how: f.how.value.trim(), limits: f.limits.value.trim() },
+      support: { by: f.sby.value.trim(), contact: f.scontact.value.trim() }, ack: f.ack.value.trim(), open_url: url, store: f.store.value.trim(),
+      package: ly.value === 'recommended' ? pk.value.trim() : '', modular: ly.value === 'recommended' && mo.value === '1', recommended_by: ly.value === 'recommended' ? rb.value.trim() : '', active, mine: isV && edit && r.owner && r.owner !== 'verso' };
+    try { const { error } = await sb.rpc('verso_catalog_put', { p }); if (error) throw error;
+      zzz6f2_show_toast(active ? '✓ ' + name + ' is in the catalogue.' : name + ' hidden (kept, can come back).', 'ok'); o.remove(); zzz5w9Tab = ly.value; await zzz5w9_load(); }
+    catch (e) { zzz6f2_show_toast('Not saved: ' + ((e && e.message) || e), 'warn', 5000); }
+  };
+  mk('SAVE', 'is-red', () => put(true)); if (edit) mk('HIDE', '', () => put(false)); mk('CANCEL', '', () => o.remove());
+  b.appendChild(rw); o.appendChild(b); o.addEventListener('click', (e) => { if (e.target === o) o.remove(); }); document.body.appendChild(o);
+  setTimeout(() => { try { f.name.focus(); } catch (e) {} }, 50);
+}
+
 async function zzz5w9_load() {
   try {
     zzz5w9Catalog = await zzz5w9_fetch_json('/verso-apps.json');
+    await zzz5w9_cat_merge();
   } catch (e) {
     const body = document.querySelector('#versoWorkspaceSection .zzz5w9-workspace .zzz5w9-body');
     if (body) body.innerHTML = '';
