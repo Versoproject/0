@@ -31215,6 +31215,9 @@ function zzz_conn_text_row(host, label, get, set, changed, ph) {
   const r = document.createElement('div'); r.style.cssText = 'display:flex;align-items:center;gap:6px;margin:4px 0';
   const l = document.createElement('span'); l.style.cssText = 'flex:0 0 96px;color:#d4af37;font-size:12px;font-weight:700'; l.textContent = label;
   const i = document.createElement('input'); i.type = 'text'; i.className = 'entry-cell'; i.autocomplete = 'off'; i.maxLength = 200; i.placeholder = ph || ''; i.value = get() || ''; i.style.cssText = 'flex:1;min-width:0;box-sizing:border-box';
+
+  i.name = 'zzzc' + Math.random().toString(36).slice(2, 8); i.setAttribute('autocomplete', 'off'); i.setAttribute('data-lpignore', 'true'); i.setAttribute('data-form-type', 'other');
+  i.readOnly = true; i.addEventListener('focus', () => { i.readOnly = false; }, { once: true }); i.addEventListener('pointerdown', () => { i.readOnly = false; }, { once: true });
   i.addEventListener('change', () => { set(i.value.trim()); changed(); });
   r.append(l, i); host.appendChild(r); return i;
 }
@@ -31230,7 +31233,12 @@ function zzz_conn_host(link) { try { return new URL(String(link || '').trim()).h
 function zzz_conn_tag(cat, kind, svc) { return [cat, kind, svc].filter(Boolean).join(' › '); }
 function zzz_conn_tags(c) { return Array.isArray(c.tags) ? c.tags : (c.tags = []); }
 function zzz_conn_has(c, want) { return zzz_conn_tags(c).some(t => t === want || t.indexOf(want + ' › ') === 0); }
-function zzz_conn_addtag(c, t) { if (t && zzz_conn_tags(c).indexOf(t) < 0) c.tags.push(t); }
+function zzz_conn_addtag(c, t) {
+  if (!t || zzz_conn_tags(c).indexOf(t) >= 0) return;
+
+  const p = t.split(' › '); if (p.length === 3 && !(p[0] === 'public' && p[1] === 'web')) c.tags = c.tags.filter(x => x !== 'public › web › ' + p[2]);
+  c.tags.push(t);
+}
 
 function zzz_conn_recognize(link) {
   let u; try { u = new URL(String(link || '').trim()); } catch (e) { return null; }
@@ -31429,7 +31437,7 @@ async function zzz_conn_open(startTab, opt) {
       d.appendChild(head);
       if (zzz_conn_tags(c).length) { const tl = document.createElement('div'); tl.style.cssText = 'color:#8fb8d8;font-size:11px;margin:-2px 0 2px'; tl.textContent = '🏷 ' + c.tags.join(' · '); d.appendChild(tl); }
       if (openId === c.id && !c.off) {
-        const ch = () => { c.at = Date.now(); save(); };
+        let restat = null; const ch = () => { c.at = Date.now(); save(); if (restat) { try { restat(); } catch (e) {} } };
         const ways = (c.need || []).map(k => (ZZZ_CONN_NEEDS.find(x => x[0] === k) || [])[1]).filter(Boolean);
         const hint = document.createElement('div'); hint.className = 'zzz-media-diss-s'; hint.textContent = ways.length ? 'This login asks for: ' + ways.join(' → ') + '.' : 'Mark below what this login asks for.'; d.appendChild(hint);
 
@@ -31466,7 +31474,7 @@ async function zzz_conn_open(startTab, opt) {
               if (nx) { c.alarmAhead = nx; delete c.alarmOff; } else c.alarmOff = 1; ch();
               if (c.alarmOff) await zzz_conn_alarm_off(c); else if (c.tv) delete zzzConnStat[c.tv]; paint(); }, 'Tap = 1 day → 3 days → 1 week → off. A reminder in NOTIFICATIONS before the service ends (when the service tells the date)')); }
           sg.appendChild(ar2); }
-        { const sb3 = document.createElement('div'); sb3.style.cssText = 'border-top:1px solid #33475a;margin-top:6px;padding-top:4px'; sg.appendChild(sb3); zzz_conn_status(c, sb3, save, paint);
+        { const sb3 = document.createElement('div'); sb3.style.cssText = 'border-top:1px solid #33475a;margin-top:6px;padding-top:4px'; sg.appendChild(sb3); restat = () => zzz_conn_status(c, sb3, save, paint); restat();
           const tr2 = document.createElement('div'); tr2.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:4px';
           if (zzz_conn_has(c, 'media › iptv')) {
             if (!c.tv) tr2.appendChild(btn('USE FOR 📺 TV', true, async () => { if (await zzz_conn_tv_link(c, save)) paint(); }, 'TV takes its channels from this login (one consent)'));
@@ -58087,7 +58095,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-24 20:28';
+const VERSO_BUILD = '2026-11-24 21:51';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
