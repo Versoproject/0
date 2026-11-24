@@ -31399,6 +31399,23 @@ async function zzz_svc_stats_all_open() {
   fr.copyAll(); fr.finish();
 }
 
+const zzzConnMore = new Set();
+function zzz_conn_take(g, fn) { const n0 = g.childNodes.length; fn(); return Array.from(g.childNodes).slice(n0); }
+function zzz_conn_fold(g, key, rows, opts) {
+  const set = rows.filter(r => r[1]).length, title = g.firstChild, open = zzzConnMore.has(key);
+  if (title) { const m = document.createElement('span'); m.style.cssText = 'margin-left:6px;font-weight:700;color:' + (set ? '#8fd18f' : '#8a8a8a'); m.textContent = set ? '✓ ' + set + ' set' : '· empty'; title.appendChild(m); }
+  if (!set && opts && opts.foldEmpty) {
+    const rest = Array.from(g.childNodes).slice(1); if (!open) rest.forEach(x => { x.style.display = 'none'; });
+    title.style.cursor = 'pointer'; title.appendChild(document.createTextNode(open ? '  ▾' : '  ▸ tap to fill'));
+    title.addEventListener('click', () => { open ? zzzConnMore.delete(key) : zzzConnMore.add(key); opts.repaint(); }); return;
+  }
+  if (!set) return;
+  const empty = rows.filter(r => !r[1] && r[0].length); if (!empty.length) return;
+  if (!open) empty.forEach(r => r[0].forEach(x => { x.style.display = 'none'; }));
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-btn'; b.style.cssText = 'margin-top:4px;font-size:11px;padding:2px 8px';
+  b.textContent = open ? '− HIDE EMPTY' : '＋ ' + empty.length + ' MORE (empty)';
+  b.addEventListener('click', () => { open ? zzzConnMore.delete(key) : zzzConnMore.add(key); opts.repaint(); }); g.appendChild(b);
+}
 async function zzz_conn_open(startTab, opt) {
   if (!zzz4r7_my_device()) { zzz6f2_show_toast('VERSO GATE · CONNECTORS open only on MY DEVICE.', 'warn', 3500); return; }
   if (!(Date.now() < zzzAdvUntil) && !(await zzz_verse_verify('connectors', 'VERSO GATE · CONNECTORS', 'Your MV PHRASE opens your connectors and codes.'))) return;
@@ -31527,15 +31544,19 @@ async function zzz_conn_open(startTab, opt) {
           d.appendChild(lk); body.appendChild(d); continue;
         }
         let g = grp('🔐 LOGIN DATA', 'What you type or paste to log in - kept locked, shown only on 👁.', '#d4af37');
-        zzz_conn_text_row(g, 'USERNAME', () => c.user, (v) => { c.user = v; }, ch, 'username or e-mail there');
-        g.appendChild(btn('COPY USERNAME', false, () => zzz_conn_copy(c.user, 'Username')));
-        zzz_conn_secret_row(g, 'PASSWORD', () => c.pw, (v) => { c.pw = v; c.pwAt = Date.now(); }, ch);
-        if (c.pwAt) { const pa = document.createElement('div'); pa.className = 'zzz-media-diss-s'; pa.textContent = 'password set ' + new Date(c.pwAt).toLocaleDateString(); g.appendChild(pa); }
+        const fr = [];
+        fr.push([zzz_conn_take(g, () => { zzz_conn_text_row(g, 'USERNAME', () => c.user, (v) => { c.user = v; }, ch, 'username or e-mail there');
+          g.appendChild(btn('COPY USERNAME', false, () => zzz_conn_copy(c.user, 'Username'))); }), !!c.user]);
+        fr.push([zzz_conn_take(g, () => { zzz_conn_secret_row(g, 'PASSWORD', () => c.pw, (v) => { c.pw = v; c.pwAt = Date.now(); }, ch);
+          if (c.pwAt) { const pa = document.createElement('div'); pa.className = 'zzz-media-diss-s'; pa.textContent = 'password set ' + new Date(c.pwAt).toLocaleDateString(); g.appendChild(pa); } }), !!c.pw]);
+        const nA = g.childNodes.length;
         zzz_conn_secret_row(g, 'AUTHENTICATOR', () => (c.totp ? c.totp.s : ''), (v) => { const e = zzz_auth_parse(v); if (v && !e) { zzz6f2_show_toast('This is not a setup key (letters A-Z, digits 2-7, at least 16) or an otpauth link.', 'warn', 4000); return; } c.totp = e ? { s: e.s, d: e.d, p: e.p, a: e.a } : null; if (e && c.need.indexOf('totp') < 0) c.need.push('totp'); paint(); }, ch);
-        kvList(g, 'TOKENS', c.tokens || (c.tokens = []), ch);
-        zzz_conn_secret_row(g, 'RECOVERY CODES', () => c.codes, (v) => { c.codes = v; }, ch, true);
-        kvList(g, 'SPECIAL PASSWORDS', c.extra || (c.extra = []), ch);
-        g = grp('🧭 HOW YOU LOG IN', 'The page and the order of the steps.', '#b8b8b8');
+        fr.push([Array.from(g.childNodes).slice(nA), !!c.totp]);
+        fr.push([zzz_conn_take(g, () => kvList(g, 'TOKENS', c.tokens || (c.tokens = []), ch)), !!(c.tokens && c.tokens.length)]);
+        fr.push([zzz_conn_take(g, () => zzz_conn_secret_row(g, 'RECOVERY CODES', () => c.codes, (v) => { c.codes = v; }, ch, true)), !!c.codes]);
+        fr.push([zzz_conn_take(g, () => kvList(g, 'SPECIAL PASSWORDS', c.extra || (c.extra = []), ch)), !!(c.extra && c.extra.length)]);
+        zzz_conn_fold(g, c.id + ':login', fr, { repaint: paint });
+        const gHow = g = grp('🧭 HOW YOU LOG IN', 'The page and the order of the steps.', '#b8b8b8');
         const li = zzz_conn_text_row(g, 'LINK', () => c.link, (v) => { const r = zzz_conn_recognize(v); if (r && (r.user || r.pw)) zzz6f2_show_toast(zzz_conn_apply_link(c, v), 'ok', 5000); else { c.link = v; if (r) zzz_conn_addtag(c, r.tag); } }, () => { ch(); paint(); }, 'https://… (login page)');
         g.appendChild(btn('OPEN LINK', false, () => { const u = String(c.link || li.value || '').trim(); if (!/^https:\/\//i.test(u)) { zzz6f2_show_toast('Write the link first (https://…).', 'warn'); return; } window.open(u, '_blank', 'noopener'); }, 'Opens the login page - you log in yourself'));
         const nh = document.createElement('div'); nh.style.cssText = 'color:#d4af37;font-size:12px;font-weight:700;margin-top:6px'; nh.textContent = 'STEPS (tap in the order it asks)'; g.appendChild(nh);
@@ -31546,9 +31567,12 @@ async function zzz_conn_open(startTab, opt) {
         ar.append(btn('AUTO LOGIN · ' + (c.auto ? 'ON' : 'OFF'), !!c.auto, () => { c.auto = !c.auto; ch(); paint(); }, 'Kept as your wish - Verso logs in by itself only when the Verso browser exists'));
         g.appendChild(ar);
         if (c.auto) { const an = document.createElement('div'); an.className = 'zzz-media-diss-s'; an.textContent = 'AUTO LOGIN is remembered. Today you log in yourself (OPEN LINK + copy); automatic login comes with the Verso browser.'; g.appendChild(an); }
+        zzz_conn_fold(gHow, c.id + ':how', [[[], !!c.link], [[], !!(c.need && c.need.length)], [[], !!c.auto]], { foldEmpty: true, repaint: paint });
         g = grp('📝 INFO', 'Only for you - never used to log in.', '#8a8a8a');
-        zzz_conn_text_row(g, 'NOTE', () => c.note, (v) => { c.note = v; }, ch, 'anything to remember');
-        zzz_conn_text_row(g, 'PASSKEY · WHERE', () => c.pk, (v) => { c.pk = v.slice(0, 120); }, ch, 'e.g. Fold, Google Password Manager');
+        const fi = [];
+        fi.push([zzz_conn_take(g, () => zzz_conn_text_row(g, 'NOTE', () => c.note, (v) => { c.note = v; }, ch, 'anything to remember')), !!c.note]);
+        fi.push([zzz_conn_take(g, () => zzz_conn_text_row(g, 'PASSKEY · WHERE', () => c.pk, (v) => { c.pk = v.slice(0, 120); }, ch, 'e.g. Fold, Google Password Manager')), !!c.pk]);
+        zzz_conn_fold(g, c.id + ':info', fi, { foldEmpty: true, repaint: paint });
         { const rr = document.createElement('div'); rr.style.cssText = 'display:flex;justify-content:flex-end;margin-top:4px'; rr.appendChild(btn('× REMOVE', false, async () => { if (!(await zzz_verse_verify('connectors', 'REMOVE CONNECTOR', 'Your MV PHRASE - the connector is switched off here (REMOVED › ↩ puts it back).'))) return; c.off = Date.now(); openId = null; await save(); if (c.tv) zzz_tv_call('tv_lock', { id: c.tv, lock: true }).catch(() => {}); zzz_conn_alarm_off(c); paint(); })); d.appendChild(rr); }
       }
       body.appendChild(d);
@@ -58125,7 +58149,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-24 21:55';
+const VERSO_BUILD = '2026-11-24 21:58';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
