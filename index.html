@@ -31400,6 +31400,18 @@ async function zzz_svc_stats_all_open() {
 }
 
 const zzzConnMore = new Set();
+
+let zzzConnColorOff = { green: false, orange: false, red: false };
+function zzz_conn_state(c, locked) {
+  if (c.off || c.pause || locked) return 'red';
+  const st = c.tv && zzzConnStat[c.tv] && zzzConnStat[c.tv].r;
+  if (st && (st.err || st.reach === 'login' || st.reach === 'down' || (st.info && st.info.locked))) return 'red';
+  const u = zzz_conn_until(c); if (u && u.at.getTime() < Date.now()) return 'red';
+  if (!zzz_conn_tags(c).length || !c.link || (!c.pw && !c.tv && (c.need || ['pw']).indexOf('pw') >= 0)) return 'orange';
+  if (zzz_conn_has(c, 'media › iptv') && !c.tv) return 'orange';
+  return 'green';
+}
+const ZZZ_CONN_COL = { green: '#4caf50', orange: '#e8a33d', red: '#e57373' };
 function zzz_conn_take(g, fn) { const n0 = g.childNodes.length; fn(); return Array.from(g.childNodes).slice(n0); }
 function zzz_conn_fold(g, key, rows, opts) {
   const set = rows.filter(r => r[1]).length, title = g.firstChild, open = zzzConnMore.has(key);
@@ -31447,7 +31459,8 @@ async function zzz_conn_open(startTab, opt) {
   };
   async function paintConn() {
     const q = find.toLowerCase();
-    const shown = data.conn.filter(c => (showOff ? c.off : !c.off) && (!q || (c.n + ' ' + c.link + ' ' + c.user + ' ' + zzz_conn_tags(c).join(' ')).toLowerCase().indexOf(q) >= 0));
+    const shown = data.conn.filter(c => (showOff ? c.off : !c.off) && (!q || (c.n + ' ' + c.link + ' ' + c.user + ' ' + zzz_conn_tags(c).join(' ')).toLowerCase().indexOf(q) >= 0)
+      && (showOff || !zzzConnColorOff[zzz_conn_state(c, data.lock)]));
     const top = document.createElement('div'); top.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;align-items:center';
     const fi = document.createElement('input'); fi.type = 'text'; fi.className = 'entry-cell'; fi.placeholder = 'find (name / link / tag)'; fi.value = find; fi.autocomplete = 'off'; fi.style.cssText = 'flex:1;min-width:120px;box-sizing:border-box';
     fi.addEventListener('change', () => { find = fi.value.trim(); paint(); });
@@ -31458,12 +31471,17 @@ async function zzz_conn_open(startTab, opt) {
         data.conn.push(c); openId = c.id; showOff = false; zzz6f2_show_toast(msg, 'ok', 5000); save(); paint(); }), 'Paste a service link - recognised + tagged automatically'),
       btn('REMOVED', showOff, () => { showOff = !showOff; openId = null; paint(); }));
     body.appendChild(top);
-    if (!shown.length) { const em = document.createElement('div'); em.className = 'zzz-media-confirm-text'; em.textContent = showOff ? 'Nothing removed.' : 'No connector yet - tap + CONNECTOR (e.g. „GitHub“).'; body.appendChild(em); }
+    if (!showOff) { const cr = document.createElement('div'); cr.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0 2px';
+      const all = data.conn.filter(c => !c.off), cnt = (k) => all.filter(c => zzz_conn_state(c, data.lock) === k).length;
+      [['green', '🟢 ACTIVE'], ['orange', '🟠 SETTING UP'], ['red', '🔴 NOT ACTIVE']].forEach(([k, l]) => { const b = btn(l + ' ' + cnt(k), !zzzConnColorOff[k], () => { zzzConnColorOff[k] = !zzzConnColorOff[k]; paint(); }, zzzConnColorOff[k] ? 'Hidden - tap to show' : 'Shown - tap to hide');
+        b.style.borderColor = ZZZ_CONN_COL[k]; if (zzzConnColorOff[k]) b.style.opacity = '.5'; cr.appendChild(b); });
+      body.appendChild(cr); }
+    if (!shown.length) { const em = document.createElement('div'); em.className = 'zzz-media-confirm-text'; em.textContent = showOff ? 'Nothing removed.' : (data.conn.some(c => !c.off) ? 'Nothing in the shown colours - tap a colour above.' : 'No connector yet - tap + CONNECTOR (e.g. „GitHub“).'); body.appendChild(em); }
     for (const c of shown) {
-      const d = box();
+      const d = box(); const sc = zzz_conn_state(c, data.lock); d.style.borderLeft = '5px solid ' + ZZZ_CONN_COL[sc];
       const head = document.createElement('div'); head.style.cssText = 'display:flex;align-items:center;gap:8px';
       const nm = document.createElement('button'); nm.type = 'button'; nm.style.cssText = 'flex:1;min-width:0;text-align:left;background:none;border:0;color:#fff;font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:4px 0';
-      nm.textContent = (openId === c.id ? '▾ ' : '▸ ') + (c.n ? c.n + ' connector' : 'new connector') + (c.pause ? ' · ⏸' : '') + (c.tv ? ' · 📺' : ''); nm.addEventListener('click', () => { openId = openId === c.id ? null : c.id; paint(); });
+      nm.style.color = ZZZ_CONN_COL[sc]; nm.textContent = (openId === c.id ? '▾ ' : '▸ ') + (c.n ? c.n + ' connector' : 'new connector') + (c.pause ? ' · ⏸' : '') + (c.tv ? ' · 📺' : ''); nm.addEventListener('click', () => { openId = openId === c.id ? null : c.id; paint(); });
       head.appendChild(nm);
       if (c.totp && !c.off && !data.lock && zzz_conn_dev_ok(c)) head.appendChild(await codeBtn(c));
       if (showOff) head.appendChild(btn('↩', false, async () => { delete c.off; await save(); if (c.tv && !c.pause && !data.lock) zzz_tv_call('tv_lock', { id: c.tv, lock: false }).catch(() => {}); paint(); }, 'Put back'));
@@ -31622,6 +31640,10 @@ async function zzz_conn_open(startTab, opt) {
       c.tags = [zzz_conn_tag('media', 'iptv', s.host || '')]; c.note = 'Made from the TV source - its login is kept by VERSO GATE for TV; type USERNAME / PASSWORD here too if you want them in your vault.'; data.conn.push(c); await save(); }
     openId = c.id; }
   await paint();
+
+  { const need = data.conn.filter(c => !c.off && c.tv && !(zzzConnStat[c.tv] && Date.now() - zzzConnStat[c.tv].t < 600000));
+    if (need.length) Promise.all(need.map(c => zzz_tv_call('tv_status', { id: c.tv }).then(r => { zzzConnStat[c.tv] = { t: Date.now(), r }; })
+      .catch(e => { zzzConnStat[c.tv] = { t: Date.now(), r: { err: zzz_tv_err(e) } }; }))).then(() => { try { if (body.isConnected) paint(); } catch (e) {} }); }
 
   timer = setInterval(async () => { if (!o.isConnected) { clearInterval(timer); return; }
     for (const el of b.querySelectorAll('[data-totp]')) { const c = data.conn.find(x => x.id === el.dataset.totp); if (c && c.totp) { const x = await zzz_auth_code(c.totp); el.textContent = x.slice(0, x.length / 2) + ' ' + x.slice(x.length / 2); const left = (c.totp.p || 30) - Math.floor(Date.now() / 1000) % (c.totp.p || 30); el.style.opacity = left <= 5 ? '0.6' : '1'; } } }, 1000);
@@ -58149,7 +58171,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-24 21:58';
+const VERSO_BUILD = '2026-11-24 22:02';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
