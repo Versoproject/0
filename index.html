@@ -30844,8 +30844,15 @@ var zzzAdvUntil = 0;
 function zzz_adv_exempt() { try { return /^verso\d*$/.test(zzz10v1_normalize(zzz_sessionUsername || '')); } catch (e) { return false; } }
 function zzz_adv_open_ok() { return zzz_adv_exempt() || Date.now() < zzzAdvUntil; }
 async function zzz_adv_unlock_then(go) { if (await zzz_modes_unlock()) go(); }
+
+document.addEventListener('pointerdown', (e) => {
+  try { if (!(Date.now() < zzzAdvUntil)) return; if (typeof zzz10_0ActiveTab === 'undefined' || zzz10_0ActiveTab !== 'advanced-settings') return;
+    if (e.target && e.target.closest && e.target.closest('.zzzfin-mv, #versoWorkspaceSection .settings-workspace, .zzz-media-confirm')) zzzAdvUntil = Math.max(zzzAdvUntil, Date.now() + 10 * 60 * 1000); } catch (er) {}
+}, true);
+setInterval(() => { try { if (zzzAdvUntil && !(Date.now() < zzzAdvUntil) && !zzz_adv_exempt() && typeof zzz10_0ActiveTab !== 'undefined' && zzz10_0ActiveTab === 'advanced-settings' && !document.querySelector('.zzz-adv-locked')) {
+  zzzAdvUntil = 0; open_settings_workspace(); } } catch (e) {} }, 20000);
 function zzz_adv_locked_render(host, go) {
-  const b = document.createElement('div'); b.className = 'zzz10m5-box';
+  const b = document.createElement('div'); b.className = 'zzz10m5-box zzz-adv-locked';
   const h = document.createElement('h3'); h.textContent = '🔒 ADVANCED SETUP · VERSE VERIFICATION'; b.appendChild(h);
   const t = document.createElement('div'); t.className = 'zzz10m5-txt'; t.textContent = 'Advanced setup (recovery, MODES, REMOTE ACCESS, VERSO GATE, audit) opens only after VERSE VERIFICATION - layer 1 of multiverification: 2 random words of your verse, typed together (no verse yet = your MV PHRASE). One verification = 10 minutes. Every try is in your MV LOG and AUDIT LOG.'; b.appendChild(t);
   const k = document.createElement('button'); k.type = 'button'; k.className = 'zzz10m5-big'; k.textContent = 'OPEN · VERSE VERIFICATION';
@@ -31445,7 +31452,11 @@ async function zzz_conn_open(startTab, opt) {
   function infoPaint() { const s = (zzzVaultState.connectors || {}).server; info.textContent = 'Your ways into other services and your own codes, locked with your personal key. ' + (s === 'ok' ? 'Kept on this device + a locked copy in your VERSO GATE · VAULT (Verso cannot read it).' : s === 'my_device_only' ? 'TRUSTED SESSION: only the copy on this device.' : 'Kept on this device - the vault copy is sent at the next opening.') + ' Keep the recovery codes of important services on paper too.'; }
   const tabs = document.createElement('div'); tabs.style.cssText = 'display:flex;gap:6px;margin:8px 0;flex-wrap:wrap'; b.appendChild(tabs);
   const body = document.createElement('div'); b.appendChild(body);
-  const close = () => { if (timer) clearInterval(timer); o.remove(); };
+  const close = () => { if (timer) clearInterval(timer); dropEmpty(); o.remove(); };
+  o._zzzBack = () => { if (openId) { openId = null; dropEmpty(); paint(); return true; } dropEmpty(); return false; };
+
+  function connEmpty(c) { return !c.link && !c.user && !c.pw && !c.totp && !c.codes && !c.note && !c.pk && !c.tv && !(c.tokens && c.tokens.length) && !(c.extra && c.extra.length) && !(c.tags && c.tags.length) && (!c.n || c.n === 'IPTV' || c.n === 'Instagram'); }
+  function dropEmpty() { const n0 = data.conn.length; data.conn = data.conn.filter(c => !connEmpty(c) || c.id === openId); if (data.conn.length !== n0) save(); }
   const btn = (label, on, fn, title) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn' + (on ? ' is-on' : ''); x.textContent = label; if (title) x.title = title; x.addEventListener('click', fn); return x; };
   const box = () => { const d = document.createElement('div'); d.style.cssText = 'border:1px solid #6b5a1e;border-radius:10px;padding:6px 8px;margin:6px 0'; return d; };
   const codeBtn = async (c) => { const cd = btn('', true, async () => zzz_conn_copy(await zzz_auth_code(c.totp), 'Code'), 'Tap = copy the code'); cd.style.cssText = 'font-size:17px;letter-spacing:1px;font-variant-numeric:tabular-nums;min-width:96px'; cd.dataset.totp = c.id;
@@ -31482,7 +31493,7 @@ async function zzz_conn_open(startTab, opt) {
       const d = box(); const sc = zzz_conn_state(c, data.lock); d.style.borderLeft = '5px solid ' + ZZZ_CONN_COL[sc];
       const head = document.createElement('div'); head.style.cssText = 'display:flex;align-items:center;gap:8px';
       const nm = document.createElement('button'); nm.type = 'button'; nm.style.cssText = 'flex:1;min-width:0;text-align:left;background:none;border:0;color:#fff;font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:4px 0';
-      nm.style.color = ZZZ_CONN_COL[sc]; nm.textContent = (openId === c.id ? '▾ ' : '▸ ') + (c.n ? c.n + ' connector' : 'new connector') + (c.pause ? ' · ⏸' : '') + (c.tv ? ' · 📺' : ''); nm.addEventListener('click', () => { openId = openId === c.id ? null : c.id; paint(); });
+      nm.style.color = ZZZ_CONN_COL[sc]; nm.textContent = (openId === c.id ? '▾ ' : '▸ ') + (c.n ? c.n + ' connector' : 'new connector') + (c.pause ? ' · ⏸' : '') + (c.tv ? ' · 📺' : ''); nm.addEventListener('click', () => { const was = openId; openId = openId === c.id ? null : c.id; if (was && was !== openId) dropEmpty(); paint(); });
       head.appendChild(nm);
       if (c.totp && !c.off && !data.lock && zzz_conn_dev_ok(c)) head.appendChild(await codeBtn(c));
       if (showOff) head.appendChild(btn('↩', false, async () => { delete c.off; await save(); if (c.tv && !c.pause && !data.lock) zzz_tv_call('tv_lock', { id: c.tv, lock: false }).catch(() => {}); paint(); }, 'Put back'));
@@ -31593,6 +31604,7 @@ async function zzz_conn_open(startTab, opt) {
         fi.push([zzz_conn_take(g, () => zzz_conn_text_row(g, 'PASSKEY · WHERE', () => c.pk, (v) => { c.pk = v.slice(0, 120); }, ch, 'e.g. Fold, Google Password Manager')), !!c.pk]);
         zzz_conn_fold(g, c.id + ':info', fi, { foldEmpty: true, repaint: paint });
         { const sv = document.createElement('div'); sv.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:8px 0 2px';
+          if (connEmpty(c)) sv.append(btn('🗑 DISCARD', false, () => { data.conn = data.conn.filter(x => x !== c); openId = null; save(); paint(); }, 'Nothing filled in - throw this connector away'));
           sv.append(btn('✓ SAVE · ▴ FOLD', true, async () => { try { document.activeElement && document.activeElement.blur(); } catch (e) {} c.at = Date.now(); await save(); openId = null; zzz6f2_show_toast('✓ ' + (c.n || 'Connector') + ' saved.', 'ok', 1400); paint(); }, 'Saves and folds this connector'),
             btn('✓ SAVE · CLOSE', false, async () => { try { document.activeElement && document.activeElement.blur(); } catch (e) {} c.at = Date.now(); await save(); close(); }, 'Saves and closes CONNECTORS'));
           d.appendChild(sv); }
@@ -31600,6 +31612,25 @@ async function zzz_conn_open(startTab, opt) {
       }
       body.appendChild(d);
     }
+  }
+
+  async function paintCat() {
+    let rows = []; try { const { data: d, error } = await sb.rpc('verso_catalog_list'); if (error) throw error; rows = Array.isArray(d) ? d : []; } catch (e) { const em = document.createElement('div'); em.className = 'zzz-media-confirm-text'; em.textContent = 'The catalogue cannot be read now.'; body.appendChild(em); return; }
+    const LN = { verso: 'VERSO SYSTEM', recommended: 'RECOMMENDED', external: 'EXTERNAL' };
+    const hd = document.createElement('div'); hd.className = 'zzz-media-diss-s'; hd.textContent = 'Services of the catalogue. ☑ = you use it (saved on this device) · a SYSTEM PRESET is ticked for everybody from the start · its login goes into a connector here.'; body.appendChild(hd);
+    if (!rows.length) { const em = document.createElement('div'); em.className = 'zzz-media-confirm-text'; em.textContent = 'Nothing in the catalogue yet - APPS › EXTERNAL › + MY SERVICE adds your own.'; body.appendChild(em); }
+    rows.forEach(r => { const d = box(); const sc = r.layer === 'external' ? '#e57373' : '#d4af37'; d.style.borderLeft = '5px solid ' + sc;
+      const h1 = document.createElement('div'); h1.style.cssText = 'font-weight:800;color:' + sc; h1.textContent = r.name + (r.preset ? ' · ⚙ SYSTEM PRESET' : '') + (r.owner !== 'verso' ? ' · your own' : ''); d.appendChild(h1);
+      const h2 = document.createElement('div'); h2.className = 'zzz-media-diss-s'; h2.textContent = (LN[r.layer] || r.layer) + ' › ' + String(r.sub || '').toUpperCase() + (r.package ? ' · package ' + r.package : '') + (r.info ? ' · ' + r.info : ''); d.appendChild(h2);
+      const host = zzz_conn_host(r.open_url || ''), has = data.conn.find(c => !c.off && ((host && zzz_conn_host(c.link) === host) || zzz_conn_tags(c).some(t => t.indexOf(' › ' + r.id) > 0 || (host && t.endsWith(' › ' + host)))));
+      const off = zzz5w9_is_off(r.id), on = r.preset ? !off : (off ? false : !!has);
+      const rw = document.createElement('div'); rw.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:4px';
+      rw.append(btn((on ? '☑' : '☐') + ' ACTIVE', on, () => { zzz5w9_set_off(r.id, on); paint(); }, on ? 'Tap = you do not use it' : 'Tap = you use it'));
+      if (has) rw.append(btn('✓ ' + (has.n || 'connector'), true, () => { tab = 'conn'; openId = has.id; paint(); }, 'Its connector'));
+      else rw.append(btn('＋ CONNECTOR', false, async () => { const c = zzz_conn_new(); c.n = r.name.replace(/ · test$/, '').slice(0, 40); if (r.open_url) c.link = r.open_url;
+        c.tags = [zzz_conn_tag(r.sub === 'media' ? 'media' : (r.layer === 'external' ? 'apps' : 'system'), r.sub === 'media' ? (/iptv|tv/i.test(r.name + ' ' + r.info) ? 'iptv' : 'reels') : 'other', host || r.id)];
+        data.conn.push(c); tab = 'conn'; openId = c.id; await save(); paint(); }, 'Makes its connector with the right tag - you fill the login'));
+      d.appendChild(rw); body.appendChild(d); });
   }
   function paintCodes() {
     if (data.lock) { const em = document.createElement('div'); em.className = 'zzz-media-confirm-text'; em.textContent = '🔒 LOCK ALL is on - your codes are closed. 🔓 UNLOCK at the top (MV PHRASE).'; body.appendChild(em); return; }
@@ -31627,17 +31658,23 @@ async function zzz_conn_open(startTab, opt) {
             try { await zzz_tv_call('tv_lock', { lock: false }); for (const c of data.conn) if (c.tv && (c.pause || c.off)) await zzz_tv_call('tv_lock', { id: c.tv, lock: true }); } catch (e) {}
             Object.keys(zzzConnStat).forEach(k => delete zzzConnStat[k]); zzz6f2_show_toast('🔓 Connectors open again.', 'ok'); paint(); }, 'Locked since ' + new Date(data.lock).toLocaleString())
         : btn('🔒 LOCK ALL', false, () => lockAll(), 'Emergency: close every login at once'));
+      tabs.appendChild(btn('📚 CATALOGUE', tab === 'cat', () => { tab = 'cat'; openId = null; paint(); }, 'Services of the Verso catalogue - tick what you use, add its connector'));
       tabs.appendChild(btn('📜 LOGS', false, () => zzz_logs_open(), 'What your services did (TV …) - newest first'));
       async function lockAll() { if (!(await zzz_verso_confirm('🔒 LOCK ALL connectors? Nothing can be shown or copied and TV stops using its server login - on all your devices - until you UNLOCK with your MV PHRASE. Use it e.g. when a phone is lost.', 'LOCK ALL'))) return;
             data.lock = Date.now(); await save(); try { await zzz_tv_call('tv_lock', { lock: true }); } catch (e) {} Object.keys(zzzConnStat).forEach(k => delete zzzConnStat[k]); zzz6f2_show_toast('🔒 All connectors locked.', 'ok'); paint(); }
       if (opt && opt.lockAll && !data.lock) { opt.lockAll = false; setTimeout(lockAll, 50); }
       body.textContent = ''; infoPaint();
-      if (tab === 'conn') await paintConn(); else paintCodes();
+      if (tab === 'conn') await paintConn(); else if (tab === 'cat') await paintCat(); else paintCodes();
     } finally { painting = false; }
   }
   o.addEventListener('click', (e) => { if (e.target === o) close(); });
   o.appendChild(b); document.body.appendChild(o);
   if (await zzz_conn_takeover(data)) await save();
+  { let ch0 = false; const n0 = data.conn.length; data.conn = data.conn.filter(c => !(!c.link && !c.user && !c.pw && !c.totp && !c.codes && !c.note && !c.pk && !c.tv && !(c.tokens && c.tokens.length) && !(c.extra && c.extra.length) && !(c.tags && c.tags.length)));
+    if (data.conn.length !== n0) ch0 = true;
+    data.conn.forEach(c => { const tg = zzz_conn_tags(c); const real = tg.filter(t => { const p = t.split(' › '); return p.length === 3 && !(p[0] === 'public' && p[1] === 'web'); }).map(t => t.split(' › ')[2]);
+      const keep = tg.filter(t => !(t.indexOf('public › web › ') === 0 && real.indexOf(t.split(' › ')[2]) >= 0)); if (keep.length !== tg.length) { c.tags = keep; ch0 = true; } });
+    if (ch0) await save(); }
   try { zzz_reels_svc_mirror(data); } catch (e) {}
 
   if (opt && opt.iptv) { const c = zzz_conn_new(); c.tags = [zzz_conn_tag('media', 'iptv')]; c.n = 'IPTV'; data.conn.push(c); openId = c.id; }
@@ -58179,7 +58216,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-25 02:37';
+const VERSO_BUILD = '2026-11-25 03:16';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -59457,9 +59494,10 @@ function zzz_back_close_top() {
   if (typeof zzzBoard !== 'undefined' && zzzBoard.live && zzzBoard.live.mode !== 'off') { zzzBoard.live.setMode('off'); return true; }
 
   { const st = document.getElementById('zzzMediaStage'); if (st && (document.fullscreenElement === st || st.classList.contains('is-full'))) { try { zzz_media_full(); } catch (e) {} return true; } }
-  if (zzz_media_back_guard()) return true;
 
-  { const mc = document.querySelectorAll('.zzz-media-confirm'); if (mc.length) { mc[mc.length - 1].remove(); zzzBackOverlayAt = Date.now(); return true; } }
+  { const mc = document.querySelectorAll('.zzz-media-confirm'); if (mc.length) { const top = mc[mc.length - 1]; if (!(top._zzzBack && top._zzzBack())) top.remove(); zzzBackOverlayAt = Date.now(); return true; } }
+  { const tv = document.querySelectorAll('.zzz-tv-ov'); if (tv.length) { const top = tv[tv.length - 1]; if (!(top._zzzBack && top._zzzBack())) { top.remove(); try { zzz_media_redraw(); } catch (e) {} } zzzBackOverlayAt = Date.now(); return true; } }
+  if (zzz_media_back_guard()) return true;
 
   let best = null, bestZ = -1;
   document.querySelectorAll(ZZZ_BACK_CLOSERS).forEach(b => {
@@ -67902,6 +67940,7 @@ async function zzz_tv_open() {
     q.addEventListener('input', paint); paint();
   };
 
+  ov._zzzBack = () => { if (st.cat) { st.cat = null; st.q = ''; home(); return true; } return false; };
   const loadCats = async () => { busy('Loading categories through VERSO GATE…'); try { st.cats = (await zzz_tv_call('tv_categories', { source_id: st.src, kind: st.kind })).categories || []; home(); } catch (e) { fail(e, home); } };
   const loadChans = async () => { busy('Loading ' + st.cat.name + '…'); try { st.chans = (await zzz_tv_call('tv_channels', { source_id: st.src, kind: st.kind, category_id: st.cat.id })).channels || []; home(); } catch (e) { fail(e, () => { st.cat = null; home(); }); } };
   const loadSources = async () => {
@@ -69893,7 +69932,7 @@ function zzz5w9_render() {
   if (!zzz5w9Catalog) { body.innerHTML = '<div class="zzz5w5cm-view-empty">Loading…</div>'; return; }
   const inTab = apps.filter(a => zzz5w9_tab_of(a) === zzz5w9Tab);
 
-  if (zzz10v1_normalize(zzz_sessionUsername || '') === 'verso') { const sf = document.createElement('div'); sf.className = 'zzz5w9-bar'; sf.style.borderLeft = '3px solid #c9a227'; sf.style.paddingLeft = '6px';
+  if (['verso', 'verso1'].indexOf(zzz10v1_normalize(zzz_sessionUsername || '')) >= 0) { const sf = document.createElement('div'); sf.className = 'zzz5w9-bar'; sf.style.borderLeft = '3px solid #c9a227'; sf.style.paddingLeft = '6px';
     const t0 = document.createElement('span'); t0.className = 'zzz5w9-info'; t0.textContent = '⚙ SYSTEM FUNCTIONS'; sf.appendChild(t0);
     const sb1 = document.createElement('button'); sb1.type = 'button'; sb1.className = 'zzz5w9-btn'; sb1.textContent = '📊 ALL VERSO'; sb1.title = 'Use of every catalogue service by all users - no names'; sb1.addEventListener('click', () => zzz_svc_stats_all_open()); sf.appendChild(sb1);
     if (typeof zzz5w9_cat_add_open === 'function') { const sb2 = document.createElement('button'); sb2.type = 'button'; sb2.className = 'zzz5w9-btn zzz5w9-btn-main'; sb2.textContent = '+ ADD TO CATALOGUE'; sb2.addEventListener('click', () => zzz5w9_cat_add_open()); sf.appendChild(sb2); }
@@ -69975,7 +70014,7 @@ function zzz5w9_render() {
         if (zzz5w9_switchable(a)) { const off = zzz5w9_is_off(a.id); mk(off ? '⏸ OFF' : '▶ ACTIVE', off ? 'Tap = switch it on' : 'Tap = switch it off here (hidden where it would show)', () => { zzz5w9_set_off(a.id, !off); zzz5w9_render(); }, !off); }
         else mk(a.required ? '🔒 ALWAYS ON · change in ' + (a.setup || 'its SETUP') : '🔒 ALWAYS ON', 'A system part - it cannot be switched off', null, false);
       }
-      if (a.kind === 'catalog' && (zzz10v1_normalize(zzz_sessionUsername || '') === 'verso' || a.own)) mk('✎', 'Change / hide this catalogue row', () => zzz5w9_cat_add_open(a.dbRow), false);
+      if (a.kind === 'catalog' && (['verso', 'verso1'].indexOf(zzz10v1_normalize(zzz_sessionUsername || '')) >= 0 || a.own)) mk('✎', 'Change / hide this catalogue row', () => zzz5w9_cat_add_open(a.dbRow), false);
       const ho = zzz5w9Help.has(a.id);
       mk((ho ? '▾' : '❓') + ' HELP', 'What it is, how to use it, who helps', () => { ho ? zzz5w9Help.delete(a.id) : zzz5w9Help.add(a.id); zzz5w9_render(); }, ho);
       mid.appendChild(cr);
@@ -70060,7 +70099,7 @@ async function zzz5w9_cat_merge() {
       own: r.owner !== 'verso', dbRow: r }); });
 }
 function zzz5w9_cat_add_open(edit) {
-  const isV = zzz10v1_normalize(zzz_sessionUsername || '') === 'verso', r = edit || {};
+  const isV = ['verso', 'verso1'].indexOf(zzz10v1_normalize(zzz_sessionUsername || '')) >= 0, r = edit || {};
   const o = document.createElement('div'); o.className = 'zzz-media-confirm';
   const b = document.createElement('div'); b.className = 'zzz-media-confirm-box'; b.style.maxHeight = '86vh'; b.style.overflow = 'auto';
   const h = document.createElement('div'); h.className = 'zzz-media-confirm-text'; h.textContent = edit ? '✎ ' + r.name : (isV ? '+ ADD TO CATALOGUE' : '+ MY SERVICE (paid by your account)'); b.appendChild(h);
@@ -70079,6 +70118,7 @@ function zzz5w9_cat_add_open(edit) {
   inp('open_url', 'OPEN LINK (https://…)', r.open_url); inp('store', 'STORE (e.g. Google Play)', r.store);
   const pk = inp('package', 'PACKAGE (recommended)', r.package, 'e.g. MEDIA PACK'); const mo = sel('modular', 'ALSO ALONE (modular)', [['0', 'no - only in the package'], ['1', 'yes - also as one module']], r.modular ? '1' : '0');
   const rb = inp('recommended_by', 'OFFERED BY (third party, if any)', r.recommended_by);
+  const ps = isV ? sel('preset', '⚙ SYSTEM PRESET (ticked for every user from the start)', [['0', 'no - users tick it themselves'], ['1', 'yes - system preset']], r.preset ? '1' : '0') : null;
   const sync = () => { const rec = ly.value === 'recommended'; [pk, mo, rb].forEach(x => { x.parentNode.style.display = rec ? '' : 'none'; }); }; ly.addEventListener('change', sync); sync();
   const rw = document.createElement('div'); rw.className = 'zzz-media-confirm-row';
   const mk = (t, cls, fn) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn' + (cls ? ' ' + cls : ''); x.textContent = t; x.addEventListener('click', fn); rw.appendChild(x); };
@@ -70088,7 +70128,7 @@ function zzz5w9_cat_add_open(edit) {
     const url = f.open_url.value.trim(); if (url && !/^https:\/\//i.test(url)) { zzz6f2_show_toast('OPEN LINK must start with https://', 'warn'); return; }
     const p = { id, layer: ly.value, sub: f.sub.value, name, info: f.info.value.trim(), help: { what: f.what.value.trim(), how: f.how.value.trim(), limits: f.limits.value.trim() },
       support: { by: f.sby.value.trim(), contact: f.scontact.value.trim() }, ack: f.ack.value.trim(), open_url: url, store: f.store.value.trim(),
-      package: ly.value === 'recommended' ? pk.value.trim() : '', modular: ly.value === 'recommended' && mo.value === '1', recommended_by: ly.value === 'recommended' ? rb.value.trim() : '', active, mine: isV && edit && r.owner && r.owner !== 'verso' };
+      package: ly.value === 'recommended' ? pk.value.trim() : '', modular: ly.value === 'recommended' && mo.value === '1', recommended_by: ly.value === 'recommended' ? rb.value.trim() : '', active, preset: !!(ps && ps.value === '1'), mine: isV && edit && r.owner && r.owner !== 'verso' };
     try { const { error } = await sb.rpc('verso_catalog_put', { p }); if (error) throw error;
       zzz6f2_show_toast(active ? '✓ ' + name + ' is in the catalogue.' : name + ' hidden (kept, can come back).', 'ok'); o.remove(); zzz5w9Tab = ly.value; await zzz5w9_load(); }
     catch (e) { zzz6f2_show_toast('Not saved: ' + ((e && e.message) || e), 'warn', 5000); }
