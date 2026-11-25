@@ -1552,6 +1552,7 @@ body{margin:0;color:#fff;font-family:sans-serif;}
     background: #171717; color: #d4af37; cursor: pointer; }
   .zzz10dm-chip.zzz10dm-on { background: #d4af37; color: #171717; }
   .zzz10dm-chip:disabled { cursor: default; }
+  .zzz10dm-chip.zzz-overse-chip { border-color: #c0c0c0; color: #c0c0c0; } .zzz10dm-chip.zzz-overse-chip.zzz10dm-on { background: #c0c0c0; color: #171717; }   
   .zzz10dm-chip:disabled:not(.zzz10dm-on) { opacity: 0.45; }
   
   .zzz6f35-restore-btn {
@@ -30934,12 +30935,13 @@ function zzz_verse_why(r) {
     verse_too_long: 'Max. 40 words.', too_many_verses: 'Max. 10 verses.', last_factor: 'The last verse cannot be removed - add another first.', last_verse: 'One verse must stay active - add another verse first, then remove this one.', invalid_token: 'The USERNAME or the TOKEN is not valid.', token_required: 'Type the recovery TOKEN from your e-mail first.', new_password_short: 'The new password is too short.' })[x] || ('Not done (' + (x || 'error') + ').');
 }
 
-function zzz_chain_puzzle(level) {
+function zzz_chain_puzzle(level, api) {
   return new Promise((resolve) => {
     let lv = Math.max(1, Math.min(6, Number(level) || 1)), pz = null, ans = [], phase = 'load', done = false, timers = [];
     const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv'; o.setAttribute('data-zzz-nodraft', '1');
-    const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', 'VERSO CHAIN CHECK'); b.style.cssText = 'text-align:center';
-    const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = 'VERSO CHAIN CHECK'; b.appendChild(t);
+    const zzzPzTitle = (api && api.title) || 'VERSO CHAIN CHECK';
+    const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', zzzPzTitle); b.style.cssText = 'text-align:center' + (api ? ';border-color:#c0c0c0' : '');
+    const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = zzzPzTitle; if (api) t.style.color = '#c0c0c0'; b.appendChild(t);
     zzz_mark_apply(b);
     const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text'; sub.style.minHeight = '36px'; b.appendChild(sub);
     const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 280 280'); svg.style.cssText = 'width:100%;max-width:280px;height:auto;touch-action:manipulation;user-select:none;-webkit-user-select:none';
@@ -30966,7 +30968,7 @@ function zzz_chain_puzzle(level) {
     const dots = () => { mid.textContent = pz ? '●'.repeat(ans.length) + '○'.repeat(Math.max(0, pz.seq.length - ans.length)) : ''; mid.setAttribute('font-size', pz && pz.seq.length > 6 ? '16' : '22'); };
     async function start() {
       timers.forEach(clearTimeout); timers = []; phase = 'load'; ans = []; pz = null; mid.textContent = '…'; sub.textContent = 'Getting a chain …';
-      let r = null; try { r = await zzz4r7_rpc('verso_puzzle_new', { p_level: lv }); } catch (e) {}
+      let r = null; try { r = api ? await api.newFn(lv) : await zzz4r7_rpc('verso_puzzle_new', { p_level: lv }); } catch (e) {}
       if (done) return;
       if (!r || !r.ok) { sub.textContent = r && r.reason === 'busy' ? 'Verso is busy - try again in a minute.' : 'No connection to Verso - try again.'; mid.textContent = ''; return; }
       pz = r; phase = 'show'; sub.textContent = 'WATCH - ' + pz.seq.length + ' links light up. Then tap them in the same order.'; mid.textContent = '👁';
@@ -30975,7 +30977,7 @@ function zzz_chain_puzzle(level) {
     }
     async function check() {
       phase = 'check'; sub.textContent = 'Checking …';
-      let r = null; try { r = await zzz4r7_rpc('verso_puzzle_check', { p_id: pz.id, p_answer: ans }); } catch (e) {}
+      let r = null; try { r = api ? await api.checkFn(pz.id, ans) : await zzz4r7_rpc('verso_puzzle_check', { p_id: pz.id, p_answer: ans }); } catch (e) {}
       if (done) return;
       timers.forEach(clearTimeout); timers = [];
       if (r && r.ok && r.pass) { links.forEach(el => { el.setAttribute('stroke', '#7CFC9A'); el.setAttribute('stroke-width', 11); }); mid.textContent = '✓'; mid.setAttribute('font-size', '40'); sub.textContent = 'CHAIN CLOSED ✓'; try { zzz_haptic_pulse(30); } catch (e) {} later(() => end(r.pass), 900); return; }
@@ -58274,7 +58276,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-25 19:17';
+const VERSO_BUILD = '2026-11-25 20:20';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -69189,6 +69191,7 @@ function zzz6f36_render_login(body) {
 
   body.appendChild(row);
   body.appendChild(zzz10dm_build_row());
+  { const zzzOvRow = zzz_overse_row(); if (zzzOvRow) body.appendChild(zzzOvRow); }
 
   const newRow = document.createElement('div');
   newRow.className = 'zzz14b17-new';
@@ -71273,6 +71276,107 @@ async function zzz_my_device_restore() {
   }
 }
 
+const ZZZ_OVERSE_LOGIN_URL = 'https://oxwmhbwrxvwcgfyfpcpf.supabase.co/functions/v1/overse-login';
+let zzzOverseLogin = false;
+function zzz_overse_beta() { try { return localStorage.getItem('verso_ring') === 'beta'; } catch (e) { return false; } }
+function zzz_overse_row() {
+  if (zzz6f7_isLoggedIn || !zzz_overse_beta()) { zzzOverseLogin = false; return null; }
+  const row = document.createElement('div'); row.className = 'zzz10dm-row'; row.setAttribute('data-5s', 'LOGIN SOURCE');
+  const lbl = document.createElement('span'); lbl.className = 'zzz10dm-label'; lbl.textContent = 'LOGIN'; row.appendChild(lbl);
+  [['verso', 'VERSO'], ['overse', 'OVERSE']].forEach(([key, text]) => {
+    const chip = document.createElement('button'); chip.type = 'button'; chip.dataset.src = key; chip.textContent = text;
+    chip.className = 'zzz10dm-chip' + ((key === 'overse') === zzzOverseLogin ? ' zzz10dm-on' : '');
+    if (key === 'overse') { chip.classList.add('zzz-overse-chip'); chip.title = 'BETA test: log in through OVERSE (only accounts switched to OVERSE)'; }
+    else chip.title = 'Log in with Verso as today';
+    chip.addEventListener('click', () => {
+      zzzOverseLogin = key === 'overse';
+      row.querySelectorAll('.zzz10dm-chip').forEach(c => c.classList.toggle('zzz10dm-on', (c.dataset.src === 'overse') === zzzOverseLogin));
+    });
+    row.appendChild(chip);
+  });
+  return row;
+}
+async function zzz_overse_call(payload) {
+  try {
+    const resp = await Promise.race([
+      fetch(ZZZ_OVERSE_LOGIN_URL, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('overse timeout')), 15000))
+    ]);
+    const j = await resp.json().catch(() => null);
+    return j || { ok: false, reason: 'overse_unreachable' };
+  } catch (e) { return { ok: false, reason: 'overse_unreachable' }; }
+}
+const ZZZ_OVERSE_CHAIN_API = {
+  title: 'OVERSE CHAIN CHECK',
+  newFn: (lv) => zzz_overse_call({ action: 'chain_new', level: lv }),
+  checkFn: (id, ans) => zzz_overse_call({ action: 'chain_check', id, answer: ans })
+};
+async function zzz_overse_login(username, password) {
+  const u = zzz10v1_normalize(username);
+  const mode = zzz10dmPending;
+
+  const loginCall = async (pass) => zzz_overse_call({ action: 'login', client: 'verso', username: u, password, dk: (await zzz_dk_sign(u)) || undefined,
+    deviceId: zzz_device_id(), keepSignedIn: mode === 'my', trusted: mode === 'trusted' ? true : undefined, puzzlePass: pass || undefined });
+  let r = await loginCall(null);
+  if (r && r.ok === false && r.reason === 'chain_check_required') {
+    zzz0r1_set_db_connection_state(true);
+    const pass = await zzz_chain_puzzle(r.level || 1, ZZZ_OVERSE_CHAIN_API);
+    if (!pass) return { verified: false, reason: 'chain_check_cancelled' };
+    r = await loginCall(pass);
+  }
+  if (!r || r.ok !== true || !r.pending) return { verified: false, reason: (r && r.reason) || 'overse_unreachable' };
+
+  let tok = null;
+  for (let tries = 0; tries < 5 && !tok; tries++) {
+    const v = await zzz_verse_ask({ mode: 'phrase' }, 'OVERSE · MV PHRASE', 'OVERSE login: your MV PHRASE finishes it. Forgotten? Cancel and use RECOVERY.', null);
+    if (v == null) return { verified: false, reason: 'mv_not_confirmed' };
+    zzz6f2_show_toast('Checking…');
+    const m = await zzz_overse_call({ action: 'mv', pending: r.pending, phrase: v });
+    if (m && m.ok === true && m.overseToken) { tok = m.overseToken; break; }
+    const why = m && m.reason;
+    if (why === 'mv_locked' || why === 'no_login' || why === 'overse_unreachable') return { verified: false, reason: why };
+    zzz6f2_show_toast('Wrong MV PHRASE - try again.', 'warn', 3500);
+  }
+  if (!tok) return { verified: false, reason: 'mv_not_confirmed' };
+
+  const gateCall = async (pass) => {
+    const resp = await Promise.race([
+      fetch(`${SUPABASE_URL}/functions/v1/verso-auth-gate`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+        body: JSON.stringify({ action: 'overse_login', username: u, overseToken: tok, deviceId: zzz_device_id(), keep_signed_in: mode === 'my', dk: (await zzz_dk_sign(u)) || undefined, puzzlePass: pass || undefined }) }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('verso-auth-gate timeout')), 12000))
+    ]);
+    return resp.json();
+  };
+  let g;
+  try {
+    g = await gateCall(null);
+    if (g && g.verified === false && g.reason === 'chain_check_required') {
+      const pass = await zzz_chain_puzzle(g.level || 1);
+      if (!pass) return { verified: false, reason: 'chain_check_cancelled' };
+      g = await gateCall(pass);
+    }
+  } catch (e) { zzz0r1_set_db_connection_state(false, (e && e.message) || String(e), true); return { verified: false, reason: 'lookup_failed' }; }
+  zzz0r1_set_db_connection_state(true);
+  if (!g || g.verified !== true || !g.token || !g.sessionId) return { verified: false, reason: (g && g.reason) || 'session_failed' };
+  zzz0auth_sessionToken = g.token; zzz0auth_tokenAt = Date.now();
+  if (g.trusted) {
+    zzz_my_device_clear();
+    zzz_session_start(u, g.sessionId);
+    zzz_sessionKind = 'trusted';
+  } else {
+    if (mode === 'my') zzz_my_device_save(u, g.sessionId); else zzz_my_device_clear();
+    zzz_session_start(u, g.sessionId);
+  }
+  try { zzz_login_alert_apply(g.alert || null); } catch (e) {}
+  if (!(await zzz_session_mv_gate())) { try { zzz_session_stop(); } catch (e) {} zzz0auth_sessionToken = null; try { zzz_my_device_clear(); } catch (e) {} return { verified: false, reason: 'mv_not_confirmed' }; }
+  if (g.trusted) { try { zzz6f2_show_toast('OVERSE · TRUSTED SESSION next to MY DEVICE - until ' + new Date(g.ends_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) + '.', 'ok', 6000); } catch (e) {} return { verified: true }; }
+  if (mode === 'foreign') setTimeout(() => { zzz4r7_rpc('verso_session_foreign_mark').catch(() => {}); }, 2500);
+  else if (mode === 'my') { setTimeout(zzz10dm_foreign_remind, 7000); setTimeout(() => { zzz_dk_register(); }, 1500); }
+  setTimeout(() => { try { zzz0auth_check_bridge(); } catch (e) {} }, 300);
+  try { zzz6f2_show_toast('Logged in through OVERSE ✓', 'ok', 3000); } catch (e) {}
+  return { verified: true };
+}
+
 async function zzz10r8_verify_login_password(username, enteredPassword) {
 
   if (zzz_sessionId && zzz_sessionUsername && zzz_sessionUsername !== zzz10v1_normalize(username)) {
@@ -71285,6 +71389,8 @@ async function zzz10r8_verify_login_password(username, enteredPassword) {
       }).catch(() => {});
     } catch (e) {   }
   }
+
+  if (zzzOverseLogin) { zzzOverseLogin = false; return zzz_overse_login(username, enteredPassword); }
 
   if (zzz10dmPending === 'trusted') {
     try {
@@ -71418,6 +71524,7 @@ async function zzz6f36_submit_login(options = {}) {
         mv_not_confirmed: 'the login was not finished - the MV PHRASE was not confirmed',
         session_active_elsewhere: 'this account is logged in on another device. A second login is not allowed - log out there, or use the emergency account recovery',
         too_many_attempts: 'too many wrong passwords in a row - wait 15 minutes and try again (the account owner was notified by email)',
+        overse_not_enabled: 'this account does not log in through OVERSE yet - choose LOGIN: VERSO', overse_token_invalid: 'OVERSE login could not be confirmed - try again', overse_token_used: 'OVERSE login was already used - try again', overse_unreachable: 'OVERSE is not reachable now - choose LOGIN: VERSO', not_allowed: 'OVERSE does not serve this app', mv_locked: 'too many wrong MV PHRASES - wait 15 minutes', no_login: 'the OVERSE login expired - try again', not_applicable: 'TRUSTED SESSION is not possible now (exception off or MY DEVICE not logged in)', mv_not_set: 'no MV PHRASE set for this account',
         chain_check_required: 'VERSO CHAIN CHECK is needed on this device - try again', chain_check_cancelled: 'VERSO CHAIN CHECK was closed - this device is not known yet, the check comes before the password'
       }[verifyResult.reason] || 'unknown reason';
 
@@ -71825,6 +71932,7 @@ function zzz10m2_render_login_setup(body) {
 
   body.appendChild(row);
   body.appendChild(zzz10dm_build_row());
+  { const zzzOvRow = zzz_overse_row(); if (zzzOvRow) body.appendChild(zzzOvRow); }
 
   if (zzz6f7_isLoggedIn && zzz10dmActive === 'my') zzz10dm_trusted_quick(body);
 }
