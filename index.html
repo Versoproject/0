@@ -56945,6 +56945,7 @@ function open_settings_workspace() {
     try { const mt = document.createElement('div'); mt.className = 'zzz10m5-box'; const h = document.createElement('h3'); h.textContent = 'KEYMARK · CHAIN CHECK'; mt.append(h, zzz_mark_tools()); tabContent.appendChild(mt); } catch (e) {}
     try { zzz_verse_section_render(tabContent); } catch (e) {}
     try { zzz_mv_layer_render(tabContent); } catch (e) {}
+    try { zzz_overse_mv_render(tabContent); } catch (e) {}
   } else if (zzz10_0ActiveTab === 'settings' && typeof zzz16_render_settings === 'function') {
     zzz16_render_settings(tabContent);
     try {
@@ -58277,7 +58278,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-25 20:32';
+const VERSO_BUILD = '2026-11-25 20:46';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -71376,6 +71377,91 @@ async function zzz_overse_login(username, password) {
   setTimeout(() => { try { zzz0auth_check_bridge(); } catch (e) {} }, 300);
   try { zzz6f2_show_toast('Logged in through OVERSE ✓', 'ok', 3000); } catch (e) {}
   return { verified: true };
+}
+
+const ZZZ_OVERSE_MV_URL = 'https://oxwmhbwrxvwcgfyfpcpf.supabase.co/functions/v1/overse-mv';
+async function zzz_overse_post(url, payload) {
+  try {
+    const resp = await Promise.race([
+      fetch(url, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('overse timeout')), 15000))
+    ]);
+    return (await resp.json().catch(() => null)) || { ok: false, reason: 'overse_unreachable' };
+  } catch (e) { return { ok: false, reason: 'overse_unreachable' }; }
+}
+function zzz_overse_why(r) {
+  const x = r && r.reason;
+  return ({ my_device_only: 'Only on MY DEVICE - this device is not registered for your account.', wrong_phrase: 'Wrong MV PHRASE.', mv_locked: 'Too many wrong MV PHRASES - wait 15 minutes.',
+    verse_locked: 'Too many wrong answers - wait 15 minutes.', no_grant: 'The OVERSE permission expired - start again.', verse_length: 'The verse needs 7 to 40 words.',
+    wrong_or_expired: 'Not right (or expired) - try again.', overse_unreachable: 'OVERSE is not reachable now - try later.', not_allowed: 'OVERSE does not serve this app.', no_verse: 'No OVERSE verse and no MV PHRASE.' })[x] || ('Not done (' + (x || 'error') + ').');
+}
+function zzz_overse_dialog(title, text, fields, okLabel) {
+  return new Promise((resolve) => {
+    const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv';
+    const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', 'OVERSE · MV SETUP'); b.setAttribute('data-zzz-secure', '1'); b.style.borderColor = '#c0c0c0';
+    const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = title; t.style.color = '#c0c0c0'; b.appendChild(t);
+    try { zzz_mark_apply(b); } catch (e) {}
+    const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text'; sub.textContent = text; b.appendChild(sub);
+    const ins = fields.map((f) => { const i = zzz_vkb_make_secret(f.id, 'entry-cell zzz6f36-login-local-input', f.label, f.hint); i.style.margin = '6px 0'; b.appendChild(i); return i; });
+    const st = document.createElement('div'); st.className = 'zzz-media-diss-s'; st.style.minHeight = '16px'; b.appendChild(st);
+    const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
+    const y = document.createElement('button'); y.type = 'button'; y.className = 'zzz-media-btn is-on'; y.textContent = okLabel || 'CONFIRM';
+    const n = document.createElement('button'); n.type = 'button'; n.className = 'zzz-media-btn'; n.textContent = 'CANCEL';
+    let done = false; const end = (v) => { if (done) return; done = true; ins.forEach(i => { try { i.value = ''; } catch (e) {} }); o.remove(); resolve(v); };
+    n.addEventListener('click', () => end(null));
+    new MutationObserver((x, obs) => { if (!o.isConnected) { obs.disconnect(); end(null); } }).observe(document.body, { childList: true });
+    y.addEventListener('click', () => { const v = ins.map(i => String(i.value || '').trim()); if (v.some(x => !x)) { st.textContent = 'Fill in every field with the Verso keyboard.'; return; } end(v); });
+    ins.forEach(i => { i._vkbOk = y; });
+    row.append(y, n); b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
+  });
+}
+async function zzz_overse_set_verse() {
+  const u = zzz10v1_normalize(zzz_sessionUsername || '');
+  if (!u) { zzz6f2_show_toast('Log in first.', 'warn'); return; }
+  const ph = await zzz_verse_ask({ mode: 'phrase' }, 'OVERSE · MV PHRASE', 'OVERSE checks it is you by itself: this device (MY DEVICE) + your MV PHRASE.', null);
+  if (ph == null) return;
+  zzz6f2_show_toast('Checking…');
+  const g = await zzz_overse_post(ZZZ_OVERSE_MV_URL, { action: 'mv_grant', client: 'verso', username: u, dk: (await zzz_dk_sign(u)) || undefined, phrase: ph });
+  if (!g || g.ok !== true || !g.grant) { zzz6f2_show_toast(zzz_overse_why(g), 'warn', 4500); return; }
+  const v = await zzz_overse_dialog('+ OVERSE VERSE', 'At least 7 words, max. 40 - different from your Verso verses. OVERSE keeps only fingerprints of the single words (its own secret key) and asks 2 random ones at OVERSE recovery.', [{ id: 'versoOverseVerseInput', label: 'OVERSE VERSE', hint: 'the whole verse, words with spaces' }], 'SAVE');
+  if (!v) return;
+  const n = zzz_verse_words(v[0]).length;
+  if (n < 7 || n > 40) { zzz6f2_show_toast('The verse needs 7 to 40 words.', 'warn', 4000); return; }
+  const r = await zzz_overse_post(ZZZ_OVERSE_LOGIN_URL, { action: 'verse_set', grant: g.grant, verse: v[0] });
+  if (r && r.ok) { zzz6f2_show_toast('✓ OVERSE VERSE saved (' + r.word_count + ' words).', 'ok', 4000); try { zzz_haptic_pulse(30); } catch (e) {} }
+  else zzz6f2_show_toast(zzz_overse_why(r), 'warn', 4500);
+}
+async function zzz_overse_test_verse() {
+  const u = zzz10v1_normalize(zzz_sessionUsername || '');
+  if (!u) { zzz6f2_show_toast('Log in first.', 'warn'); return; }
+  const ch = await zzz_overse_post(ZZZ_OVERSE_LOGIN_URL, { action: 'verse_challenge', purpose: 'check', username: u });
+  if (!ch || ch.ok !== true || !ch.challenge) { zzz6f2_show_toast(zzz_overse_why(ch), 'warn', 4000); return; }
+  let body;
+  if (ch.phrase) {
+    const ph = await zzz_verse_ask({ mode: 'phrase' }, 'OVERSE · TEST', 'No OVERSE verse yet - OVERSE asks your MV PHRASE instead.', null);
+    if (ph == null) return; body = { phrase: ph };
+  } else {
+    const w = await zzz_overse_dialog('OVERSE · TEST VERSE', 'Practise - nothing changes. Word ' + ch.positions[0] + ' and word ' + ch.positions[1] + ' of your OVERSE verse.',
+      [{ id: 'versoOverseW1', label: 'WORD ' + ch.positions[0], hint: 'one word' }, { id: 'versoOverseW2', label: 'WORD ' + ch.positions[1], hint: 'one word' }]);
+    if (!w) return; body = { words: w };
+  }
+  const r = await zzz_overse_post(ZZZ_OVERSE_LOGIN_URL, Object.assign({ action: 'verse_answer', challenge: ch.challenge }, body));
+  if (r && r.ok) zzz6f2_show_toast(ch.phrase ? '✓ Right - and no OVERSE verse yet: set one with + OVERSE VERSE.' : '✓ Your OVERSE verse is right.', 'ok', 4000);
+  else zzz6f2_show_toast(zzz_overse_why(r), 'warn', 4000);
+}
+function zzz_overse_mv_render(host) {
+  const b = document.createElement('div'); b.className = 'zzz10m5-box'; b.style.marginTop = '10px'; b.style.borderColor = '#c0c0c0'; b.setAttribute('data-5s', 'OVERSE · MV SETUP');
+  const h = document.createElement('h3'); h.textContent = 'OVERSE · MV SETUP'; h.style.color = '#c0c0c0'; b.appendChild(h);
+  const p = (x) => { const d = document.createElement('div'); d.className = 'zzz10m5-txt'; d.textContent = x; b.appendChild(d); return d; };
+  p('OVERSE (the verification part above Verso) keeps its OWN verse with its own secret key - separate from your Verso verses. It will be your way back at OVERSE recovery. Setting it works only on MY DEVICE, after OVERSE checks your MV PHRASE itself.');
+  const row = document.createElement('div'); row.className = 'zzz-media-confirm-row'; row.style.flexWrap = 'wrap';
+  const mk = (label, title, fn, big) => { const x = document.createElement('button'); x.type = 'button'; x.className = big ? 'zzz10m5-big' : 'zzz-media-btn'; x.textContent = label; x.title = title;
+    if (big) { x.style.borderColor = '#c0c0c0'; x.style.color = '#c0c0c0'; } x.addEventListener('click', fn); row.appendChild(x); return x; };
+  mk('+ OVERSE VERSE', 'Set your OVERSE verse (7-40 words). MY DEVICE + MV PHRASE first.', zzz_overse_set_verse, true);
+  mk('TEST OVERSE VERSE', 'Practise: OVERSE asks 2 random words - nothing changes.', zzz_overse_test_verse);
+  mk('TRY OVERSE CHAIN CHECK', 'Try the OVERSE CHAIN CHECK - nothing changes.', async () => { const pass = await zzz_chain_puzzle(1, ZZZ_OVERSE_CHAIN_API); if (pass) zzz6f2_show_toast('✓ OVERSE CHAIN CHECK closed.', 'ok', 3000); });
+  b.appendChild(row);
+  host.appendChild(b);
 }
 
 async function zzz10r8_verify_login_password(username, enteredPassword) {
