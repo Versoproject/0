@@ -58216,7 +58216,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-25 15:35';
+const VERSO_BUILD = '2026-11-25 16:29';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -68214,11 +68214,43 @@ function zzz_vkb_calc_box(typeFn, target) {
   setTimeout(zzz_vkb_calc_paint, 0);
   return box;
 }
+
+function zzz_vkb_in_secure(t) {
+  try {
+    if (!t || !t.closest) return false;
+    if (t.matches(ZZZ_MARK_SECURE) || t.closest('[data-zzz-secure="1"]')) return true;
+    const ov = t.closest('.zzz-media-confirm, .entry-modal-overlay, .zzz-context-window');
+    return !!(ov && ov.querySelector(ZZZ_MARK_SECURE));
+  } catch (e) { return false; }
+}
+
+function zzz_passboard_help() {
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv';
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', 'PASSBOARD SUPPORT');
+  const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = 'VERSO PASSBOARD'; b.appendChild(t);
+  const lines = [
+    'This keyboard is for logins and secrets. VI, voice input, the copy BOX and quick texts are off here - nothing you type is read, kept or sent anywhere else.',
+    'Real Verso: your KEYMARK frames this keyboard and lies under the OK key. No mark or a wrong mark = do not type, close the page.',
+    'Login help and recovery will be at OVERSE, on its own address (coming) - never through a link inside an app or a message.'
+  ];
+  lines.forEach(x => { const p = document.createElement('div'); p.className = 'zzz-media-confirm-text'; p.textContent = x; p.style.marginBottom = '8px'; b.appendChild(p); });
+  const close = document.createElement('button'); close.type = 'button'; close.className = 'zzz-media-btn'; close.textContent = 'CLOSE';
+  close.addEventListener('click', () => o.remove()); b.appendChild(close);
+  const x = document.createElement('button'); x.type = 'button'; x.textContent = '\u2715'; x.setAttribute('aria-label', 'Close');
+  x.style.cssText = 'position:absolute;top:6px;right:8px;background:none;border:0;color:#d4af37;font-size:20px;cursor:pointer';
+  x.addEventListener('click', () => o.remove()); b.style.position = 'relative'; b.appendChild(x);
+  o.addEventListener('pointerdown', (e) => { if (e.target === o) o.remove(); });
+  o.appendChild(b);
+  o.style.zIndex = '2147483600';
+  document.body.appendChild(o);
+}
 function zzz_vkb_show(target, shuffled, title, mode, opts) {
   zzz_vkb_hide();
   zzz_vkbOpenedAt = Date.now();
   const isText = !!(opts && opts.text);
   const isSecret = !isText && !(opts && opts.secret === false);
+
+  const isGuard = isSecret || (isText && zzz_vkb_in_secure(target));
   if (isText) shuffled = false;
   else { try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) {} }
   const panel = document.createElement('div');
@@ -68234,7 +68266,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
   const headMode = document.createElement('span');
   headMode.className = 'zzz-vkb-head-mode';
 
-  const vkbName = isSecret ? 'VERSO PASSBOARD' : 'VERSO MULTIBOARD';
+  const vkbName = isGuard ? 'VERSO PASSBOARD' : 'VERSO MULTIBOARD';
   headMode.textContent = shuffled ? vkbName + ' - FOREIGN (keys shuffled)' : (mode === 'trusted' ? vkbName + ' - TRUSTED' : vkbName);
 
   const headClose = document.createElement('button');
@@ -68304,12 +68336,13 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     { t: '&', title: '& - mention a user (typing it offers PACKS)' }
   ];
 
-  if (isText) chipDefs.push({ t: '\u{1F642}', emoji: true, title: 'Emoji - pick one' });
+  if (isText && !isGuard) chipDefs.push({ t: '\u{1F642}', emoji: true, title: 'Emoji - pick one' });
 
   const starDef = { t: '\u2606', sym: true, title: 'Symbols ^ [ ] { } < > \\ | _ ~ `' };
-  if (!isText) chipDefs.push(starDef);
+  if (!isText || isGuard) chipDefs.push(starDef);
+  if (isGuard) chipDefs.push({ t: '\u2753', help: true, title: 'PASSBOARD support', cls: 'is-emoji' });
 
-  if (isText) {
+  if (isText && !isGuard) {
     chipDefs.push({ t: '\u{1F4CB}', clip: true, title: 'BOX - recent copies', cls: 'is-emoji' });
 
     { const last = (zzz_clip_list()[0] || '').replace(/^https?:\/\/(www\.)?/, ''); chipDefs.push({ t: '\u2398' + (last ? ' ' + (last.length > 10 ? last.slice(0, 9) + '\u2026' : last) : ''), paste: true, title: 'PASTE - the last copied text', cls: 'is-text' }); }
@@ -68404,6 +68437,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
       if (downX === null || Math.abs(e.clientX - downX) > 10) { downX = null; return; }
       downX = null;
       if (d.emoji) openEmoji('emoji'); else if (d.sym) openEmoji('sym'); else if (d.clip) openEmoji('clip');
+      else if (d.help) { closeEmoji(); zzz_passboard_help(); }
       else if (d.paste) {
         closeEmoji();
         (async () => { let t = ''; try { t = await navigator.clipboard.readText(); } catch (er) {} if (!t) t = zzz_clip_list()[0] || '';
@@ -68417,7 +68451,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
     chips.appendChild(c);
   });
 
-  if (isText) {
+  if (isText && !isGuard) {
     const ai = document.createElement('button');
     ai.type = 'button'; ai.tabIndex = -1; ai.className = 'zzz-vkb-chip zzz-vkb-ai';
     ai.title = 'VI - tap = MEDIA CONTROL on / off';
@@ -68889,7 +68923,7 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
 
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const mic = ctrlKey(rc, ZZZ_VKB_MIC_SVG, () => {
-      if (isSecret || !SR) return;
+      if (isGuard || !SR) return;
       try {
         if (window.zzzVkbRec) { window.zzzVkbRec.stop(); return; }
         let warned = false; try { warned = localStorage.getItem('zzz_vkb_mic_ext') === '1'; } catch (e) {}
@@ -68908,8 +68942,8 @@ function zzz_vkb_show(target, shuffled, title, mode, opts) {
         window.zzzVkbRec = rec; mic.classList.add('is-on'); rec.start();
       } catch (e) { window.zzzVkbRec = null; mic.classList.remove('is-on'); zzz_user_error('Voice input did not work - try again.', e, '[Zzz14-B11:VKB-MIC-WEB]'); }
     }, 'zzz-vkb-mic');
-    mic.disabled = isSecret || !SR;
-    mic.title = isSecret ? 'Voice input is off for passwords and other secrets' : (SR ? 'MIC: voice input - EXTERNAL (the browser sends your voice to ' + (/Edg\//.test(navigator.userAgent) ? 'Microsoft' : 'Google') + ')' : 'Voice input is not available in this browser');
+    mic.disabled = isGuard || !SR;
+    mic.title = isGuard ? 'Voice input is off in login windows, passwords and other secrets' : (SR ? 'MIC: voice input - EXTERNAL (the browser sends your voice to ' + (/Edg\//.test(navigator.userAgent) ? 'Microsoft' : 'Google') + ')' : 'Voice input is not available in this browser');
     mic.setAttribute('aria-label', mic.title);
     if (isText) {
 
