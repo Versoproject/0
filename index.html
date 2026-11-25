@@ -31231,7 +31231,7 @@ function zzz_conn_text_row(host, label, get, set, changed, ph) {
 function zzz_conn_new() { return { id: 'c' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36), n: '', link: '', user: '', pw: '', totp: null, tokens: [], codes: '', extra: [], note: '', need: ['pw'], auto: false, at: Date.now() }; }
 
 const ZZZ_CONN_CATS = [
-  ['media', 'MEDIA', ['iptv', 'playlist', 'video', 'music', 'radio', 'podcast']], ['ai', 'AI SERVICES', ['chat', 'voice', 'image']],
+  ['media', 'MEDIA', ['iptv', 'reels', 'playlist', 'video', 'music', 'radio', 'podcast']], ['ai', 'AI SERVICES', ['chat', 'voice', 'image']],
   ['apps', 'APPS', ['dev', 'office', 'social', 'shop']], ['system', 'SYSTEM', ['network', 'device', 'security']],
   ['cloud', 'CLOUD SPACE', ['storage', 'backup', 'mail']], ['data', 'DATA', ['database', 'api']], ['games', 'GAMES', ['platform']],
   ['public', 'PUBLIC', ['web', 'forum', 'news']], ['private', 'PRIVATE', ['bank', 'home', 'other']]];
@@ -31255,6 +31255,7 @@ function zzz_conn_recognize(link) {
   if (/\/(player_api|get|xmltv|panel_api)\.php$/.test(path) || (q.has('username') && q.has('password'))) {
     out.cat = 'media'; out.kind = 'iptv'; out.user = q.get('username') || ''; out.pw = q.get('password') || ''; out.label = 'IPTV account (Xtream Codes)'; out.clean = out.server; }
   else if (/\.m3u8?$/.test(path)) { out.cat = 'media'; out.kind = 'playlist'; out.label = 'playlist'; }
+  else if (/(^|\.)(instagram\.com|tiktok\.com)$/.test(host)) { out.cat = 'media'; out.kind = 'reels'; out.label = 'reels service'; out.clean = u.protocol + '//' + u.host; }
   else if (/(^|\.)(youtube\.com|youtu\.be)$/.test(host)) { out.cat = 'media'; out.kind = 'video'; out.label = 'video'; }
   else if (/(^|\.)spotify\.com$/.test(host)) { out.cat = 'media'; out.kind = 'music'; out.label = 'music'; }
   else if (/(^|\.)github\.com$/.test(host)) { out.cat = 'apps'; out.kind = 'dev'; out.label = 'developer account'; }
@@ -31435,7 +31436,7 @@ async function zzz_conn_open(startTab, opt) {
   if (!st.ok) { zzz6f2_show_toast(st.why === 'key' ? 'Your personal key is locked - open it first (Multi Verification › KEY LOCK), then the connectors open.' : 'These connectors were locked with another key on this device - they cannot be opened with this one.', 'warn', 6000); return; }
   const data = Object.assign({ v: 2, conn: [], codes: [] }, st.data || {});
   if (!Array.isArray(data.conn)) data.conn = []; if (!Array.isArray(data.codes)) data.codes = [];
-  const save = async () => { if (!(await zzz_vault_save('connectors', data))) zzz6f2_show_toast('Not saved - the personal key is locked.', 'warn'); infoPaint(); };
+  const save = async () => { if (!(await zzz_vault_save('connectors', data))) zzz6f2_show_toast('Not saved - the personal key is locked.', 'warn'); infoPaint(); try { zzz_reels_svc_mirror(data); } catch (e) {} };
   let tab = startTab === 'codes' ? 'codes' : 'conn', showOff = false, openId = null, timer = null, find = '';
   const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv';
   const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', 'VERSO GATE CONNECTORS'); b.style.cssText = 'max-height:88vh;overflow:auto';
@@ -31637,8 +31638,10 @@ async function zzz_conn_open(startTab, opt) {
   o.addEventListener('click', (e) => { if (e.target === o) close(); });
   o.appendChild(b); document.body.appendChild(o);
   if (await zzz_conn_takeover(data)) await save();
+  try { zzz_reels_svc_mirror(data); } catch (e) {}
 
   if (opt && opt.iptv) { const c = zzz_conn_new(); c.tags = [zzz_conn_tag('media', 'iptv')]; c.n = 'IPTV'; data.conn.push(c); openId = c.id; }
+  else if (opt && opt.reels) { const c = zzz_conn_new(); c.tags = [zzz_conn_tag('media', 'reels', 'instagram.com')]; c.n = 'Instagram'; c.link = 'https://www.instagram.com'; data.conn.push(c); openId = c.id; await save(); }
   else if (opt && opt.tv) { let c = data.conn.find(x => x.tv === opt.tv && !x.off);
     if (!c) { const s = zzz_tv_src_of(opt.tv) || {}; c = zzz_conn_new(); c.tv = opt.tv; c.n = String(s.name || s.host || 'IPTV').slice(0, 40); c.link = s.host ? 'http://' + s.host : ''; c.need = ['pw'];
       c.tags = [zzz_conn_tag('media', 'iptv', s.host || '')]; c.note = 'Made from the TV source - its login is kept by VERSO GATE for TV; type USERNAME / PASSWORD here too if you want them in your vault.'; data.conn.push(c); await save(); }
@@ -49274,14 +49277,14 @@ function zzz_set_overview(host) {
 const ZZZ_DEV_KEYS = ['verso_kb_prefs_v1', 'zzz23tr_prefs', 'zzz23tr_chat', 'zzz_dia_sk', 'zzz_vkb_size', 'zzz_vkb_page', 'zzz_media_on',
   'zzz_media_offline', 'zzz_media_loop', 'zzz_media_clip_auto', 'zzz_mb_ball', 'zzz_ci_wx', 'zzz56_private_mode', 'zzz56_chat_modes',
   'zzz1cn_setup', 'zzz1r37_preset_tabs', 'zzz5w5cm_shortcuts', 'zzz6f48_mini_hidden_wraps', 'verso_reads_share',
-  'verso_native_settings', 'zzz_mm_list', 'zzz_files_px', 'zzz_files_mode', 'zzz_pack_on', 'zzz_float_pos', 'zzz_prio_mem', 'zzz_brw_engine', 'zzz_brw_opts', 'zzz_apps_off', 'zzz_tv_player'];
+  'verso_native_settings', 'zzz_mm_list', 'zzz_files_px', 'zzz_files_mode', 'zzz_pack_on', 'zzz_float_pos', 'zzz_prio_mem', 'zzz_brw_engine', 'zzz_brw_opts', 'zzz_apps_off', 'zzz_tv_player', 'zzz_reels_svc'];
 const zzzDev = { at: 0, busy: false, key: '', rows: null, fresh: false };
 
 const ZZZ_DEV_SET_INFO = [
   ['verso_kb_prefs_v1', 'Verso keyboard · languages and keys', ''], ['zzz_vkb_size', 'Verso keyboard · size', ''], ['zzz_vkb_page', 'Verso keyboard · first page (letters / digits)', ''],
   ['zzz23tr_prefs', 'VERSO TRANSLATOR · languages', ''], ['zzz23tr_chat', 'VERSO TRANSLATOR · per chat', ''], ['zzz_dia_sk', 'Voice · VOICE-DIA-SK', ''],
   ['zzz_media_on', 'MEDIA CENTER · on', ''], ['zzz_media_offline', 'MEDIA CENTER · offline', ''], ['zzz_media_loop', 'MEDIA CENTER · loop', ''], ['zzz_media_clip_auto', 'MEDIA CENTER · copied links', ''],
-  ['zzz_files_px', 'FILE SETUP · photo copy size', ''], ['zzz_files_mode', 'FILE FEEDER · MODE (OFF / HYBRID / ON)', ''], ['zzz_pack_on', 'VERSO APPS · VIEWER MODULES on / off', ''], ['zzz_apps_off', 'VERSO APPS · services switched off (RECOMMENDED / EXTERNAL)', ''], ['zzz_tv_player', 'MEDIA SETUP · TV PLAYER (VERSO PLAYER / TELEVIZO)', ''],
+  ['zzz_files_px', 'FILE SETUP · photo copy size', ''], ['zzz_files_mode', 'FILE FEEDER · MODE (OFF / HYBRID / ON)', ''], ['zzz_pack_on', 'VERSO APPS · VIEWER MODULES on / off', ''], ['zzz_apps_off', 'VERSO APPS · services switched off (RECOMMENDED / EXTERNAL)', ''], ['zzz_tv_player', 'MEDIA SETUP · TV PLAYER (VERSO PLAYER / TELEVIZO)', ''], ['zzz_reels_svc', 'MC › REELS · services with a connector (names only)', ''],
   ['zzz_mb_ball', 'VERSO MULTIBOARD · +VI+ ball', 'app'], ['verso_native_settings', 'Verso app · keyboard + reader', 'app'],
   ['zzz56_private_mode', 'PRIVATE mode', ''], ['zzz56_chat_modes', 'Chats · private / priority per chat', ''], ['zzz1cn_setup', 'Notes · SETUP', ''],
   ['zzz1r37_preset_tabs', 'PRESET tabs', ''], ['zzz5w5cm_shortcuts', 'COMMUNICATION · shortcuts', ''], ['zzz6f48_mini_hidden_wraps', 'MINI rows hidden', ''], ['verso_reads_share', 'READ RECEIPTS · share', ''], ['zzz_mm_list', 'MM / MMM list · LIMIT + KIND', ''],
@@ -58176,7 +58179,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-24 22:46';
+const VERSO_BUILD = '2026-11-25 02:37';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -66890,6 +66893,7 @@ async function zzz_media_open() {
     lt.addEventListener('click', () => { if (zzzMedia.pls) zzzMedia.pls = ''; else if (plsView || favView) zzzMedia.view = 'media'; else if (zzzMedia.tab !== 'ACTUAL') zzzMedia.tab = 'ACTUAL'; else return; draw(); });
     lhd.append(lt, tools); list.appendChild(lhd);
     if (zzzMedia.tab === 'TV') { try { zzz_tv_tab_bar(list); } catch (e) {} }
+    if (zzzMedia.tab === 'REELS') { try { zzz_reels_tab_bar(list); } catch (e) {} }
 
     if (zzz_media_offline() && !(plsView && !zzzMedia.pls)) { try { zzz_media_tablist(); } catch (e) {}
       if (zzzMedia.offHidden || zzzMedia.offAll) { const hb = document.createElement('button'); hb.type = 'button'; hb.className = 'zzz-media-btn'; hb.style.cssText = 'display:block;margin:2px 0 6px;font-size:10px;color:#f59e0b;border-color:#f59e0b';
@@ -68015,6 +68019,32 @@ async function zzz_media_setup_open() {
   const se = sec('⚙ SETTINGS · VERSO MEDIA CENTER', 'MEDIA CENTER on / off, COPIED LINKS → ACTUAL, OFFLINE files.');
   bar(se, btn('OPEN SETTINGS', '', () => { document.getElementById('zzzMediaSetupOv').remove(); try { open_settings_workspace(); } catch (e) {} }));
   sec('🔒 ADVANCED SETUP · VERSO GATE', 'Apps connected through VERSO GATE, recovery, and your TV sources (VERSO GATE › MY ACCOUNTS ELSEWHERE, login in 🔑 CONNECTORS) - SETTINGS › ADVANCED SETUP (needs your MV PHRASE).');
+}
+
+const ZZZ_REELS_APP = 421;
+const ZZZ_REELS_SVC = { 'instagram.com': 'ig', 'tiktok.com': 'tt', 'youtube.com': 'ys', 'facebook.com': 'fb' };
+const ZZZ_REELS_URL = { ig: 'https://www.instagram.com/reels/', tt: 'https://www.tiktok.com/foryou', ys: 'https://m.youtube.com/shorts/', fb: 'https://m.facebook.com/reel/' };
+const ZZZ_REELS_NAME = { ig: '📸 INSTAGRAM', tt: '🎵 TIKTOK', ys: '▶ SHORTS', fb: '📘 FACEBOOK' };
+function zzz_reels_svc_mirror(data) {
+  const l = []; (data && data.conn || []).forEach(c => { if (c.off || c.pause) return; zzz_conn_tags(c).forEach(t => { const p = t.split(' › '); if (p[0] === 'media' && p[1] === 'reels') { const k = ZZZ_REELS_SVC[String(p[2] || zzz_conn_host(c.link)).replace(/^www\.|^m\./, '')]; if (k && l.indexOf(k) < 0) l.push(k); } }); });
+  try { localStorage.setItem('zzz_reels_svc', l.join(',')); } catch (e) {}
+}
+function zzz_reels_svc() { try { return String(localStorage.getItem('zzz_reels_svc') || '').split(',').filter(k => ZZZ_REELS_URL[k]); } catch (e) { return []; } }
+function zzz_reels_open(k) {
+  const l = zzz_reels_svc(); const first = k || l[0];
+  if (!first) { zzz6f2_show_toast('Add a REELS connector first (🔑 + REELS) - e.g. instagram.com.', 'info', 3500); return; }
+  if (!(zzz14b17_in_app() && zzz14b17_app_code() >= ZZZ_REELS_APP)) { zzz6f2_show_toast('The REELS window needs the Verso app ' + 'VERSO 1.0.' + ZZZ_REELS_APP + ' or newer (APK UPDATE).', 'warn', 4000); return; }
+  if (!zzz_native_cmd('intent://quick/webview?u=' + encodeURIComponent(ZZZ_REELS_URL[first]) + '&reels=' + encodeURIComponent(l.join(',') || first)))
+    zzz6f2_show_toast('Allow Verso notifications - the app gets its commands through them.', 'warn', 3500);
+  else { const h = Object.keys(ZZZ_REELS_SVC).find(x => ZZZ_REELS_SVC[x] === first); zzz_tv_call('svc_usage', { host: h, use: 'open' }).catch(() => {}); }
+}
+function zzz_reels_tab_bar(list) {
+  const bar = document.createElement('div'); bar.className = 'zzz-media-listhead'; bar.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 6px';
+  const mk = (t, title, fn, gold) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz-media-btn'; if (gold) b.style.cssText = 'border-color:#D4AF37;color:#D4AF37;font-weight:800'; b.textContent = t; b.title = title; b.addEventListener('click', fn); bar.appendChild(b); };
+  const l = zzz_reels_svc();
+  l.forEach(k => mk(ZZZ_REELS_NAME[k], 'Its reels in the Verso window · ➕ TO MC keeps one here', () => zzz_reels_open(k), true));
+  mk('🔑 + REELS', 'A connector for a reels service (Instagram, TikTok …) - its login stays in VERSO GATE', () => zzz_conn_open('conn', { reels: true }), !l.length);
+  list.appendChild(bar);
 }
 
 function zzz_tv_tab_bar(list) {
@@ -69393,7 +69423,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 420;
+const ZZZ14B17_APP_LATEST = 421;
 
 function zzz_canon_url() {
   try {
