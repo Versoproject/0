@@ -10971,6 +10971,14 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz-b26-x { background: none; border: 0; color: #ff6b6b; font-size: 18px; cursor: pointer; }
   .zzz-b26-line { color: #ddd; font-size: 12px; padding: 3px 0; border-bottom: 1px solid #222; overflow-wrap: anywhere; }
   .zzz-b26-line.is-live { color: #ffb3b3; }
+  
+  .zzz-sal-verdict { display: inline-block; font-weight: 800; letter-spacing: .06em; font-size: 12px; padding: 3px 10px; border-radius: 12px; border: 1px solid; }
+  .zzz-sal-verdict.is-ok { color: #6ee7a0; border-color: #6ee7a0; } .zzz-sal-verdict.is-watch { color: #fdba74; border-color: #fdba74; } .zzz-sal-verdict.is-alert { color: #ff6b6b; border-color: #ff6b6b; }
+  .zzz-sal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; margin: 6px 0; }
+  .zzz-sal-num { border: 1px solid #262626; border-radius: 8px; padding: 5px 7px; min-width: 0; }
+  .zzz-sal-num b { display: block; color: #fff; font-size: 17px; } .zzz-sal-num span { color: #aaa; font-size: 11px; }
+  .zzz-sal-num.is-bad b { color: #ff6b6b; } .zzz-sal-num.is-warn b { color: #fdba74; }
+  .zzz-sal-todo { color: #f5e7b8; font-size: 13px; margin: 3px 0 3px 2px; }
   .zzz-rs-diss-in { width: 100%; box-sizing: border-box; background: #fff; color: #222; border: 1px solid #D4AF37; border-radius: 8px; padding: 6px; font-size: 14px; }
   
   #zzzRsSpace.is-max .zzz-rs-crm { display: none; }
@@ -55506,8 +55514,58 @@ function zzz_b26_head(host, title, sub) {
   host.appendChild(zzz_b26_el('div', 'zzz-b26-note', sub));
 }
 
+async function zzz_b26_security_card(host, hours) {
+  hours = hours || 24;
+  const card = zzz_b26_el('div', 'zzz-b26-card'); card.setAttribute('data-5s', 'SECURITY AUDIT LOG'); host.appendChild(card);
+  const t = zzz_b26_el('div', 'zzz-b26-ctitle', 'SECURITY AUDIT LOG '); card.appendChild(t);
+  if (zzzB26.mode !== 'live') { card.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'Only the LIVE admin (account verso) sees the system-wide security report.')); return; }
+  const per = zzz_b26_el('div', 'zzz-b26-row');
+  [[24, '24 H'], [168, '7 DAYS'], [720, '30 DAYS']].forEach(([hh, lab]) => {
+    const b = zzz_b26_el('button', 'zzz14cs-feed-mode' + (hh === hours ? ' is-on' : ''), lab); b.type = 'button';
+    b.addEventListener('click', () => { card.remove(); zzz_b26_security_card_at(host, hh); });
+    per.appendChild(b);
+  });
+  const rf = zzz_b26_el('button', 'zzz14cs-feed-mode', '↻ REFRESH'); rf.type = 'button';
+  rf.addEventListener('click', () => { card.remove(); zzz_b26_security_card_at(host, hours); });
+  per.appendChild(rf);
+  card.appendChild(per);
+  const body = zzz_b26_el('div', 'zzz-b26-note', 'Reading…'); card.appendChild(body);
+  let r = null;
+  try { const { data, error } = await sb.rpc('verso_security_report', { p_hours: hours }); if (error) throw error; r = typeof data === 'string' ? JSON.parse(data) : data; }
+  catch (e) { body.textContent = 'Could not read the security report - try ↻ REFRESH.'; return; }
+  body.remove();
+  const lvl = String(r.level || 'ok');
+  const v = zzz_b26_el('span', 'zzz-sal-verdict is-' + lvl, lvl === 'alert' ? 'ALERT' : lvl === 'watch' ? 'WATCH' : 'OK'); t.appendChild(v);
+  card.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'Last ' + (hours >= 48 ? Math.round(hours / 24) + ' days' : hours + ' h') + ' · ' + zzz_b26_time(r.at) + ' · counts only - no names, no addresses, nothing typed.'));
+  card.appendChild(zzz_b26_el('div', 'zzz-b26-l', 'WHAT TO DO'));
+  (r.todo || []).forEach(x => card.appendChild(zzz_b26_el('div', 'zzz-sal-todo', '• ' + x)));
+  const L = r.login || {}, D = r.database || {}, P = r.public || {};
+  const grid = zzz_b26_el('div', 'zzz-sal-grid'); card.appendChild(grid);
+  const num = (n, label, warnAt, badAt) => {
+    const c = zzz_b26_el('div', 'zzz-sal-num' + (badAt !== undefined && n >= badAt ? ' is-bad' : warnAt !== undefined && n >= warnAt ? ' is-warn' : ''));
+    c.appendChild(zzz_b26_el('b', '', String(n == null ? '–' : n))); c.appendChild(zzz_b26_el('span', '', label)); grid.appendChild(c);
+  };
+  num(L.wrong_password, 'wrong passwords', 10, 30); num(L.networks, 'networks with failures');
+  num(L.mv_fails, 'wrong MV phrases', 5, 10); num(L.recovery_fails, 'failed recoveries', 3);
+  num(L.chain_check, 'unknown devices (CHAIN CHECK)', 15, 50); num(L.other_device, 'session on another device', 1, 1);
+  num(L.new_network, 'session from a new network');
+  num(D.unknown_place, 'DB changes from unknown place', 1, 1); num(D.structure_changes, 'DB structure changes'); num(D.direct_writes, 'direct DB writes');
+  num(P.repo0_clones_last_day, 'repo 0 clones (last day, usual ' + (P.repo0_clones_usual || 0) + ')');
+  num(P.web_visitors, 'web visitors'); num(r.app_issues, 'app issues');
+  card.appendChild(zzz_b26_el('div', 'zzz-b26-l', 'SECURITY WATCH · last 30 days'));
+  const w = Array.isArray(r.watch) ? r.watch : [];
+  if (!w.length) card.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'No warnings.'));
+  w.forEach(x => card.appendChild(zzz_b26_el('div', 'zzz-b26-line' + (String(x.kind) === 'security-urgent' ? ' is-live' : ''), zzz_b26_time(x.at) + ' · ' + String(x.msg || '').replace(/^SECURITY WATCH:\s*/, ''))));
+  card.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'Warnings also arrive as VERSO SYSTEM lines in ISSUES (urgent ones as a push). Details of one account stay in that account\'s own AUDIT LOG.'));
+}
+
+function zzz_b26_security_card_at(host, hours) {
+  const tmp = document.createElement('div'); host.insertBefore(tmp, host.firstChild);
+  zzz_b26_security_card(tmp, hours).then(() => { while (tmp.firstChild) host.insertBefore(tmp.firstChild, tmp); tmp.remove(); });
+}
 async function zzz_b26_render_system(host) {
   if (!zzzB26.mode) { host.appendChild(zzz_b26_el('div', 'zzz-b26-note', 'Only for Verso admins.')); return; }
+  await zzz_b26_security_card(host, 24);
   zzz_b26_head(host, 'SYSTEM SETUP', 'Defaults and allowed choices for users, plus exceptions for one user. Every save needs a reason and goes into the ADMIN audit. ' + (zzzB26.mode === 'live' ? 'LIVE = all users · TEST = only test accounts (verso1, verso2 …).' : 'You are the TEST admin: changes are valid only for the test accounts (verso1, verso2 …).'));
   const sc = zzz_b26_el('div', 'zzz-b26-row');
   ['live', 'test'].forEach(k => {
@@ -58216,7 +58274,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-25 16:29';
+const VERSO_BUILD = '2026-11-25 18:56';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
