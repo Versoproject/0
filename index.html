@@ -7735,6 +7735,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzzfin-auto .zzzfin-note { margin-top: 0; }
   .zzz-rdr .zzzfin-item { display: block; width: 100%; box-sizing: border-box; cursor: pointer; margin: 3px 0; }
   .zzz-media-confirm-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  .zzz-login-refused { z-index: 2147483620; }
+  .zzz-lr-box { width: min(340px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100dvh - 24px); overflow-y: auto; }
+  .zzz-lr-box.is-red { border-color: #e0322b; box-shadow: 0 0 0 1px #5a1210, 0 0 18px rgba(224,50,43,.35); }
+  .zzz-lr-h { display: flex; align-items: center; gap: 8px; color: #D4AF37; letter-spacing: .08em; margin-bottom: 8px; }
+  .zzz-lr-box.is-red .zzz-lr-h { color: #ff5a52; }
+  .zzz-lr-chain { width: 26px; height: 26px; flex: none; display: inline-block; background: currentColor; -webkit-mask: url("verso-chain-links.png") center/100% 100% no-repeat; mask: url("verso-chain-links.png") center/100% 100% no-repeat; }
   .zzz-media-confirm-text { white-space: pre-line; max-height: 60vh; overflow-y: auto; } 
   
   .zzz-verso-prompt-in { display: block; width: 100%; box-sizing: border-box; margin-top: 10px; border: 1.5px solid #D4AF37; border-radius: 8px; background: #0f0f0f; color: #eee; padding: 7px; font-size: 14px; }
@@ -58423,7 +58429,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-27 00:18';
+const VERSO_BUILD = '2026-11-27 00:51';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -59426,7 +59432,11 @@ document.addEventListener('focusin', async (e) => {
   const t = e.target; if (!t || t.id !== 'versoLoginUserCell' || window.zzzEarlyChainBusy) return;
   if (window.zzzEarlyChain && Date.now() - window.zzzEarlyChain.at < 4 * 60 * 1000) return;
   window.zzzEarlyChainBusy = true;
-  try { if (await zzz_dk_get(false)) return; const pass = await zzz_chain_puzzle(1); if (pass) { window.zzzEarlyChain = { pass, at: Date.now() }; try { t.focus(); } catch (e2) {} } }
+  try { if (await zzz_dk_get(false)) return;
+
+    const api = zzz_overse_route_get().length ? 'overse' : 'verso';
+    const pass = api === 'overse' ? await zzz_chain_puzzle(1, ZZZ_OVERSE_CHAIN_API) : await zzz_chain_puzzle(1);
+    if (pass) { window.zzzEarlyChain = { pass, at: Date.now(), api }; try { t.focus(); } catch (e2) {} } }
   catch (e3) {} finally { window.zzzEarlyChainBusy = false; }
 }, true);
 
@@ -66599,6 +66609,20 @@ function zzz_verso_confirm(text, yes) {
   });
 }
 
+function zzz_login_refused_window(reason, text, red) {
+  try { document.querySelectorAll('.zzz-login-refused').forEach(x => x.remove()); } catch (e) {}
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm zzz-login-refused'; o.setAttribute('role', 'alertdialog');
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzz-lr-box' + (red ? ' is-red' : '');
+  const h = document.createElement('div'); h.className = 'zzz-lr-h'; h.innerHTML = '<span class="zzz-lr-chain" aria-hidden="true"></span><b>LOGIN REFUSED</b>'; b.appendChild(h);
+  const t = document.createElement('div'); t.className = 'zzz-media-confirm-text'; t.textContent = text; b.appendChild(t);
+  const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
+  const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn'; x.textContent = '✕ CLOSE';
+  const end = () => { o.remove(); try { const u = document.getElementById('versoLoginUserCell'); if (u) u.focus({ preventScroll: true }); } catch (e) {} };
+  x.addEventListener('click', end); o.addEventListener('click', (e) => { if (e.target === o) end(); });
+  row.appendChild(x); b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
+  try { zzz_report_issue('login-refused', String(reason || 'unknown'), { tags: ['login'] }); } catch (e) {}
+}
+
 const ZZZ_STARS_TABLE = 'verso_note_stars';
 const ZZZ_STARS_FRESH_MS = 60000;
 const zzzStars = { mine: new Map(), agg: new Map(), at: new Map(), want: new Set(), timer: 0, of: '', busy: false };
@@ -71501,7 +71525,8 @@ async function zzz_overse_login(username, password) {
 
   const loginCall = async (pass) => zzz_overse_call({ action: 'login', client: 'verso', username: u, password, dk: (await zzz_dk_sign(u)) || undefined,
     deviceId: zzz_device_id(), keepSignedIn: mode === 'my', trusted: mode === 'trusted' ? true : undefined, puzzlePass: pass || undefined });
-  let r = await loginCall(null);
+  const early = window.zzzEarlyChain && window.zzzEarlyChain.api === 'overse' && Date.now() - window.zzzEarlyChain.at < 4 * 60 * 1000 ? window.zzzEarlyChain.pass : null; window.zzzEarlyChain = null;
+  let r = await loginCall(early);
   if (r && r.ok === false && r.reason === 'chain_check_required') {
     zzz0r1_set_db_connection_state(true);
     const pass = await zzz_chain_puzzle(r.level || 1, ZZZ_OVERSE_CHAIN_API);
@@ -71721,7 +71746,8 @@ async function zzz10r8_verify_login_password(username, enteredPassword) {
       return resp.json();
     };
 
-    const zzzEarly = window.zzzEarlyChain && Date.now() - window.zzzEarlyChain.at < 4 * 60 * 1000 ? window.zzzEarlyChain.pass : null; window.zzzEarlyChain = null;
+    const zzzEarlyRec = window.zzzEarlyChain && Date.now() - window.zzzEarlyChain.at < 4 * 60 * 1000 ? window.zzzEarlyChain : null;
+    const zzzEarly = zzzEarlyRec && zzzEarlyRec.api !== 'overse' ? zzzEarlyRec.pass : null; if (!zzzEarlyRec || zzzEarlyRec.api !== 'overse') window.zzzEarlyChain = null;
     let result = await zzz_login_call(zzzEarly);
 
     if (result && result.verified === false && result.reason === 'use_overse') { zzz_overse_route_set(zzz10v1_normalize(username), true); return zzz_overse_login(username, enteredPassword); }
@@ -71806,7 +71832,7 @@ async function zzz6f36_submit_login(options = {}) {
 
   if (window.zzzEdgeOff) { zzz6f2_show_toast('Verso does not run in Edge - open it in Chrome or in the Verso app.', 'warn'); return; }
   { const why = (typeof zzz_ctx_login_refusal === 'function') ? zzz_ctx_login_refusal() : '';
-    if (why) { zzz6f2_show_toast('Login refused - ' + why, 'warn'); return; } }
+    if (why) { zzz_login_refused_window('context', 'Login refused - ' + why + '.', false); return; } }
   {
     const verifyResult = await zzz10r8_verify_login_password(username, enteredPassword);
     if (!verifyResult.verified) {
@@ -71820,18 +71846,18 @@ async function zzz6f36_submit_login(options = {}) {
         session_failed: 'the session could not be created on the server, try again',
         mv_not_confirmed: 'the login was not finished - the MV PHRASE was not confirmed',
         session_active_elsewhere: 'this account is logged in on another device. A second login is not allowed - log out there, or use the emergency account recovery',
-        too_many_attempts: 'too many wrong passwords in a row - wait 15 minutes and try again (the account owner was notified by email)',
+        too_many_attempts: 'too many wrong passwords - wait 15 minutes and try again (the account owner gets a notice)',
         overse_not_enabled: 'this account does not log in through Overse yet - choose LOGIN: VERSO', use_overse: 'this account is kept by Overse - log in through Overse', overse_token_invalid: 'Overse login could not be confirmed - try again', overse_token_used: 'Overse login was already used - try again', overse_unreachable: 'Overse is not reachable now - choose LOGIN: VERSO', not_allowed: 'Overse does not serve this app', mv_locked: 'too many wrong MV PHRASES - wait 15 minutes', no_login: 'the Overse login expired - try again', not_applicable: 'TRUSTED SESSION is not possible now (exception off or MY DEVICE not logged in)', mv_not_set: 'no MV PHRASE set for this account', mv_set_my_device: 'the new MV PHRASE can be set only on MY DEVICE - choose DEVICE: MY DEVICE', set_failed: 'the new MV PHRASE could not be saved - try again', verso_unreachable: 'Verso could not be reached - try again',
         chain_check_required: 'VERSO CHAIN CHECK is needed on this device - try again', chain_check_cancelled: 'VERSO CHAIN CHECK was closed - this device is not known yet, the check comes before the password'
       }[verifyResult.reason] || 'unknown reason';
 
       if (verifyResult.reason === 'session_active_elsewhere') {
         try { const c = document.getElementById('versoEntryButton'); if (c) { c.classList.add('zzz-logo-red'); setTimeout(() => { try { zzz_recompute_logo_status(); } catch (e) {} }, 60000); } } catch (e) {}
-        zzz6f2_show_toast('🔴 Login refused - this account is LOGGED IN on another device right now. If that is not you: EMERGENCY ACCOUNT RECOVERY (token from e-mail + MV PHRASE) ends it and changes the password. The attempt is in the AUDIT LOG.', 'warn', 9000);
+        zzz_login_refused_window('session_active_elsewhere', 'This account is LOGGED IN on another device right now - a second login is not allowed.\n\nIf that is not you: EMERGENCY ACCOUNT RECOVERY in this login window (token from e-mail + your verse) ends that session and changes the password.\n\nThe owner gets a notice; the attempt is in the AUDIT LOG.', true);
         return;
       }
 
-      zzz6f2_show_toast(`Login refused - ${reasonText}.`, 'warn');
+      zzz_login_refused_window(verifyResult.reason, `Login refused - ${reasonText}.`, verifyResult.reason === 'too_many_attempts');
       return;
     }
   }
