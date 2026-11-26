@@ -31736,7 +31736,7 @@ function zzz_verse_ask(ch, title, text, altLabel) {
     const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
     const y = document.createElement('button'); y.type = 'button'; y.className = 'zzz-media-btn is-on'; y.textContent = 'CONFIRM';
     const n = document.createElement('button'); n.type = 'button'; n.className = 'zzz-media-btn'; n.textContent = 'CANCEL';
-    let done = false; const end = (v) => { if (done) return; done = true; try { inp.value = ''; } catch (e) {} o.remove(); resolve(v); };
+    let done = false; const end = (v) => { if (done) return; done = true; try { inp.value = ''; inp2.value = ''; } catch (e) {} o.remove(); resolve(v); };
     n.addEventListener('click', () => end(null));
     if (altLabel) {
       const al = document.createElement('button'); al.type = 'button'; al.className = 'zzz-media-btn'; al.textContent = altLabel;
@@ -31936,7 +31936,7 @@ function zzz_verse_section_render(host) {
     add.addEventListener('click', async () => {
 
       const tk = await zzz_verse_ticket('verse', '+ ADD VERSE · VERIFICATION', r.verses.length ? 'First write 2 words of your verse.' : 'First write your MV PHRASE.'); if (!tk) return;
-      zzz_verse_add_dialog(tk).then(() => load());
+      zzz_verse_add_dialog(tk, () => zzz_verse_ticket('verse', '+ ADD VERSE · VERIFICATION', r.verses.length ? 'Confirm again: 2 words of your verse.' : 'Confirm again: your MV PHRASE.')).then(() => load());
     });
     const chk = document.createElement('button'); chk.type = 'button'; chk.className = 'zzz-media-btn'; chk.textContent = 'TEST · MV PHRASE';
     chk.title = 'Only a test: type your MV PHRASE and Verso tells you if it is right.';
@@ -31972,7 +31972,7 @@ function zzz4r7_verse_full_dialog(done) {
   row.append(y, n); b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
   setTimeout(() => { try { inp.click(); } catch (e) {} }, 80);
 }
-function zzz_verse_add_dialog(ticket) {
+function zzz_verse_add_dialog(ticket, reTicket) {
   return new Promise((resolve) => {
     const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv';
     const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', 'VERSE VERIFICATION');
@@ -31980,6 +31980,9 @@ function zzz_verse_add_dialog(ticket) {
     const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text'; sub.textContent = 'At least 7 words, max. 40. Remember it well and never write it down - Verso stores only fingerprints of the single words and will ask for 2 random ones.'; b.appendChild(sub);
     const inp = zzz_vkb_make_secret('versoVerseAddInput', 'entry-cell zzz6f36-login-local-input', 'NEW VERSE', 'the whole verse, words with spaces');
     inp.style.margin = '6px 0'; b.appendChild(inp);
+
+    const inp2 = zzz_vkb_make_secret('versoVerseAddInput2', 'entry-cell zzz6f36-login-local-input', 'VERSE AGAIN', 'the same verse once more');
+    inp2.style.margin = '0 0 6px'; b.appendChild(inp2);
     const tag = document.createElement('input'); tag.type = 'text'; tag.className = 'zzz-verso-prompt-in'; tag.maxLength = 60; tag.autocomplete = 'off'; tag.setAttribute('data-zzz-nodraft', '1');
     tag.placeholder = 'YOUR TAG (optional) - e.g. my favourite song'; tag.title = 'A name only you understand - it helps you remember which verse it is. Never a word of the verse itself.'; tag.style.margin = '0 0 6px'; b.appendChild(tag);
     const st = document.createElement('div'); st.className = 'zzz-media-diss-s'; st.style.minHeight = '16px'; b.appendChild(st);
@@ -31993,10 +31996,18 @@ function zzz_verse_add_dialog(ticket) {
     y.addEventListener('click', async () => {
       const v = String(inp.value || '');
       if (zzz_verse_words(v).length < 7) { st.textContent = 'A verse needs at least 7 words (now ' + zzz_verse_words(v).length + ').'; return; }
+      if (zzz_verse_words(v).join(' ') !== zzz_verse_words(String(inp2.value || '')).join(' ')) { st.textContent = 'The two verses are not the same - write it again in VERSE AGAIN.'; st.style.color = '#ff8a8a'; return; }
+      st.style.color = '';
       const tg = String(tag.value || '').trim(), vw = new Set(zzz_verse_words(v));
       if (tg && zzz_verse_words(tg).some(w => w.length > 2 && vw.has(w))) { st.textContent = 'The tag must not contain a word of the verse - choose another name.'; return; }
       y.disabled = true; st.textContent = 'Saving…';
-      const r = await zzz_verse_call({ action: 'add_verse', verse: v, ticket });
+      let r = await zzz_verse_call({ action: 'add_verse', verse: v, ticket });
+
+      if (r && (r.reason === 'mv_needed' || r.error === 'mv_needed') && reTicket) {
+        st.textContent = 'The check took too long - confirm once more, your verse stays.';
+        const tk2 = await reTicket();
+        if (tk2) { ticket = tk2; st.textContent = 'Saving…'; r = await zzz_verse_call({ action: 'add_verse', verse: v, ticket }); }
+      }
       if (r && r.success && tg) { try { const s2 = await zzz_verse_call({ action: 'status' }); const nv = s2 && s2.verses && s2.verses[s2.verses.length - 1]; if (nv) await zzz4r7_rpc('verso_verse_label_set', { p_id: nv.id, p_label: tg }); zzzVerseLabels = null; } catch (e) {} }
       if (r && r.success) zzz4r7_uk_rewrap('verse', v);
       y.disabled = false;
@@ -57419,6 +57430,8 @@ function zzz10v1_update_register_entry_button_state() {
   const phraseInput = document.getElementById('versoRegisterSetupPhraseInput');
   const phrase = phraseInput ? String(phraseInput.value || '').trim() : '';
   if (phraseInput) phraseInput.disabled = !codeReady;
+  const phrase2Input = document.getElementById('versoRegisterSetupPhraseInput2');
+  if (phrase2Input) phrase2Input.disabled = !codeReady;
   if (btn) btn.disabled = !(codeReady && password.length > 0 && zzz_verse_words(phrase).length >= 7);
 }
 
@@ -57451,6 +57464,13 @@ function zzz10v1_build_password_field() {
   phrase.addEventListener('input', () => zzz10v1_update_register_entry_button_state());
   phrase._vkbOk = 'versoRegisterSetupEntryButton';
   wrap.appendChild(phrase);
+
+  const phrase2 = zzz_vkb_make_secret('versoRegisterSetupPhraseInput2', 'entry-cell zzz6f36-login-local-input', 'MV VERSE AGAIN', 'the same verse once more');
+  phrase2.disabled = true; phrase2.placeholder = 'MV VERSE AGAIN - the same words';
+  phrase2.addEventListener('input', () => zzz10v1_update_register_entry_button_state());
+  phrase2._vkbOk = 'versoRegisterSetupEntryButton';
+  phrase2.style.marginTop = '6px';
+  wrap.appendChild(phrase2);
 
   const pn = document.createElement('div'); pn.className = 'zzz10v1-phrase-note';
   pn.textContent = 'You can change your password any time. Your MV VERSE (min. 7 words) is layer 1 of multiverification: Verso will ask you for 2 random words of it, typed together (e.g. word 1 + word 4 → peknyden). Never write it down anywhere - remember it well. Recovery = token from your e-mail + this verse, so protect that e-mail with its own code (2-step verification).';
@@ -58287,7 +58307,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-26 15:33';
+const VERSO_BUILD = '2026-11-26 16:41';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -59003,6 +59023,8 @@ async function zzz10v1_submit_register() {
 
   if (zzz_verse_words(mvPhrase).length < 7) { zzz10v1_set_status('Please write an MV VERSE of at least 7 words (now ' + zzz_verse_words(mvPhrase).length + ') - layer 1 of multiverification; recovery works only with it.', 'warn'); return; }
   if (mvPhrase.toLowerCase() === password.toLowerCase()) { zzz10v1_set_status('The MV VERSE must be different from the password.', 'warn'); return; }
+  { const p2 = document.getElementById('versoRegisterSetupPhraseInput2');
+    if (zzz_verse_words(mvPhrase).join(' ') !== zzz_verse_words(p2 ? String(p2.value || '') : '').join(' ')) { zzz10v1_set_status('The two MV VERSES are not the same - write it again in MV VERSE AGAIN.', 'warn'); return; } }
 
   if (zzz4r17SearchMode) {
     zzz4r17_toggle_search_mode();
@@ -59031,7 +59053,7 @@ async function zzz10v1_submit_register() {
     const pr = await zzz10v1_call_gate({ action: 'set_mv_phrase', username: normalizedUsername, password, mvPhrase }, 20000);
     phraseOk = !!(pr && pr.success);
   } catch (e) { phraseOk = false; }
-  if (phraseInput) phraseInput.value = '';
+  if (phraseInput) phraseInput.value = ''; { const p2 = document.getElementById('versoRegisterSetupPhraseInput2'); if (p2) p2.value = ''; }
   if (!phraseOk) zzz6f2_show_toast('Registered, but the MV PHRASE was not saved - set it now in Login setup › CHANGE PASSWORD (MV PHRASE).', 'warn');
   zzzVersePendingReg = mvPhrase;
   zzz10v1_registrationsLocalCache[normalizedUsername] = { username };
@@ -69591,7 +69613,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 425;
+const ZZZ14B17_APP_LATEST = 427;
 
 function zzz_canon_url() {
   try {
@@ -72034,6 +72056,10 @@ function zzz10m2_render_login_setup(body) {
     phraseViewBtn.setAttribute('aria-hidden', 'true');
     phraseViewBtn.style.pointerEvents = 'none';
     phraseWrap.appendChild(phraseInputWrap);
+
+    const phraseInput2 = zzz_vkb_make_secret('versoMvPhraseInput2', 'entry-cell zzz6f36-login-local-input', 'MV PHRASE AGAIN', 'the same new phrase once more');
+    phraseInput2.style.marginTop = '6px';
+    phraseWrap.appendChild(phraseInput2);
     phraseRow.appendChild(phraseWrap);
 
     const phraseConfirmBtn = document.createElement('button');
@@ -72044,6 +72070,7 @@ function zzz10m2_render_login_setup(body) {
     phraseConfirmBtn.addEventListener('click', async () => {
       const mvPhrase = phraseInput.value.trim();
       if (zzz10v1_normalize(mvPhrase).length < 4) { zzz6f2_show_toast('The phrase must have at least 4 letters.', 'warn'); return; }
+      if (zzz10v1_normalize(mvPhrase) !== zzz10v1_normalize(String(phraseInput2.value || '').trim())) { zzz6f2_show_toast('The two new phrases are not the same - write it again in MV PHRASE AGAIN.', 'warn'); return; }
 
       let firstTry = null;
       const firstPw = String(currentPwInput.value || '').trim();
@@ -72068,7 +72095,7 @@ function zzz10m2_render_login_setup(body) {
         const result0 = (firstTry && firstTry.success) ? firstTry : await zzz_verse_call({ action: 'set_phrase', newPhrase: mvPhrase });
         const result = Object.assign({}, result0 || {});
         if (result.success) {
-          phraseInput.value = '';
+          phraseInput.value = ''; phraseInput2.value = '';
           currentPwInput.value = '';
           phraseRow.style.display = 'none';
           zzz6f2_show_toast('MV phrase saved. KEEP IT SAFE - it can never be shown again.', 'ok');
