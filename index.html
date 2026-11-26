@@ -134,6 +134,19 @@
   #zzzSplash .zzz-chain-spin > .zzz-chain-ink { z-index: 1; background: conic-gradient(#D4AF37 0 calc(var(--zzz-up, 0) * 100%), #c0c0c0 0); }
   #zzzSplash .zzz-chain-gold { position: absolute; inset: 0; display: block; background: conic-gradient(#f6e7b0 0 calc(var(--zzz-up, 0) * 100%), transparent 0); -webkit-mask: url("verso-chain-links.png") center/100% 100% no-repeat; mask: url("verso-chain-links.png") center/100% 100% no-repeat; }
   #zzzSplash.zzz-gone { opacity: 0; pointer-events: none; }
+  
+  .zzz-boot-foot { position: absolute; left: 0; right: 0; bottom: max(28px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 10px; font-family: system-ui, sans-serif; }
+  .zzz-boot-ring { width: 22px; height: 22px; border-radius: 50%; border: 3px solid rgba(46,204,113,.22); border-top-color: #2ecc71; animation: zzzBootSpin .9s linear infinite; }
+  @keyframes zzzBootSpin { to { transform: rotate(360deg); } }
+  .zzz-boot-who { color: #c0c0c0; font-size: 12px; letter-spacing: .08em; text-align: center; padding: 0 12px; }
+  .zzz-boot-who b { color: #D4AF37; }
+  .zzz-boot-btn { display: none; background: #171717; color: #D4AF37; border: 1px solid #D4AF37; border-radius: 10px; padding: 10px 18px; font-size: 14px; font-weight: 700; letter-spacing: .06em; }
+  .zzz-boot-foot.zzz-slow .zzz-boot-btn { display: inline-block; }
+  #zzzBootHelp { position: fixed; inset: 0; z-index: 2147483590; background: #171717; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; font-family: system-ui, sans-serif; }
+  #zzzBootHelp .zzz-bh-logo { color: #D4AF37; font-size: 30px; font-weight: 800; letter-spacing: .18em; }
+  #zzzBootHelp .zzz-bh-txt { color: #e3e6ea; font-size: 14px; text-align: center; max-width: 320px; padding: 0 16px; line-height: 1.4; }
+  #zzzBootHelp .zzz-boot-btn { display: inline-block; }
+  #zzzBootHelp .zzz-bh-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
   #zzzSplash .zzz-chain-info { position: absolute; inset: 0; pointer-events: none; container-type: size; }
   #zzzSplash .zzz-ci-wx { position: absolute; left: 22cqw; top: 32.5%; width: 30cqw; height: 11cqw; opacity: 1; } 
   #zzzSplash .zzz-ci-wx svg { width: 100%; height: 100%; display: block; }
@@ -208,6 +221,7 @@
 <div id="zzzSplash" aria-label="Verso is loading" role="status">
   <div class="zzz-chain-box"><i class="zzz-chain-text"></i><span class="zzz-chain-spin"><i class="zzz-chain-fill"></i><i class="zzz-chain-gold"></i><i class="zzz-chain-ink"></i></span>
     <span class="zzz-chain-info" aria-hidden="true"><span class="zzz-ci-wx"></span><span class="zzz-ci-date"></span><span class="zzz-ci-clock"></span></span></div>
+  <div class="zzz-boot-foot" id="zzzBootFoot"><i class="zzz-boot-ring"></i><span class="zzz-boot-who" id="zzzBootWho"><b>VERSO</b> · starting</span><button type="button" class="zzz-boot-btn" onclick="zzz_boot_refresh()">⟳ TAP TO REFRESH</button></div>
 </div>
 <script>
 (function () {
@@ -217,14 +231,34 @@
   function setUp(v) { var el = document.getElementById('zzzSplash'); if (!el) return; shown = Math.max(shown, Math.min(1, v)); el.style.setProperty('--zzz-up', shown.toFixed(3)); }
   function gone() { var el = document.getElementById('zzzSplash'); if (!el || el.classList.contains('zzz-gone')) return; done = true; setUp(1);
     try { var ms = Date.now() - t0; if (ms > 800 && ms < 25000) localStorage.setItem('zzz_boot_ms', String(ms)); } catch (e) {}
-    setTimeout(function () { el.classList.add('zzz-gone'); setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 450); }, 220); }
+    setTimeout(function () { el.classList.add('zzz-gone'); setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); try { watchBlank(); } catch (e) {} }, 450); }, 220); }
   window.zzz_boot_gone = gone;
+
+  function who() { var app = false; try { app = /[?&]app=twa/.test(location.search) || /; wv\)|VersoApp/i.test(navigator.userAgent) || document.referrer.indexOf('android-app://') === 0; } catch (e) {}
+    var b = (typeof VERSO_BUILD === 'string' && VERSO_BUILD) ? VERSO_BUILD : ''; return '<b>' + (app ? 'VERSO APP' : 'VERSO WEB') + '</b>' + (b ? ' · ' + b.replace(/^VERSO\s*/i, '') : ' · starting'); }
+  window.zzz_boot_refresh = function () { try { sessionStorage.setItem('zzz_boot_refresh', String(Date.now())); } catch (e) {} try { location.reload(); } catch (e) { location.href = location.href; } };
+  function blankNow() {
+    try { if (document.hidden) return false;
+      var pts = [[0.5, 0.35], [0.5, 0.55], [0.3, 0.45], [0.7, 0.45]], blank = 0;
+      for (var i = 0; i < pts.length; i++) { var el = document.elementFromPoint(innerWidth * pts[i][0], innerHeight * pts[i][1]);
+        if (!el || el === document.body || el === document.documentElement || (el.children.length === 0 && !(el.innerText || '').trim() && el.getBoundingClientRect().width * el.getBoundingClientRect().height > innerWidth * innerHeight * 0.6)) blank++; }
+      return blank === pts.length; } catch (e) { return false; } }
+  function helpCard() { if (document.getElementById('zzzBootHelp')) return; var d = document.createElement('div'); d.id = 'zzzBootHelp'; d.setAttribute('role', 'alert');
+    d.innerHTML = '<div class="zzz-bh-logo">VERSO</div><i class="zzz-boot-ring"></i><div class="zzz-boot-who">' + who() + '</div>'
+      + '<div class="zzz-bh-txt">Verso did not show its screen. Tap REFRESH - your data is safe.</div>'
+      + '<div class="zzz-bh-row"><button type="button" class="zzz-boot-btn" onclick="zzz_boot_refresh()">⟳ TAP TO REFRESH</button><button type="button" class="zzz-boot-btn" id="zzzBhWait">WAIT</button></div>';
+    document.body.appendChild(d); try { document.getElementById('zzzBhWait').onclick = function () { if (d.parentNode) d.parentNode.removeChild(d); watchN = 0; }; } catch (e) {}
+    try { if (typeof zzz_report_issue === 'function') zzz_report_issue('boot-blank', 'page stayed empty after the start screen', { who: who().replace(/<[^>]+>/g, '') }); } catch (e) {} }
+  var watchN = 0; window.zzz_boot_watch = function () { watchBlank(); };
+  function watchBlank() { var n = 0; var w = setInterval(function () { n++; if (n > 12) { clearInterval(w); return; }
+      if (blankNow()) { watchN++; if (watchN >= 3) { clearInterval(w); helpCard(); } } else watchN = 0; }, 2000); }
   document.addEventListener('DOMContentLoaded', function () { floor = Math.max(floor, 0.35); });
   window.addEventListener('load', function () { floor = Math.max(floor, 0.6); });
   var outAt = 0;
   var tick = setInterval(function () {
     if (done) { clearInterval(tick); return; }
     var t = Date.now() - t0, main = window.__versoMainDone === true;
+    try { var wEl = document.getElementById('zzzBootWho'); if (wEl && (t % 1200) < 130) wEl.innerHTML = who(); if (t > 12000) { var f = document.getElementById('zzzBootFoot'); if (f) f.classList.add('zzz-slow'); } } catch (e) {}
     if (main) floor = Math.max(floor, 0.8);
     var ready = false;
     try {
@@ -58389,7 +58423,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-26 23:58';
+const VERSO_BUILD = '2026-11-27 00:18';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
