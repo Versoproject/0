@@ -58278,7 +58278,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-25 20:46';
+const VERSO_BUILD = '2026-11-26 03:55';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -70386,6 +70386,7 @@ function zzz_render_account_recovery(box) {
         body: JSON.stringify({ action: 'request_override', username, puzzlePass: puzzlePass || undefined })
       }).then(x => x.json()).catch(() => ({})));
       if (rj && rj.reason === 'chain_check_cancelled') { zzz6f2_show_toast('VERSO CHAIN CHECK was closed - no token was sent.', 'warn', 3500); return; }
+      if (rj && rj.reason === 'use_overse') { zzz6f2_show_toast('This account is kept by OVERSE - recover it on the OVERSE page (RECOVERY).', 'warn', 6000); return; }
       if (rj && rj.reason === 'too_many_requests') { zzz6f2_show_toast('A recovery token was requested a moment ago - wait 10 minutes (max 5 a day).', 'warn', 4500); return; }
 
       zzz6f2_show_toast(rj && rj.hint ? ('Recovery token was sent to ' + String(rj.hint).slice(0, 80) + ' (check spam too). Valid until you use it.') : 'If this account exists, a recovery token was sent to its e-mail (check spam too). Valid until you use it.');
@@ -71176,6 +71177,8 @@ function zzz_enter_session_lock() {
       } else if (result.reason === 'locked_out') {
         zzz_session_lock_remove();
         zzz10r2_logout('locked_out', { checked: true });
+      } else if (result.reason === 'use_overse') {
+        zzz6f2_show_toast('This account is kept by OVERSE - log out and log in again (OVERSE asks the password).', 'warn', 6000);
       } else if (result.reason === 'wrong_password') {
         const left = Number(result.attemptsLeft);
         zzz6f2_show_toast(Number.isFinite(left) && left > 0
@@ -71515,6 +71518,8 @@ async function zzz10r8_verify_login_password(username, enteredPassword) {
       return resp.json();
     };
     let result = await zzz_login_call(null);
+
+    if (result && result.verified === false && result.reason === 'use_overse') return zzz_overse_login(username, enteredPassword);
     if (result && result.verified === false && result.reason === 'chain_check_required') {
       zzz0r1_set_db_connection_state(true);
       const zzzLanePass = await zzz_chain_puzzle(result.level || 1);
@@ -71611,7 +71616,7 @@ async function zzz6f36_submit_login(options = {}) {
         mv_not_confirmed: 'the login was not finished - the MV PHRASE was not confirmed',
         session_active_elsewhere: 'this account is logged in on another device. A second login is not allowed - log out there, or use the emergency account recovery',
         too_many_attempts: 'too many wrong passwords in a row - wait 15 minutes and try again (the account owner was notified by email)',
-        overse_not_enabled: 'this account does not log in through OVERSE yet - choose LOGIN: VERSO', overse_token_invalid: 'OVERSE login could not be confirmed - try again', overse_token_used: 'OVERSE login was already used - try again', overse_unreachable: 'OVERSE is not reachable now - choose LOGIN: VERSO', not_allowed: 'OVERSE does not serve this app', mv_locked: 'too many wrong MV PHRASES - wait 15 minutes', no_login: 'the OVERSE login expired - try again', not_applicable: 'TRUSTED SESSION is not possible now (exception off or MY DEVICE not logged in)', mv_not_set: 'no MV PHRASE set for this account',
+        overse_not_enabled: 'this account does not log in through OVERSE yet - choose LOGIN: VERSO', use_overse: 'this account is kept by OVERSE - log in through OVERSE', overse_token_invalid: 'OVERSE login could not be confirmed - try again', overse_token_used: 'OVERSE login was already used - try again', overse_unreachable: 'OVERSE is not reachable now - choose LOGIN: VERSO', not_allowed: 'OVERSE does not serve this app', mv_locked: 'too many wrong MV PHRASES - wait 15 minutes', no_login: 'the OVERSE login expired - try again', not_applicable: 'TRUSTED SESSION is not possible now (exception off or MY DEVICE not logged in)', mv_not_set: 'no MV PHRASE set for this account',
         chain_check_required: 'VERSO CHAIN CHECK is needed on this device - try again', chain_check_cancelled: 'VERSO CHAIN CHECK was closed - this device is not known yet, the check comes before the password'
       }[verifyResult.reason] || 'unknown reason';
 
@@ -71907,6 +71912,7 @@ function zzz10m2_render_login_setup(body) {
             no_session: 'only from your logged-in MY DEVICE session - log in again',
             too_many_attempts: 'too many wrong tries - wait 15 minutes',
             mv_required: 'the MV check did not pass',
+            use_overse: 'your password is kept by OVERSE - change it on the OVERSE page › MY ACCOUNT',
             username_required: 'the account name is missing - log out and log in again'
           }[result.reason || result.error] || (console.warn('[Zzz10-R4] reason', result.reason), 'unknown reason');
           zzz6f2_show_toast(`Password not changed - ${reasonText}.`, 'warn');
