@@ -47665,7 +47665,7 @@ async function zzz_native_launch(url) {
 function zzz_native_cmd_able(url) {
 
   try {
-    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(tvplay|quiet|read|readstop|home|buzz|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|mediaact|mediapls|mediaplaces|vistuck|mediapend|feedcfg|feedpend|mediadone|actdiag|mcnow|readfetch|vipacks|qcb|ring|relaunch|webview|webpend|rsplaces|webprefs|mspace|kbmark|kbvoice|webfavs)\b/.test(String(url || 'intent://quick/quiet'))
+    return zzz14b17_in_app() && zzz14b17_app_code() >= 65 && /^intent:\/\/quick\/(gatekey|tvplay|quiet|read|readstop|home|buzz|kblang|kbset|mbtop|mbpause|media|mediactl|mediamode|mediaon|multiboard|mbcounts|notifsync|repairex|user|mediaactual|mediaact|mediapls|mediaplaces|vistuck|mediapend|feedcfg|feedpend|mediadone|actdiag|mcnow|readfetch|vipacks|qcb|ring|relaunch|webview|webpend|rsplaces|webprefs|mspace|kbmark|kbvoice|webfavs)\b/.test(String(url || 'intent://quick/quiet'))
       && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator;
   } catch (e) { return false; }
 }
@@ -58478,7 +58478,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-27 20:24';
+const VERSO_BUILD = '2026-11-28 00:40';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -66169,6 +66169,52 @@ async function zzz_media_actpls_to_app() {
   } catch (e) {}
 }
 setInterval(zzz_media_actpls_to_app, 6000);
+
+const ZZZ_GATE_APP = 429;
+function zzz_media_box_item(x) { const o = { t: zzz_media_title(x).slice(0, 80), u: x.link, s: zzz_media_stat(x) }; if (zzz_media_tagw(x.tags).includes('fav')) o.f = 1; const d = zzz_media_day(x); if (d) o.d = d; return o; }
+async function zzz_media_box_put() {
+  try {
+    if (!zzz_media_me() || !zzzMedia.all || zzzMedia.loadedOf !== zzz_media_me() || typeof sb === 'undefined' || !sb) return;
+    if (Date.now() - (zzzMedia.boxAt || 0) < 60000) return;
+    const ok = (x) => x && x.link && !x.trash && !x.plsDef && zzz_media_tagw(x.tags).indexOf('private') < 0 && !zzz_media_in_tab(x, 'PRIVATE') && zzz_media_app_playable(x, false);
+    const all = (zzzMedia.list || []).filter(ok);
+    const act = zzz_media_actual_of(zzzMedia.list || []).filter(ok).slice(0, 300).map(zzz_media_box_item);
+    const pls = (zzzMedia.plsDefs || []).map(d => ({ n: d.plsDef, a: zzz_media_tagw(d.tags).indexOf('actual') >= 0 ? 1 : 0,
+      i: all.filter(x => (x.pls || []).some(p => p.toLowerCase() === d.plsDef.toLowerCase())).slice(0, 200).map(zzz_media_box_item) })).filter(p => p.i.length);
+    const tabs = {};
+    ZZZ_MEDIA_TABS.filter(t => t !== 'ACTUAL' && t !== 'PRIVATE').forEach(t => { const l = all.filter(x => zzz_media_in_tab(x, t)).slice(0, 200).map(zzz_media_box_item); if (l.length) tabs[t] = l; });
+    const favs = all.filter(x => zzz_media_tagw(x.tags).includes('fav')).slice(0, 300).map(zzz_media_box_item);
+    const body = { act, pls, tabs, favs };
+    const sig = zzz_media_me() + '|' + JSON.stringify(body);
+    if (sig === zzzMedia.boxSig) return;
+    zzzMedia.boxAt = Date.now();
+    const { error } = await sb.rpc('verso_media_box_put', { p_payload: JSON.stringify(Object.assign({ v: 1, at: Date.now() }, body)), p_device: zzz_device_id() });
+    if (!error) zzzMedia.boxSig = sig;
+  } catch (e) {}
+}
+setInterval(zzz_media_box_put, 15000);
+async function zzz_gate_key_to_app(force) {
+  try {
+    if (!zzz14b17_in_app() || zzz14b17_app_code() < ZZZ_GATE_APP || !zzz_media_me() || typeof sb === 'undefined' || !sb) return;
+    const me = zzz_media_me(), dev = zzz_device_id();
+    let was = null; try { was = JSON.parse(localStorage.getItem('zzz_gate_key_at') || 'null'); } catch (e) {}
+    if (!force && was && was.u === me && was.d === dev && Date.now() - was.t < 7 * 86400000) return;
+    const ck = await zzz_cmd_key_get(); if (!ck) return;
+    const { data: key, error } = await sb.rpc('verso_app_key_issue', { p_device: dev });
+    if (error || !/^[0-9a-f]{64}$/.test(String(key || ''))) return;
+    const ts = Math.floor(Date.now() / 1000), msg = 'gatekey|' + ts;
+    let ks;
+    if (ck.key) ks = Array.from(new Uint8Array(await crypto.subtle.sign('HMAC', ck.key, new TextEncoder().encode(msg)))).map(x => x.toString(16).padStart(2, '0')).join('');
+    else ks = zzz_hmac_hex(ck.raw, msg);
+    let enc = ''; for (let i = 0; i < 64; i += 2) enc += (parseInt(key.slice(i, i + 2), 16) ^ parseInt(ks.slice(i, i + 2), 16)).toString(16).padStart(2, '0');
+    if (zzz_native_cmd(await zzz_cmd_sign('intent://quick/gatekey?u=' + encodeURIComponent(me) + '&e=' + enc + '&t=' + ts)))
+      try { localStorage.setItem('zzz_gate_key_at', JSON.stringify({ u: me, d: dev, t: Date.now() })); } catch (e) {}
+  } catch (e) {}
+}
+setInterval(() => zzz_gate_key_to_app(false), 20000);
+
+window.addEventListener('hashchange', () => { if (/^#gatekey\b/.test(location.hash)) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} zzz_gate_key_to_app(true); } });
+if (/^#gatekey\b/.test(location.hash)) setTimeout(() => zzz_gate_key_to_app(true), 4000);
 function zzz_mactual_hash() {
   if (!/^#mactual\b/.test(String(location.hash || ''))) return;
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
@@ -69813,7 +69859,7 @@ function zzz14b17_is_android() {
   return /Linux/i.test(ua) && !/CrOS/i.test(ua) && (navigator.maxTouchPoints || 0) > 0;
 }
 
-const ZZZ14B17_APP_LATEST = 427;
+const ZZZ14B17_APP_LATEST = 430;
 
 function zzz_canon_url() {
   try {
