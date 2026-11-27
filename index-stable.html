@@ -134,6 +134,19 @@
   #zzzSplash .zzz-chain-spin > .zzz-chain-ink { z-index: 1; background: conic-gradient(#D4AF37 0 calc(var(--zzz-up, 0) * 100%), #c0c0c0 0); }
   #zzzSplash .zzz-chain-gold { position: absolute; inset: 0; display: block; background: conic-gradient(#f6e7b0 0 calc(var(--zzz-up, 0) * 100%), transparent 0); -webkit-mask: url("verso-chain-links.png") center/100% 100% no-repeat; mask: url("verso-chain-links.png") center/100% 100% no-repeat; }
   #zzzSplash.zzz-gone { opacity: 0; pointer-events: none; }
+  
+  .zzz-boot-foot { position: absolute; left: 0; right: 0; bottom: max(28px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 10px; font-family: system-ui, sans-serif; }
+  .zzz-boot-ring { width: 22px; height: 22px; border-radius: 50%; border: 3px solid rgba(46,204,113,.22); border-top-color: #2ecc71; animation: zzzBootSpin .9s linear infinite; }
+  @keyframes zzzBootSpin { to { transform: rotate(360deg); } }
+  .zzz-boot-who { color: #c0c0c0; font-size: 12px; letter-spacing: .08em; text-align: center; padding: 0 12px; }
+  .zzz-boot-who b { color: #D4AF37; }
+  .zzz-boot-btn { display: none; background: #171717; color: #D4AF37; border: 1px solid #D4AF37; border-radius: 10px; padding: 10px 18px; font-size: 14px; font-weight: 700; letter-spacing: .06em; }
+  .zzz-boot-foot.zzz-slow .zzz-boot-btn { display: inline-block; }
+  #zzzBootHelp { position: fixed; inset: 0; z-index: 2147483590; background: #171717; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; font-family: system-ui, sans-serif; }
+  #zzzBootHelp .zzz-bh-logo { color: #D4AF37; font-size: 30px; font-weight: 800; letter-spacing: .18em; }
+  #zzzBootHelp .zzz-bh-txt { color: #e3e6ea; font-size: 14px; text-align: center; max-width: 320px; padding: 0 16px; line-height: 1.4; }
+  #zzzBootHelp .zzz-boot-btn { display: inline-block; }
+  #zzzBootHelp .zzz-bh-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
   #zzzSplash .zzz-chain-info { position: absolute; inset: 0; pointer-events: none; container-type: size; }
   #zzzSplash .zzz-ci-wx { position: absolute; left: 22cqw; top: 32.5%; width: 30cqw; height: 11cqw; opacity: 1; } 
   #zzzSplash .zzz-ci-wx svg { width: 100%; height: 100%; display: block; }
@@ -208,6 +221,7 @@
 <div id="zzzSplash" aria-label="Verso is loading" role="status">
   <div class="zzz-chain-box"><i class="zzz-chain-text"></i><span class="zzz-chain-spin"><i class="zzz-chain-fill"></i><i class="zzz-chain-gold"></i><i class="zzz-chain-ink"></i></span>
     <span class="zzz-chain-info" aria-hidden="true"><span class="zzz-ci-wx"></span><span class="zzz-ci-date"></span><span class="zzz-ci-clock"></span></span></div>
+  <div class="zzz-boot-foot" id="zzzBootFoot"><i class="zzz-boot-ring"></i><span class="zzz-boot-who" id="zzzBootWho"><b>VERSO</b> · starting</span><button type="button" class="zzz-boot-btn" onclick="zzz_boot_refresh()">⟳ TAP TO REFRESH</button></div>
 </div>
 <script>
 (function () {
@@ -217,14 +231,34 @@
   function setUp(v) { var el = document.getElementById('zzzSplash'); if (!el) return; shown = Math.max(shown, Math.min(1, v)); el.style.setProperty('--zzz-up', shown.toFixed(3)); }
   function gone() { var el = document.getElementById('zzzSplash'); if (!el || el.classList.contains('zzz-gone')) return; done = true; setUp(1);
     try { var ms = Date.now() - t0; if (ms > 800 && ms < 25000) localStorage.setItem('zzz_boot_ms', String(ms)); } catch (e) {}
-    setTimeout(function () { el.classList.add('zzz-gone'); setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 450); }, 220); }
+    setTimeout(function () { el.classList.add('zzz-gone'); setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); try { watchBlank(); } catch (e) {} }, 450); }, 220); }
   window.zzz_boot_gone = gone;
+
+  function who() { var app = false; try { app = /[?&]app=twa/.test(location.search) || /; wv\)|VersoApp/i.test(navigator.userAgent) || document.referrer.indexOf('android-app://') === 0; } catch (e) {}
+    var b = (typeof VERSO_BUILD === 'string' && VERSO_BUILD) ? VERSO_BUILD : ''; return '<b>' + (app ? 'VERSO APP' : 'VERSO WEB') + '</b>' + (b ? ' · ' + b.replace(/^VERSO\s*/i, '') : ' · starting'); }
+  window.zzz_boot_refresh = function () { try { sessionStorage.setItem('zzz_boot_refresh', String(Date.now())); } catch (e) {} try { location.reload(); } catch (e) { location.href = location.href; } };
+  function blankNow() {
+    try { if (document.hidden) return false;
+      var pts = [[0.5, 0.35], [0.5, 0.55], [0.3, 0.45], [0.7, 0.45]], blank = 0;
+      for (var i = 0; i < pts.length; i++) { var el = document.elementFromPoint(innerWidth * pts[i][0], innerHeight * pts[i][1]);
+        if (!el || el === document.body || el === document.documentElement || (el.children.length === 0 && !(el.innerText || '').trim() && el.getBoundingClientRect().width * el.getBoundingClientRect().height > innerWidth * innerHeight * 0.6)) blank++; }
+      return blank === pts.length; } catch (e) { return false; } }
+  function helpCard() { if (document.getElementById('zzzBootHelp')) return; var d = document.createElement('div'); d.id = 'zzzBootHelp'; d.setAttribute('role', 'alert');
+    d.innerHTML = '<div class="zzz-bh-logo">VERSO</div><i class="zzz-boot-ring"></i><div class="zzz-boot-who">' + who() + '</div>'
+      + '<div class="zzz-bh-txt">Verso did not show its screen. Tap REFRESH - your data is safe.</div>'
+      + '<div class="zzz-bh-row"><button type="button" class="zzz-boot-btn" onclick="zzz_boot_refresh()">⟳ TAP TO REFRESH</button><button type="button" class="zzz-boot-btn" id="zzzBhWait">WAIT</button></div>';
+    document.body.appendChild(d); try { document.getElementById('zzzBhWait').onclick = function () { if (d.parentNode) d.parentNode.removeChild(d); watchN = 0; }; } catch (e) {}
+    try { if (typeof zzz_report_issue === 'function') zzz_report_issue('boot-blank', 'page stayed empty after the start screen', { who: who().replace(/<[^>]+>/g, '') }); } catch (e) {} }
+  var watchN = 0; window.zzz_boot_watch = function () { watchBlank(); };
+  function watchBlank() { var n = 0; var w = setInterval(function () { n++; if (n > 12) { clearInterval(w); return; }
+      if (blankNow()) { watchN++; if (watchN >= 3) { clearInterval(w); helpCard(); } } else watchN = 0; }, 2000); }
   document.addEventListener('DOMContentLoaded', function () { floor = Math.max(floor, 0.35); });
   window.addEventListener('load', function () { floor = Math.max(floor, 0.6); });
   var outAt = 0;
   var tick = setInterval(function () {
     if (done) { clearInterval(tick); return; }
     var t = Date.now() - t0, main = window.__versoMainDone === true;
+    try { var wEl = document.getElementById('zzzBootWho'); if (wEl && (t % 1200) < 130) wEl.innerHTML = who(); if (t > 12000) { var f = document.getElementById('zzzBootFoot'); if (f) f.classList.add('zzz-slow'); } } catch (e) {}
     if (main) floor = Math.max(floor, 0.8);
     var ready = false;
     try {
@@ -1554,6 +1588,12 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzz10dm-chip.zzz10dm-on { background: #d4af37; color: #171717; }
   .zzz10dm-chip:disabled { cursor: default; }
   .zzz10dm-chip.zzz-overse-chip { border-color: #c0c0c0; color: #c0c0c0; } .zzz10dm-chip.zzz-overse-chip.zzz10dm-on { background: #c0c0c0; color: #171717; }   
+  
+  .zzz-ov-slide { margin: 8px 0 2px; } .zzz-ov-slide-track { position: relative; height: 44px; border: 1px solid #c0c0c0; border-radius: 22px; background: #0d0e10; touch-action: none; user-select: none; -webkit-user-select: none; outline: none; }
+  .zzz-ov-slide-track:focus-visible { box-shadow: 0 0 0 2px #fff; }
+  .zzz-ov-slide-txt { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; letter-spacing: .14em; color: #c0c0c0; pointer-events: none; }
+  .zzz-ov-slide-knob { position: absolute; top: 3px; left: 3px; width: 38px; height: 36px; border-radius: 18px; background: linear-gradient(180deg, #f0f2f5, #aeb4bc); color: #111; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+  .zzz-ov-slide-addr { margin-top: 4px; font-size: 12px; color: #9aa0a8; text-align: center; font-family: ui-monospace, Menlo, monospace; }
   .zzz10dm-chip:disabled:not(.zzz10dm-on) { opacity: 0.45; }
   
   .zzz6f35-restore-btn {
@@ -7701,6 +7741,20 @@ body{margin:0;color:#fff;font-family:sans-serif;}
   .zzzfin-auto .zzzfin-note { margin-top: 0; }
   .zzz-rdr .zzzfin-item { display: block; width: 100%; box-sizing: border-box; cursor: pointer; margin: 3px 0; }
   .zzz-media-confirm-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  
+  .zzz-ov-badge { position: absolute; right: -2px; bottom: -2px; width: 34%; height: 34%; border-radius: 50%; background: #171717; border: 2px solid #B9BEC5; z-index: 5; pointer-events: none; display: flex; align-items: center; justify-content: center; }
+  .zzz-ov-badge > i { width: 46%; height: 46%; border-radius: 50%; background: #D3D1C7; }
+  .zzz-ov-badge.is-hybrid > i { background: #EF9F27; } .zzz-ov-badge.is-red { border-color: #E24B4A; } .zzz-ov-badge.is-red > i { background: #E24B4A; }
+  .zzz-login-src { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; padding: 6px 8px; border: 1px solid #6E737B; border-radius: 8px; color: #e3e6ea; font-size: 13px; }
+  .zzz-login-src.is-red { border-color: #e0322b; color: #ff8a8a; }
+  .zzz-ov-logo { width: 28px; height: 28px; flex: none; }
+  .zzzfin-mv-title .zzz-ov-logo { width: 22px; height: 22px; vertical-align: middle; margin-right: 6px; }
+  .zzz-login-refused { z-index: 2147483620; }
+  .zzz-lr-box { width: min(340px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100dvh - 24px); overflow-y: auto; }
+  .zzz-lr-box.is-red { border-color: #e0322b; box-shadow: 0 0 0 1px #5a1210, 0 0 18px rgba(224,50,43,.35); }
+  .zzz-lr-h { display: flex; align-items: center; gap: 8px; color: #D4AF37; letter-spacing: .08em; margin-bottom: 8px; }
+  .zzz-lr-box.is-red .zzz-lr-h { color: #ff5a52; }
+  .zzz-lr-chain { width: 26px; height: 26px; flex: none; display: inline-block; background: currentColor; -webkit-mask: url("verso-chain-links.png") center/100% 100% no-repeat; mask: url("verso-chain-links.png") center/100% 100% no-repeat; }
   .zzz-media-confirm-text { white-space: pre-line; max-height: 60vh; overflow-y: auto; } 
   
   .zzz-verso-prompt-in { display: block; width: 100%; box-sizing: border-box; margin-top: 10px; border: 1.5px solid #D4AF37; border-radius: 8px; background: #0f0f0f; color: #eee; padding: 7px; font-size: 14px; }
@@ -30631,7 +30685,7 @@ function zzz_wl_paint_now() {
     const SMALL = '<span style="font-size:.7em;vertical-align:middle">🪞</span>';
     const parts = []; if (rs) parts.push(rs.kind === 'access' ? '🔗' : SMALL); if (on) parts.push('🔒'); if (op) parts.push('🪞'); if (lv) parts.push('●');
 
-    try { if (zzzSecState.red) parts.unshift('⚠'); if (zzzSecState.overseDown) parts.push('⚪'); } catch (e) {}
+    try { if (zzzSecState.red || zzz_login_not_overse()) parts.unshift('⚠'); if (zzzSecState.overseDown) parts.push('🟠'); } catch (e) {}
     pv.hidden = !parts.length; pv.classList.remove('is-on'); pv.classList.toggle('is-red', !!parts.length);
     pv.innerHTML = parts.join('');
     pv.title = [rs ? (rs.kind === 'access' ? 'ACCESS active (from ' + rs.users + ') - tap / Ctrl + A = end' : 'PREVIEW AS ' + rs.users + ' - tap = end') : '', on ? 'INCOGNITO on - tap = off' : '', op ? 'REMOTE ACCESS open - Ctrl + R = close' : '', lv ? 'LIVE session - Ctrl + L' : ''].filter(Boolean).join(' · ');
@@ -30714,7 +30768,7 @@ async function zzz_wl_go(watch) {
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); zzz_wl_go(false); } if (e.key === 'Escape') { inp.value = ''; zzz_wl_paint(); inp.blur(); } });
     const x = document.getElementById('zzzWlX'); if (x) x.addEventListener('click', (e) => { e.stopPropagation(); inp.value = ''; zzz_wl_paint(); zzz_wl_live(); inp.focus(); });
     const eye = document.getElementById('zzzWlEye'); if (eye) eye.addEventListener('click', (e) => { e.stopPropagation(); zzz_wl_go(true); });
-    const pv = document.getElementById('zzzWlPriv'); if (pv) pv.addEventListener('click', (e) => { e.stopPropagation(); const rs = zzz_remote_state(); if ((typeof zzzSecState !== 'undefined' && (zzzSecState.red || zzzSecState.overseDown)) || (!rs && zzz_live_open_cached())) { zzz_logo_state_window(); return; } if (rs) zzz_modes_hotkey(rs.kind === 'access' ? 'access' : 'remote'); else if (zzz_ext_private()) zzz_modes_hotkey('private'); else if (typeof zzzLive !== 'undefined' && zzzLive.ch) zzz_live_pick(); else if (zzz_live_open_cached()) zzz_modes_hotkey('remote'); });
+    const pv = document.getElementById('zzzWlPriv'); if (pv) pv.addEventListener('click', (e) => { e.stopPropagation(); const rs = zzz_remote_state(); if ((typeof zzzSecState !== 'undefined' && (zzzSecState.red || zzzSecState.overseDown || zzz_login_not_overse())) || (!rs && zzz_live_open_cached())) { zzz_logo_state_window(); return; } if (rs) zzz_modes_hotkey(rs.kind === 'access' ? 'access' : 'remote'); else if (zzz_ext_private()) zzz_modes_hotkey('private'); else if (typeof zzzLive !== 'undefined' && zzzLive.ch) zzz_live_pick(); else if (zzz_live_open_cached()) zzz_modes_hotkey('remote'); });
     setTimeout(() => { try { zzz_wl_paint(); } catch (e) {} }, 0);
     return true;
   };
@@ -30943,7 +30997,7 @@ function zzz_chain_puzzle(level, api) {
     const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv'; o.setAttribute('data-zzz-nodraft', '1');
     const zzzPzTitle = (api && api.title) || 'VERSO CHAIN CHECK';
     const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', zzzPzTitle); b.style.cssText = 'text-align:center' + (api ? ';border-color:#c0c0c0' : '');
-    const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = zzzPzTitle; if (api) t.style.color = '#c0c0c0'; b.appendChild(t);
+    const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = zzzPzTitle; if (api) { t.style.color = '#c0c0c0'; t.insertAdjacentHTML('afterbegin', ZZZ_OVERSE_LOGO); } b.appendChild(t);
     zzz_mark_apply(b);
     const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text'; sub.style.minHeight = '36px'; b.appendChild(sub);
     const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 280 280'); svg.style.cssText = 'width:100%;max-width:280px;height:auto;touch-action:manipulation;user-select:none;-webkit-user-select:none';
@@ -31714,12 +31768,12 @@ function zzz_verse_ask(ch, title, text, altLabel) {
   return new Promise((resolve) => {
     const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv';
     const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box'; b.setAttribute('data-5s', 'VERSE VERIFICATION');
-    const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = title; b.appendChild(t);
+    const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = title; if (/^overse\b/i.test(String(title || ''))) t.insertAdjacentHTML('afterbegin', ZZZ_OVERSE_LOGO); b.appendChild(t);
     zzz_mark_apply(b);
     const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text'; sub.textContent = text; sub.setAttribute('data-mv-opt', '1'); b.appendChild(sub);
     const isVerse = ch.mode === 'verse';
     const lab = document.createElement('button'); lab.type = 'button'; lab.className = 'entry-number-button zzz10v1-field-label zzzfin-mv-label'; lab.disabled = true;
-    lab.textContent = isVerse ? ('VERSE ' + (ch.verses > 1 ? '#' + ch.verse_no + ' ' : '') + '· WORD ' + ch.positions[0] + ' + WORD ' + ch.positions[1]) : 'MV PHRASE';
+    lab.textContent = (isVerse ? ('VERSE ' + (ch.verses > 1 ? '#' + ch.verse_no + ' ' : '') + '· WORD ' + ch.positions[0] + ' + WORD ' + ch.positions[1]) : 'MV PHRASE') + ' *';
     if (isVerse) zzz_verse_labels().then(L => { const x = L[(ch.verse_no || 1) - 1]; if (x && x.label && lab.isConnected) lab.textContent += ' · „' + x.label + '“'; }).catch(() => {});
     b.appendChild(lab);
     if (isVerse) {
@@ -31729,7 +31783,16 @@ function zzz_verse_ask(ch, title, text, altLabel) {
     }
     const inp = zzz_vkb_make_secret('versoVerseAnswerInput', 'entry-cell zzz6f36-login-local-input', isVerse ? 'VERSE WORDS' : 'MV PHRASE', isVerse ? 'both words, no space' : 'your MV PHRASE');
     inp.style.margin = '6px 0'; b.appendChild(inp);
+    inp.addEventListener('input', () => { inp.style.outline = ''; });
     const st = document.createElement('div'); st.className = 'zzz-media-diss-s'; st.style.minHeight = '16px'; b.appendChild(st);
+
+    const fg = document.createElement('button'); fg.type = 'button'; fg.className = 'zzz-media-btn'; fg.style.cssText = 'margin:2px 0 4px;font-size:11px;border-color:#c0c0c0;color:#c0c0c0'; fg.textContent = 'FORGOT? › RECOVERY'; fg.setAttribute('data-mv-opt', '1');
+    fg.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); if (fg._open) return; fg._open = true;
+      const box = document.createElement('div'); box.style.cssText = 'border:1px solid #c0c0c0;border-radius:8px;padding:6px;margin:4px 0;color:#ddd;font-size:12px';
+      box.textContent = 'Recovery runs only on the Overse page: the recovery token from your e-mail + 2 words of your verse (forgot the verse? then your MV PHRASE). Slide to open it:';
+      try { box.appendChild(zzz_overse_slide()); } catch (er) {}
+      fg.after(box); });
+    b.appendChild(fg);
     const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
     const y = document.createElement('button'); y.type = 'button'; y.className = 'zzz-media-btn is-on'; y.textContent = 'CONFIRM';
     const n = document.createElement('button'); n.type = 'button'; n.className = 'zzz-media-btn'; n.textContent = 'CANCEL';
@@ -31743,7 +31806,7 @@ function zzz_verse_ask(ch, title, text, altLabel) {
     new MutationObserver((x, obs) => { if (!o.isConnected) { obs.disconnect(); end(null); } }).observe(document.body, { childList: true });
     y.addEventListener('click', () => {
       const v = String(inp.value || '').trim();
-      if (!v) { st.textContent = isVerse ? 'Type both words together with the Verso keyboard.' : 'Type your MV PHRASE with the Verso keyboard.'; return; }
+      if (!v) { st.style.color = '#f66'; inp.style.outline = '2px solid #e33'; st.textContent = '* ' + (isVerse ? 'Type both words together with the Verso keyboard.' : 'Type your MV PHRASE with the Verso keyboard.'); return; }
       end(v);
     });
     inp._vkbOk = y;
@@ -31858,6 +31921,8 @@ function zzz_verse_section_render(host) {
   p('Your MV phrase is a VERSE - a line or sentence of at least 7 words that only you know (a song, a poem, your own sentence). Verso never asks for the whole verse: each time it asks for 2 random words of it (e.g. word 1 + word 4), typed together without a space - „pekný deň“ → peknyden. Decoy symbols (@ # / $ & * ! ? ; : , .) may be mixed in - Verso ignores them, a watcher sees noise.');
   p('Your VERSE is your way back (recovery) - Verso asks it rarely, so nobody can collect it. Daily you confirm with your MV PHRASE. Verso keeps only fingerprints (never the verse, never the phrase).');
 
+  { const one = p('ONE VERSE: you have only one verse - it is set at registration. Later you only CHANGE it (✎ CHANGE VERSE: MV PHRASE + password). A forgotten verse is cleared only by Overse CONTROL - then you add a new one here (+ ADD VERSE).'); one.style.color = '#c0c0c0'; one.style.fontWeight = '700'; }
+
   const wh = document.createElement('div'); wh.className = 'zzz10m5-txt'; wh.style.cssText = 'margin:6px 0;padding:6px 8px;border:1px solid #444;border-radius:8px';
   const whT = document.createElement('div'); whT.style.cssText = 'font-weight:800;color:#D4AF37;margin-bottom:3px'; whT.textContent = 'WHERE VERSO ASKS FOR MV'; wh.appendChild(whT);
   [['Only when it is needed - never in advance. Always in the moving Verso window (a different place every time, buttons may swap).', 0],
@@ -31902,6 +31967,12 @@ function zzz_verse_section_render(host) {
     if (zzz4r7_uk_open()) mk('🔒 LOCK NOW', () => { zzz4r7_uk_lock('manual'); paintKey(); }, 'Close the key on this device now');
     else mk('🔓 OPEN · MV PHRASE', async () => { await zzz_verse_verify('key', 'OPEN KEY · MV', 'Your MV PHRASE opens your END-TO-END key on this device (KEY LOCK decides for how long).'); setTimeout(paintKey, 1500); }, 'Open the key with your MV PHRASE');
     mk('OPEN WITH VERSE', () => zzz4r7_verse_full_dialog(() => paintKey()), 'Forgot / changed the MV PHRASE: the whole verse opens the key (way back)');
+
+    zzz4r7_uk_rows().then((rows) => { if (!rows.length || rows.some(r => r.wrap_by === 'verse')) return;
+      const w = document.createElement('div'); w.style.cssText = 'color:#f66;font-weight:700;margin-top:3px;width:100%'; w.textContent = '🔑 VERSE BACKUP: missing - without it a forgotten MV PHRASE locks your private notes and files for good.'; kbt.appendChild(w);
+      if (zzz4r7_uk_open()) mk('🔑 ADD VERSE BACKUP', () => zzz4r7_verse_full_dialog(() => paintKey(), 'backup'), 'Give your open key its second lock: the whole verse');
+      else { const h = document.createElement('div'); h.style.cssText = 'color:#999;font-size:11px;width:100%'; h.textContent = 'Open the key with your MV PHRASE first, then add the backup.'; kbt.appendChild(h); }
+    }).catch(() => {});
     { const on = zzz4r7_e2ee_notes_on(); mk((on ? '☑' : '☐') + ' E2EE PRIVATE NOTES', () => { zzz_mvw_set({ e2eeNotes: !on }); zzz6f2_show_toast(!on ? 'New private notes on this device are locked end-to-end (only your key opens them).' : 'New private notes are saved as before.', 'info', 3500); paintKey(); }, 'New PRIVATE notes written on this device are locked with your key - only your phones with the open key can read them'); }
   }
   paintKey(); document.addEventListener('zzz4r7-key', paintKey);
@@ -31957,20 +32028,28 @@ function zzz_verse_section_render(host) {
   load();
 }
 
-function zzz4r7_verse_full_dialog(done) {
+function zzz4r7_verse_full_dialog(done, mode) {
+  const bk = mode === 'backup';
   const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv';
   const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzzfin-mv-box';
-  const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = 'OPEN KEY WITH VERSE'; b.appendChild(t);
-  const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text'; sub.textContent = 'Type your WHOLE verse (as you saved it). It never leaves this phone - it only opens your END-TO-END key here.'; b.appendChild(sub);
+  const t = document.createElement('div'); t.className = 'zzzfin-mv-title'; t.textContent = bk ? '🔑 VERSE BACKUP OF YOUR KEY' : 'OPEN KEY WITH VERSE'; b.appendChild(t);
+  const sub = document.createElement('div'); sub.className = 'zzz-media-confirm-text'; sub.textContent = bk ? 'Type your WHOLE verse * (as you saved it). Your key gets a second lock: if you ever forget or recover your MV PHRASE, the verse still opens your private notes and files. The verse is checked once, never stored.' : 'Type your WHOLE verse (as you saved it). It only opens your END-TO-END key here.'; b.appendChild(sub);
   const inp = zzz_vkb_make_secret('versoKeyVerseInput', 'entry-cell zzz6f36-login-local-input', 'VERSE', 'your whole verse'); inp.style.margin = '6px 0'; b.appendChild(inp);
   const st = document.createElement('div'); st.className = 'zzz-media-diss-s'; st.style.minHeight = '16px'; b.appendChild(st);
   const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
-  const y = document.createElement('button'); y.type = 'button'; y.className = 'zzz-media-btn is-on'; y.textContent = 'OPEN';
+  const y = document.createElement('button'); y.type = 'button'; y.className = 'zzz-media-btn is-on'; y.textContent = bk ? 'ADD BACKUP' : 'OPEN';
   const n = document.createElement('button'); n.type = 'button'; n.className = 'zzz-media-btn'; n.textContent = 'CANCEL';
   const end = () => { try { inp.value = ''; } catch (e) {} o.remove(); try { done && done(); } catch (e) {} };
   n.addEventListener('click', end);
   new MutationObserver((x, obs) => { if (!o.isConnected) { obs.disconnect(); try { done && done(); } catch (e) {} } }).observe(document.body, { childList: true });
-  y.addEventListener('click', async () => { const v = String(inp.value || ''); if (!v.trim()) return; st.textContent = 'Opening…';
+  y.addEventListener('click', async () => { const v = String(inp.value || ''); if (!v.trim()) { inp.style.outline = '2px solid #e33'; st.style.color = '#f66'; st.textContent = 'Write your whole verse.'; return; }
+    if (bk) { st.style.color = ''; st.textContent = 'Checking…';
+      if (!zzz4r7_uk_open()) { st.style.color = '#f66'; st.textContent = 'Your key is locked - open it with your MV PHRASE first.'; return; }
+      const ok = await zzz4r7_uk_rewrap('verse', v);
+      if (ok) { zzz6f2_show_toast('✓ Your key has its verse backup.', 'ok', 3500); end(); }
+      else { inp.style.outline = '2px solid #e33'; st.style.color = '#f66'; st.textContent = 'This is not your verse (or the check could not be done now). Try again.'; }
+      return; }
+    st.textContent = 'Opening…';
     const r = await zzz4r7_uk_open_with_verse(v);
     if (r === 'opened') { zzz6f2_show_toast('🔓 Key open - your next MV PHRASE check gives it the new phrase.', 'ok', 3500); end(); }
     else st.textContent = r === 'no_verse_wrap' ? 'Your key has no verse lock yet (add a verse while the key is open).' : 'This verse does not open the key.'; });
@@ -57031,6 +57110,7 @@ function open_settings_workspace() {
     wrap.setAttribute('data-zzz-rdr-ws', '1'); wrap.zzzRdrPlace = 'SETTINGS › ' + String(tl).toUpperCase(); wrap.zzzRdrTitle = tabBar; wrap.zzzRdrItems = () => zzz_rdr_dom_items(tabContent, tl);
     zzz_rdr_ws_btn(tabBar, wrap.zzzRdrPlace); }
   if (zzz10_0ActiveTab === 'login-setup') {
+    try { if (zzz6f7_isLoggedIn) { const ls = zzz_login_source_line(); ls.setAttribute('data-5s', 'LOGIN SOURCE'); tabContent.appendChild(ls); } } catch (e) {}
     zzz10m2_render_login_setup(tabContent);
   } else if (zzz10_0ActiveTab === 'multi-verification') {
 
@@ -58387,7 +58467,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-26 23:26';
+const VERSO_BUILD = '2026-11-27 03:43';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -59386,13 +59466,26 @@ function zzz6f36_build_login_field(labelText, fieldKind) {
   return wrap;
 }
 
-document.addEventListener('focusin', async (e) => {
-  const t = e.target; if (!t || t.id !== 'versoLoginUserCell' || window.zzzEarlyChainBusy) return;
+async function zzz_chain_early(focusEl) {
+  if (window.zzzEarlyChainBusy) return;
   if (window.zzzEarlyChain && Date.now() - window.zzzEarlyChain.at < 4 * 60 * 1000) return;
   window.zzzEarlyChainBusy = true;
-  try { if (await zzz_dk_get(false)) return; const pass = await zzz_chain_puzzle(1); if (pass) { window.zzzEarlyChain = { pass, at: Date.now() }; try { t.focus(); } catch (e2) {} } }
+  try { if (await zzz_dk_get(false)) return;
+
+    const api = zzz_overse_route_get().length ? 'overse' : 'verso';
+    const pass = api === 'overse' ? await zzz_chain_puzzle(1, ZZZ_OVERSE_CHAIN_API) : await zzz_chain_puzzle(1);
+    if (pass) { window.zzzEarlyChain = { pass, at: Date.now(), api }; try { if (focusEl) focusEl.focus(); } catch (e2) {} } }
   catch (e3) {} finally { window.zzzEarlyChainBusy = false; }
+}
+document.addEventListener('focusin', (e) => {
+  const t = e.target; if (!t || t.id !== 'versoLoginUserCell') return;
+  zzz_chain_early(t);
 }, true);
+(function zzz_chain_on_entry() {
+  let n = 0; const w = setInterval(() => { n++; if (n > 60) { clearInterval(w); return; }
+    try { if (document.getElementById('zzzSplash') || window.__versoMainDone !== true) return;
+      clearInterval(w); if (zzz6f7_isLoggedIn) return; zzz_chain_early(null); } catch (e) {} }, 500);
+})();
 
 document.addEventListener('focusin', (e) => { const t = e.target; if (!t || !t.id) return;
   if (t.id === 'versoLoginUserCell') t.setAttribute('enterkeyhint', 'next'); else if (t.id === 'versoLoginContentCell') t.setAttribute('enterkeyhint', 'go'); }, true);
@@ -66563,6 +66656,20 @@ function zzz_verso_confirm(text, yes) {
   });
 }
 
+function zzz_login_refused_window(reason, text, red) {
+  try { document.querySelectorAll('.zzz-login-refused').forEach(x => x.remove()); } catch (e) {}
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm zzz-login-refused'; o.setAttribute('role', 'alertdialog');
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box zzz-lr-box' + (red ? ' is-red' : '');
+  const h = document.createElement('div'); h.className = 'zzz-lr-h'; h.innerHTML = '<span class="zzz-lr-chain" aria-hidden="true"></span><b>LOGIN REFUSED</b>'; b.appendChild(h);
+  const t = document.createElement('div'); t.className = 'zzz-media-confirm-text'; t.textContent = text; b.appendChild(t);
+  const row = document.createElement('div'); row.className = 'zzz-media-confirm-row';
+  const x = document.createElement('button'); x.type = 'button'; x.className = 'zzz-media-btn'; x.textContent = '✕ CLOSE';
+  const end = () => { o.remove(); try { const u = document.getElementById('versoLoginUserCell'); if (u) u.focus({ preventScroll: true }); } catch (e) {} };
+  x.addEventListener('click', end); o.addEventListener('click', (e) => { if (e.target === o) end(); });
+  row.appendChild(x); b.appendChild(row); o.appendChild(b); document.body.appendChild(o);
+  try { zzz_report_issue('login-refused', String(reason || 'unknown'), { tags: ['login'] }); } catch (e) {}
+}
+
 const ZZZ_STARS_TABLE = 'verso_note_stars';
 const ZZZ_STARS_FRESH_MS = 60000;
 const zzzStars = { mine: new Map(), agg: new Map(), at: new Map(), want: new Set(), timer: 0, of: '', busy: false };
@@ -69329,6 +69436,7 @@ function zzz6f36_render_login(body) {
   body.appendChild(row);
   body.appendChild(zzz10dm_build_row());
   { const zzzOvRow = zzz_overse_row(); if (zzzOvRow) body.appendChild(zzzOvRow); }
+  try { body.appendChild(zzz_overse_slide()); } catch (e) {}
 
   const newRow = document.createElement('div');
   newRow.className = 'zzz14b17-new';
@@ -71135,6 +71243,21 @@ function zzz_session_stop() {
   if (typeof zzz_recompute_logo_status === 'function') zzz_recompute_logo_status();
 }
 
+const ZZZ_OVERSE_LOGO = '<svg class="zzz-ov-logo" viewBox="0 0 120 120" aria-label="Overse"><defs><linearGradient id="zzzOvG" gradientUnits="userSpaceOnUse" x1="10" y1="10" x2="110" y2="110"><stop offset="0" stop-color="#F4F5F7"/><stop offset=".55" stop-color="#B9BEC5"/><stop offset="1" stop-color="#6E737B"/></linearGradient></defs><path d="M15.1 50 A46 46 0 0 1 104.9 50 M104.9 70 A46 46 0 0 1 15.1 70" fill="none" stroke="url(#zzzOvG)" stroke-width="8" stroke-linecap="round"/><path d="M4 60H31M89 60H116" stroke="url(#zzzOvG)" stroke-width="1.6"/><text x="60" y="66" text-anchor="middle" font-family="Georgia,serif" font-style="italic" font-size="19" fill="url(#zzzOvG)">verse</text></svg>';
+function zzz_login_via_set(u, via) { try { localStorage.setItem('zzz_login_via', JSON.stringify({ u: String(u || ''), via: via === 'overse' ? 'overse' : 'verso', at: Date.now(), v: 2 })); } catch (e) {} }
+function zzz_login_via() {
+  try { const r = JSON.parse(localStorage.getItem('zzz_login_via') || 'null'); const me = String(zzz_sessionUsername || '').toLowerCase();
+    return r && r.v === 2 && me && String(r.u).toLowerCase() === me ? r.via : ''; } catch (e) { return ''; } }
+function zzz_login_not_overse() {
+  try { const me = String(zzz_sessionUsername || '').toLowerCase(); return !!me && zzz_overse_route_has(me) && zzz_login_via() === 'verso'; } catch (e) { return false; } }
+function zzz_login_source_line() {
+  const d = document.createElement('div'); d.className = 'zzz-login-src'; const via = zzz_login_via();
+  if (zzz_login_not_overse()) { d.classList.add('is-red'); d.innerHTML = '<span>🔴 This login was NOT verified by <b>Overse</b> - your account is kept by Overse. If you did not switch it on purpose: SETTINGS › Login setup › CHANGE PASSWORD.</span>'; }
+  else if (via === 'overse') d.innerHTML = ZZZ_OVERSE_LOGO + '<span>Logged in by <b>Overse</b> ✓</span>';
+  else if (via === 'verso') d.innerHTML = '<span>Login verified by <b>Verso</b></span>';
+  else d.innerHTML = '<span>Login source not known on this device (logged in before this update).</span>';
+  return d;
+}
 function zzz_recompute_logo_status() {
   const circle = document.getElementById('versoEntryButton');
   if (!circle) return;
@@ -71145,12 +71268,12 @@ function zzz_recompute_logo_status() {
   if (aiC) aiC.classList.remove('zzz-logo-orange', 'zzz-logo-red');
 
   const sec = (typeof zzzSecState !== 'undefined' && zzzSecState) || {};
-  if (zzz_isInStandby || sec.red || document.getElementById('zzzLoginAlertBar')) {
+  if (zzz_isInStandby || sec.red || document.getElementById('zzzLoginAlertBar') || zzz_login_not_overse()) {
     circle.classList.add('zzz-logo-red');
   } else if (zzz_isOffline || isDbDisconnected) {
     circle.classList.add('zzz-logo-orange');
   } else if (sec.overseDown) {
-    circle.classList.add('zzz-logo-silver');
+    circle.classList.add('zzz-logo-orange');
   } else {
     try {
       const rs = zzz_remote_state(), op = zzz_live_open_cached(), lv = !!(typeof zzzLive !== 'undefined' && zzzLive.ch);
@@ -71158,6 +71281,15 @@ function zzz_recompute_logo_status() {
       else if (zzz_ext_private()) circle.classList.add('zzz-logo-turq');
     } catch (e) {}
   }
+
+  try {
+    let bd = circle.querySelector(':scope > .zzz-ov-badge'); const via = zzz6f7_isLoggedIn ? zzz_login_via() : ''; const bad = zzz6f7_isLoggedIn && zzz_login_not_overse();
+    if (via === 'overse' || bad) {
+      if (!bd) { bd = document.createElement('span'); bd.className = 'zzz-ov-badge'; bd.setAttribute('aria-label', 'Overse'); bd.appendChild(document.createElement('i')); if (getComputedStyle(circle).position === 'static') circle.style.position = 'relative'; circle.appendChild(bd); }
+      bd.classList.toggle('is-red', bad); bd.classList.toggle('is-hybrid', !bad && !!sec.overseDown);
+      bd.title = bad ? 'NOT verified by Overse' : (sec.overseDown ? 'Overse not reachable - hybrid' : 'Verified by Overse');
+    } else if (bd) bd.remove();
+  } catch (e) {}
 
   if (label) {
 
@@ -71176,7 +71308,7 @@ async function zzz_sec_watch() {
     const st = (a && !a.error && a.data) || {}, ov = (b && !b.error && b.data) || { ok: true };
     const red = (Number(st.wrong_password) || 0) > 0 || (Number(st.refused_logins) || 0) > 0;
     const down = ov.ok === false;
-    if (down !== zzzSecState.overseDown) zzz6f2_show_toast(down ? '⚪ Overse not reachable - you work in hybrid; new logins and MV steps wait.' : '✓ Overse answers again - MV steps work.', down ? 'warn' : 'ok', 5000);
+    if (down !== zzzSecState.overseDown) zzz6f2_show_toast(down ? '🟠 Overse not reachable - you work in hybrid; new logins and MV steps wait.' : '✓ Overse answers again - MV steps work.', down ? 'warn' : 'ok', 5000);
     if (red && !zzzSecState.red) zzz6f2_show_toast('🔴 SECURITY: ' + (st.refused_logins ? 'a login with your password was refused' : 'a wrong password was typed for your account') + ' while you were logged in. Tap the VERSO logo for details.', 'warn', 8000);
     zzzSecState = { red, overseDown: down, info: st };
     zzz_wl_paint();
@@ -71199,8 +71331,10 @@ function zzz_logo_state_window() {
     if (st.wrong_password) line('🔴 ' + st.wrong_password + '× a wrong password for your account while you were logged in · last ' + fmt(st.wrong_password_at), '#ff8a8a');
     if (zzz_isInStandby) line('🔴 This session was taken over or stopped - log in again on MY DEVICE.', '#ff8a8a');
     line('Not you? Change the password: SETTINGS › Login setup › CHANGE PASSWORD.', '#bbb'); }
-  if (c.classList.contains('zzz-logo-orange')) { any = true; line('🟠 No connection to the Verso server - Verso keeps your work and sends it later.', '#ffb347'); }
-  if (zzzSecState.overseDown) { any = true; line('⚪ Overse not reachable - you work in hybrid; new logins, recovery and MV steps wait.', '#d9dde2'); }
+  if (c.classList.contains('zzz-logo-orange') && !zzzSecState.overseDown) { any = true; line('🟠 No connection to the Verso server - Verso keeps your work and sends it later.', '#ffb347'); }
+  if (zzzSecState.overseDown) { any = true; line('🟠 Overse not reachable - you work in hybrid; new logins, recovery and MV steps wait.', '#ffb347'); }
+  if (zzz_login_not_overse()) any = true;
+  try { box.appendChild(zzz_login_source_line()); } catch (e) {}
   const rs = zzz_remote_state(), op = zzz_live_open_cached(), lv = !!(typeof zzzLive !== 'undefined' && zzzLive.ch);
   if (op) { any = true; line('🔵 REMOTE ACCESS is OPEN - the users of your shares can activate them.', '#a9c8f5');
     const ls = line('Loading who …', '#999');
@@ -71465,7 +71599,8 @@ async function zzz_overse_login(username, password) {
 
   const loginCall = async (pass) => zzz_overse_call({ action: 'login', client: 'verso', username: u, password, dk: (await zzz_dk_sign(u)) || undefined,
     deviceId: zzz_device_id(), keepSignedIn: mode === 'my', trusted: mode === 'trusted' ? true : undefined, puzzlePass: pass || undefined });
-  let r = await loginCall(null);
+  const early = window.zzzEarlyChain && window.zzzEarlyChain.api === 'overse' && Date.now() - window.zzzEarlyChain.at < 4 * 60 * 1000 ? window.zzzEarlyChain.pass : null; window.zzzEarlyChain = null;
+  let r = await loginCall(early);
   if (r && r.ok === false && r.reason === 'chain_check_required') {
     zzz0r1_set_db_connection_state(true);
     const pass = await zzz_chain_puzzle(r.level || 1, ZZZ_OVERSE_CHAIN_API);
@@ -71544,7 +71679,33 @@ async function zzz_overse_login(username, password) {
   else if (mode === 'my') { setTimeout(zzz10dm_foreign_remind, 7000); setTimeout(() => { zzz_dk_register(); }, 1500); }
   setTimeout(() => { try { zzz0auth_check_bridge(); } catch (e) {} }, 300);
   try { zzz6f2_show_toast('Logged in through Overse ✓', 'ok', 3000); } catch (e) {}
-  return { verified: true };
+  return { verified: true, via: 'overse' };
+}
+
+const ZZZ_OVERSE_PAGE = 'https://overse-eosin.vercel.app/';
+function zzz_overse_open_page() {
+  const u = ZZZ_OVERSE_PAGE + '#verso';
+  let w = null; try { w = window.open(u, '_blank', 'noopener,noreferrer'); } catch (e) {}
+  if (!w) { try { const a = document.createElement('a'); a.href = u; a.target = '_blank'; a.rel = 'noopener noreferrer'; document.body.appendChild(a); a.click(); a.remove(); } catch (e) {} }
+}
+function zzz_overse_slide() {
+  const wrap = document.createElement('div'); wrap.className = 'zzz-ov-slide'; wrap.setAttribute('data-5s', 'SLIDE TO OVERSE');
+  const tr = document.createElement('div'); tr.className = 'zzz-ov-slide-track'; tr.tabIndex = 0; tr.setAttribute('role', 'button');
+  tr.setAttribute('aria-label', 'Slide to open Overse (recovery and support) in the browser');
+  const tx = document.createElement('div'); tx.className = 'zzz-ov-slide-txt'; tx.textContent = '› SLIDE TO Overse ›'; tr.appendChild(tx);
+  const kn = document.createElement('div'); kn.className = 'zzz-ov-slide-knob'; kn.textContent = 'O'; tr.appendChild(kn);
+  const ad = document.createElement('div'); ad.className = 'zzz-ov-slide-addr'; ad.textContent = 'recovery · support: ' + ZZZ_OVERSE_PAGE.replace(/^https:\/\/|\/$/g, '');
+  wrap.appendChild(tr); wrap.appendChild(ad);
+  let x0 = null, max = 0, pid = null;
+  const set = (x) => { kn.style.left = (3 + x) + 'px'; tx.style.opacity = String(Math.max(0.15, 1 - x / Math.max(1, max))); };
+  const back = () => { kn.style.transition = 'left .2s'; set(0); setTimeout(() => { kn.style.transition = ''; }, 220); x0 = null; pid = null; };
+  kn.addEventListener('pointerdown', (e) => { x0 = e.clientX; pid = e.pointerId; max = tr.clientWidth - kn.offsetWidth - 6; try { kn.setPointerCapture(pid); } catch (er) {} e.preventDefault(); e.stopPropagation(); });
+  kn.addEventListener('pointermove', (e) => { if (x0 === null || e.pointerId !== pid) return; set(Math.max(0, Math.min(max, e.clientX - x0))); });
+  const end = (e) => { if (x0 === null || e.pointerId !== pid) return; const x = Math.max(0, Math.min(max, e.clientX - x0));
+    if (max > 0 && x >= max * 0.9) { set(max); zzz_overse_open_page(); setTimeout(back, 600); } else back(); };
+  kn.addEventListener('pointerup', end); kn.addEventListener('pointercancel', back);
+  tr.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); zzz_overse_open_page(); } });
+  return wrap;
 }
 
 const ZZZ_OVERSE_MV_URL = 'https://oxwmhbwrxvwcgfyfpcpf.supabase.co/functions/v1/overse-mv';
@@ -71620,6 +71781,7 @@ async function zzz_overse_test_verse() {
 function zzz_overse_mv_render(host) {
   const b = document.createElement('div'); b.className = 'zzz10m5-box'; b.style.marginTop = '10px'; b.style.borderColor = '#c0c0c0'; b.setAttribute('data-5s', 'Overse · MV SETUP');
   const h = document.createElement('h3'); h.textContent = 'Overse · MV SETUP'; h.style.color = '#c0c0c0'; b.appendChild(h);
+  try { b.appendChild(zzz_overse_slide()); } catch (e) {}
   const p = (x) => { const d = document.createElement('div'); d.className = 'zzz10m5-txt'; d.textContent = x; b.appendChild(d); return d; };
   p('Overse (the verification part above Verso) keeps its OWN verse with its own secret key - separate from your Verso verses. It will be your way back at Overse recovery. Setting it works only on MY DEVICE, after Overse checks your MV PHRASE itself.');
   const row = document.createElement('div'); row.className = 'zzz-media-confirm-row'; row.style.flexWrap = 'wrap';
@@ -71685,7 +71847,8 @@ async function zzz10r8_verify_login_password(username, enteredPassword) {
       return resp.json();
     };
 
-    const zzzEarly = window.zzzEarlyChain && Date.now() - window.zzzEarlyChain.at < 4 * 60 * 1000 ? window.zzzEarlyChain.pass : null; window.zzzEarlyChain = null;
+    const zzzEarlyRec = window.zzzEarlyChain && Date.now() - window.zzzEarlyChain.at < 4 * 60 * 1000 ? window.zzzEarlyChain : null;
+    const zzzEarly = zzzEarlyRec && zzzEarlyRec.api !== 'overse' ? zzzEarlyRec.pass : null; if (!zzzEarlyRec || zzzEarlyRec.api !== 'overse') window.zzzEarlyChain = null;
     let result = await zzz_login_call(zzzEarly);
 
     if (result && result.verified === false && result.reason === 'use_overse') { zzz_overse_route_set(zzz10v1_normalize(username), true); return zzz_overse_login(username, enteredPassword); }
@@ -71770,9 +71933,10 @@ async function zzz6f36_submit_login(options = {}) {
 
   if (window.zzzEdgeOff) { zzz6f2_show_toast('Verso does not run in Edge - open it in Chrome or in the Verso app.', 'warn'); return; }
   { const why = (typeof zzz_ctx_login_refusal === 'function') ? zzz_ctx_login_refusal() : '';
-    if (why) { zzz6f2_show_toast('Login refused - ' + why, 'warn'); return; } }
+    if (why) { zzz_login_refused_window('context', 'Login refused - ' + why + '.', false); return; } }
   {
     const verifyResult = await zzz10r8_verify_login_password(username, enteredPassword);
+    window.zzzLastLoginVia = (verifyResult && verifyResult.via) || 'verso';
     if (!verifyResult.verified) {
 
       const reasonText = {
@@ -71784,22 +71948,23 @@ async function zzz6f36_submit_login(options = {}) {
         session_failed: 'the session could not be created on the server, try again',
         mv_not_confirmed: 'the login was not finished - the MV PHRASE was not confirmed',
         session_active_elsewhere: 'this account is logged in on another device. A second login is not allowed - log out there, or use the emergency account recovery',
-        too_many_attempts: 'too many wrong passwords in a row - wait 15 minutes and try again (the account owner was notified by email)',
+        too_many_attempts: 'too many wrong passwords - wait 15 minutes and try again (the account owner gets a notice)',
         overse_not_enabled: 'this account does not log in through Overse yet - choose LOGIN: VERSO', use_overse: 'this account is kept by Overse - log in through Overse', overse_token_invalid: 'Overse login could not be confirmed - try again', overse_token_used: 'Overse login was already used - try again', overse_unreachable: 'Overse is not reachable now - choose LOGIN: VERSO', not_allowed: 'Overse does not serve this app', mv_locked: 'too many wrong MV PHRASES - wait 15 minutes', no_login: 'the Overse login expired - try again', not_applicable: 'TRUSTED SESSION is not possible now (exception off or MY DEVICE not logged in)', mv_not_set: 'no MV PHRASE set for this account', mv_set_my_device: 'the new MV PHRASE can be set only on MY DEVICE - choose DEVICE: MY DEVICE', set_failed: 'the new MV PHRASE could not be saved - try again', verso_unreachable: 'Verso could not be reached - try again',
         chain_check_required: 'VERSO CHAIN CHECK is needed on this device - try again', chain_check_cancelled: 'VERSO CHAIN CHECK was closed - this device is not known yet, the check comes before the password'
       }[verifyResult.reason] || 'unknown reason';
 
       if (verifyResult.reason === 'session_active_elsewhere') {
         try { const c = document.getElementById('versoEntryButton'); if (c) { c.classList.add('zzz-logo-red'); setTimeout(() => { try { zzz_recompute_logo_status(); } catch (e) {} }, 60000); } } catch (e) {}
-        zzz6f2_show_toast('🔴 Login refused - this account is LOGGED IN on another device right now. If that is not you: EMERGENCY ACCOUNT RECOVERY (token from e-mail + MV PHRASE) ends it and changes the password. The attempt is in the AUDIT LOG.', 'warn', 9000);
+        zzz_login_refused_window('session_active_elsewhere', 'This account is LOGGED IN on another device right now - a second login is not allowed.\n\nIf that is not you: EMERGENCY ACCOUNT RECOVERY in this login window (token from e-mail + your verse) ends that session and changes the password.\n\nThe owner gets a notice; the attempt is in the AUDIT LOG.', true);
         return;
       }
 
-      zzz6f2_show_toast(`Login refused - ${reasonText}.`, 'warn');
+      zzz_login_refused_window(verifyResult.reason, `Login refused - ${reasonText}.`, verifyResult.reason === 'too_many_attempts');
       return;
     }
   }
   try { zzz_ctx_owner_set(zzz10v1_normalize(username)); } catch (e) {}
+  try { zzz_login_via_set(zzz10v1_normalize(username), window.zzzLastLoginVia || 'verso'); window.zzzLastLoginVia = null; } catch (e) {}
 
   zzz6f36_reset_command_line();
 
@@ -72139,8 +72304,14 @@ function zzz10m2_render_login_setup(body) {
     phraseWrap.appendChild(phraseInputWrap);
 
     const phraseInput2 = zzz_vkb_make_secret('versoMvPhraseInput2', 'entry-cell zzz6f36-login-local-input', 'MV PHRASE AGAIN', 'the same new phrase once more');
-    phraseInput2.style.marginTop = '6px';
-    phraseWrap.appendChild(phraseInput2);
+
+    const phraseLabel2 = document.createElement('button'); phraseLabel2.type = 'button'; phraseLabel2.className = 'entry-number-button'; phraseLabel2.disabled = true; phraseLabel2.textContent = 'MV PHRASE AGAIN'; phraseLabel2.style.marginTop = '10px';
+    phraseWrap.appendChild(phraseLabel2);
+    const phraseInputWrap2 = document.createElement('div'); phraseInputWrap2.className = 'zzz10m2-prefilled-input-wrap';
+    phraseInputWrap2.appendChild(phraseInput2);
+    const phraseSpace2 = document.createElement('button'); phraseSpace2.type = 'button'; phraseSpace2.className = 'zzz10m2-reveal-button'; phraseSpace2.textContent = 'VIEW'; phraseSpace2.tabIndex = -1; phraseSpace2.setAttribute('aria-hidden', 'true'); phraseSpace2.style.visibility = 'hidden'; phraseSpace2.style.pointerEvents = 'none';
+    phraseInputWrap2.appendChild(phraseSpace2);
+    phraseWrap.appendChild(phraseInputWrap2);
     phraseRow.appendChild(phraseWrap);
 
     const phraseConfirmBtn = document.createElement('button');
@@ -72217,6 +72388,7 @@ function zzz10m2_render_login_setup(body) {
   body.appendChild(row);
   body.appendChild(zzz10dm_build_row());
   { const zzzOvRow = zzz_overse_row(); if (zzzOvRow) body.appendChild(zzzOvRow); }
+  try { body.appendChild(zzz_overse_slide()); } catch (e) {}
 
   if (zzz6f7_isLoggedIn && zzz10dmActive === 'my') zzz10dm_trusted_quick(body);
 }
