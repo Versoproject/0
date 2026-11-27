@@ -30991,8 +30991,14 @@ function zzz_verse_why(r) {
     verse_too_long: 'Max. 40 words.', wrong_credentials: 'CURRENT PASSWORD or MV PHRASE is wrong' + (r && r.attemptsLeft != null ? ' (' + r.attemptsLeft + ' left)' : '') + '.', wrong_password: 'CURRENT PASSWORD is wrong' + (r && r.attemptsLeft != null ? ' (' + r.attemptsLeft + ' left)' : '') + '.', phrase_needed: 'A change needs your MV PHRASE. Forgot it? Use RECOVERY on the login screen (token + 2 words of your verse).', password_and_phrase_required: 'Fill in CURRENT PASSWORD and MV PHRASE.', no_verse: 'You have no verse yet - use + ADD VERSE.', verse_exists: 'You already have a verse - use ✎ CHANGE VERSE.', overse_unreachable: 'Overse is not reachable now - try again later (not counted as wrong).', too_many_verses: 'Max. 10 verses.', last_factor: 'The last verse cannot be removed - add another first.', last_verse: 'One verse must stay active - add another verse first, then remove this one.', invalid_token: 'The USERNAME or the TOKEN is not valid.', token_required: 'Type the recovery TOKEN from your e-mail first.', new_password_short: 'The new password is too short.' })[x] || ('Not done (' + (x || 'error') + ').');
 }
 
-function zzz_chain_puzzle(level, api) {
-  return new Promise((resolve) => {
+function zzz_hg_after(pass, r) {
+  try { if (typeof pass === 'string' && pass.startsWith('ov:') && r && r.reason === 'chain_check_required') window.zzzHgLocal = true; } catch (e) {}
+}
+function zzz_chain_puzzle(level, api0) {
+  let api = api0, hg = !api0 && !window.zzzHgLocal;
+  if (hg) api = ZZZ_OVERSE_CHAIN_API;
+  return new Promise((resolve0) => {
+    const resolve = (v) => resolve0(v && hg && api ? 'ov:' + v : v);
     let lv = Math.max(1, Math.min(6, Number(level) || 1)), pz = null, ans = [], phase = 'load', done = false, timers = [];
     const o = document.createElement('div'); o.className = 'zzz-media-confirm zzzfin-mv'; o.setAttribute('data-zzz-nodraft', '1');
     const zzzPzTitle = (api && api.title) || 'VERSO CHAIN CHECK';
@@ -31026,6 +31032,11 @@ function zzz_chain_puzzle(level, api) {
       timers.forEach(clearTimeout); timers = []; phase = 'load'; ans = []; pz = null; mid.textContent = '…'; sub.textContent = 'Getting a chain …';
       let r = null; try { r = api ? await api.newFn(lv) : await zzz4r7_rpc('verso_puzzle_new', { p_level: lv }); } catch (e) {}
       if (done) return;
+      if (hg && api && (!r || (!r.ok && r.reason !== 'busy'))) {
+        api = null; t.textContent = 'VERSO CHAIN CHECK'; t.style.color = ''; b.style.borderColor = '';
+        try { r = await zzz4r7_rpc('verso_puzzle_new', { p_level: lv }); } catch (e) { r = null; }
+        if (done) return;
+      }
       if (!r || !r.ok) { sub.textContent = r && r.reason === 'busy' ? 'Verso is busy - try again in a minute.' : 'No connection to Verso - try again.'; mid.textContent = ''; return; }
       pz = r; phase = 'show'; sub.textContent = 'WATCH - ' + pz.seq.length + ' links light up. Then tap them in the same order.'; mid.textContent = '👁';
       pz.seq.forEach((li, k) => later(() => glow(li, '#fff2b0', pz.step_ms - 130), 500 + k * pz.step_ms));
@@ -34208,10 +34219,10 @@ async function zzz_dk_sign(user) {
 
 async function zzz_lane_retry(call) {
   let r = await call(null);
-  if (r && r.reason === 'chain_check_required') {
+  for (let k = 0; k < 2 && r && r.reason === 'chain_check_required'; k++) {
     const pass = await zzz_chain_puzzle(r.level || 1);
     if (!pass) return { success: false, reason: 'chain_check_cancelled' };
-    r = await call(pass);
+    r = await call(pass); zzz_hg_after(pass, r);
   }
   return r;
 }
@@ -58467,7 +58478,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-27 16:20';
+const VERSO_BUILD = '2026-11-27 20:24';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -71601,11 +71612,12 @@ async function zzz_overse_login(username, password) {
     deviceId: zzz_device_id(), keepSignedIn: mode === 'my', trusted: mode === 'trusted' ? true : undefined, puzzlePass: pass || undefined });
   const early = window.zzzEarlyChain && window.zzzEarlyChain.api === 'overse' && Date.now() - window.zzzEarlyChain.at < 4 * 60 * 1000 ? window.zzzEarlyChain.pass : null; window.zzzEarlyChain = null;
   let r = await loginCall(early);
+  let zzzOvPass = r && r.ok === true && early ? early : null;
   if (r && r.ok === false && r.reason === 'chain_check_required') {
     zzz0r1_set_db_connection_state(true);
     const pass = await zzz_chain_puzzle(r.level || 1, ZZZ_OVERSE_CHAIN_API);
     if (!pass) return { verified: false, reason: 'chain_check_cancelled' };
-    r = await loginCall(pass);
+    r = await loginCall(pass); zzzOvPass = pass;
   }
   if (!r || r.ok !== true || !r.pending) return { verified: false, reason: (r && r.reason) || 'overse_unreachable' };
 
@@ -71651,11 +71663,12 @@ async function zzz_overse_login(username, password) {
   };
   let g;
   try {
-    g = await gateCall(null);
-    if (g && g.verified === false && g.reason === 'chain_check_required') {
+    const zzzHgFirst = zzzOvPass && !window.zzzHgLocal ? 'ov:' + zzzOvPass : null;
+    g = await gateCall(zzzHgFirst); zzz_hg_after(zzzHgFirst, g);
+    for (let k = 0; k < 2 && g && g.verified === false && g.reason === 'chain_check_required'; k++) {
       const pass = await zzz_chain_puzzle(g.level || 1);
       if (!pass) return { verified: false, reason: 'chain_check_cancelled' };
-      g = await gateCall(pass);
+      g = await gateCall(pass); zzz_hg_after(pass, g);
     }
   } catch (e) { zzz0r1_set_db_connection_state(false, (e && e.message) || String(e), true); return { verified: false, reason: 'lookup_failed' }; }
   zzz0r1_set_db_connection_state(true);
@@ -71852,11 +71865,12 @@ async function zzz10r8_verify_login_password(username, enteredPassword) {
     let result = await zzz_login_call(zzzEarly);
 
     if (result && result.verified === false && result.reason === 'use_overse') { zzz_overse_route_set(zzz10v1_normalize(username), true); return zzz_overse_login(username, enteredPassword); }
-    if (result && result.verified === false && result.reason === 'chain_check_required') {
+    zzz_hg_after(zzzEarly, result);
+    for (let k = 0; k < 2 && result && result.verified === false && result.reason === 'chain_check_required'; k++) {
       zzz0r1_set_db_connection_state(true);
       const zzzLanePass = await zzz_chain_puzzle(result.level || 1);
       if (!zzzLanePass) return { verified: false, reason: 'chain_check_cancelled' };
-      result = await zzz_login_call(zzzLanePass);
+      result = await zzz_login_call(zzzLanePass); zzz_hg_after(zzzLanePass, result);
     }
     if (typeof result.verified !== 'boolean') {
       throw new Error(result.error || 'unexpected answer from verso-auth-gate');
