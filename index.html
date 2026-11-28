@@ -12915,6 +12915,11 @@ function zzz6f29_open_readonly_viewer(label, value, row) {
     rdb.addEventListener('pointerdown', (e) => e.stopPropagation());
     rdb.addEventListener('click', (e) => { e.stopPropagation(); zzz_rdr_open(cislo); });
     header.appendChild(rdb);
+
+    const hyb = document.createElement('button'); hyb.className = 'zzz14cs-pin-link'; hyb.textContent = '⇄'; hyb.title = `#${cislo} · HYBRID (offline on MY DEVICE)`;
+    hyb.addEventListener('pointerdown', (e) => e.stopPropagation());
+    hyb.addEventListener('click', (e) => { e.stopPropagation(); zzz_hyb_window(cislo, row); });
+    header.appendChild(hyb);
   }
   zzz_ctx_header_x(header);
 
@@ -49346,6 +49351,7 @@ const ZZZ_SET_REG = [
   { m: 'VERSO CHAIN CHECK MODULE', w: 'd', scope: 'all', place: 'info' },
   { m: 'TRUSTED SESSION', w: 's', scope: 'all', place: 'settings' },
   { m: 'SESSION LENGTH · MY DEVICE', w: 's', scope: 'all', place: 'settings' },
+  { m: 'HYBRID · offline on MY DEVICE', w: 's', scope: 'all', place: 'settings' },
   { m: 'READ RECEIPTS', w: 's', scope: 'all', place: 'settings' },
   { m: 'Allow notifications on FOREIGN', w: 'd', scope: 'device', place: 'settings' },
   { m: 'Home language', w: 'sd', scope: 'all', place: 'settings', deps: ['Keyboard languages'] },
@@ -56015,6 +56021,7 @@ function zzz10m5_render_advanced_setup(host) {
   host.appendChild(rec);
 
   try { zzz10dm_sessions_box(host); } catch (e) {}
+  try { zzz_hyb_box(host); } catch (e) {}
 
   try { zzz_modes_render(host); } catch (e) {}
   try { zzz_files_adv_box(host); } catch (e) {}
@@ -58488,7 +58495,7 @@ function zzz2rws_queue_sync() {
   zzz2rws_sync_gold();
 })();
 
-const VERSO_BUILD = '2026-11-28 18:38';
+const VERSO_BUILD = '2026-11-28 19:37';
 
 const ZZZ_DEV_AUTO_UPDATE = true;
 let zzzDevAuSig = null, zzzDevAuAt = 0, zzzDevAuBusy = false;
@@ -72526,6 +72533,91 @@ function zzz10dm_sessions_box(host) {
   host.appendChild(box);
   zzz10dm_session_length(box);
   zzz10dm_trusted_block(box);
+}
+
+const ZZZ_HYB_REASON = { not_allowed_by_owner: '🔒 The owner does not allow offline copies of this record.', not_logged_in: 'Log in first.', too_many: 'Too many HYBRID marks (5000).', not_owner: 'Only the owner sets this.', bad_input: 'That did not work.' };
+const ZZZ_HYB_MODES = [['none', 'NOT ALLOWED'], ['read', 'READ ONLY'], ['rw', 'READ + WRITE']];
+function zzz_hyb_my_device() { try { return zzz10dmActive === 'my'; } catch (e) { return true; } }
+async function zzz_hyb_window(id, row) {
+  const me = String(zzz0r1_get_current_username() || '').toLowerCase();
+  const owner = String((row && row.username) || '').toLowerCase(), mine = !!me && owner === me;
+  const o = document.createElement('div'); o.className = 'zzz-media-confirm';
+  const b = document.createElement('div'); b.className = 'zzz-media-confirm-box'; b.setAttribute('data-vlabel', 'VERSO › RECORD › ⇄ HYBRID'); b.setAttribute('data-vkind', 'SETUP');
+  const t = document.createElement('div'); t.className = 'zzz-media-confirm-text'; t.style.cssText = 'font-weight:800;color:#D4AF37'; t.textContent = '⇄ HYBRID · #' + id; b.appendChild(t);
+  const st = document.createElement('div'); st.className = 'zzz-media-confirm-text'; st.style.fontSize = '13px'; b.appendChild(st);
+  const msg = document.createElement('div'); msg.style.cssText = 'font-size:13px;margin:6px 0;min-height:1em'; b.appendChild(msg);
+  const say = (x, ok) => { msg.textContent = x; msg.style.color = ok ? '#7fdc8f' : '#ff8a8a'; };
+  const row1 = document.createElement('div'); row1.className = 'zzz-media-confirm-row'; b.appendChild(row1);
+  const close = () => o.remove();
+  let on = false;
+  const paint = () => {
+    st.textContent = (on ? '✓ Kept offline on MY DEVICE.' : 'Not kept offline.') + (zzz_hyb_my_device() ? '' : ' (Only MY DEVICE keeps offline copies - this device never does.)');
+    tog.textContent = on ? '⇄ OFF' : '⇄ KEEP OFFLINE'; tog.className = 'zzz-media-btn' + (on ? '' : ' is-red');
+  };
+  const tog = document.createElement('button'); tog.type = 'button';
+  tog.addEventListener('click', async () => {
+    try { const r = await zzz4r7_rpc('verso_hybrid_mark', { p_scope: 'entry', p_key: String(id), p_active: !on });
+      if (!r || !r.ok) return say(ZZZ_HYB_REASON[r && r.reason] || ZZZ_HYB_REASON.bad_input);
+      on = !on; paint(); say(on ? '✓ #' + id + ' is HYBRID - it goes into your offline copy.' : '✓ #' + id + ' is no longer kept offline.', true);
+    } catch (e) { say('That did not work - try again.'); }
+  });
+  row1.appendChild(tog);
+  if (mine) {
+    const h = document.createElement('div'); h.className = 'zzz-media-confirm-text'; h.style.cssText = 'font-size:13px;margin-top:10px'; h.textContent = 'Others with access may keep it offline:'; b.appendChild(h);
+    const row2 = document.createElement('div'); row2.className = 'zzz-media-confirm-row'; row2.style.flexWrap = 'wrap'; b.appendChild(row2);
+    const btns = {};
+    const pm = (m) => Object.keys(btns).forEach((k) => { btns[k].className = 'zzz-media-btn' + (k === m ? ' is-red' : ''); });
+    ZZZ_HYB_MODES.forEach(([m, l]) => { const x = document.createElement('button'); x.type = 'button'; x.textContent = l; btns[m] = x; row2.appendChild(x);
+      x.addEventListener('click', async () => { try { const r = await zzz4r7_rpc('verso_hybrid_perm_set', { p_scope: 'entry', p_key: String(id), p_mode: m });
+        if (!r || !r.ok) return say(ZZZ_HYB_REASON[r && r.reason] || ZZZ_HYB_REASON.bad_input); pm(m); say('✓ Others: ' + l + '.', true); } catch (e) { say('That did not work - try again.'); } }); });
+    pm('none');
+    try { const { data } = await sb.from('verso_hybrid_perms').select('mode').eq('scope', 'entry').eq('key', String(id)).maybeSingle(); if (data && data.mode) pm(data.mode); } catch (e) {}
+  }
+  const row3 = document.createElement('div'); row3.className = 'zzz-media-confirm-row'; b.appendChild(row3);
+  const cl = document.createElement('button'); cl.type = 'button'; cl.className = 'zzz-media-btn'; cl.textContent = 'CLOSE'; cl.addEventListener('click', close); row3.appendChild(cl);
+  o.addEventListener('click', (e) => { if (e.target === o) close(); });
+  o.appendChild(b); document.body.appendChild(o);
+  try { const { data } = await sb.from('verso_hybrid_marks').select('active').eq('scope', 'entry').eq('key', String(id)).maybeSingle(); on = !!(data && data.active); } catch (e) {}
+  if (!mine) { try { const md = await zzz4r7_rpc('verso_hybrid_mode', { p_entry: Number(id) }); if (md === 'none' && !on) say(ZZZ_HYB_REASON.not_allowed_by_owner); } catch (e) {} }
+  paint();
+}
+
+function zzz_hyb_box(host) {
+  const box = zzz10m5_el('div', 'zzz10m5-box'); box.setAttribute('data-5s', 'HYBRID'); box.setAttribute('data-vlabel', 'VERSO › SETTINGS › Advanced setup › HYBRID'); box.setAttribute('data-vkind', 'SETUP');
+  box.appendChild(zzz10m5_el('h3', '', '⇄ HYBRID · offline on MY DEVICE'));
+  box.appendChild(zzz10m5_el('div', 'zzz10m5-txt', 'Only what you mark is kept offline: ⇄ in a record window, or a whole PROJECT NUMBER / PROJECT CATEGORY here. Records of other owners only when the owner allows it. Only MY DEVICE keeps the copy.'));
+  const sum = zzz10m5_el('div', 'zzz10m5-txt', '…'); box.appendChild(sum);
+  const list = zzz10m5_el('div', ''); box.appendChild(list);
+  const msg = zzz10m5_el('div', 'zzz10m5-txt', ''); box.appendChild(msg);
+  const say = (x, ok) => { msg.textContent = x; msg.style.color = ok ? '#7fdc8f' : '#ff8a8a'; };
+  const add = (scope, label) => {
+    const r = zzz10m5_el('div', ''); r.style.cssText = 'display:flex;gap:6px;margin:6px 0;align-items:center';
+    const inp = document.createElement('input'); inp.type = 'text'; inp.placeholder = label; inp.style.cssText = 'flex:1;min-width:0'; inp.maxLength = 80;
+    const go = document.createElement('button'); go.type = 'button'; go.className = 'zzz16-btn'; go.textContent = '⇄ ADD';
+    go.addEventListener('click', async () => { const k = inp.value.trim(); if (!k) { inp.style.outline = '2px solid #ff6b6b'; return; } inp.style.outline = '';
+      try { const x = await zzz4r7_rpc('verso_hybrid_mark', { p_scope: scope, p_key: k, p_active: true }); if (!x || !x.ok) return say(ZZZ_HYB_REASON[x && x.reason] || ZZZ_HYB_REASON.bad_input);
+        inp.value = ''; say('✓ ' + label + ' ' + k + ' is HYBRID.', true); load(); } catch (e) { say('That did not work - try again.'); } });
+    r.append(inp, go); box.appendChild(r);
+  };
+  add('project', 'PROJECT NUMBER'); add('category', 'PROJECT CATEGORY');
+  const perms = zzz10m5_el('div', 'zzz10m5-txt', ''); box.appendChild(perms);
+  async function load() {
+    list.textContent = '';
+    try {
+      const r = await zzz4r7_rpc('verso_hybrid_list'); if (!r || !r.ok) { sum.textContent = 'Log in on MY DEVICE to see it.'; return; }
+      sum.textContent = (r.entries || []).length + ' records kept offline' + (r.refused ? ' · ' + r.refused + ' not allowed by their owners' : '') + (zzz_hyb_my_device() ? '' : ' · this device never keeps them (not MY DEVICE)');
+      (r.marks || []).filter((m) => m.scope !== 'entry' || m.active).forEach((m) => {
+        const l = zzz10m5_el('div', ''); l.style.cssText = 'display:flex;gap:6px;align-items:center;margin:3px 0';
+        const tx = zzz10m5_el('span', '', (m.scope === 'entry' ? '#' : m.scope === 'project' ? 'PROJECT ' : 'CATEGORY ') + m.key + (m.active ? '' : ' · off')); tx.style.flex = '1';
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'zzz16-btn'; b.textContent = m.active ? '⇄ OFF' : '⇄ ON';
+        b.addEventListener('click', async () => { try { const x = await zzz4r7_rpc('verso_hybrid_mark', { p_scope: m.scope, p_key: m.key, p_active: !m.active }); if (!x || !x.ok) return say(ZZZ_HYB_REASON[x && x.reason] || ZZZ_HYB_REASON.bad_input); load(); } catch (e) { say('That did not work - try again.'); } });
+        l.append(tx, b); list.appendChild(l);
+      });
+      const { data } = await sb.from('verso_hybrid_perms').select('scope,key,mode').neq('mode', 'none');
+      perms.textContent = data && data.length ? 'Others may keep offline: ' + data.map((p) => (p.scope === 'entry' ? '#' : 'PROJECT ') + p.key + ' (' + (p.mode === 'rw' ? 'READ + WRITE' : 'READ ONLY') + ')').join(' · ') : 'Others may keep nothing of yours offline (set per record: ⇄ in its window).';
+    } catch (e) { sum.textContent = 'HYBRID could not be read - try again.'; }
+  }
+  host.appendChild(box); load();
 }
 
 function zzz10dm_trusted_quick(body) {
